@@ -261,6 +261,118 @@ jobs:
           path: memory-eval.json
           if-no-files-found: error
 
+  deployment:
+    name: Deployment configs · must parse, must start, must cap the disk
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Deployment layer is stdlib-only too (AST gate)
+        run: |
+          python - <<'PY'
+          import ast, sys
+          from pathlib import Path
+          stdlib = set(sys.stdlib_module_names) | {"tomllib"}
+          # `yaml` is allowed in TEST code only, and only behind an ImportError
+          # guard (it is an optional convenience for parsing render.yaml; CI
+          # installs it in a later step, and the test skips cleanly without it).
+          # The launcher itself must stay pure stdlib and is checked strictly.
+          optional_in_tests = {"yaml"}
+          bad = {}
+          for p in sorted(Path("deployment").glob("*.py")):
+              tree = ast.parse(p.read_text(encoding="utf-8"))
+              guarded = set()
+              for n in ast.walk(tree):
+                  if isinstance(n, ast.Try):
+                      for h in n.handlers:
+                          if h.type is not None and "ImportError" in ast.unparse(h.type):
+                              for sub in ast.walk(n):
+                                  if isinstance(sub, ast.Import):
+                                      guarded.update(a.name.split(".")[0] for a in sub.names)
+                                  elif isinstance(sub, ast.ImportFrom) and sub.module:
+                                      guarded.add(sub.module.split(".")[0])
+              is_test = p.name.startswith("test_")
+              for n in ast.walk(tree):
+                  names = []
+                  if isinstance(n, ast.Import):
+                      names = [a.name.split(".")[0] for a in n.names]
+                  elif isinstance(n, ast.ImportFrom) and n.level == 0 and n.module:
+                      names = [n.module.split(".")[0]]
+                  for name in names:
+                      if name in stdlib:
+                          continue
+                      if is_test and name in guarded and name in optional_in_tests:
+                          continue
+                      bad.setdefault(str(p), set()).add(name)
+          print("scanned", len(list(Path("deployment").glob("*.py"))), "deployment files")
+          if bad:
+              print("THIRD-PARTY:", bad, file=sys.stderr); sys.exit(1)
+          print("PASS: stdlib only (optional guarded test-only imports allowed:")
+          print("      yaml, only if wrapped in try/except ImportError)")
+          PY
+      - name: Requirements must declare ZERO packages
+        run: |
+          python - <<'PY'
+          import sys
+          from pathlib import Path
+          lines = [l.strip() for l in Path("requirements.txt").read_text().splitlines()]
+          reqs = [l for l in lines if l and not l.startswith("#")]
+          if reqs:
+              print(f"FAIL: requirements.txt declares {reqs}", file=sys.stderr)
+              sys.exit(1)
+          print("PASS: zero declared dependencies")
+          PY
+      - name: Deployment configs + live launcher (16 tests, real HTTP)
+        run: python deployment/test_deployment.py -v
+      - name: YAML structure must parse to exactly one service
+        run: |
+          pip install --quiet --disable-pip-version-check pyyaml
+          python - <<'PY'
+          import sys, yaml
+          d = yaml.safe_load(open("render.yaml"))
+          svcs = d.get("services") or []
+          ok = len(svcs) == 1 and all(
+              k in svcs[0] for k in ("type", "name", "runtime", "startCommand"))
+          print(f"services in render.yaml: {len(svcs)}")
+          if not ok:
+              print("FAIL: render.yaml does not describe one complete service",
+                    file=sys.stderr)
+              sys.exit(1)
+          print("PASS: one complete service")
+          PY
+      - name: The Dockerfile must not COPY files that are absent
+        run: |
+          python - <<'PY'
+          import sys
+          from pathlib import Path
+          missing = []
+          for line in Path("Dockerfile").read_text().splitlines():
+              line = line.strip()
+              if line.upper().startswith("COPY "):
+                  for src in line.split()[1:-1]:
+                      if "$" in src or "*" in src:
+                          continue
+                      if not Path(src.rstrip("/")).exists():
+                          missing.append(src)
+          if missing:
+              print(f"FAIL: Dockerfile COPY sources not in repo: {missing}",
+                    file=sys.stderr)
+              sys.exit(1)
+          print("PASS: every COPY source exists")
+          PY
+      - name: Boot the deployed launcher and hit /api/health
+        run: |
+          python3 deployment/live_server.py > /tmp/live.log 2>&1 &
+          for i in $(seq 1 40); do
+            if python3 -c "import urllib.request,sys; urllib.request.urlopen('http://127.0.0.1:8090/api/health',timeout=2)" 2>/dev/null; then
+              echo "PASS: live launcher answered /api/health"; cat /tmp/live.log; exit 0
+            fi
+            sleep 0.5
+          done
+          echo "FAIL: launcher never answered"; cat /tmp/live.log; exit 1
+
   launch-evidence:
     name: Publish kit · regenerate every claim + verify evidence links
     runs-on: ubuntu-latest

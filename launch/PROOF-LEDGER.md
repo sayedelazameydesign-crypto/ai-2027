@@ -45,6 +45,9 @@
 | B12 | L1 memory: retrieval quality | recall@3 **2/16 = 0.125** on paraphrase set · FP 0/5 unrelated · 0/7 near-miss | `python3 memory/evaluate.py --markdown` | `memory/README.md` §Measured quality |
 | B13 | L1 memory: backend honesty | `sqlite3` + hashed-lexical, **no `sqlite-vec`** (`vec_version()` → OperationalError) | `python3 memory/store.py stats` | `stats.backend` |
 | B10 | 5/5 verification probes pass | 86 tests, 6 wrapper, AST gate, 9 guard, 12 demo | same | `probes` block |
+| B19 | Live demo can run 24/7 on a free host | `render.yaml` → **1** complete service; Dockerfile builds from a **verified** file list; **16** deployment tests pass incl. real HTTP | `python3 deployment/test_deployment.py -v` | [`deployment/README.md`](../deployment/README.md) |
+| B20 | Deployment keeps zero dependencies | `requirements.txt` declares **0** packages; AST gate on `deployment/*.py` passes; image runs **no** `pip install` | same | CI job `deployment` |
+| B21 | Disk cap holds under load | 60 real requests against a **1 MB** cap → directory measured at **≤ 1 MB**, oldest runs pruned | `deployment/test_deployment.py::test_31` | measured, not config-read |
 
 ## C. Structural claims (code-reading, not measurement)
 
@@ -71,6 +74,10 @@
 | D7 | Own bugs found & fixed: false SHA-256 on `DENIED`, p50 polluted by 0 ms control events, Python 3.10 `tomllib` gate, 4 failed Jekyll deploys | `command-hud/test_hud.py`, `scripts/test_ci_guard.py`, git history |
 | D8 | L1 memory is **lexical, not neural** — misses synonyms (2/16 on paraphrase set) | [`memory/evaluate.py`](../memory/evaluate.py), `test_memory.py::test_11` |
 | D9 | L1 memory is tamper-**evident**, not tamper-proof; no signing, single-writer assumption | `store.verify()`, [`memory/README.md`](../memory/README.md) §limits |
+| D13 | `live-agent/server.py` has **no auth and no rate limit**; exposed publicly anyone can run goals at ~90 req/s | [`deployment/README.md`](../deployment/README.md), `deployment/live_server.py` banner | documented; read-only mode provided, not enforced |
+| D14 | Without a disk cap, **69.5 KB per run** fills a 512 MB free tier in **~1.4 min** (~75,000 runs for 5 GB). The launcher caps it; a bare `live-agent/server.py` does not | `deployment/live_server.py`, measured | cap verified by test |
+| D15 | A `facebook_connector.py` referenced in planning **does not exist in this repo** (checked with `find`). No server-side process can read a logged-in browser session | `find . -name "*facebook*"` → none | integration would need its own OAuth app |
+| D16 | The first proposed deployment configs were **wrong in 4 ways**: `render.yaml` parsed to 2 half-services, `-m live_agent.server` names a package that does not exist, the Dockerfile COPY'd a file absent from the repo, and nothing capped disk | `deployment/test_deployment.py` (4 failing assertions reproduced against the original) | each pinned by a test |
 
 ## E. Claims we REFUSE to make
 

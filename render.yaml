@@ -1,0 +1,32 @@
+# Render blueprint — AI-2027 live demo
+#
+# The version proposed earlier in chat did not parse. It had a list item that was
+# only `- type: web` and put every other key under a SECOND list item, so the
+# YAML produced two services: one with no name/command, one with no type. Verified
+# with PyYAML before writing this file.
+#
+# The start command is also corrected: `python3 -m live_agent.server` cannot work,
+# there is no `live_agent` package (measured: ModuleNotFoundError). The server is
+# `live-agent/server.py`, which is not importable as a module path, so the
+# launcher in deployment/ loads it explicitly.
+services:
+  - type: web
+    name: ai-2027-live-agent
+    runtime: python
+    region: frankfurt
+    plan: free
+    # No third-party dependency: the project is stdlib-only by construction and
+    # CI fails if that ever stops being true (scripts/ci_guard.py imports).
+    buildCommand: ""
+    startCommand: "python3 deployment/live_server.py"
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      # Render injects PORT itself; the launcher reads it.
+      - key: AI2027_MAX_DISK_MB
+        value: "256"
+      - key: AI2027_MAX_RUNS
+        value: "5000"
+      # Flip to "1" to serve a read-only demo (recommended for a public URL).
+      - key: AI2027_READ_ONLY
+        value: "0"
