@@ -75,8 +75,68 @@ jobs:
       - name: Ember beat tests — heat index + honest publishing (7)
         run: python scripts/test_ember_beat.py -v
 
+      - name: Health gate tests — the gate must be able to refuse (24)
+        run: python scripts/test_health_gate.py -v
+
+      - name: Task runner tests — the 60 s budget must be falsifiable (6)
+        run: python scripts/test_run_task.py -v
+
       - name: Every GitHub Action must be pinned to a full SHA (SBOM verifier)
         run: python scripts/sbom.py --assert-pinned --out /tmp/sbom.json
+
+  recovery:
+    name: One-command recovery + real task under 60 s (T4 + T6)
+    runs-on: ubuntu-latest
+    needs: [tests]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
+        with:
+          python-version: "3.11"
+
+      - name: Boot the whole ember with one command (boot + real smoke + shutdown)
+        run: ./scripts/ember_up.sh --check --no-browser --json | tee /tmp/up.json
+
+      - name: Run one real task and measure it end-to-end
+        run: |
+          set -euo pipefail
+          ./scripts/ember_up.sh --no-browser --no-smoke --json > /tmp/up2.json
+          trap './scripts/ember_up.sh --stop' EXIT
+          python scripts/run_task.py --json --budget 60 > /tmp/task.json
+          python - <<'PY'
+          import json, pathlib
+
+          def load(path):
+              raw = pathlib.Path(path).read_text().strip()
+              try:
+                  return json.loads(raw)
+              except ValueError:                      # last JSON-looking line
+                  for line in reversed(raw.splitlines()):
+                      line = line.strip()
+                      if line.startswith("{"):
+                          return json.loads(line)
+              raise SystemExit(f"no JSON in {path}: {raw[:200]!r}")
+
+          task = load("/tmp/task.json")
+          up = load("/tmp/up.json")
+          assert task["status"] == "VERIFIED", task
+          assert task["claims"]["within_budget"] is True, task["claims"]
+          assert task["artifact"]["hash_verified"] is True, task["artifact"]
+          lines = [
+              "### T4 — one-command recovery",
+              f"- boot + 15-check smoke + shutdown: {up['elapsed_ms']} ms · {up['smoke']}",
+              "",
+              "### T6 — one real task, measured",
+              f"- run_id `{task['run_id']}` · status **{task['status']}** · "
+              f"{task['claims']['elapsed_ms']} ms (budget {task['claims']['budget_ms']} ms)",
+              f"- artifact `{task['artifact']['path']}` · sha256 recomputed and matched · "
+              f"{task['artifact']['bytes']} bytes",
+              f"- evidence: {task['evidence_link']}",
+          ]
+          print("\n".join(lines))
+          pathlib.Path("/tmp/t46.md").write_text("\n".join(lines) + "\n")
+          PY
+          cat /tmp/t46.md >> "$GITHUB_STEP_SUMMARY"
 
   demo-tests:
     name: Public demo contract (12 tests)
