@@ -32,8 +32,8 @@ jobs:
       matrix:
         python-version: ["3.10", "3.11", "3.12"]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
         with:
           python-version: ${{ matrix.python-version }}
 
@@ -76,8 +76,8 @@ jobs:
     name: Public demo contract (12 tests)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4
         with:
           node-version: "20"
       - name: Browser port must keep VERIFIED / DENIED / FAILED honest
@@ -94,8 +94,8 @@ jobs:
     runs-on: ubuntu-latest
     needs: [tests, demo-tests]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
         with:
           python-version: "3.11"
       - name: Run bench.py (stdlib, reproducible)
@@ -105,7 +105,7 @@ jobs:
       - name: Validate payload + publish numbers to job summary
         run: python scripts/ci_guard.py bench --input live-agent/bench.json
       - name: Upload raw measurements
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
         with:
           name: benchmarks-${{ github.sha }}
           path: |
@@ -117,8 +117,8 @@ jobs:
     name: Build + smoke-test the wheel
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
         with:
           python-version: "3.11"
       - name: Install build tooling (outside the kernel)
@@ -144,11 +144,11 @@ jobs:
     name: Command HUD · real kernel + 100-attack gate + 48-project audit
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
         with:
           python-version: "3.11"
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4
         with:
           node-version: "20"
       - name: HUD is stdlib-only too (AST gate on the new code path)
@@ -183,7 +183,7 @@ jobs:
           python command-hud/audit.py --assert-probes > command-hud/audit-latest.json
           python command-hud/audit.py --fast --report command-hud/audit-report.md
       - name: Upload audit evidence
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
         with:
           name: repository-audit-${{ github.sha }}
           path: |
@@ -195,8 +195,8 @@ jobs:
     name: L1 memory · admission gate + measured retrieval honesty
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
         with:
           python-version: "3.11"
       - name: Memory is stdlib-only (no sqlite-vec, no model client)
@@ -259,7 +259,7 @@ jobs:
       - name: End-to-end demo (admit / refuse / tamper / noise floor)
         run: python memory/store.py demo
       - name: Upload retrieval evidence
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
         with:
           name: memory-eval-${{ github.sha }}
           path: memory-eval.json
@@ -269,8 +269,8 @@ jobs:
     name: Deployment configs · must parse, must start, must cap the disk
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
         with:
           python-version: "3.11"
       - name: Deployment layer is stdlib-only too (AST gate)
@@ -478,11 +478,11 @@ jobs:
     name: Publish kit · regenerate every claim + verify evidence links
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
         with:
           python-version: "3.11"
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4
         with:
           node-version: "20"
       - name: Every public claim must still have evidence (10 tests)
@@ -498,7 +498,7 @@ jobs:
           fi
           echo "PASS: NO EVIDENCE = NO VERIFIED SUCCESS"
       - name: Upload freshly measured launch evidence
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
         with:
           name: launch-evidence-${{ github.sha }}
           path: |
