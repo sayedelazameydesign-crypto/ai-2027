@@ -43,8 +43,35 @@
 - Spread (jitter) is reported beside every timing; in a shared container it is dominated
   by CPU scheduling, not by the kernel.
 
+## Re-run variance — published on purpose (2026-11-17)
+
+The table above is the **quiet-container reference run**. Re-running the exact
+same script on the same shared container at different load levels gave:
+
+| Run | VERIFIED p50 | p95 | spread | DENIED p50 | HTTP p50 |
+|---|---:|---:|---:|---:|---:|
+| Reference (published above) | **7.5 ms** | 11.1 ms | 103% | 3.1 ms | 10.0 ms |
+| Re-run A (loaded) | **12.1 ms** | 18.8 ms | 172% | 3.7 ms | 16.2 ms |
+| Re-run B (later) | **8.1 ms** | 21.2 ms | 280% | 3.4 ms | 10.7 ms |
+
+**This is the point, not a defect.** A single number quoted without its spread
+would be marketing. The KPI "p50 < 10 ms" is a target measured on a defined
+reference machine, **not an SLA** and not a claim about your hardware. CI
+therefore does *not* hard-fail at 10 ms on shared runners — it records the raw
+numbers on every push, uploads the JSON, and only fails above a 40 ms
+catastrophic-regression ceiling (`scripts/ci_guard.py`).
+
+Counts and byte sizes (3,526 LOC, 124.2 KB, 40 KB wheel, 86 tests) are exact and
+do not vary. Only timings carry the jitter caveat.
+
 ## Reproduce
 
 ```bash
-cd live-agent && python3 bench.py   # rewrites benchmarks/latest.json
+cd live-agent && python3 bench.py > /tmp/bench.json   # also rewrites benchmarks/latest.json
+cd .. && python3 scripts/ci_guard.py imports
+python3 scripts/ci_guard.py bench --input /tmp/bench.json
 ```
+
+CI runs the same guard on every push to `main` and attaches the raw JSON as a
+workflow artifact; the job summary prints the table so regressions are visible
+without downloading anything.
