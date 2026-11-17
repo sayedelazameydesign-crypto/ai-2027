@@ -83,3 +83,47 @@ gh api repos/sayedelazameydesign-crypto/ai-2027/pages --jq '{status,build_type}'
 ```
 
 </div>
+
+---
+
+## 4) بعد إصلاح السياسة: Pages فشل بسبب **إجراء مركّب** — والحل بلا تغيير أي إعداد
+
+### العَرَض
+```
+X The action actions/upload-artifact@v4 is not allowed in .../ai-2027 because all
+  actions must be from a repository owned by ..., created by GitHub, or verified in
+  the GitHub Marketplace. All actions must also be pinned to a full-length commit SHA.
+```
+بينما `pages.yml` **لا يذكر** `upload-artifact` إطلاقًا.
+
+### السبب
+`actions/upload-pages-artifact` هو **composite action**: ملف `action.yml` داخله يستدعي
+`actions/upload-artifact@v4` **بالوسم**. سياسة "كل الإجراءات مثبَّتة بـSHA" تُطبَّق على
+الاستدعاءات الداخلية أيضًا، فترفضه من الداخل. نفس الشكل ينطبق على `actions/configure-pages`.
+
+> الخلاصة: **السياسة سليمة، والعيب في تصميم الإجراء المركّب.** إلغاء السياسة حلّ، لكنه
+> يضحّي بضمان أمني حقيقي مقابل مشكلة قابلة للحل.
+
+### الحل المطبَّق (صفر إعدادات، صفر إجراءات غير مثبَّتة)
+```yaml
+- run: tar --dereference --hard-dereference -cvf artifact.tar -C website .
+- uses: actions/upload-artifact@<pinned-sha>   # v4
+  with:
+    name: github-pages      # الاسم الذي يتوقعه deploy-pages
+    path: artifact.tar
+```
+`upload-pages-artifact` يفعل بالضبط هذا: tar لمجلد الموقع + رفع باسم `github-pages`.
+البناء نجح من أول محاولة، والنشر تم على `main`.
+
+### تحذير البيئة (ليس خطأ)
+```
+Branch "arena/..." is not allowed to deploy to github-pages due to environment protection rules
+```
+هذا سلوك صحيح: بيئة `github-pages` تسمح بالنشر من الفرع الافتراضي فقط. لذلك النشر يُختبر على `main` لا على فرع العمل.
+
+### الحالة النهائية (مقيسة)
+```
+gh api repos/sayedelazameydesign-crypto/ai-2027/pages --jq '{status,build_type}'
+{"status":"built","build_type":"workflow"}
+```
++ `Deploy static site to GitHub Pages` = success على `main` · الصفحة `demo.html` تُخدَم فعلًا.
