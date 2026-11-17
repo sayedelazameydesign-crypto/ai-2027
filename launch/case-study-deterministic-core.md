@@ -1,6 +1,7 @@
 # Case Study (DRAFT — EN) — for DEV.to / Medium / HN
-> Gate: publish only after the live demo URL exists. Every number below was measured
-> this week and is reproducible from the repo (`live-agent/bench.py`).
+> Gate: publish only after `https://sayedelazameydesign-crypto.github.io/ai-2027/demo.html`
+> returns 200 (auto-deploys from `website/` on the next push to `main`). Every number
+> below was measured this week and is reproducible from the repo (`live-agent/bench.py`).
 
 ---
 
@@ -43,7 +44,17 @@ Goal → Planner → Policy → Executor → Verifier → Evidence → DecisionR
 | Installable wheel | **40 KB**, CLI smoke-tested |
 
 Spread/jitter is published next to every timing — a measurement you can't reproduce is a
-marketing claim, not a benchmark.
+marketing claim, not a benchmark. Re-runs of the same script on the same loaded container
+gave p50 **12.1 ms** and **8.1 ms** with spread up to 280% (see the variance table in
+[`docs/BENCHMARKS.md`](../docs/BENCHMARKS.md)). 7.5 ms is the quiet reference run, **not an
+SLA**. CI re-measures on every push and uploads the raw JSON rather than trusting this table.
+
+> **Try it:** the browser demo at
+> <https://sayedelazameydesign-crypto.github.io/ai-2027/demo.html> runs the same seven stages
+> with a real policy wall and real SHA-256 evidence. Honest scope: it is a dependency-free
+> JavaScript *port* on an in-memory sandbox (static Pages cannot host a Python process), not
+> the Python kernel and not an LLM. The canonical kernel is `projects/agi-system` — clone it
+> and run `python3 -m core doctor` for the real thing.
 
 ### Why zero dependencies matters
 
