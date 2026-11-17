@@ -1,0 +1,28 @@
+name: Feature request
+description: Propose a capability, with its acceptance test
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: Describe the gap, not the solution.
+    validations: {required: true}
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance test
+      description: The command that will prove it works, and the number it must reach.
+      placeholder: "python3 memory/evaluate.py --json | hard_recall >= 0.60 with near_miss FP = 0"
+    validations: {required: true}
+  - type: dropdown
+    id: track
+    attributes:
+      label: Roadmap track
+      options: [T1 continuity, T2 machine surface, T3 retrieval, T4 multi-provider, T5 immunity, T6 product]
+    validations: {required: true}
+  - type: textarea
+    id: cost
+    attributes:
+      label: What it costs
+      description: New dependency? New secret? New external account? Say it up front.
