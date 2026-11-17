@@ -1,0 +1,137 @@
+# Evidence-First CI — Phase 2 / Week 1 of the 2027 roadmap.
+# Gates: 86 kernel tests + 6 wrapper tests + CLI contract, AST zero-deps proof,
+# reproducible benchmarks with a published jitter-aware regression ceiling,
+# 12 demo contract tests, and an installable-wheel smoke test.
+#
+# Design rule: the kernel has ZERO third-party dependencies, so this workflow
+# installs nothing into the code path it tests. Only the wheel job installs
+# build tooling (setuptools/wheel), outside the kernel itself.
+name: Evidence-First CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: Tests · Python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Kernel unit tests (86)
+        run: python -m unittest discover -s projects/agi-system/tests -t projects/agi-system -v
+
+      - name: Live Agent wrapper tests (6)
+        run: python live-agent/test_server.py -v
+
+      - name: CLI contract — VERIFIED / DENIED exit codes
+        working-directory: projects/agi-system
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m core doctor
+          python -m core run --goal-type create_file --param path=ci-smoke.txt --param content=hello > /tmp/verified.log 2>&1
+          cat /tmp/verified.log
+          grep -q "status : VERIFIED" /tmp/verified.log
+          grep -q "hash_matches=true" /tmp/verified.log
+
+          set +e
+          python -m core run --goal-type create_file --param path=../../escape.txt --param content=x > /tmp/denied.log 2>&1
+          rc=$?
+          set -e
+          cat /tmp/denied.log
+          test "$rc" -eq 3
+          grep -q "status : DENIED" /tmp/denied.log
+          grep -q "escapes the sandbox" /tmp/denied.log
+
+      - name: Zero third-party imports (AST gate)
+        run: python scripts/ci_guard.py imports
+
+      - name: CI guard self-tests (keeps the gates honest)
+        run: python scripts/test_ci_guard.py -v
+
+  demo-tests:
+    name: Public demo contract (12 tests)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Browser port must keep VERIFIED / DENIED / FAILED honest
+        run: node website/kernel-demo.test.js
+      - name: Static site files present
+        run: |
+          test -f website/index.html
+          test -f website/demo.html
+          test -f website/kernel-demo.js
+          grep -q 'demo.html' website/index.html
+
+  benchmark:
+    name: Measured benchmarks + regression guard
+    runs-on: ubuntu-latest
+    needs: [tests, demo-tests]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Run bench.py (stdlib, reproducible)
+        run: |
+          cd live-agent
+          python bench.py > bench.json   # also writes benchmarks/latest.json
+      - name: Validate payload + publish numbers to job summary
+        run: python scripts/ci_guard.py bench --input live-agent/bench.json
+      - name: Upload raw measurements
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmarks-${{ github.sha }}
+          path: |
+            live-agent/bench.json
+            live-agent/benchmarks/latest.json
+          if-no-files-found: error
+
+  wheel:
+    name: Build + smoke-test the wheel
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install build tooling (outside the kernel)
+        run: python -m pip install --upgrade "setuptools>=61" wheel
+      - name: Sync upstream kernel + build wheel
+        working-directory: packaging/agi-kernel
+        run: ./build_wheel.sh
+      - name: Install + CLI smoke test
+        working-directory: packaging/agi-kernel
+        run: |
+          set -euo pipefail
+          python -m pip install --no-deps --force-reinstall dist/*.whl
+          agi-kernel --help
+          agi-kernel doctor
+          python -m pip show agi-kernel
+      - name: Report exact wheel footprint
+        working-directory: packaging/agi-kernel
+        run: |
+          ls -l dist/
+          du -h dist/*.whl

@@ -1,0 +1,64 @@
+# Deploy the static AI-2027 site (website/) to GitHub Pages.
+#
+# Replaces the auto-generated Jekyll workflow, which failed on EVERY push
+# (4/4 failed at "Build with Jekyll") because the site is a hand-written,
+# dependency-free static bundle in website/, not a Jekyll project at the repo
+# root. Building from ./ produced no index.html at the site root, so the public
+# demo URL never went live.
+#
+# Pages is already enabled on this repo with build_type=workflow, so this
+# workflow deploys on every push to main — no manual Settings → Pages step.
+name: Deploy static site to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "website/**"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+      - name: Validate the zero-dependency static bundle
+        run: |
+          set -euo pipefail
+          test -f website/index.html
+          test -f website/demo.html
+          test -f website/kernel-demo.js
+          grep -q 'demo.html' website/index.html
+          grep -q 'kernel-demo.js' website/demo.html
+          # No CDN / external scripts: the demo must work with zero network calls.
+          if grep -nE '<script[^>]+src="https?://' website/*.html; then
+            echo "FAIL: external script found in the static bundle" >&2
+            exit 1
+          fi
+          echo "Static bundle OK: $(find website -maxdepth 1 -type f | wc -l) files, zero external scripts."
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: website/
+
+  deploy:
+    needs: build
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
