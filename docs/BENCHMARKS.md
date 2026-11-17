@@ -53,6 +53,13 @@ same script on the same shared container at different load levels gave:
 | Reference (published above) | **7.5 ms** | 11.1 ms | 103% | 3.1 ms | 10.0 ms |
 | Re-run A (loaded) | **12.1 ms** | 18.8 ms | 172% | 3.7 ms | 16.2 ms |
 | Re-run B (later) | **8.1 ms** | 21.2 ms | 280% | 3.4 ms | 10.7 ms |
+| Re-run C (evidence generator, `9ad27fc`) | **7.416 ms** | 10.143 ms | 94.9% | 2.964 ms | 8.443 ms |
+
+Re-run C is the measurement used in [`launch/case-study-deterministic-core.md`](../launch/case-study-deterministic-core.md)
+and [`launch/show-hn.md`](../launch/show-hn.md), produced by
+`python3 scripts/generate_launch_evidence.py --assert` on 2026-11-17. Its cold
+import was 40.56 ms and peak RSS growth 416 KB / 70 runs, against 42.5 ms and
+636 KB in the reference table — same caveat, same code.
 
 **This is the point, not a defect.** A single number quoted without its spread
 would be marketing. The KPI "p50 < 10 ms" is a target measured on a defined

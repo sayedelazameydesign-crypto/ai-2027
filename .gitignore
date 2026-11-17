@@ -26,3 +26,5 @@ packaging/agi-kernel/sandbox-ledger/
 command-hud/runtime/
 command-hud/audit-latest.json
 command-hud/audit-report.md
+# Regenerated launch evidence (never commit a snapshot as a claim)
+launch/evidence/
