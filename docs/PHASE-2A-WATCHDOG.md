@@ -123,6 +123,21 @@ with `missed_intervals: 3`. The threshold is auditable instead of silent.
 
 **A crash reported as forgery.** Described above. `verify` now exits 3.
 
+And two that only CI could find — both passed locally, which is why CI exists:
+
+**A sibling import treated as third-party.** `import local_watchdog` from
+`test_watchdog.py` is a local import; the gate had hard-coded one sibling name
+and not the other, so it failed only on a clean checkout. Both gates now derive
+the sibling set from the files on disk.
+
+**A real cross-package dependency the gate correctly refused.** `render_source.py`
+imports `render_control_adapter`, which is genuinely outside the watchdog. The
+gate was right. The fix was to *declare* the exception by name — visible and
+reviewable — not to loosen the gate; a blanket "allow anything inside try/except"
+would have hidden the next one. Verified by replaying all 12 deployment-job steps
+in a clean clone and then planting `import requests` to confirm the gate still
+fails.
+
 ---
 
 ## Concurrency
