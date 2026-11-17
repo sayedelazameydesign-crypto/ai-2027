@@ -67,7 +67,7 @@ Full categorized catalog with per-project features: **below in Arabic** ⬇ and 
 - 🔐 **Secrets scan**: one exposed key found → redacted here (rotation tracked in AUDIT.md)
 - 📄 **Readiness review**: what's proven vs. declared vs. simulated → [docs/PHASE-0-READINESS.md](docs/PHASE-0-READINESS.md) (with the 2026-11-17 correction addendum)
 - 🧪 **Try it in your browser**: the [public kernel demo](https://sayedelazameydesign-crypto.github.io/ai-2027/demo.html) runs the 7-stage loop with a real policy wall, an independent verifier and SHA-256 evidence. Honest scope: a dependency-free JS **port** on an in-memory sandbox, not the Python kernel and not an LLM (12 contract tests in [`website/kernel-demo.test.js`](website/kernel-demo.test.js)).
-- 🤖 **CI on every push** → [`.github/workflows/ci.yml`](.github/workflows/ci.yml): 86 kernel tests + 6 wrapper tests across Python 3.10/3.11/3.12, CLI VERIFIED/DENIED contract, AST zero-dependency gate, 12 demo tests, `bench.py` with raw JSON artifacts, and a wheel smoke test. Regression gate is jitter-aware by design → [`scripts/ci_guard.py`](scripts/ci_guard.py).
+- 🤖 **CI on every push** → [`.github/workflows/ci.yml`](.github/workflows/ci.yml): 86 kernel tests + 6 wrapper tests across Python 3.10/3.11/3.12, CLI VERIFIED/DENIED contract, AST zero-dependency gate (+ 9 self-tests for the gates themselves), 12 demo tests, `bench.py` with raw JSON artifacts, and a wheel smoke test. Regression gate is jitter-aware by design → [`scripts/ci_guard.py`](scripts/ci_guard.py).
 
 ## ⚡ Quick start (zero dependencies)
 

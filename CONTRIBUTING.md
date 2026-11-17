@@ -16,6 +16,7 @@ python3 -m unittest discover -s projects/agi-system/tests -t projects/agi-system
 python3 live-agent/test_server.py                                                   # 6 tests
 node website/kernel-demo.test.js                                                    # 12 tests
 python3 scripts/ci_guard.py imports                                                 # zero-deps proof
+python3 scripts/test_ci_guard.py                                                    # 9 gate self-tests
 cd projects/agi-system && python3 -m core doctor
 ```
 
@@ -48,7 +49,7 @@ real hardware with the full `bench.json` attached is a real contribution.
 
 - [ ] `python3 -m unittest discover -s projects/agi-system/tests -t projects/agi-system` passes
 - [ ] `node website/kernel-demo.test.js` passes (if you touched `website/`)
-- [ ] `python3 scripts/ci_guard.py imports` passes
+- [ ] `python3 scripts/ci_guard.py imports` and `python3 scripts/test_ci_guard.py` pass
 - [ ] If you changed timing-sensitive code, attach a fresh `bench.py` JSON — don't just assert "faster"
 - [ ] If you added a claim to docs/copy, link the evidence next to it
 - [ ] If you added a dependency anywhere in the kernel path: **don't** — open an issue instead

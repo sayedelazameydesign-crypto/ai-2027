@@ -65,6 +65,9 @@ jobs:
       - name: Zero third-party imports (AST gate)
         run: python scripts/ci_guard.py imports
 
+      - name: CI guard self-tests (keeps the gates honest)
+        run: python scripts/test_ci_guard.py -v
+
   demo-tests:
     name: Public demo contract (12 tests)
     runs-on: ubuntu-latest
