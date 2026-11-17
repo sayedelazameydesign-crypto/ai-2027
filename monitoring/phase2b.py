@@ -17,8 +17,16 @@ turns "it records" into "it tells you what to look at". Three jobs:
    are data, not code paths buried in ``if`` statements, so they can be listed,
    audited and overridden.
 
-Nothing here sends a notification to a phone. That is a later phase and it is
-deliberately not in this module.
+Detection is deliberately narrow: **three consecutive** ``poll_failed`` records
+(or a *recorded* silence of **300 seconds**) raise an alert. Three failures
+scattered across a healthy log are NOT the same event and must not be reported
+as one. Derived ``alert`` / ``recovery`` milestones are written back into the
+Phase 2A hash-chained JSONL through ``EventLog.append`` — never with a raw file
+write — so ``verify`` keeps working and re-analysis stays idempotent.
+
+Nothing here sends a notification to a phone, an email or a message. A derived
+event is a fact about the log, not proof that a human saw it. That is a later
+phase and it is deliberately not in this module.
 """
 
 from __future__ import annotations
@@ -40,6 +48,13 @@ except Exception:  # pragma: no cover - import shim for package use
         _lw = None  # type: ignore
 
 RECORD_VERSION = 1
+
+# Detection defaults. These are thresholds over RECORDED FACTS, not timers:
+# a 300 s silence is alerted on because the watchdog actually wrote that gap,
+# not because a scheduler guessed that 300 s had elapsed.
+DEFAULT_FAILURE_THRESHOLD = 3          # consecutive poll_failed records
+DEFAULT_SILENCE_THRESHOLD = 300.0      # seconds of recorded `silence`
+ALERT_KINDS = ("alert", "recovery")    # derived bookkeeping records
 
 
 # ---------------------------------------------------------------------------
@@ -85,6 +100,211 @@ def _to_records(records):
                 out.extend(_to_records(r))
         return out
     return list(records) if hasattr(records, "__iter__") else []
+
+
+# ---------------------------------------------------------------------------
+# consecutive failures + derived alert/recovery events
+# ---------------------------------------------------------------------------
+def _analysis_records(records):
+    """Log records excluding our own derived ``alert``/``recovery`` events.
+
+    Re-analysis must see the same timeline it saw the first time. Without this
+    filter, an appended alert between two failures would break the very run of
+    failures it was derived from, and a second run would produce a different
+    answer (and a duplicate event).
+    """
+    return [r for r in _to_records(records)
+            if isinstance(r, dict) and r.get("kind") not in ALERT_KINDS]
+
+
+def consecutive_failure_runs(records):
+    """Runs of ADJACENT ``poll_failed`` records, in log order.
+
+    "Consecutive" means adjacent in the chain: any other record (a successful
+    poll, a silence, a start/stop) ends the run. Order is file order, not a
+    sort on ``seq`` — sorting a tampered log would hide the tampering.
+    """
+    runs = []
+    start = None
+    length = 0
+    for r in _analysis_records(records):
+        if r.get("kind") == "poll_failed":
+            if length == 0:
+                start = r.get("seq")
+            length += 1
+        else:
+            if length:
+                runs.append({"start_seq": start, "end_seq": r.get("seq"),
+                             "length": length})
+            start, length = None, 0
+    if length:
+        runs.append({"start_seq": start, "end_seq": None, "length": length})
+    return runs
+
+
+def consecutive_failures(records=None):
+    """Longest unbroken run of poll failures (an int, for rule evaluation)."""
+    return max((r["length"] for r in consecutive_failure_runs(records)),
+               default=0)
+
+
+def trailing_consecutive_failures(records=None):
+    """Failures still unrecovered at the end of the log."""
+    runs = consecutive_failure_runs(records)
+    return runs[-1]["length"] if runs and runs[-1]["end_seq"] is None else 0
+
+
+def derive_events(records=None, failure_threshold=DEFAULT_FAILURE_THRESHOLD,
+                  silence_threshold=DEFAULT_SILENCE_THRESHOLD):
+    """Deterministically derive ``alert``/``recovery`` milestones from a log.
+
+    Pure: it reads records and returns event descriptions; it writes nothing.
+    An alert opens a reason, and the first successful ``poll`` after it closes
+    that reason with a recovery. A log that ends mid-outage has NO recovery —
+    that is the truth, not a missing feature.
+    """
+    events = []
+    active = set()
+    run = 0
+    run_start = None
+    for r in _analysis_records(records):
+        kind = r.get("kind")
+        seq = r.get("seq")
+        if kind == "poll_failed":
+            if run == 0:
+                run_start = seq
+            run += 1
+            if run >= failure_threshold and "consecutive_failures" not in active:
+                active.add("consecutive_failures")
+                events.append({
+                    "kind": "alert",
+                    "data": {
+                        "key": "alert:consecutive_failures:%s" % seq,
+                        "reason": "consecutive_failures",
+                        "value": run,
+                        "threshold": failure_threshold,
+                        "trigger_seq": seq,
+                        "run_start_seq": run_start,
+                        "message": "%d consecutive poll failures (threshold %s)"
+                                   % (run, failure_threshold),
+                    },
+                })
+        elif kind == "silence":
+            run = 0
+            gap = float((r.get("data") or {}).get("gap_seconds", 0) or 0)
+            if gap >= silence_threshold and "large_gap" not in active:
+                active.add("large_gap")
+                events.append({
+                    "kind": "alert",
+                    "data": {
+                        "key": "alert:large_gap:%s" % seq,
+                        "reason": "large_gap",
+                        "value": gap,
+                        "threshold": silence_threshold,
+                        "trigger_seq": seq,
+                        "message": "recorded silence %.3fs (threshold %ss)"
+                                   % (gap, silence_threshold),
+                    },
+                })
+        elif kind == "poll":
+            run = 0
+            for reason in sorted(active):
+                events.append({
+                    "kind": "recovery",
+                    "data": {
+                        "key": "recovery:%s:%s" % (reason, seq),
+                        "reason": reason,
+                        "trigger_seq": seq,
+                        "message": "successful poll after %s" % reason,
+                    },
+                })
+            active.clear()
+        else:
+            # start / stop / tail_repaired / unknown: a break in the timeline,
+            # not a success, so no recovery is claimed.
+            run = 0
+    return events
+
+
+def _as_event_log(log):
+    """Resolve a path or an EventLog to an EventLog instance."""
+    if log is None:
+        raise ValueError("a log path or EventLog is required")
+    if hasattr(log, "append") and hasattr(log, "read_all"):
+        return log
+    if _lw is None:
+        raise RuntimeError("local_watchdog is unavailable; refusing a raw write")
+    return _lw.EventLog(log)
+
+
+def append_event(log, kind, data=None, records=None, ts=None):
+    """Append ONE ``alert``/``recovery`` record to the hash-chained JSONL.
+
+    Chain safety: delegates to Phase 2A ``EventLog.append``, which owns seq,
+    prev hash, record hash, the exclusive lock, fsync and crash-tail repair.
+    Writing JSONL by hand here would silently break ``verify()``.
+
+    Idempotency: ``data['key']`` is stable for a given log, so re-running
+    ``alerts`` returns the existing record instead of appending a duplicate.
+
+    ``ts`` is pinned to the last observed record's timestamp (not ``time.time``)
+    so ``report()``'s span and ``observed_fraction`` do not change just because
+    someone re-analysed the file. The real wall clock is kept in
+    ``data['detected_at_iso']`` rather than being disguised as log time.
+    """
+    if kind not in ALERT_KINDS:
+        raise ValueError("event kind must be one of %r" % (ALERT_KINDS,))
+    event_log = _as_event_log(log)
+    existing, _ = event_log.read_all()
+    payload = dict(data or {})
+    key = payload.get("key")
+    if key:
+        for r in existing:
+            if (r.get("kind") in ALERT_KINDS
+                    and (r.get("data") or {}).get("key") == key):
+                return r
+    if ts is None:
+        timeline = [r for r in (records if records is not None else existing)
+                    if isinstance(r, dict) and r.get("kind") not in ALERT_KINDS]
+        ts = (float(timeline[-1].get("ts", time.time())) if timeline
+              else time.time())
+    payload.setdefault("kind", kind)
+    payload["derived"] = True
+    payload["detected_at_iso"] = time.strftime("%Y-%m-%dT%H:%M:%SZ",
+                                               time.gmtime())
+    return event_log.append(kind, payload, ts=ts)
+
+
+def record_alert_events(log=None, records=None,
+                        failure_threshold=DEFAULT_FAILURE_THRESHOLD,
+                        silence_threshold=DEFAULT_SILENCE_THRESHOLD):
+    """Derive milestones and append the missing ones. Returns a summary."""
+    event_log = _as_event_log(log if log is not None else records)
+    if records is None:
+        records, _ = event_log.read_all()
+    analysis = _analysis_records(records)
+    events = derive_events(analysis, failure_threshold, silence_threshold)
+    existing, _ = event_log.read_all()
+    seen = {(r.get("kind"), (r.get("data") or {}).get("key"))
+            for r in existing if r.get("kind") in ALERT_KINDS}
+    appended, duplicates = [], []
+    for e in events:
+        key = e["data"]["key"]
+        if (e["kind"], key) in seen:
+            duplicates.append({"kind": e["kind"], "key": key})
+            continue
+        rec = append_event(event_log, e["kind"], e["data"], records=analysis)
+        appended.append(rec)
+        seen.add((e["kind"], key))
+    return {
+        "derived": len(events),
+        "appended": len(appended),
+        "duplicates": len(duplicates),
+        "alerts": [r for r in appended if r.get("kind") == "alert"],
+        "recoveries": [r for r in appended if r.get("kind") == "recovery"],
+        "duplicate_events": duplicates,
+        "records": appended,
+    }
 
 
 def _report(records):
@@ -216,6 +436,9 @@ def analyze_gaps(records=None, log=None, **kwargs):
         "silence_seconds_total": rep.get("silence_seconds_total", 0.0),
         "silence_seconds_largest": rep.get("silence_seconds_largest", 0.0),
         "poll_failures": len(failures),
+        "consecutive_failures": consecutive_failures(records),
+        "trailing_consecutive_failures": trailing_consecutive_failures(records),
+        "consecutive_failure_runs": consecutive_failure_runs(records),
         "failure_classes": failure_classes,
         "transitions": transitions,
         "transition_count": len(transitions),
@@ -244,6 +467,12 @@ def _lines_from_records(records):
     records = _to_records(records)
     lines = []
     for r in records:
+        # Our own derived event messages describe failures; feeding them back
+        # into diagnosis would make the alert classify ITSELF as an
+        # `unclassified` error on the next re-analysis. Only real log data
+        # is evidence.
+        if r.get("kind") in ALERT_KINDS:
+            continue
         d = r.get("data") or {}
         if isinstance(d.get("message"), str):
             lines.append(d["message"])
@@ -435,16 +664,21 @@ class Rule:
 
 def default_rules(thresholds=None):
     t = thresholds or {}
-    pf = t.get("poll_failures", 3)
-    mg = t.get("max_gap_seconds", 60.0)
+    # `poll_failures` is still accepted as an override key for older callers,
+    # but it now sets the CONSECUTIVE threshold, never the total-log count.
+    cf = t.get("consecutive_failures",
+               t.get("poll_failures", DEFAULT_FAILURE_THRESHOLD))
+    mg = t.get("max_gap_seconds", DEFAULT_SILENCE_THRESHOLD)
     of = t.get("observed_fraction", 0.9)
     ur = t.get("unclassified_rate", 0.5)
     return [
-        Rule(name="repeated_poll_failures", metric="poll_failures", op=">=",
-             threshold=pf, severity="warning",
-             message="poll_failed repeated; source or network is unhealthy"),
+        Rule(name="repeated_poll_failures", metric="consecutive_failures",
+             op=">=", threshold=cf, severity="warning",
+             message="%s consecutive poll_failed; source or network is unhealthy"
+                     % cf),
         Rule(name="large_gap", metric="max_gap_seconds", op=">=", threshold=mg,
-             severity="critical", message="a silence gap exceeds the threshold"),
+             severity="critical",
+             message="a recorded silence gap reaches %ss" % mg),
         Rule(name="low_observed_fraction", metric="observed_fraction", op="<",
              threshold=of, severity="warning",
              message="observed fraction below threshold"),
@@ -586,6 +820,9 @@ def build_context(records=None, log_lines=None, log=None, **kwargs):
         "silence_seconds_total": gap["silence_seconds_total"],
         "silence_seconds_largest": gap["silence_seconds_largest"],
         "poll_failures": gap["poll_failures"],
+        "consecutive_failures": gap["consecutive_failures"],
+        "trailing_consecutive_failures": gap["trailing_consecutive_failures"],
+        "consecutive_failure_runs": gap["consecutive_failure_runs"],
         "failure_classes": gap["failure_classes"],
         "max_gap_seconds": gap["max_gap_seconds"],
         "has_gaps": gap["has_gaps"],
@@ -604,13 +841,42 @@ def build_context(records=None, log_lines=None, log=None, **kwargs):
 
 
 def evaluate(records=None, log=None, log_lines=None, rules=None, handlers=None,
-             thresholds=None, context=None, **kwargs):
-    engine = AlertEngine(rules=rules, handlers=handlers, thresholds=thresholds,
-                         **{k: v for k, v in kwargs.items()
-                            if k in ("poll_failures", "max_gap_seconds",
-                                     "observed_fraction", "unclassified_rate")})
-    return engine.evaluate(records=records, log=log, log_lines=log_lines,
-                           context=context)
+             thresholds=None, context=None, event_log=None, record=False,
+             **kwargs):
+    """Evaluate the rules. ``record=True`` also writes derived milestones.
+
+    Recording is OPT-IN for the API: a plain ``evaluate(...)`` stays read-only.
+    The ``alerts`` CLI enables it because it is given a log path to own.
+    """
+    thr = dict(thresholds or {})
+    for k in ("consecutive_failures", "poll_failures", "max_gap_seconds",
+              "observed_fraction", "unclassified_rate"):
+        if k in kwargs:
+            thr.setdefault(k, kwargs[k])
+    engine = AlertEngine(rules=rules, handlers=handlers, thresholds=thr)
+    alerts = engine.evaluate(records=records, log=log, log_lines=log_lines,
+                             context=context)
+    if record:
+        target = event_log
+        if target is None:
+            for candidate in (records, log):
+                if isinstance(candidate, (str, os.PathLike)) or (
+                        hasattr(candidate, "append")
+                        and hasattr(candidate, "read_all")):
+                    target = candidate
+                    break
+        if target is None:
+            raise ValueError("record=True needs event_log= or a log path in "
+                             "records=/log=; refusing a silent no-op")
+        engine.last_events = record_alert_events(
+            log=target,
+            records=records if records is not None else log,
+            failure_threshold=thr.get("consecutive_failures",
+                                      DEFAULT_FAILURE_THRESHOLD),
+            silence_threshold=thr.get("max_gap_seconds",
+                                      DEFAULT_SILENCE_THRESHOLD),
+        )
+    return alerts
 
 
 def check(records=None, **kwargs):
@@ -698,13 +964,66 @@ def _cmd_analyze(args):
     return 0
 
 
+def _print_alert_lines(alerts, stream=None):
+    """Human-readable terminal display; stdout stays machine-readable JSON."""
+    stream = stream or sys.stderr
+    if not alerts:
+        print("OK: no alerts", file=stream)
+        return
+    for a in alerts:
+        d = dict(a)
+        detail = ""
+        if d.get("metric") is not None:
+            detail = " (%s=%s, threshold=%s)" % (
+                d["metric"], d.get("value"), d.get("threshold"))
+        print("[ALERT] %-8s %-26s %s%s" % (
+            str(d.get("severity", "?")).upper(), str(d.get("rule", "?")),
+            d.get("message", ""), detail), file=stream)
+
+
 def _cmd_alerts(args):
     records = _to_records(args.log) if getattr(args, "log", None) else None
     lines = None
     if getattr(args, "lines", None):
-        lines = Path(args.lines).read_text(encoding="utf-8").splitlines() if Path(args.lines).exists() else args.lines.splitlines()
-    alerts = evaluate(records=records, log_lines=lines)
-    print(json.dumps([dict(a) for a in alerts], indent=2, default=str))
+        lines = (Path(args.lines).read_text(encoding="utf-8").splitlines()
+                 if Path(args.lines).exists() else args.lines.splitlines())
+    thr = {}
+    if getattr(args, "failure_threshold", None) is not None:
+        thr["consecutive_failures"] = args.failure_threshold
+    if getattr(args, "silence_threshold", None) is not None:
+        thr["max_gap_seconds"] = args.silence_threshold
+    alerts = evaluate(records=records, log_lines=lines, thresholds=thr)
+    _print_alert_lines(alerts)
+
+    err = analyze_errors(records=records, log_lines=lines)
+    diagnosis = err["diagnosis"]
+    print("[DIAG] %s error lines: %s classified, %s unclassified "
+          "(unclassified_rate=%s)" % (
+              err["error_lines"], err["classified"], err["unclassified"],
+              err["unclassified_rate"]), file=sys.stderr)
+
+    summary = None
+    if args.record:
+        if args.log:
+            summary = record_alert_events(
+                log=args.event_log or args.log, records=records,
+                failure_threshold=thr.get("consecutive_failures",
+                                          DEFAULT_FAILURE_THRESHOLD),
+                silence_threshold=thr.get("max_gap_seconds",
+                                          DEFAULT_SILENCE_THRESHOLD))
+            print("[LOG] %s derived / %s appended (%s alert, %s recovery) / "
+                  "%s already present" % (
+                      summary["derived"], summary["appended"],
+                      len(summary["alerts"]), len(summary["recoveries"]),
+                      summary["duplicates"]), file=sys.stderr)
+        else:
+            print("[LOG] no --log given; analysis stayed read-only",
+                  file=sys.stderr)
+
+    out = [dict(a) for a in alerts]
+    if args.diagnosis:
+        out = {"alerts": out, "diagnosis": diagnosis, "events": summary}
+    print(json.dumps(out, indent=2, default=str))
     return 0
 
 
@@ -729,9 +1048,24 @@ def main(argv=None):
     a.add_argument("--lines", default=None)
     a.set_defaults(func=_cmd_analyze)
 
-    al = sub.add_parser("alerts", help="run alert rules")
+    al = sub.add_parser("alerts", help="run alert rules and record derived events")
     al.add_argument("--log", default=None)
     al.add_argument("--lines", default=None)
+    al.add_argument("--event-log", default=None,
+                    help="hash-chained JSONL to append alert/recovery events to "
+                         "(default: --log)")
+    al.add_argument("--failure-threshold", type=int, default=None,
+                    help="consecutive poll_failed count (default: %s)"
+                         % DEFAULT_FAILURE_THRESHOLD)
+    al.add_argument("--silence-threshold", type=float, default=None,
+                    help="recorded silence in seconds (default: %s)"
+                         % DEFAULT_SILENCE_THRESHOLD)
+    al.add_argument("--no-record", dest="record", action="store_false",
+                    default=True,
+                    help="analyse without writing derived events back to the log")
+    al.add_argument("--diagnosis", action="store_true",
+                    help="include the error classification (with unclassified) "
+                         "in the JSON output")
     al.set_defaults(func=_cmd_alerts)
 
     d = sub.add_parser("diagnose", help="classify log lines")
@@ -791,5 +1125,12 @@ measure_unclassified_rate = measure_unclassified
 unclassified = measure_unclassified
 AlertRule = Rule
 AlertRules = Rule
+
+# Phase 2B hardened detection aliases
+consecutive_poll_failures = consecutive_failures
+max_consecutive_failures = consecutive_failures
+derive_alerts = derive_events
+record_events = record_alert_events
+append_alert = append_event
 
 __all__ = [n for n in globals() if not n.startswith("__")]

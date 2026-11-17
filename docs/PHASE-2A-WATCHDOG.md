@@ -177,7 +177,10 @@ not world-readable, and `test_71` enforces it.
   says how much of the wall clock the loop can vouch for. It says nothing about
   whether the service was healthy during that time — that is what the snapshots
   are for.
-- **No alerting.** This records; it does not wake you up. Phase 2B.
+- **No remote notification.** Phase 2B derives local `alert`/`recovery`
+  milestones from this log (see [PHASE-2B-ALERTING.md](PHASE-2B-ALERTING.md)),
+  but nothing is sent to a phone, an email or a message. A derived event is a
+  fact about the log, not proof that a human saw it.
 
 ## Numbers from the runs in this repo
 
