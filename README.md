@@ -7,7 +7,7 @@
 **An open ecosystem of 48 AI agent systems, platforms & tools — Evidence-First agents that prove their work.**
 
 [![Projects](https://img.shields.io/badge/projects-48-00e5a0)](#the-ecosystem)
-[![Files](https://img.shields.io/badge/files-3%2C970-38bdf8)](catalog.json)
+[![Files](https://img.shields.io/badge/files-3%2C967-38bdf8)](catalog.json)
 [![Audited](https://img.shields.io/badge/post--merge%20audit-passed-brightgreen)](AUDIT.md)
 [![License](https://img.shields.io/badge/licenses-mixed%20(per--project)-orange)](#-licensing)
 
@@ -22,7 +22,7 @@
 Most AI agents say *"done"* — AI-2027 agents must **prove it**.
 This repository is the central hub unifying every tool and feature from [@sayedelazameydesign-crypto](https://github.com/sayedelazameydesign-crypto)'s 68 repositories into one verified, categorized ecosystem:
 
-> **48 projects · ~3,970 files · byte-identical to their upstream sources · independently audited** (see [AUDIT.md](AUDIT.md))
+> **48 projects · 3,967 files · byte-identical to their upstream sources · independently audited** (see [AUDIT.md](AUDIT.md))
 
 Every project lives 1:1 under [`projects/`](projects/) with its original license. [`catalog.json`](catalog.json) is the machine-readable index.
 
@@ -43,6 +43,7 @@ Understand → Plan → Policy → Execute → Verify → Evidence → Report
 | **[Cela 2027](projects/cela2027)** | Autonomous Manus-style agent: Goal→Plan→Execute→Verify→Evidence loop, coding agent tools, Pyodide sandbox, live 3D pipeline UI, Arabic dark interface — with a clearly-labeled local simulation mode (no API key needed) |
 | **[CeliaOS · 12pro](projects/12pro)** | 12-layer Agent OS control plane: benchmarks (latency/memory/planning/tool-use), certification gates G0–G15, attestations, monorepo (api + web + agent-ui) |
 | **[agi-system](projects/agi-system)** | Pure-Python AGI kernel, zero dependencies: full cognitive loop with independent Verifier + EventLedger, 86 unit tests |
+| **[🧪 Live Agent Experience](live-agent)** | **Runnable now (Phase 1):** zero-dependency web app on the real agi-system kernel — submit a goal, watch Plan→Policy→Execute→Verify→Evidence, try a sandbox escape (DENIED), download the evidence JSON. Honest scope: deterministic planner, no LLM yet |
 
 ## 🗂️ The Ecosystem
 
