@@ -22,3 +22,7 @@ projects/agi-system/sandbox/
 projects/agi-system/sandbox-ledger/
 packaging/agi-kernel/sandbox/
 packaging/agi-kernel/sandbox-ledger/
+# Command HUD runtime evidence + generated audit artifacts
+command-hud/runtime/
+command-hud/audit-latest.json
+command-hud/audit-report.md

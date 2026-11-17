@@ -69,6 +69,27 @@ Full categorized catalog with per-project features: **below in Arabic** ⬇ and 
 - 🧪 **Try it in your browser**: the [public kernel demo](https://sayedelazameydesign-crypto.github.io/ai-2027/demo.html) runs the 7-stage loop with a real policy wall, an independent verifier and SHA-256 evidence. Honest scope: a dependency-free JS **port** on an in-memory sandbox, not the Python kernel and not an LLM (12 contract tests in [`website/kernel-demo.test.js`](website/kernel-demo.test.js)).
 - 🤖 **CI on every push** → [`.github/workflows/ci.yml`](.github/workflows/ci.yml): 86 kernel tests + 6 wrapper tests across Python 3.10/3.11/3.12, CLI VERIFIED/DENIED contract, AST zero-dependency gate (+ 9 self-tests for the gates themselves), 12 demo tests, `bench.py` with raw JSON artifacts, and a wheel smoke test. Regression gate is jitter-aware by design → [`scripts/ci_guard.py`](scripts/ci_guard.py).
 
+## 🎛️ Live Command HUD — see the kernel move
+
+A single-screen, stdlib-only dashboard over the **real** kernel: live p50 chart,
+`VERIFIED` / `DENIED` / `FAILED` counters, an escape test, a 100-input adversarial
+red-team, a dispatch freeze, and a read-only health audit of all 48 projects.
+
+```bash
+python3 command-hud/server.py --port 8090 --host 0.0.0.0
+```
+
+Open the **live preview URL** (in Arena) or `http://localhost:8090` on your own
+machine. ⚠️ The command `python -m live_agent.server` **does not exist** in this
+repo — see [`command-hud/README.md`](command-hud/README.md) for the correction,
+and [`docs/REPOSITORY-AUDIT.md`](docs/REPOSITORY-AUDIT.md) for the full
+project-by-project health report (PROVEN / DECLARED / SIMULATED / FAILED).
+
+Verified results, not claims: `python3 command-hud/test_hud.py -v` (13 tests),
+`python3 command-hud/redteam.py --markdown --assert` → **100 attacks, 0 breaches,
+10/10 benign controls VERIFIED**, with 25 cross-platform literal-path cases
+reported honestly rather than hidden behind a fake "100/100 DENIED" badge.
+
 ## ⚡ Quick start (zero dependencies)
 
 ```bash
