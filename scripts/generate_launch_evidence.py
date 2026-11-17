@@ -8,6 +8,9 @@ benchmarks, tests, red-team suite, audit and wheel build, then emits:
     launch/evidence/latest.json     (machine-readable, gitignored)
     launch/evidence/REPORT.md       (human-readable, gitignored)
 
+The monitoring suites (watchdog 44 + phase2b 9) are mandatory gates, not
+optional extras: the alert path is part of the evidence, not a side project.
+
 Usage:
     python3 scripts/generate_launch_evidence.py            # regenerate + print summary
     python3 scripts/generate_launch_evidence.py --assert  # exit 1 if any gate fails
@@ -39,6 +42,11 @@ TESTS = [
      r"(\d+) demo contract tests passed"),
     ("command_hud_e2e", [PY, "command-hud/test_hud.py"], r"Ran (\d+) tests"),
     ("l1_memory", [PY, "memory/test_memory.py"], r"Ran (\d+) tests"),
+    # Monitoring is NOT optional evidence: Phase 2A owns the hash chain and
+    # Phase 2B owns the alerts derived from it. If either suite is broken, a
+    # launch pack that only reports kernel/HUD numbers would still be green.
+    ("watchdog", [PY, "monitoring/test_watchdog.py"], r"Ran (\d+) tests"),
+    ("phase2b", [PY, "monitoring/test_phase2b.py"], r"Ran (\d+) tests"),
 ]
 
 
@@ -152,6 +160,8 @@ def build() -> dict:
         "bench_ran": d.get("bench_exit") == 0 and "error" not in d["kernel"],
         "all_test_suites_pass": all(t["ok"] and t["count"] > 0 for t in tests.values()),
         "kernel_86_tests": tests["kernel"]["count"] == 86 and tests["kernel"]["ok"],
+        "watchdog_44_tests": tests["watchdog"]["count"] == 44 and tests["watchdog"]["ok"],
+        "phase2b_9_tests": tests["phase2b"]["count"] == 9 and tests["phase2b"]["ok"],
         "zero_third_party_imports": d["zero_deps"]["ok"],
         "redteam_no_breach": d.get("redteam", {}).get("breaches") == 0
                              and d.get("redteam", {}).get("all_gates_pass") is True,
@@ -206,6 +216,8 @@ def markdown(d: dict) -> str:
           "python3 live-agent/bench.py",
           "python3 command-hud/redteam.py --markdown --assert",
           "python3 command-hud/audit.py --report docs/REPOSITORY-AUDIT.md --assert-probes",
+          "python3 monitoring/test_watchdog.py -v",
+          "python3 monitoring/test_phase2b.py -v",
           "```", ""]
     return "\n".join(L)
 
