@@ -55,8 +55,25 @@ git checkout 4d8c8dd -- projects/agi-system/core/policy.py
 
 **التطبيق عند توفر توكن كتابة:**
 ```bash
-GH_TOKEN=<token-with-repo-write> python3 scripts/upstream_fixes_2026-11-17.py
+GH_TOKEN=<token-with-repo-write> python3 scripts/upstream_fixes_2026-11-17.py --apply
 python3 scripts/verify_archive_identity.py     # يجب أن يطبع 48/48
 ```
+
+أو يدويًا بحِزم جاهزة ومختبَرة: [`patches/2026-11-17/`](../patches/2026-11-17/README.md) —
+`git apply --check` نجح على **6/7** من نسخ طازجة (الرخصة تُعالَج بالسكربت وحده).
+
+### ما أُثبت عن الصلاحيات (2026-11-17)
+
+| القناة | القراءة | الكتابة | الدليل |
+|---|---|---|---|
+| GitHub (installation token) | ✅ كل المستودعات العامة | ❌ **403** لكل ما عدا `ai-2027` | `git push` إلى `agi-system` → `Permission ... denied` |
+| GitHub Pages (إعدادات) | ✅ | ❌ 403 | `PUT /repos/.../pages` |
+| Vercel (connector) | ✅ (`0 مشروع` في الحساب) | ❌ `Access denied ... token may not have the required permissions` | `create_project` |
+| Google AI Studio (إبطال مفتاح) | — | ❌ ليس ضمن الأدوات | — |
+
+لذلك: ما يمكن تنفيذه داخل `ai-2027` **نُفِّذ**، وما يحتاج صلاحية خارجية **جُهِّز وتُوثِّق** في
+[#21](https://github.com/sayedelazameydesign-crypto/ai-2027/issues/21) ·
+[#22](https://github.com/sayedelazameydesign-crypto/ai-2027/issues/22) ·
+[#23](https://github.com/sayedelazameydesign-crypto/ai-2027/issues/23).
 
 </div>

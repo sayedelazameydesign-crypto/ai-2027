@@ -140,6 +140,20 @@
 | إنشاء `docs/DEVIATIONS.md` + `scripts/verify_archive_identity.py` + `scripts/upstream_fixes_2026-11-17.py` | ✅ قابلة لإعادة التشغيل |
 | الإصلاحات على المستودعات الأصلية (7 بنود) | ⛔ **403 محجوب** — السكربت جاهز ومُختبر dry-run |
 | تدوير المفتاح + إعداد Pages | ⏳ **بيدك** |
+| حِزم patch للمصادر + تحقق `git apply --check` | ✅ **6/7** على نسخ طازجة · `patches/2026-11-17/` |
+| تتبّع الحجب في Issues رسمية | ✅ [#21](https://github.com/sayedelazameydesign-crypto/ai-2027/issues/21) أمني · [#22](https://github.com/sayedelazameydesign-crypto/ai-2027/issues/22) Pages · [#23](https://github.com/sayedelazameydesign-crypto/ai-2027/issues/23) إصلاحات المصادر |
+| محاولة نشر على Vercel | ❌ **`Access denied`** — توكن Vercel للقراءة فقط، والحساب `0 مشروع` |
+| توسيع صلاحيات GitHub من داخل الجلسة | ❌ مستحيل: installation token محدود بالمستودع، وأي محاولة دفع لغيره 403 |
+
+### 🔐 ملخص الصلاحيات كما قيست (لا كما تُفترض)
+
+| القناة | قراءة | كتابة |
+|---|---|---|
+| GitHub API (68 مستودعًا) | ✅ | ❌ إلا `ai-2027` |
+| GitHub Issues / PRs في `ai-2027` | ✅ | ✅ |
+| git push إلى فرع الجلسة | ✅ | ✅ |
+| Vercel connector | ✅ | ❌ |
+| إبطال مفتاح Google | — | ❌ خارج الأدوات |
 
 --- 
 
