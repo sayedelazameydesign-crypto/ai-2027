@@ -236,7 +236,7 @@ class Handler(BaseHTTPRequestHandler):
                 "mode": "REAL execution — deterministic planner, NO LLM (Phase 1)",
                 "supported_goals": SUPPORTED_GOALS,
                 "memory": memory().stats()["memories"],
-                "memory_backend": "sqlite3 + hashed-lexical (no model, no sqlite-vec)",
+                "memory_backend": "sqlite3 + IDF concept coverage over a declared thesaurus (no model, no sqlite-vec)",
             })
         if u.path == "/api/agent-card":
             card_path = HERE.parent / "agent-card.json"
