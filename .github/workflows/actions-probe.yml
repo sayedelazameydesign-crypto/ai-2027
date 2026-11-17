@@ -1,0 +1,25 @@
+# Temporary diagnostic (removed once the Actions policy is settled).
+#
+# It deliberately uses NO `uses:` steps: if this workflow starts, Actions itself
+# is healthy and the startup_failure seen on ci.yml/pages.yml comes from the
+# allowed-actions / SHA-pinning policy. If it also fails to start, the block is
+# repo-wide (Actions disabled or restricted by billing).
+name: actions-probe
+
+on:
+  push:
+    branches-ignore: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Pipeline starts without any third-party action
+        run: |
+          echo "OK: shell-only step executed"
+          echo "ref=${{ github.ref }}"
+          echo "runner=$RUNNER_OS $(python3 -V 2>/dev/null || true)"
