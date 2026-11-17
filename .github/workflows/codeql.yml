@@ -1,0 +1,42 @@
+# Static analysis (CodeQL) — the "someone else reads every diff" a solo repo
+# cannot hire. Runs on PRs, on main, and weekly so a newly disclosed query pack
+# still finds old code.
+#
+# Pinned to a full-length SHA because this repository enforces that policy on
+# itself (scripts/sbom.py --assert-pinned proves it mechanically).
+name: CodeQL
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "40 3 * * 1"   # Mondays, 03:40 UTC
+
+permissions:
+  contents: read
+  security-events: write
+
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [python, javascript-typescript]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+      - uses: github/codeql-action/init@9418214df1f2c4b8128c770156c409013b07d6b9  # v3
+        with:
+          language: ${{ matrix.language }}
+          queries: security-extended
+      - uses: github/codeql-action/analyze@9418214df1f2c4b8128c770156c409013b07d6b9  # v3
+        with:
+          category: "/language:${{ matrix.language }}"
