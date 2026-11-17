@@ -78,7 +78,8 @@
 | `nawah-agent.onrender.com` | ❌ **Not Found** | نفس الحالة |
 | حساب Vercel المرتبط هنا | **0 مشروع** | أي أن روابط Vercel الحيّة تعود لحساب آخر/مشروع غير مرتبط بهذه الجلسة |
 
-⚠️ **مفارقة GitHub Pages:** الحالة الرسمية للصفحات = **`errored`**، وكل بناء من نوع `legacy` (Jekyll) **يفشل على كل دفعة** — ومع ذلك الموقع يخدم لأن النشر يتم عبر `pages.yml` (نجح 3 مرات). الخلل في إعداد المصدر لا في المحتوى. محاولة الإصلاح عبر API رجعت **403 (Resource not accessible)** — تحتاج خطوة يدوية منك.
+✅ **GitHub Pages — أُصلحت (2026-11-17):** كانت `status = errored` مع `build_type = legacy` (Jekyll يفشل على كل دفعة). بعد تحويل المصدر إلى GitHub Actions **وتثبيت الإجراءات على SHA كامل** **واستبدال `upload-pages-artifact` المركّب ببناء الـartifact يدويًا**، أصبح:
+`{"status":"built","build_type":"workflow"}` · `Deploy static site to GitHub Pages` = **success** · الصفحة تُخدَم فعلًا. التفاصيل: [`docs/CI-TROUBLESHOOTING.md`](CI-TROUBLESHOOTING.md).
 
 ---
 
