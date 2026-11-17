@@ -60,6 +60,8 @@ Full categorized catalog with per-project features: **below in Arabic** ⬇ and 
 ## ✅ Verified — not just claimed
 
 - 🔍 **Post-merge audit passed**: all 48 projects byte-identical to upstream sources ([AUDIT.md](AUDIT.md))
+- 📊 **Measured, not claimed**: full verified cycle **p50 7.5 ms** · denial at the policy wall **3.1 ms** · zero deps · 86/86 tests → [BENCHMARKS.md](docs/BENCHMARKS.md) (reproducible: `live-agent/bench.py`)
+- 📦 **Installable**: 40 KB wheel, CLI smoke-tested → `packaging/agi-kernel` (PyPI publish gated on the pending license decision)
 - 🔐 **Secrets scan**: one exposed key found → redacted here (rotation tracked in AUDIT.md)
 - 📄 **Readiness review**: what's proven vs. declared vs. simulated → [docs/PHASE-0-READINESS.md](docs/PHASE-0-READINESS.md)
 
