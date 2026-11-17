@@ -367,6 +367,37 @@ jobs:
                     file=sys.stderr); sys.exit(1)
           print("PASS: probe refuses to run without RENDER_API_KEY")
           PY
+      - name: Local watchdog is stdlib-only (AST gate)
+        run: |
+          python - <<'PY'
+          import ast, sys
+          from pathlib import Path
+          stdlib = set(sys.stdlib_module_names) | {"tomllib", "adapter"}
+          bad = {}
+          files = sorted(Path("monitoring").glob("*.py"))
+          for p in files:
+              tree = ast.parse(p.read_text(encoding="utf-8"))
+              for n in ast.walk(tree):
+                  names = []
+                  if isinstance(n, ast.Import):
+                      names = [a.name.split(".")[0] for a in n.names]
+                  elif isinstance(n, ast.ImportFrom) and n.level == 0 and n.module:
+                      names = [n.module.split(".")[0]]
+                  for name in names:
+                      if name not in stdlib:
+                          bad.setdefault(str(p), set()).add(name)
+          print("scanned", len(files), "monitoring files")
+          if bad:
+              print("THIRD-PARTY:", bad, file=sys.stderr); sys.exit(1)
+          print("PASS: watchdog imports nothing outside the stdlib")
+          PY
+      - name: Watchdog · 44 tests incl. real-file tampering and 4 concurrent writers
+        run: python monitoring/test_watchdog.py -v
+      - name: Watchdog · end-to-end against a live HTTP source that dies
+        run: |
+          printf '{"status":"live","deploy":"d-1"}' > monitoring/e2e_fixture.json
+          python monitoring/e2e_demo.py
+          rm -f monitoring/e2e_fixture.json
       - name: YAML structure must parse to exactly one service
         run: |
           pip install --quiet --disable-pip-version-check pyyaml
