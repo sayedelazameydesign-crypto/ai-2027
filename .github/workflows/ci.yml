@@ -185,3 +185,35 @@ jobs:
             command-hud/audit-latest.json
             command-hud/audit-report.md
           if-no-files-found: error
+
+  launch-evidence:
+    name: Publish kit · regenerate every claim + verify evidence links
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Every public claim must still have evidence (10 tests)
+        run: python launch/test_launch_claims.py -v
+      - name: Regenerate ALL measured numbers from executed commands
+        run: python scripts/generate_launch_evidence.py --assert
+      - name: Production case-study harness must refuse fabricated data
+        run: |
+          python launch/production_evidence.py --template > /tmp/empty-jobs.json
+          if python launch/production_evidence.py --input /tmp/empty-jobs.json; then
+            echo "FAIL: empty template was accepted — invented data could be published" >&2
+            exit 1
+          fi
+          echo "PASS: NO EVIDENCE = NO VERIFIED SUCCESS"
+      - name: Upload freshly measured launch evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: launch-evidence-${{ github.sha }}
+          path: |
+            launch/evidence/latest.json
+            launch/evidence/REPORT.md
+          if-no-files-found: error
