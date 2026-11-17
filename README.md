@@ -85,7 +85,7 @@ repo — see [`command-hud/README.md`](command-hud/README.md) for the correction
 and [`docs/REPOSITORY-AUDIT.md`](docs/REPOSITORY-AUDIT.md) for the full
 project-by-project health report (PROVEN / DECLARED / SIMULATED / FAILED).
 
-Verified results, not claims: `python3 command-hud/test_hud.py -v` (12 tests),
+Verified results, not claims: `python3 command-hud/test_hud.py -v` (13 tests),
 `python3 command-hud/redteam.py --markdown --assert` → **100 attacks, 0 breaches,
 10/10 benign controls VERIFIED**, with 25 cross-platform literal-path cases
 reported honestly rather than hidden behind a fake "100/100 DENIED" badge.
