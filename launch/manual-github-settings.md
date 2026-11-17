@@ -12,6 +12,9 @@ version were wrong, so this file corrects them with evidence:
 ## ✅ Now fully automatic (no clicks needed)
 
 - **Pages source / build** — workflow-based deploy from `website/` on every push to `main`.
+  **Verified live:** run `44073888821` → success; `GET /pages/builds` → `status: "built"`,
+  `error: null` at 2026-11-17 11:25:47 UTC; `/ai-2027/` and `/ai-2027/demo.html` fetched
+  successfully over HTTPS. The 4 earlier Jekyll failures are gone.
 - **Live demo** — `website/demo.html` + `website/kernel-demo.js` (zero network calls, 12 contract tests in CI).
 - **CI / benchmarks / wheel** — `.github/workflows/ci.yml`.
 - **Community seeding** — issues #5, #6, #7 (`good first issue`) already open.
