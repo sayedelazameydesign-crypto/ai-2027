@@ -1,6 +1,7 @@
 # 🚀 Launch Kit — AI-2027
 
-> **Status: global-distribution track, 2026-11-17.** Focus is the public launch
+> **Status: global-distribution track, 2026-11-17 — 🚀 READY TO PUBLISH.**
+> Focus is the public launch
 > path (repo as technical front door + deterministic niche + Show HN) **before**
 > Phase 2. Phase 2 (cloud LLM / local model / defer) is deliberately parked
 > awaiting your decision — nothing here commits to a model integration.
@@ -27,7 +28,7 @@
 - [x] CI/CD on every push: 86 + 6 + 12 tests, AST zero-deps gate, bench.py, wheel → [`.github/workflows/ci.yml`](../.github/workflows/ci.yml)
 - [x] **Public live demo built**: [`website/demo.html`](../website/demo.html) — 7 stages, policy wall, SHA-256 evidence, hash-chained ledger, 12 contract tests
 - [x] **Pages deploy fixed** → [`.github/workflows/pages.yml`](../.github/workflows/pages.yml) (the old Jekyll workflow failed 4/4 times)
-- [ ] Live URL returns 200 after the merge lands on `main` → `curl -I https://sayedelazameydesign-crypto.github.io/ai-2027/demo.html`
+- [x] **Live URL verified 2026-11-17 11:25 UTC** — `pages/builds` → `built`, Pages workflow `44073888821` success, page + JS fetched over HTTPS → <https://sayedelazameydesign-crypto.github.io/ai-2027/demo.html>
 - [ ] GitHub description + topics + homepage + Discussions (403 re-verified — 4 manual clicks)
 - [ ] License decision for `agi-system` (blocks PyPI, NOT the HN post)
 - [ ] Video recorded (60–90s, real screen capture) — needed for Product Hunt, not HN
