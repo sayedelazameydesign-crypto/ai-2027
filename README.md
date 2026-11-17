@@ -194,7 +194,17 @@ rsync -a --delete --exclude __pycache__ <repo>-main/ projects/<repo>/
 
 ---
 
-**الإحصاء الكلي:** 48 مشروعًا · ~3,970 ملفًا · 16 وكيلًا ذكيًا · 9 منصات ويب · 8 مشاريع تجارة أزياء · 8 تطبيقات متخصصة · 7 بذور
+**الإحصاء الكلي:** 48 مشروعًا · 3,967 ملفًا (catalog.json مصدر الحقيقة) · 16 وكيلًا ذكيًا · 9 منصات ويب · 8 مشاريع تجارة أزياء · 8 تطبيقات متخصصة · 7 بذور
 **تاريخ الدمج:** 2026-11-17 · **المصدر:** [github.com/sayedelazameydesign-crypto](https://github.com/sayedelazameydesign-crypto?tab=repositories)
+
+---
+
+## 👨‍💻 المؤلف والمُشرف / Author & Maintainer
+
+**Sayed El-Azamey (سيد العزامي)** — Independent AI Systems Builder · Cairo, Egypt
+
+- 🌐 **Professional Profile & Community:** [facebook.com/sayed.elazamy](https://www.facebook.com/sayed.elazamy)
+- 🛠️ **Brand:** Sayed El-Azamey Design / CELIA FASHION DESIGN
+- 🤝 **Contribute:** see the [good first issues](https://github.com/sayedelazameydesign-crypto/ai-2027/issues?q=is%3Aissue+label%3A%22good+first+issue%22) — translations, benchmarks on your hardware, capability proposals
 
 </div>
