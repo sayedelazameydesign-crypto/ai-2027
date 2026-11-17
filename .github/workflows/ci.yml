@@ -326,6 +326,47 @@ jobs:
           PY
       - name: Deployment configs + live launcher (16 tests, real HTTP)
         run: python deployment/test_deployment.py -v
+      - name: Render adapter is stdlib-only (AST gate)
+        run: |
+          python - <<'PY'
+          import ast, sys
+          from pathlib import Path
+          stdlib = set(sys.stdlib_module_names) | {"tomllib", "adapter"}
+          bad = {}
+          files = sorted(Path("render_control_adapter").glob("*.py"))
+          for p in files:
+              tree = ast.parse(p.read_text(encoding="utf-8"))
+              for n in ast.walk(tree):
+                  names = []
+                  if isinstance(n, ast.Import):
+                      names = [a.name.split(".")[0] for a in n.names]
+                  elif isinstance(n, ast.ImportFrom) and n.level == 0 and n.module:
+                      names = [n.module.split(".")[0]]
+                  for name in names:
+                      if name not in stdlib:
+                          bad.setdefault(str(p), set()).add(name)
+          print("scanned", len(files), "adapter files")
+          if bad:
+              print("THIRD-PARTY:", bad, file=sys.stderr); sys.exit(1)
+          print("PASS: render adapter imports nothing from outside the stdlib")
+          PY
+      - name: Render adapter offline suite (43 tests, no network)
+        run: python render_control_adapter/test_adapter.py -v
+      - name: Render adapter must refuse to invent a live result
+        run: |
+          python - <<'PY'
+          import os, subprocess, sys
+          env = {k: v for k, v in os.environ.items() if k != "RENDER_API_KEY"}
+          # probe.py is the Phase 0 artifact. With no key it MUST exit 2, never 0:
+          # an audit that silently "passes" without credentials is a lie.
+          r = subprocess.run([sys.executable, "render_control_adapter/probe.py"],
+                             capture_output=True, text=True, env=env, timeout=120)
+          print(r.stdout[-800:]); print(r.stderr[-400:], file=sys.stderr)
+          if r.returncode != 2:
+              print(f"FAIL: expected exit 2 (no key), got {r.returncode}",
+                    file=sys.stderr); sys.exit(1)
+          print("PASS: probe refuses to run without RENDER_API_KEY")
+          PY
       - name: YAML structure must parse to exactly one service
         run: |
           pip install --quiet --disable-pip-version-check pyyaml
