@@ -105,7 +105,8 @@ def measure_import_and_footprint() -> dict:
                     name = a.name.split(".")[0]
             elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
                 name = node.module.split(".")[0]
-            if name and name not in stdlib and not name.startswith(("core", "server")):
+            # "memory" is repo-local (memory/store.py), not a dependency.
+            if name and name not in stdlib and not name.startswith(("core", "server", "memory")):
                 third_party.add(name)
     return {
         "kernel_cold_import_ms": import_ms,

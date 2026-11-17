@@ -12,7 +12,11 @@ Covered promises:
   4. the run record (evidence) is retrievable by run_id
   5. POSIX traversal is DENIED
   6. Windows-style traversal is DENIED (the 2026-11-17 hardening)
-  7. the HUD dispatches to the same kernel, and its 100-attack gate still passes
+  7. a VERIFIED run is admitted to the evidence-gated memory store, and a
+     refused (DENIED) run is NOT remembered — with the reason reported
+  8. memory search finds the remembered run over real HTTP, and an unrelated
+     query produces no confident hit (the noise floor is measured, not assumed)
+  9. the HUD dispatches to the same kernel, and its 100-attack gate still passes
 
 Usage:
     python3 live-agent/server.py --port 8090 &
@@ -108,6 +112,40 @@ def check_live_agent(base: str, results: list[tuple[str, bool, str]]) -> None:
            f"windows-style traversal was not DENIED: {denied2.get('status')}")
     expect(any("cross-platform" in r for r in reasons2), f"unexpected reason: {reasons2}")
     results.append(("live-agent: Windows-style traversal -> DENIED", True, reasons2[0][:60] + "…"))
+
+    # ---------------------------- memory store --------------------------- #
+    status, stats = jcall(base, "/api/memory")
+    expect(status == 200, f"/api/memory -> HTTP {status}")
+    expect(stats.get("memories", 0) >= 1,
+           f"no VERIFIED run was remembered: {stats.get('memories')} memories")
+    expect(stats.get("refused_events", 0) >= 1,
+           f"the DENIED run was not recorded as refused: {stats}")
+    results.append(("live-agent: VERIFIED run admitted to memory, DENIED run refused",
+                    True, f"memories={stats['memories']} refused={stats['refused_events']}"))
+
+    mem_id = (rec.get("memory") or {}).get("memory_id")
+    expect(bool(mem_id), f"run record carries no memory_id: {rec.get('memory')}")
+    expect((denied.get("memory") or {}).get("admitted") is False,
+           f"a DENIED run was admitted to memory: {denied.get('memory')}")
+
+    q = urllib.parse.urlencode({"q": "runtime smoke proof txt", "k": 3})
+    status, found = jcall(base, "/api/memory/search?" + q)
+    expect(status == 200, f"memory search -> HTTP {status}")
+    top = (found.get("results") or [{}])[0]
+    expect(top.get("memory_id") == mem_id,
+           f"search did not return the remembered run: {top.get('memory_id')} != {mem_id}")
+    expect(top.get("above_noise") is True,
+           f"the exact-content hit did not clear the noise floor: {found.get('threshold')}")
+    results.append(("live-agent: memory search returns the real run above noise", True,
+                    f"score={top.get('score')} threshold={found.get('threshold')}"))
+
+    status, unrelated = jcall(base, "/api/memory/search?" + urllib.parse.urlencode(
+        {"q": "kubernetes cluster autoscaling", "k": 3}))
+    expect(status == 200, f"CJK-free unrelated search -> HTTP {status}")
+    expect(unrelated.get("confident") == 0,
+           f"unrelated query produced confident hits: {unrelated.get('results')}")
+    results.append(("live-agent: unrelated query -> no confident hit (honest recall)",
+                    True, f"top_score={(unrelated.get('results') or [{}])[0].get('score')}"))
 
 
 def check_hud(base: str, results: list[tuple[str, bool, str]]) -> None:

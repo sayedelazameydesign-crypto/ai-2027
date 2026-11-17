@@ -216,5 +216,24 @@ class HudTests(unittest.TestCase):
         finally:
             hud.MEM = prev
 
+    def test_15_bridge_redirects_every_runtime_path_including_memory(self):
+        """Regression: the bridge used to redirect runs/ + sandboxes/ only, so a
+        HUD boot called `_fresh_state()` and DELETED the live-agent's memory DB.
+        Found by `scripts/runtime_smoke.py`, not by review."""
+        tmp = Path(tempfile.mkdtemp(prefix="ai2027-bridge-test-"))
+        try:
+            mod = kernel_bridge.load(runtime=tmp, fresh=True)
+            for name, attr in (("runs", mod.RUNS_DIR), ("sandboxes", mod.SANDBOXES_DIR),
+                               ("state", mod.MEMORY_DB)):
+                self.assertIn(tmp.resolve(), Path(attr).resolve().parents,
+                              f"{name} still points outside the isolated runtime")
+            self.assertEqual(Path(mod.MEMORY_DB).resolve().parent.name, "state")
+            live_db = (kernel_bridge.ROOT / "live-agent" / "memory.db").resolve()
+            self.assertNotEqual(Path(mod.MEMORY_DB).resolve(), live_db,
+                                "the HUD must never write the live-agent's memory DB")
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
