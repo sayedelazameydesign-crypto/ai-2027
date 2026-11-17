@@ -142,7 +142,7 @@ Categories: `agents`=16, `fashion-ecommerce`=8, `seeds`=7, `specialized-apps`=8,
 - [ ] **Decide the license for `agi-system`** — blocks PyPI publication.
 - [ ] **Replace `projects/new-agent/LICENSE`** — 4-byte corrupt placeholder.
 - [ ] **Repair `projects/12pro/certification/v1.0.0-raw/health-raw.json`** — empty file, JSON parse fails.
-- [ ] **Harden cross-platform containment** — 25 Windows/encoded inputs are literal filenames on Linux; test on Windows before deploying there.
+- [x] **Harden cross-platform containment** — closed 2026-11-17: `core/policy.py` refuses backslashes, Windows drive prefixes and percent-encoded separators (`%2f %5c %2e %00`) on every platform; 16/25 former literal cases now DENIED, 9 are literal POSIX names with nothing to traverse.
 - [ ] **Choose Phase 2** — cloud LLM / local model / defer. No model code was added.
 - [ ] **Repo metadata + Discussions** — integration token returns 403 on admin settings.
 - [ ] **Approve merging the HUD PR into `main`** — this session opens a reviewable PR and does NOT merge it.

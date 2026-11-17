@@ -38,7 +38,10 @@
       "category_ar": "أنظمة الوكلاء الذكية",
       "source": "https://github.com/sayedelazameydesign-crypto/cela2027",
       "files": 86,
-      "description_ar": "وكيل مستقل بأسلوب Manus: حلقة Goal→Plan→Execute→Verify→Evidence، وكيل برمجي، Pyodide sandbox، شبكة 3D حية، واجهة عربية"
+      "description_ar": "وكيل مستقل بأسلوب Manus: حلقة Goal→Plan→Execute→Verify→Evidence، وكيل برمجي، Pyodide sandbox، شبكة 3D حية، واجهة عربية",
+      "operational_status": "SIMULATED",
+      "operational_evidence": "README يعلن صراحة وضع محاكاة/بلا نموذج — لم يُشغَّل هنا",
+      "verified_on": "2026-11-17"
     },
     {
       "name": "agi-system",
@@ -47,7 +50,10 @@
       "category_ar": "أنظمة الوكلاء الذكية",
       "source": "https://github.com/sayedelazameydesign-crypto/agi-system",
       "files": 27,
-      "description_ar": "نواة AGI بـ Python صرفة بدون اعتمادات، حلقة إدراكية كاملة مع تحقق مستقل، 86 اختبارًا"
+      "description_ar": "نواة AGI بـ Python صرفة بدون اعتمادات، حلقة إدراكية كاملة مع تحقق مستقل، 86 اختبارًا",
+      "operational_status": "PROVEN",
+      "operational_evidence": "رُun فعليًا في 2026-11-17: 86 اختبار نواة + AST gate ناجحة",
+      "verified_on": "2026-11-17"
     },
     {
       "name": "12pro",
@@ -56,7 +62,10 @@
       "category_ar": "أنظمة الوكلاء الذكية",
       "source": "https://github.com/sayedelazameydesign-crypto/12pro",
       "files": 457,
-      "description_ar": "CeliaOS v1.0.0 — Agent OS Control Plane بـ 12 طبقة + benchmarks + attestations + monorepo"
+      "description_ar": "CeliaOS v1.0.0 — Agent OS Control Plane بـ 12 طبقة + benchmarks + attestations + monorepo",
+      "operational_status": "DECLARED",
+      "operational_evidence": "موصوف في README فقط؛ لم يُنفَّذ أي أمر هنا (يحتاج Node/مفاتيح/خدمات)",
+      "verified_on": "2026-11-17"
     },
     {
       "name": "open_source-",
@@ -65,7 +74,10 @@
       "category_ar": "أنظمة الوكلاء الذكية",
       "source": "https://github.com/sayedelazameydesign-crypto/open_source-",
       "files": 609,
-      "description_ar": "cela_use_browser — منصة متصفح مستقلة: ReAct + Artifacts + تنفيذ معزول"
+      "description_ar": "cela_use_browser — منصة متصفح مستقلة: ReAct + Artifacts + تنفيذ معزول",
+      "operational_status": "DECLARED",
+      "operational_evidence": "موصوف في README فقط؛ لم يُنفَّذ أي أمر هنا (يحتاج Node/مفاتيح/خدمات)",
+      "verified_on": "2026-11-17"
     },
     {
       "name": "cela.nimna",
@@ -74,7 +86,10 @@
       "category_ar": "أنظمة الوكلاء الذكية",
       "source": "https://github.com/sayedelazameydesign-crypto/cela.nimna",
       "files": 204,
-      "description_ar": "وكيل مهارات قابلة لإعادة الاستخدام: 26 أداة، SKILL.md، ذاكرة Qdrant 768-dim، موافقات للأدوات الخطرة، 83 اختبارًا"
+      "description_ar": "وكيل مهارات قابلة لإعادة الاستخدام: 28 أداة، SKILL.md، ذاكرة Qdrant 768-dim، موافقات للأدوات الخطرة، 510 اختبارات",
+      "operational_status": "SIMULATED",
+      "operational_evidence": "README يعلن صراحة وضع محاكاة/بلا نموذج — لم يُشغَّل هنا",
+      "verified_on": "2026-11-17"
     },
     {
       "name": "celia-pro-deployment",
@@ -83,7 +98,10 @@
       "category_ar": "أنظمة الوكلاء الذكية",
       "source": "https://github.com/sayedelazameydesign-crypto/celia-pro-deployment",
       "files": 164,
-      "description_ar": "celia.pro — وكيل متقدم FastAPI + React 19، Gemini/HuggingFace مجاني، 93 اختبارًا"
+      "description_ar": "celia.pro — وكيل متقدم FastAPI + React 19، Gemini/HuggingFace مجاني، 304 اختبارات",
+      "operational_status": "DECLARED",
+      "operational_evidence": "موصوف في README فقط؛ لم يُنفَّذ أي أمر هنا (يحتاج Node/مفاتيح/خدمات)",
+      "verified_on": "2026-11-17"
     },
     {
       "name": "CELIA_SERVICES",
@@ -92,7 +110,10 @@
       "category_ar": "أنظمة الوكلاء الذكية",
       "source": "https://github.com/sayedelazameydesign-crypto/CELIA_SERVICES",
       "files": 31,
-      "description_ar": "نظام 10 وكلاء متخصصين: REST + WebSocket + PostgreSQL/MongoDB + Redis/Bull + Docker + مراقبة"
+      "description_ar": "نظام 10 وكلاء متخصصين: REST + WebSocket + PostgreSQL/MongoDB + Redis/Bull + Docker + مراقبة",
+      "operational_status": "DECLARED",
+      "operational_evidence": "موصوف في README فقط؛ لم يُنفَّذ أي أمر هنا (يحتاج Node/مفاتيح/خدمات)",
+      "verified_on": "2026-11-17"
     },
     {
       "name": "ai-task",
@@ -101,7 +122,10 @@
       "category_ar": "أنظمة الوكلاء الذكية",
       "source": "https://github.com/sayedelazameydesign-crypto/ai-task",
       "files": 142,
-      "description_ar": "NOVA Personal AI OS: محادثة عربية RTL، Tool Registry، ذاكرة طويلة، Queue/Worker، Approval Engine، Google OAuth"
+      "description_ar": "NOVA Personal AI OS: محادثة عربية RTL، Tool Registry، ذاكرة طويلة، Queue/Worker، Approval Engine، Google OAuth",
+      "operational_status": "DECLARED",
+      "operational_evidence": "موصوف في README فقط؛ لم يُنفَّذ أي أمر هنا (يحتاج Node/مفاتيح/خدمات)",
+      "verified_on": "2026-11-17"
     },
     {
       "name": "platform",
@@ -110,7 +134,10 @@
       "category_ar": "أنظمة الوكلاء الذكية",
       "source": "https://github.com/sayedelazameydesign-crypto/platform",
       "files": 76,
-      "description_ar": "حلقة وكيل Single-Worker: مخطط LLM + منفذ تسلسلي + SSE، Next.js 14 + Drizzle + Zod + Playwright"
+      "description_ar": "حلقة وكيل Single-Worker: مخطط LLM + منفذ تسلسلي + SSE، Next.js 14 + Drizzle + Zod + Playwright",
+      "operational_status": "DECLARED",
+      "operational_evidence": "موصوف في README فقط؛ لم يُنفَّذ أي أمر هنا (يحتاج Node/مفاتيح/خدمات)",
+      "verified_on": "2026-11-17"
     },
     {
       "name": "new-agent",
@@ -119,7 +146,10 @@
       "category_ar": "أنظمة الوكلاء الذكية",
       "source": "https://github.com/sayedelazameydesign-crypto/new-agent",
       "files": 31,
-      "description_ar": "Celia AI Agent v2.5: Gemini 3 Pro، صوت لحظي، Veo 3.1 فيديو، Maps Grounding، React 19 + FastAPI"
+      "description_ar": "Celia AI Agent v2.5: Gemini 3 Pro، صوت لحظي، Veo 3.1 فيديو، Maps Grounding، React 19 + FastAPI",
+      "operational_status": "FAILED",
+      "operational_evidence": "عيب ملموس بالفحص: LICENSE تالف (4 بايت)",
+      "verified_on": "2026-11-17"
     },
     {
       "name": "gethip_agen",
@@ -128,7 +158,10 @@
       "category_ar": "أنظمة الوكلاء الذكية",
       "source": "https://github.com/sayedelazameydesign-crypto/gethip_agen",
       "files": 97,
-      "description_ar": "وكيل GitHub عربي RTL بدورة آمنة وموافقات متدرجة"
+      "description_ar": "وكيل GitHub عربي RTL بدورة آمنة وموافقات متدرجة",
+      "operational_status": "DECLARED",
+      "operational_evidence": "موصوف في README فقط؛ لم يُنفَّذ أي أمر هنا (يحتاج Node/مفاتيح/خدمات)",
+      "verified_on": "2026-11-17"
     },
     {
       "name": "celiaos-agent-framework",
@@ -137,7 +170,10 @@
       "category_ar": "أنظمة الوكلاء الذكية",
       "source": "https://github.com/sayedelazameydesign-crypto/celiaos-agent-framework",
       "files": 57,
-      "description_ar": "إطار وكلاء Python: planner/executor/learner/reflector/reporter + memory/tools/verification"
+      "description_ar": "إطار وكلاء Python: planner/executor/learner/reflector/reporter + memory/tools/verification",
+      "operational_status": "DECLARED",
+      "operational_evidence": "موصوف في README فقط؛ لم يُنفَّذ أي أمر هنا (يحتاج Node/مفاتيح/خدمات)",
+      "verified_on": "2026-11-17"
     },
     {
       "name": "agentic-ai-system-2026",
@@ -146,7 +182,10 @@
       "category_ar": "أنظمة الوكلاء الذكية",
       "source": "https://github.com/sayedelazameydesign-crypto/agentic-ai-system-2026",
       "files": 5,
-      "description_ar": "تنسيق وكلاء متعددين مع Gemini"
+      "description_ar": "تنسيق وكلاء متعددين مع Gemini",
+      "operational_status": "DECLARED",
+      "operational_evidence": "موصوف في README فقط؛ لم يُنفَّذ أي أمر هنا (يحتاج Node/مفاتيح/خدمات)",
+      "verified_on": "2026-11-17"
     },
     {
       "name": "Cela2",
@@ -155,7 +194,10 @@
       "category_ar": "أنظمة الوكلاء الذكية",
       "source": "https://github.com/sayedelazameydesign-crypto/Cela2",
       "files": 8,
-      "description_ar": "وكيل متصفح: Streamlit + LangGraph + browser-use + أرشفة Google Drive"
+      "description_ar": "وكيل متصفح: Streamlit + LangGraph + browser-use + أرشفة Google Drive",
+      "operational_status": "DECLARED",
+      "operational_evidence": "موصوف في README فقط؛ لم يُنفَّذ أي أمر هنا (يحتاج Node/مفاتيح/خدمات)",
+      "verified_on": "2026-11-17"
     },
     {
       "name": "SICA-Self-Improving-Coding-Agent-",
@@ -164,7 +206,10 @@
       "category_ar": "أنظمة الوكلاء الذكية",
       "source": "https://github.com/sayedelazameydesign-crypto/SICA-Self-Improving-Coding-Agent-",
       "files": 10,
-      "description_ar": "وكيل معماري ذاتي التحسين: Plan-Execute-Critique عبر Gemini Function Calling"
+      "description_ar": "وكيل معماري ذاتي التحسين: Plan-Execute-Critique عبر Gemini Function Calling",
+      "operational_status": "DECLARED",
+      "operational_evidence": "موصوف في README فقط؛ لم يُنفَّذ أي أمر هنا (يحتاج Node/مفاتيح/خدمات)",
+      "verified_on": "2026-11-17"
     },
     {
       "name": "Software-Agent-Architect",
@@ -173,7 +218,10 @@
       "category_ar": "أنظمة الوكلاء الذكية",
       "source": "https://github.com/sayedelazameydesign-crypto/Software-Agent-Architect",
       "files": 37,
-      "description_ar": "لوحة هندسة سياق: 7 طبقات، تدفقات بيانات، محاكاة Gemini 2.5 Flash"
+      "description_ar": "لوحة هندسة سياق: 7 طبقات، تدفقات بيانات، محاكاة Gemini 2.5 Flash",
+      "operational_status": "DECLARED",
+      "operational_evidence": "موصوف في README فقط؛ لم يُنفَّذ أي أمر هنا (يحتاج Node/مفاتيح/خدمات)",
+      "verified_on": "2026-11-17"
     },
     {
       "name": "ui",
@@ -182,7 +230,10 @@
       "category_ar": "منصات المحادثة والويب",
       "source": "https://github.com/sayedelazameydesign-crypto/ui",
       "files": 158,
-      "description_ar": "أساس واجهات Agentic-First 2026: بحث هجين، fail-closed، PII guard، RTL-first، provenance"
+      "description_ar": "أساس واجهات Agentic-First 2026: بحث هجين، fail-closed، PII guard، RTL-first، provenance",
+      "operational_status": "SIMULATED",
+      "operational_evidence": "README يعلن صراحة وضع محاكاة/بلا نموذج — لم يُشغَّل هنا",
+      "verified_on": "2026-11-17"
     },
     {
       "name": "new.pro",
@@ -191,7 +242,10 @@
       "category_ar": "منصات المحادثة والويب",
       "source": "https://github.com/sayedelazameydesign-crypto/new.pro",
       "files": 128,
-      "description_ar": "نواة AI — Nawah: محادثة Next.js 16 بمزودين مجانيين (Gemini/Groq/HF) وبث مباشر"
+      "description_ar": "نواة AI — Nawah: محادثة Next.js 16 بمزودين مجانيين (Gemini/Groq/HF) وبث مباشر",
+      "operational_status": "DECLARED",
+      "operational_evidence": "موصوف في README فقط؛ لم يُنفَّذ أي أمر هنا (يحتاج Node/مفاتيح/خدمات)",
+      "verified_on": "2026-11-17"
     },
     {
       "name": "new-new",
@@ -200,7 +254,10 @@
       "category_ar": "منصات المحادثة والويب",
       "source": "https://github.com/sayedelazameydesign-crypto/new-new",
       "files": 142,
-      "description_ar": "تطبيق ويب كامل مع Dockerfile وخطة نشر مجانية وبوابات CI"
+      "description_ar": "تطبيق ويب كامل مع Dockerfile وخطة نشر مجانية وبوابات CI",
+      "operational_status": "DECLARED",
+      "operational_evidence": "موصوف في README فقط؛ لم يُنفَّذ أي أمر هنا (يحتاج Node/مفاتيح/خدمات)",
+      "verified_on": "2026-11-17"
     },
     {
       "name": "system-",
@@ -209,7 +266,10 @@
       "category_ar": "منصات المحادثة والويب",
       "source": "https://github.com/sayedelazameydesign-crypto/system-",
       "files": 126,
-      "description_ar": "هيكل تطبيق React: AIChatBox + DashboardLayout + useAuth"
+      "description_ar": "هيكل تطبيق React: AIChatBox + DashboardLayout + useAuth",
+      "operational_status": "DECLARED",
+      "operational_evidence": "موصوف في README فقط؛ لم يُنفَّذ أي أمر هنا (يحتاج Node/مفاتيح/خدمات)",
+      "verified_on": "2026-11-17"
     },
     {
       "name": "WEB",
@@ -218,7 +278,10 @@
       "category_ar": "منصات المحادثة والويب",
       "source": "https://github.com/sayedelazameydesign-crypto/WEB",
       "files": 63,
-      "description_ar": "AI Providers System 2026 — Neural Quantum Interface (Flask + واجهة هولوجرامية)"
+      "description_ar": "AI Providers System 2026 — Neural Quantum Interface (Flask + واجهة هولوجرامية)",
+      "operational_status": "DECLARED",
+      "operational_evidence": "موصوف في README فقط؛ لم يُنفَّذ أي أمر هنا (يحتاج Node/مفاتيح/خدمات)",
+      "verified_on": "2026-11-17"
     },
     {
       "name": "leader2027",
@@ -227,7 +290,10 @@
       "category_ar": "منصات المحادثة والويب",
       "source": "https://github.com/sayedelazameydesign-crypto/leader2027",
       "files": 190,
-      "description_ar": "منصة إدارة حملة انتخابية: PostgreSQL، بوابة وكلاء MCP، مهام موزعة exactly-once، 197 اختبارًا"
+      "description_ar": "منصة إدارة حملة انتخابية: PostgreSQL، بوابة وكلاء MCP، مهام موزعة exactly-once، 197 اختبارًا",
+      "operational_status": "DECLARED",
+      "operational_evidence": "موصوف في README فقط؛ لم يُنفَّذ أي أمر هنا (يحتاج Node/مفاتيح/خدمات)",
+      "verified_on": "2026-11-17"
     },
     {
       "name": "easy-ai",
@@ -236,7 +302,10 @@
       "category_ar": "منصات المحادثة والويب",
       "source": "https://github.com/sayedelazameydesign-crypto/easy-ai",
       "files": 38,
-      "description_ar": "مساعد ذكي ثنائي اللغة + قناة مزامنة آمنة Drive→GitHub Pages"
+      "description_ar": "مساعد ذكي ثنائي اللغة + قناة مزامنة آمنة Drive→GitHub Pages",
+      "operational_status": "DECLARED",
+      "operational_evidence": "موصوف في README فقط؛ لم يُنفَّذ أي أمر هنا (يحتاج Node/مفاتيح/خدمات)",
+      "verified_on": "2026-11-17"
     },
     {
       "name": "1pro",
@@ -245,7 +314,10 @@
       "category_ar": "منصات المحادثة والويب",
       "source": "https://github.com/sayedelazameydesign-crypto/1pro",
       "files": 125,
-      "description_ar": "واحة Waha MVP: Flask + RAG بطبقات R1→R6، 452 اختبارًا، منشور على Vercel"
+      "description_ar": "واحة Waha MVP: Flask + RAG بطبقات R1→R6، 452 اختبارًا، منشور على Vercel",
+      "operational_status": "SIMULATED",
+      "operational_evidence": "README يعلن صراحة وضع محاكاة/بلا نموذج — لم يُشغَّل هنا",
+      "verified_on": "2026-11-17"
     },
     {
       "name": "celia.sh",
@@ -254,7 +326,10 @@
       "category_ar": "منصات المحادثة والويب",
       "source": "https://github.com/sayedelazameydesign-crypto/celia.sh",
       "files": 126,
-      "description_ar": "3 أدوات عربية: مولد محتوى، ملخص نصوص، وضع محلي مجاني + Groq اختياري"
+      "description_ar": "3 أدوات عربية: مولد محتوى، ملخص نصوص، وضع محلي مجاني + Groq اختياري",
+      "operational_status": "DECLARED",
+      "operational_evidence": "موصوف في README فقط؛ لم يُنفَّذ أي أمر هنا (يحتاج Node/مفاتيح/خدمات)",
+      "verified_on": "2026-11-17"
     },
     {
       "name": "ELAZAMET1",
@@ -263,7 +338,10 @@
       "category_ar": "الأزياء والتجارة الإلكترونية",
       "source": "https://github.com/sayedelazameydesign-crypto/ELAZAMET1",
       "files": 79,
-      "description_ar": "متجر أزياء ذكي: chatbot، مساعد مقاسات، مدونة SEO، توصيات، Express + frontend"
+      "description_ar": "متجر أزياء ذكي: chatbot، مساعد مقاسات، مدونة SEO، توصيات، Express + frontend",
+      "operational_status": "SIMULATED",
+      "operational_evidence": "README يعلن صراحة وضع محاكاة/بلا نموذج — لم يُشغَّل هنا",
+      "verified_on": "2026-11-17"
     },
     {
       "name": "celia-fashion-2026.",
@@ -272,7 +350,10 @@
       "category_ar": "الأزياء والتجارة الإلكترونية",
       "source": "https://github.com/sayedelazameydesign-crypto/celia-fashion-2026.",
       "files": 90,
-      "description_ar": "CELIA FASHION 2026 Retail OS: Next.js 16 + Supabase + HF، Virtual Stylist، Aura"
+      "description_ar": "CELIA FASHION 2026 Retail OS: Next.js 16 + Supabase + HF، Virtual Stylist، Aura",
+      "operational_status": "DECLARED",
+      "operational_evidence": "موصوف في README فقط؛ لم يُنفَّذ أي أمر هنا (يحتاج Node/مفاتيح/خدمات)",
+      "verified_on": "2026-11-17"
     },
     {
       "name": "celia-fashion-design",
@@ -281,7 +362,10 @@
       "category_ar": "الأزياء والتجارة الإلكترونية",
       "source": "https://github.com/sayedelazameydesign-crypto/celia-fashion-design",
       "files": 51,
-      "description_ar": "منصة موضة: كونسيرج Gemini، Supabase، استيراد Amazon/AliExpress بهامش 15%، بحث بصري"
+      "description_ar": "منصة موضة: كونسيرج Gemini، Supabase، استيراد Amazon/AliExpress بهامش 15%، بحث بصري",
+      "operational_status": "DECLARED",
+      "operational_evidence": "موصوف في README فقط؛ لم يُنفَّذ أي أمر هنا (يحتاج Node/مفاتيح/خدمات)",
+      "verified_on": "2026-11-17"
     },
     {
       "name": "celia-fashion-live-master",
@@ -290,7 +374,10 @@
       "category_ar": "الأزياء والتجارة الإلكترونية",
       "source": "https://github.com/sayedelazameydesign-crypto/celia-fashion-live-master",
       "files": 14,
-      "description_ar": "متجر أزياء Flask + HTML مع ai_assistant وai_recommender"
+      "description_ar": "متجر أزياء Flask + HTML مع ai_assistant وai_recommender",
+      "operational_status": "DECLARED",
+      "operational_evidence": "موصوف في README فقط؛ لم يُنفَّذ أي أمر هنا (يحتاج Node/مفاتيح/خدمات)",
+      "verified_on": "2026-11-17"
     },
     {
       "name": "CeliaFashionDesign",
@@ -299,7 +386,10 @@
       "category_ar": "الأزياء والتجارة الإلكترونية",
       "source": "https://github.com/sayedelazameydesign-crypto/CeliaFashionDesign",
       "files": 22,
-      "description_ar": "منصة أزياء بذكاء محلي: Ollama + Qdrant + N8n + Directus + Vault + مراقبة"
+      "description_ar": "منصة أزياء بذكاء محلي: Ollama + Qdrant + N8n + Directus + Vault + مراقبة",
+      "operational_status": "DECLARED",
+      "operational_evidence": "موصوف في README فقط؛ لم يُنفَّذ أي أمر هنا (يحتاج Node/مفاتيح/خدمات)",
+      "verified_on": "2026-11-17"
     },
     {
       "name": "CELIA22",
@@ -308,7 +398,10 @@
       "category_ar": "الأزياء والتجارة الإلكترونية",
       "source": "https://github.com/sayedelazameydesign-crypto/CELIA22",
       "files": 22,
-      "description_ar": "بنية منصة CELIA للأزياء: ai-core + Docker Compose + Traefik + N8n"
+      "description_ar": "بنية منصة CELIA للأزياء: ai-core + Docker Compose + Traefik + N8n",
+      "operational_status": "DECLARED",
+      "operational_evidence": "موصوف في README فقط؛ لم يُنفَّذ أي أمر هنا (يحتاج Node/مفاتيح/خدمات)",
+      "verified_on": "2026-11-17"
     },
     {
       "name": "ai-store2",
@@ -317,7 +410,10 @@
       "category_ar": "الأزياء والتجارة الإلكترونية",
       "source": "https://github.com/sayedelazameydesign-crypto/ai-store2",
       "files": 21,
-      "description_ar": "متجر Next.js قابل للتوسع"
+      "description_ar": "متجر Next.js قابل للتوسع",
+      "operational_status": "DECLARED",
+      "operational_evidence": "موصوف في README فقط؛ لم يُنفَّذ أي أمر هنا (يحتاج Node/مفاتيح/خدمات)",
+      "verified_on": "2026-11-17"
     },
     {
       "name": "ai-store",
@@ -326,7 +422,10 @@
       "category_ar": "الأزياء والتجارة الإلكترونية",
       "source": "https://github.com/sayedelazameydesign-crypto/ai-store",
       "files": 1,
-      "description_ar": "بذرة (ترخيص فقط)"
+      "description_ar": "بذرة (ترخيص فقط)",
+      "operational_status": "DECLARED",
+      "operational_evidence": "موصوف في README فقط؛ لم يُنفَّذ أي أمر هنا (يحتاج Node/مفاتيح/خدمات)",
+      "verified_on": "2026-11-17"
     },
     {
       "name": "dr.mukhtar",
@@ -335,7 +434,10 @@
       "category_ar": "تطبيقات متخصصة",
       "source": "https://github.com/sayedelazameydesign-crypto/dr.mukhtar",
       "files": 237,
-      "description_ar": "بوابة مواعيد عيادة أطفال: مراجعة بشرية قبل تأكيد Google Calendar"
+      "description_ar": "بوابة مواعيد عيادة أطفال: مراجعة بشرية قبل تأكيد Google Calendar",
+      "operational_status": "SIMULATED",
+      "operational_evidence": "README يعلن صراحة وضع محاكاة/بلا نموذج — لم يُشغَّل هنا",
+      "verified_on": "2026-11-17"
     },
     {
       "name": "arbic",
@@ -344,7 +446,10 @@
       "category_ar": "تطبيقات متخصصة",
       "source": "https://github.com/sayedelazameydesign-crypto/arbic",
       "files": 30,
-      "description_ar": "اختبار الكفاءات التربوية: 250 سؤالًا مصنفًا مع تفسير"
+      "description_ar": "اختبار الكفاءات التربوية: 250 سؤالًا مصنفًا مع تفسير",
+      "operational_status": "DECLARED",
+      "operational_evidence": "موصوف في README فقط؛ لم يُنفَّذ أي أمر هنا (يحتاج Node/مفاتيح/خدمات)",
+      "verified_on": "2026-11-17"
     },
     {
       "name": "My-Independent-Virtual-World",
@@ -353,7 +458,10 @@
       "category_ar": "تطبيقات متخصصة",
       "source": "https://github.com/sayedelazameydesign-crypto/My-Independent-Virtual-World",
       "files": 29,
-      "description_ar": "MIVW: عالم افتراضي + مركز قيادة مستقل، توثيق معماري، صفر تكلفة"
+      "description_ar": "MIVW: عالم افتراضي + مركز قيادة مستقل، توثيق معماري، صفر تكلفة",
+      "operational_status": "DECLARED",
+      "operational_evidence": "موصوف في README فقط؛ لم يُنفَّذ أي أمر هنا (يحتاج Node/مفاتيح/خدمات)",
+      "verified_on": "2026-11-17"
     },
     {
       "name": "new-project",
@@ -362,7 +470,10 @@
       "category_ar": "تطبيقات متخصصة",
       "source": "https://github.com/sayedelazameydesign-crypto/new-project",
       "files": 68,
-      "description_ar": "Ultimate BitNet Smart System: سوشيال ميديا + GitHub + قاعدة معرفة + تعلم"
+      "description_ar": "Ultimate BitNet Smart System: سوشيال ميديا + GitHub + قاعدة معرفة + تعلم",
+      "operational_status": "DECLARED",
+      "operational_evidence": "موصوف في README فقط؛ لم يُنفَّذ أي أمر هنا (يحتاج Node/مفاتيح/خدمات)",
+      "verified_on": "2026-11-17"
     },
     {
       "name": "ccelia2027",
@@ -371,7 +482,10 @@
       "category_ar": "تطبيقات متخصصة",
       "source": "https://github.com/sayedelazameydesign-crypto/ccelia2027",
       "files": 36,
-      "description_ar": "أساس Cloudflare Worker آمن: /health + CI + CodeQL + Pages"
+      "description_ar": "أساس Cloudflare Worker آمن: /health + CI + CodeQL + Pages",
+      "operational_status": "DECLARED",
+      "operational_evidence": "موصوف في README فقط؛ لم يُنفَّذ أي أمر هنا (يحتاج Node/مفاتيح/خدمات)",
+      "verified_on": "2026-11-17"
     },
     {
       "name": "support-tickets",
@@ -380,7 +494,10 @@
       "category_ar": "تطبيقات متخصصة",
       "source": "https://github.com/sayedelazameydesign-crypto/support-tickets",
       "files": 7,
-      "description_ar": "تطبيق Streamlit لتذاكر الدعم"
+      "description_ar": "تطبيق Streamlit لتذاكر الدعم",
+      "operational_status": "DECLARED",
+      "operational_evidence": "موصوف في README فقط؛ لم يُنفَّذ أي أمر هنا (يحتاج Node/مفاتيح/خدمات)",
+      "verified_on": "2026-11-17"
     },
     {
       "name": "blank-app",
@@ -389,7 +506,10 @@
       "category_ar": "تطبيقات متخصصة",
       "source": "https://github.com/sayedelazameydesign-crypto/blank-app",
       "files": 10,
-      "description_ar": "قالب Streamlit فارغ"
+      "description_ar": "قالب Streamlit فارغ",
+      "operational_status": "DECLARED",
+      "operational_evidence": "موصوف في README فقط؛ لم يُنفَّذ أي أمر هنا (يحتاج Node/مفاتيح/خدمات)",
+      "verified_on": "2026-11-17"
     },
     {
       "name": "firebase-ai-app",
@@ -398,7 +518,10 @@
       "category_ar": "تطبيقات متخصصة",
       "source": "https://github.com/sayedelazameydesign-crypto/firebase-ai-app",
       "files": 2,
-      "description_ar": "تطبيق صفحة واحدة بـ Firebase AI"
+      "description_ar": "تطبيق صفحة واحدة بـ Firebase AI",
+      "operational_status": "DECLARED",
+      "operational_evidence": "موصوف في README فقط؛ لم يُنفَّذ أي أمر هنا (يحتاج Node/مفاتيح/خدمات)",
+      "verified_on": "2026-11-17"
     },
     {
       "name": "ai.2027",
@@ -407,7 +530,10 @@
       "category_ar": "أسس وبذور أولية",
       "source": "https://github.com/sayedelazameydesign-crypto/ai.2027",
       "files": 37,
-      "description_ar": "مساحة تجارب AI: src/tests/config/prompts/docs + hooks"
+      "description_ar": "مساحة تجارب AI: src/tests/config/prompts/docs + hooks",
+      "operational_status": "DECLARED",
+      "operational_evidence": "موصوف في README فقط؛ لم يُنفَّذ أي أمر هنا (يحتاج Node/مفاتيح/خدمات)",
+      "verified_on": "2026-11-17"
     },
     {
       "name": "Celia-2027",
@@ -416,7 +542,10 @@
       "category_ar": "أسس وبذور أولية",
       "source": "https://github.com/sayedelazameydesign-crypto/Celia-2027",
       "files": 68,
-      "description_ar": "قالب تطوير منضبط: make setup/test/build/verify + بوابات CI"
+      "description_ar": "قالب تطوير منضبط: make setup/test/build/verify + بوابات CI",
+      "operational_status": "DECLARED",
+      "operational_evidence": "موصوف في README فقط؛ لم يُنفَّذ أي أمر هنا (يحتاج Node/مفاتيح/خدمات)",
+      "verified_on": "2026-11-17"
     },
     {
       "name": "cela.ai",
@@ -425,7 +554,10 @@
       "category_ar": "أسس وبذور أولية",
       "source": "https://github.com/sayedelazameydesign-crypto/cela.ai",
       "files": 1,
-      "description_ar": "بذرة أولية"
+      "description_ar": "بذرة أولية",
+      "operational_status": "DECLARED",
+      "operational_evidence": "موصوف في README فقط؛ لم يُنفَّذ أي أمر هنا (يحتاج Node/مفاتيح/خدمات)",
+      "verified_on": "2026-11-17"
     },
     {
       "name": "cela.h",
@@ -434,7 +566,10 @@
       "category_ar": "أسس وبذور أولية",
       "source": "https://github.com/sayedelazameydesign-crypto/cela.h",
       "files": 2,
-      "description_ar": "بذرة أولية"
+      "description_ar": "بذرة أولية",
+      "operational_status": "DECLARED",
+      "operational_evidence": "موصوف في README فقط؛ لم يُنفَّذ أي أمر هنا (يحتاج Node/مفاتيح/خدمات)",
+      "verified_on": "2026-11-17"
     },
     {
       "name": "New33",
@@ -443,7 +578,10 @@
       "category_ar": "أسس وبذور أولية",
       "source": "https://github.com/sayedelazameydesign-crypto/New33",
       "files": 1,
-      "description_ar": "بذرة أولية"
+      "description_ar": "بذرة أولية",
+      "operational_status": "DECLARED",
+      "operational_evidence": "موصوف في README فقط؛ لم يُنفَّذ أي أمر هنا (يحتاج Node/مفاتيح/خدمات)",
+      "verified_on": "2026-11-17"
     },
     {
       "name": "if-you-can",
@@ -452,7 +590,10 @@
       "category_ar": "أسس وبذور أولية",
       "source": "https://github.com/sayedelazameydesign-crypto/if-you-can",
       "files": 1,
-      "description_ar": "بذرة أولية"
+      "description_ar": "بذرة أولية",
+      "operational_status": "DECLARED",
+      "operational_evidence": "موصوف في README فقط؛ لم يُنفَّذ أي أمر هنا (يحتاج Node/مفاتيح/خدمات)",
+      "verified_on": "2026-11-17"
     },
     {
       "name": "celia_elazamey-pro",
@@ -461,8 +602,54 @@
       "category_ar": "أسس وبذور أولية",
       "source": "https://github.com/sayedelazameydesign-crypto/celia_elazamey-pro",
       "files": 1,
-      "description_ar": "بذرة أولية"
+      "description_ar": "بذرة أولية",
+      "operational_status": "DECLARED",
+      "operational_evidence": "موصوف في README فقط؛ لم يُنفَّذ أي أمر هنا (يحتاج Node/مفاتيح/خدمات)",
+      "verified_on": "2026-11-17"
     }
   ],
-  "post_merge_audit": "AUDIT.md — 2026-11-17: 48/48 byte-identical to upstream; 3 .log files force-added in 12pro; 1 secret redacted in ai-store2/env.local"
+  "post_merge_audit": "AUDIT.md — 2026-11-17: 48/48 byte-identical to upstream; 3 .log files force-added in 12pro; 1 secret redacted in ai-store2/env.local",
+  "verified_at": "2026-11-17",
+  "verification_report": "docs/GROUND-TRUTH-2026-11-17.md",
+  "verified_counts": {
+    "SIMULATED": 6,
+    "PROVEN": 1,
+    "DECLARED": 40,
+    "FAILED": 1
+  },
+  "live_surfaces_verified_2026_11_17": {
+    "live": [
+      {
+        "url": "https://sayedelazameydesign-crypto.github.io/ai-2027/demo.html",
+        "what": "JS port of the kernel loop"
+      },
+      {
+        "url": "https://cela-umber.vercel.app",
+        "what": "واحة — Arabic learning app"
+      },
+      {
+        "url": "https://new-pro-kohl.vercel.app",
+        "what": "نواة AI — chat app"
+      },
+      {
+        "url": "https://cerulean-boba-48f59a.netlify.app",
+        "what": "celia.pro — login page"
+      }
+    ],
+    "dead": [
+      {
+        "url": "https://elazamet1.vercel.app",
+        "status": "404 DEPLOYMENT_NOT_FOUND"
+      },
+      {
+        "url": "https://celia-pro.onrender.com",
+        "status": "Not Found"
+      },
+      {
+        "url": "https://nawah-agent.onrender.com",
+        "status": "Not Found"
+      }
+    ],
+    "note": "فُتحت فعليًا في 2026-11-17. 'live' = الصفحة تُخدَم؛ لا يعني أن الوظائف الداخلية مُختبرة."
+  }
 }

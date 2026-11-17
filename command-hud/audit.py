@@ -437,7 +437,7 @@ def to_markdown(d: dict) -> str:
     L.append("- [ ] **Decide the license for `agi-system`** — blocks PyPI publication.")
     L.append("- [ ] **Replace `projects/new-agent/LICENSE`** — 4-byte corrupt placeholder.")
     L.append("- [ ] **Repair `projects/12pro/certification/v1.0.0-raw/health-raw.json`** — empty file, JSON parse fails.")
-    L.append("- [ ] **Harden cross-platform containment** — 25 Windows/encoded inputs are literal filenames on Linux; test on Windows before deploying there.")
+    L.append("- [x] **Cross-platform containment hardened (2026-11-17)** — backslashes, Windows drive prefixes and percent-encoded separators are refused on every platform; 16/25 former literal cases now DENIED, 9 remain literal POSIX names.")
     L.append("- [ ] **Choose Phase 2** — cloud LLM / local model / defer. No model code was added.")
     L.append("- [ ] **Repo metadata + Discussions** — integration token returns 403 on admin settings.")
     L.append("- [ ] **Approve merging the HUD PR into `main`** — this session opens a reviewable PR and does NOT merge it.")
