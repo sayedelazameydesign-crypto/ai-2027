@@ -13,11 +13,14 @@
 [![Files](https://img.shields.io/badge/files-3%2C967-38bdf8)](catalog.json)
 [![Audited](https://img.shields.io/badge/post--merge%20audit-passed-brightgreen)](AUDIT.md)
 [![Proven](https://img.shields.io/badge/executed%20here-1%20PROVEN%20%C2%B7%2040%20declared%20%C2%B7%206%20simulated-orange)](docs/GROUND-TRUTH-2026-11-17.md)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/sayedelazameydesign-crypto/ai-2027?sort=semver)](https://github.com/sayedelazameydesign-crypto/ai-2027/releases)
+[![CodeQL](https://github.com/sayedelazameydesign-crypto/ai-2027/actions/workflows/codeql.yml/badge.svg)](https://github.com/sayedelazameydesign-crypto/ai-2027/actions/workflows/codeql.yml)
 [![License](https://img.shields.io/badge/licenses-mixed%20(per--project)-orange)](#-licensing)
 [![CI](https://github.com/sayedelazameydesign-crypto/ai-2027/actions/workflows/ci.yml/badge.svg)](https://github.com/sayedelazameydesign-crypto/ai-2027/actions/workflows/ci.yml)
 [![Pages](https://github.com/sayedelazameydesign-crypto/ai-2027/actions/workflows/pages.yml/badge.svg)](https://github.com/sayedelazameydesign-crypto/ai-2027/actions/workflows/pages.yml)
 
-[🌐 Live demo](https://sayedelazameydesign-crypto.github.io/ai-2027/demo.html) · [Ground truth](docs/GROUND-TRUTH-2026-11-17.md) · [Deviations](docs/DEVIATIONS.md) · [العربية ⬇](#-ai-2027--المستودع-الجامع-لكل-الأدوات-والميزات) · [Catalog](catalog.json) · [Audit Report](AUDIT.md) · [Phase-0 Readiness](docs/PHASE-0-READINESS.md) · [Launch Kit](launch/) · [🔥 Ember plan](docs/EMBER-PLAN.md)
+[🌐 Live demo](https://sayedelazameydesign-crypto.github.io/ai-2027/demo.html) · [Ground truth](docs/GROUND-TRUTH-2026-11-17.md) · [Deviations](docs/DEVIATIONS.md) · [العربية ⬇](#-ai-2027--المستودع-الجامع-لكل-الأدوات-والميزات) · [Catalog](catalog.json) · [Audit Report](AUDIT.md) · [Phase-0 Readiness](docs/PHASE-0-READINESS.md) · [Launch Kit](launch/) · [🔥 Ember plan](docs/EMBER-PLAN.md) · [Changelog](CHANGELOG.md) · [Governance](docs/GOVERNANCE.md) · [ADRs](docs/adr/)
 
 </div>
 
@@ -94,6 +97,18 @@ with IDF concept coverage over a **declared** hand-written thesaurus (no `sqlite
 Measured paraphrase recall@3 improved from 2/16 to **11/16 (0.688)** while near-miss
 false positives stayed at 0/7 —
 it misses synonyms. That number is published, not hidden: [`memory/README.md`](memory/README.md).
+
+## 🧾 Engineering discipline — the boring parts, done
+
+| Control | Where | Proof |
+|---|---|---|
+| A version exists only with a Release + SBOM + checksums | `.github/workflows/release.yml` | tag `v1.0.0` assets |
+| Actions pinned to full SHAs (29 components) | every workflow | `python3 scripts/sbom.py --assert-pinned` |
+| Static analysis on every PR | `.github/workflows/codeql.yml` | CodeQL badge |
+| Dependency proposals automated | `.github/dependabot.yml` | Dependabot tab |
+| Ownership + review expectations | `.github/CODEOWNERS` | file |
+| Decisions recorded, not remembered | `docs/adr/0001…0003` | ADR index |
+| What is *not* enforced is also written down | `docs/GOVERNANCE.md` | §"NOT enforced" |
 
 ## ▶️ Actually running — verified over HTTP, not asserted
 

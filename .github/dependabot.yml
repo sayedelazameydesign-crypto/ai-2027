@@ -1,0 +1,25 @@
+# Dependency automation. The kernel has zero third-party Python dependencies, so
+# the interesting surface is GitHub Actions pins — and those are enforced by the
+# repository's "pin to full-length SHA" policy.
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule: {interval: "weekly", day: "monday"}
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "ci(actions)"
+    labels: ["dependencies", "ci"]
+    # Actions are pinned to SHAs on purpose; Dependabot may propose a new SHA
+    # but must never widen a pin to a tag.
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+
+  - package-ecosystem: "pip"
+    directory: "/packaging/agi-kernel"
+    schedule: {interval: "monthly"}
+    open-pull-requests-limit: 2
+    commit-message:
+      prefix: "build(deps)"
+    labels: ["dependencies"]

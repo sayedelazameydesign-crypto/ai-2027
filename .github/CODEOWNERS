@@ -1,0 +1,14 @@
+# Default owner for everything. Review is required by convention, and enforced
+# by branch protection once the repository owner enables it (see
+# docs/GOVERNANCE.md — the API refuses it for the automation token).
+*                               @sayedelazameydesign-crypto
+
+# The evidence path is the product: changes here deserve the most scrutiny.
+/projects/agi-system/core/       @sayedelazameydesign-crypto
+/memory/                        @sayedelazameydesign-crypto
+/scripts/runtime_smoke.py       @sayedelazameydesign-crypto
+/scripts/ember_beat.py          @sayedelazameydesign-crypto
+/.github/workflows/             @sayedelazameydesign-crypto
+
+# Documentation can be merged with a lighter review.
+/docs/                          @sayedelazameydesign-crypto
