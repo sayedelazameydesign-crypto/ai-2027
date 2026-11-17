@@ -90,7 +90,9 @@ python3 memory/test_memory.py -v        # 16 tests
 ```
 
 **Honest headline:** the backend is stdlib `sqlite3` + a deterministic **lexical**
-embedding (no `sqlite-vec`, no model). Measured paraphrase recall@3 is **2/16** —
+with IDF concept coverage over a **declared** hand-written thesaurus (no `sqlite-vec`, no model).
+Measured paraphrase recall@3 improved from 2/16 to **11/16 (0.688)** while near-miss
+false positives stayed at 0/7 —
 it misses synonyms. That number is published, not hidden: [`memory/README.md`](memory/README.md).
 
 ## ▶️ Actually running — verified over HTTP, not asserted

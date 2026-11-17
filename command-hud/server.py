@@ -73,9 +73,9 @@ HONESTY = {
     "timings": "browser/HUD measurements on this container; NOT the published bench.py reference numbers (jitter published)",
     "audit": "read-only. DECLARED != PROVEN. 47 of 48 projects were NOT executed in this sandbox.",
     "redteam": "100 real adversarial inputs. 75 DENIED + 25 CONTAINED-as-literal + 0 breaches is the honest result, not '100/100 DENIED'.",
-    "memory": ("L1 cumulative memory: sqlite3 + hashed-lexical embedding (NOT neural, NOT sqlite-vec). "
+    "memory": ("L1 cumulative memory: sqlite3 + IDF concept coverage over a declared thesaurus (NOT neural, NOT sqlite-vec). "
                "Only VERIFIED runs with a passing independent hash check are admitted. Measured recall@3 on a "
-               "paraphrase set is 2/16 = 0.125 — lexical memory misses synonyms; see memory/README.md."),
+               "paraphrase set is 11/16 = 0.688 with 0/7 near-miss false positives; still lexical, still declared; see memory/README.md."),
 }
 
 
