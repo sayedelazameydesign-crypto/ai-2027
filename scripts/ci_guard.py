@@ -38,12 +38,19 @@ ROOT = Path(__file__).resolve().parent.parent
 KERNEL_DIR = ROOT / "projects" / "agi-system" / "core"
 LIVE_DIR = ROOT / "live-agent"
 FIRST_PARTY = {"core", "server", "agi_kernel"}
+# Stdlib modules that exist only on NEWER supported Pythons. `tomllib` landed in
+# 3.11; `core/config.py` imports it lazily inside a try/except and raises a
+# clean "requires Python 3.11+" error on 3.10. It is NOT a third-party
+# dependency, but sys.stdlib_module_names on a 3.10 runner would not list it,
+# which would make this gate version-dependent (and it did: PR #10 failed on
+# 3.10 only). Keep the gate honest across the whole 3.10+ support matrix.
+CONDITIONAL_STDLIB = {"tomllib"}
 DEFAULT_CEILING_MS = 40.0
 EXPECTED_IMPORT_PROOF = "NONE (stdlib only)"
 
 
 def scan_imports() -> int:
-    stdlib = set(sys.stdlib_module_names)
+    stdlib = set(sys.stdlib_module_names) | CONDITIONAL_STDLIB
     files = sorted(KERNEL_DIR.glob("*.py")) + [LIVE_DIR / "server.py", LIVE_DIR / "bench.py"]
     bad: dict[str, set[str]] = {}
     for path in files:
@@ -58,7 +65,10 @@ def scan_imports() -> int:
                 if name not in stdlib and name not in FIRST_PARTY:
                     bad.setdefault(str(path.relative_to(ROOT)), set()).add(name)
 
-    print(f"AST-scanned {len(files)} Python files for third-party imports.")
+    print(f"AST-scanned {len(files)} Python files for third-party imports "
+          f"(Python {sys.version.split()[0]}).")
+    print("Conditional stdlib allowed across the 3.10+ matrix: "
+          + ", ".join(sorted(CONDITIONAL_STDLIB)))
     if bad:
         for file, modules in sorted(bad.items()):
             print(f"  THIRD-PARTY  {file}: {', '.join(sorted(modules))}", file=sys.stderr)
