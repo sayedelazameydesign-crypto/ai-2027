@@ -253,6 +253,10 @@ def main() -> int:
                     help="public URL to count as an ember (repeatable)")
     ap.add_argument("--write", action="store_true",
                     help="write ember/status.json + STATUS.md and append history")
+    ap.add_argument("--no-history", action="store_true",
+                    help="write the status files but do not append a history row "
+                         "(used while a health-gate retry is still in flight, so a "
+                         "retried run cannot inflate the beat count)")
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args()
 
@@ -260,7 +264,8 @@ def main() -> int:
                   args.pages_url, do_smoke=not args.no_smoke)
     if args.write:
         write_status(status)
-        append_history(status)
+        if not args.no_history:
+            append_history(status)
 
     if args.json:
         print(json.dumps(status, ensure_ascii=False))

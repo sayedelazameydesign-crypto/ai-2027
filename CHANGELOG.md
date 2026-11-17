@@ -14,9 +14,59 @@ fail or when any GitHub Action is not pinned to a full-length SHA.
 ## [Unreleased]
 
 ### Planned (see `docs/ROADMAP-2027.md`)
-- T4 — one-command local boot (`scripts/ember_up.sh`) and a second hosted mirror.
-- T5 — `health_gate.py` with three-stage escalation.
-- T6 — real execution UI: run a task from the page and get an evidence link.
+- T4 — a hosted second mirror (owner action: Vercel returned *access denied*, the
+  Supabase projects are paused — both measured, see `docs/T4-T6-EVIDENCE.md`).
+- T4 — Supabase `beats` table once a project is designated by the owner.
+
+---
+
+## [v1.0.1] — 2026-11-17
+
+The release where the repository stops trusting its own good news: a beat is now
+judged against its history, the whole stack boots with one command in **2.46 s**,
+and one real task finishes in **22.9 ms** with evidence that can be re-checked.
+
+### Added — T5 · immunity (`scripts/health_gate.py`)
+- Eleven checks per beat (`beat_present`, `smoke_complete`, `smoke_no_regression`,
+  `evidence_complete`, `memory_reachable`, `public_path`, `public_paths_all`,
+  `beat_freshness`, `history_monotonic`, `path_independence`, `heat_not_dropped`).
+- Three-stage escalation: one retry → one issue → `escalation/s3` + code-owner
+  mention + optional `EMBER_ALERT_WEBHOOK`. An unconfigured webhook is reported as
+  `not-configured`, never as delivered.
+- `--commit-beat`: the gate writes the history row, once, on the run's final
+  attempt — a retry can no longer inflate `beats_7d` or the success rate.
+- 24 tests, including the case the gate exists for: a beat whose own fields say
+  `15/15` but which only measured 3 checks is **degraded**.
+
+### Added — T4 · continuity (`scripts/ember_up.sh`)
+- One command boots both services, waits for real health, runs the 15 HTTP checks,
+  writes `.ember-up/state.json`, reuses an already-healthy service instead of
+  duplicating it, and stops with `--stop`.
+- Measured cold: **2.46 s** wall (KPI ≤ 10 min) · `15/15` · exits by itself.
+
+### Added — T6 · the product (`scripts/run_task.py`)
+- Runs a real goal over real HTTP, re-reads the evidence record, downloads the
+  artifact and **recomputes** its SHA-256 locally before accepting it.
+- Published budget of 60 s; `DENIED` is a task failure (exit 1), over-budget is
+  exit 3, an unreachable agent is exit 2. Measured: **22.9 ms** end-to-end.
+- 6 tests, one of which proves the budget claim can fail.
+
+### Added — CI
+- `recovery` job: boots the ember with one command and asserts a real task under
+  budget on every push.
+- New gates: `scripts/test_health_gate.py` (24) and `scripts/test_run_task.py` (6).
+
+### Fixed
+- `scripts/ember_up.sh` background jobs held the caller's stdout pipe open, so
+  `--json | cat` never terminated. The job is now `exec`-ed with all descriptors
+  redirected, and the recorded pid is the service itself (so `--stop` is honest).
+- `run_task.py` crashed writing a bundle when `--evidence-dir` pointed outside the
+  repository (`Path.relative_to` on a foreign path).
+
+### Documentation
+- `docs/T4-T6-EVIDENCE.md` — the measured evidence for these three tracks,
+  including what is **not** done and the exact response that blocked it.
+- `docs/adr/0004-health-gate-escalation.md` — why one retry, then an issue.
 
 ---
 
@@ -77,5 +127,6 @@ produced by a command, and the repository now runs when nobody is watching.
 
 ---
 
+[v1.0.1]: https://github.com/sayedelazameydesign-crypto/ai-2027/releases/tag/v1.0.1
 [v1.0.0]: https://github.com/sayedelazameydesign-crypto/ai-2027/releases/tag/v1.0.0
-[Unreleased]: https://github.com/sayedelazameydesign-crypto/ai-2027/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/sayedelazameydesign-crypto/ai-2027/compare/v1.0.1...HEAD

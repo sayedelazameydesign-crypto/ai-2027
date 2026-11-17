@@ -4,13 +4,17 @@
 # returned NOTHING. The project only moved when someone pushed. A repo that stops
 # when its owner sleeps is a hot stone, not an ember.
 #
-# What each beat does (all of it real, none of it simulated):
+# What each run does (all of it real, none of it simulated):
 #   1. boots the real live-agent (real kernel) + the real Command HUD;
 #   2. runs `scripts/runtime_smoke.py` (15 checks over real HTTP);
 #   3. computes the Heat Index from measured history and writes ember/status.json
 #      + STATUS.md from the same variables;
-#   4. opens (or updates) ONE issue when degraded, and closes it on recovery;
-#   5. pushes a heartbeat commit to the `heartbeat` branch.
+#   4. judges that beat with `scripts/health_gate.py` against the recorded past —
+#      a beat that lost checks, went stale, or whose memory stopped answering is
+#      degraded even when its own fields look fine;
+#   5. escalation ladder: one retry → one issue → stage-3 escalation (label +
+#      code-owner mention + optional webhook);
+#   6. closes the issue on recovery and pushes a heartbeat commit.
 #
 # Two honest constraints are handled here, not hidden:
 #   * GitHub disables `schedule:` on public repos after ~60 days without repo
@@ -40,9 +44,13 @@ concurrency:
 
 jobs:
   beat:
-    name: One measured beat (real servers, real HTTP)
+    name: One measured beat (real servers, real HTTP, gated)
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
+    env:
+      # Optional: when the owner configures this secret, stage-3 failures are
+      # POSTed to it. Unset is not a failure — the gate says "not-configured".
+      EMBER_ALERT_WEBHOOK: ${{ secrets.EMBER_ALERT_WEBHOOK }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
@@ -65,8 +73,8 @@ jobs:
           tail -40 /tmp/live-agent.log /tmp/hud.log || true
           exit 1
 
-      - name: Beat (smoke + heat + status)
-        id: beat
+      - name: Beat, then gate it — one retry before any human is paged
+        id: gate
         run: |
           set +e
           EXTRA=""
@@ -74,36 +82,88 @@ jobs:
             echo "::warning::force_degraded=true — skipping the smoke on purpose"
             EXTRA="--no-smoke"
           fi
-          python scripts/ember_beat.py --write --json $EXTRA \
-            --live-agent http://127.0.0.1:8090 \
-            --hud http://127.0.0.1:8091 \
-            --pages-url "https://sayedelazameydesign-crypto.github.io/ai-2027/demo.html" \
-            > /tmp/beat.json
-          echo "beat exit code: $?"
+          attempt=1
+          while : ; do
+            # The beat rewrites the status files but does NOT touch history:
+            # history is committed by the gate, once, on the final attempt.
+            python scripts/ember_beat.py --write --no-history --json $EXTRA \
+              --live-agent http://127.0.0.1:8090 \
+              --hud http://127.0.0.1:8091 \
+              --pages-url "https://sayedelazameydesign-crypto.github.io/ai-2027/demo.html" \
+              --pages-url "https://cdn.jsdelivr.net/gh/sayedelazameydesign-crypto/ai-2027@main/website/demo.html" \
+              > /tmp/beat.json
+            python scripts/health_gate.py \
+              --status ember/status.json \
+              --history ember/history.jsonl \
+              --gate-log ember/gate.jsonl \
+              --commit-beat --write --json --attempt "$attempt" \
+              > /tmp/gate.json
+            rc=$?
+            echo "attempt ${attempt}: health gate exit ${rc}"
+            cat /tmp/gate.json
+            if [ "$rc" -eq 0 ]; then break; fi
+            if [ "$rc" -eq 2 ] && [ "$attempt" -eq 1 ]; then
+              echo "::warning::transient signal — retrying the beat once (stage 1)"
+              attempt=2; sleep 15; continue
+            fi
+            break
+          done
+          echo "$rc" > /tmp/gate_exit
+          echo "$attempt" > /tmp/gate_attempt
+          exit 0
+
+      - name: Publish the measurement to the job summary
+        if: always()
+        run: |
           python - <<'PY'
           import json, pathlib
-          d = json.loads(pathlib.Path("/tmp/beat.json").read_text())
-          print(f"### 🔥 Ember beat — heat {d['heat']['heat']} ({d['heat']['verdict']})")
-          print(f"- smoke: **{d['smoke']['passed']}/{d['smoke']['total']}**")
-          print(f"- memories: {d['memory']['memories']} (refused {d['memory']['refusals']})")
-          print(f"- embers live: {d['heat']['embers_live']}/3")
-          print(f"- beats in 7d: {d['heat']['beats_7d']} · success {d['heat']['success_rate_7d']}")
-          print(f"- degraded: **{d['degraded']}**")
-          pathlib.Path("/tmp/beat_degraded").write_text("1" if d["degraded"] else "0")
-          pathlib.Path("/tmp/beat_body.md").write_text(
-              f"Heat **{d['heat']['heat']}** ({d['heat']['verdict']}) · "
-              f"smoke {d['smoke']['passed']}/{d['smoke']['total']} · "
-              f"memories {d['memory']['memories']} · "
-              f"beat at {d['beat_at_iso']}\n\n"
-              + "\n".join(f"- {'PASS' if c['ok'] else 'FAIL'} · {c['name']}"
-                          for c in d["smoke"]["checks"]))
-          PY
-          cat /tmp/beat.json >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
 
-      - name: Declare failure honestly if degraded
+          def load(p, default):
+              f = pathlib.Path(p)
+              try:
+                  return json.loads(f.read_text() or "null") or default
+              except (OSError, ValueError):
+                  return default
+
+          def load_text(p, default):
+              try:
+                  return pathlib.Path(p).read_text().strip() or default
+              except OSError:
+                  return default
+
+          beat = load("/tmp/beat.json", {})
+          gate = load("/tmp/gate.json", {})
+          smoke = beat.get("smoke", {})
+          heat = beat.get("heat", {})
+          body = [
+              f"### 🔥 Ember beat — {gate.get('verdict', '?')} "
+              f"(stage {gate.get('stage', '?')}/3)",
+              f"- smoke: **{smoke.get('passed')}/{smoke.get('total')}**",
+              f"- heat: **{heat.get('heat')}** ({heat.get('verdict')}) · "
+              f"embers live {heat.get('embers_live')}/3",
+              f"- memories: {(beat.get('memory') or {}).get('memories')}",
+              f"- attempts: {load_text('/tmp/gate_attempt', '?')} · "
+              f"streak {gate.get('streak')} degraded run(s)",
+              f"- alert: {gate.get('alert')}",
+          ]
+          if gate.get("failures"):
+              body.append("- failures: " + ", ".join(f"`{f}`" for f in gate["failures"]))
+          body += ["", "| check | verdict | detail |", "|---|---|---|"]
+          for c in gate.get("checks", []):
+              body.append(f"| `{c['id']}` | {'PASS' if c['ok'] else 'FAIL'} | {c['detail']} |")
+          body.append("")
+          body.append("Evidence: `ember/status.json`, `ember/gate.jsonl`, "
+                      "`ember/beat.json` (workflow artifact).")
+          pathlib.Path("/tmp/issue_body.md").write_text("\n".join(body))
+          print("\n".join(body))
+          PY
+          cat /tmp/issue_body.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Declare failure honestly if the gate says so
         run: |
-          if [ "$(cat /tmp/beat_degraded)" = "1" ]; then
-            echo "::error::ember degraded — a check failed; opening/updating the issue"
+          rc=$(cat /tmp/gate_exit)
+          if [ "$rc" -ne 0 ]; then
+            echo "::error::ember degraded (stage $(python -c "import json;print(json.load(open('/tmp/gate.json'))['stage'])"))"
             exit 1
           fi
           echo "healthy beat"
@@ -115,19 +175,25 @@ jobs:
           name: ember-beat-${{ github.run_id }}
           path: |
             ember/status.json
+            ember/history.jsonl
+            ember/gate.jsonl
             STATUS.md
             /tmp/beat.json
+            /tmp/gate.json
           if-no-files-found: warn
 
-      - name: Open or update the degraded issue
+      - name: Open or update the degraded issue (stages 2–3)
         if: failure()
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          gh label create ember-degraded --color B60205             --description "Ember beat degraded — opened automatically" 2>/dev/null || true
-          body_file=/tmp/beat_body.md
-          [ -f "$body_file" ] || echo "beat did not produce a body" > "$body_file"
+          gh label create ember-degraded --color B60205 \
+            --description "Ember beat degraded — opened automatically" 2>/dev/null || true
+          body_file=/tmp/issue_body.md
+          [ -f "$body_file" ] || echo "the beat did not produce a body" > "$body_file"
+          run_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          printf '\n\n---\nRun: %s\n' "$run_url" >> "$body_file"
           existing=$(gh issue list --label ember-degraded --state open \
                      --json number --jq '.[0].number // empty')
           if [ -n "$existing" ]; then
@@ -135,9 +201,42 @@ jobs:
             echo "updated issue #$existing"
           else
             gh issue create --label ember-degraded \
-              --title "🔥 Ember degraded — a beat failed" \
+              --title "🔥 Ember degraded — the health gate refused a beat" \
               --body-file "$body_file"
           fi
+
+      - name: Escalate to stage 3 when the same degradation survives three runs
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          stage=$(python -c "import json;print(json.load(open('/tmp/gate.json'))['stage'])")
+          if [ "$stage" -lt 3 ]; then
+            echo "stage $stage — no escalation yet (needs 3 consecutive degraded runs)"
+            exit 0
+          fi
+          gh label create escalation/s3 --color 8B0000 \
+            --description "Same degradation in 3 consecutive beats" 2>/dev/null || true
+          owner=$(grep -Eo '@[A-Za-z0-9-]+' .github/CODEOWNERS | head -1 || true)
+          existing=$(gh issue list --label ember-degraded --state open \
+                     --json number --jq '.[0].number // empty')
+          [ -n "$existing" ] || { echo "no open issue to escalate"; exit 0; }
+          gh issue edit "$existing" --add-label escalation/s3
+          failures=$(python -c "import json;print(', '.join(json.load(open('/tmp/gate.json'))['failures']))")
+          alert=$(python -c "import json;print(json.load(open('/tmp/gate.json'))['alert'])")
+          cat > /tmp/escalate.md <<EOF
+          ### 🚨 Stage 3 — escalated
+
+          Three consecutive beats are degraded. $owner this needs a human.
+
+          - alert delivery: $alert
+          - failures: $failures
+
+          Escalated by .github/workflows/ember.yml (stage 3 of scripts/health_gate.py).
+          EOF
+          gh issue comment "$existing" --body-file /tmp/escalate.md
+          echo "escalated issue #$existing (label escalation/s3)"
 
       - name: Close the issue on recovery
         if: success()
@@ -148,7 +247,7 @@ jobs:
           existing=$(gh issue list --label ember-degraded --state open \
                      --json number --jq '.[0].number // empty')
           if [ -n "$existing" ]; then
-            gh issue comment "$existing" --body "Recovered: the next beat is healthy. Comment written by .github/workflows/ember.yml."
+            gh issue comment "$existing" --body "Recovered: the health gate passed the next beat. Closed by .github/workflows/ember.yml."
             gh issue close "$existing"
             echo "closed issue #$existing"
           else
