@@ -1,0 +1,73 @@
+
+# CELIA FASHION DESIGN - Smart AI E-Commerce Store 👗✨
+
+مشروع متجر أزياء إلكتروني متكامل ومدعوم بالذكاء الاصطناعي، تم تطويره ليقدم تجربة تسوق فريدة وعصرية.
+
+## 🌟 المميزات الرئيسية
+
+### 🧠 الذكاء الاصطناعي (AI Features)
+1.  **مساعد شخصي (Chatbot):** يقترح منتجات، يحلل السلة، ويجيب على الاستفسارات.
+2.  **مساعد المقاسات (AI Size Guide):** يقترح المقاس المثالي (S, M, L..) بناءً على الطول والوزن.
+3.  **مدونة ذكية (SEO Blog):** توليد مقالات تلقائية لجذب الزوار وتحسين الظهور في محركات البحث.
+4.  **نظام توصيات ذكي:** يقترح منتجات مشابهة بناءً على تصفحك.
+
+### 🛍️ تجربة المستخدم (UX)
+*   **تصميم عصري:** واجهة مستخدم (UI) أنيقة تركز على الفخامة والبساطة.
+*   **فلترة متقدمة:** تصفية المنتجات حسب السعر، التقييم، والقسم.
+*   **قائمة المفضلات (Wishlist):** لحفظ المنتجات وشرائها لاحقاً.
+*   **سلة تسوق ديناميكية.**
+
+## 🛠️ التقنيات المستخدمة
+
+*   **Frontend:** React.js, CSS3 (Custom Design).
+*   **Backend (Product API):** Node.js, Express via json-server logic (simulated).
+*   **AI Backend:** Python, FastAPI, OpenAI GPT-3.5 Turbo.
+*   **Database:** MongoDB Atlas (للمنتجات), SQLite (للمستخدمين والطلبات - تجريبي).
+
+## 🚀 طريقة التشغيل محلياً (Local Setup)
+
+> **ملاحظة:** راجع ملف `SETUP_GUIDE.md` للحصول على دليل مفصل خطوة بخطوة.
+
+1.  **استنسخ المستودع:**
+    ```bash
+    git clone https://github.com/your-username/celia-fashion-store.git
+    cd celia-fashion-store
+    ```
+
+2.  **إعداد متغيرات البيئة:**
+    - في كل مجلد (frontend, backend, ml-backend)، انسخ `.env.example` إلى `.env`
+    - املأ القيم المطلوبة (MongoDB URI, OpenAI Key, إلخ)
+
+3.  **تشغيل الواجهة الأمامية (Frontend):**
+    ```bash
+    cd frontend
+    npm install
+    npm start
+    ```
+    *الرابط:* `http://localhost:3006`
+
+4.  **تشغيل سيرفر المنتجات (Node Backend):**
+    ```bash
+    cd backend
+    npm install
+    node server.js
+    ```
+    *الرابط:* `http://localhost:5001`
+
+5.  **تشغيل سيرفر الذكاء الاصطناعي (AI Backend):**
+    ```bash
+    cd ml-backend
+    pip install -r requirements.txt
+    python app.py
+    ```
+    *الرابط:* `http://localhost:8000`
+
+## 🌍 طريقة النشر (Deployment)
+
+يمكنك نشر المشروع مجانًا باستخدام الخدمات التالية:
+*   **Frontend:** Vercel أو Netlify.
+*   **Backends:** Render أو Railway (يوفرون خطط مجانية).
+
+---
+**تم التطوير بواسطة:** سيد العزامي ديزاين (Sayed El-Azamey Design)
+**للتواصل:** 01126212452 | sayedelazameydesign@gmail.com

@@ -1,0 +1,23 @@
+# dependencies
+node_modules/
+.pnpm-store/
+
+# next.js
+.next/
+out/
+next-env.d.ts
+
+# env & secrets
+.env
+.env.local
+.env.*.local
+
+# logs & misc
+*.log
+.DS_Store
+Thumbs.db
+.vercel
+
+# build artifacts of tests
+.vitest-cache/
+coverage/

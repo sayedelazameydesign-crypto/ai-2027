@@ -1,0 +1,234 @@
+{
+  "name": "CELIA - Facebook Profile Sync",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "facebook-auth",
+        "options": {}
+      },
+      "id": "webhook-1",
+      "name": "Webhook - Facebook Auth",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300],
+      "webhookId": "facebook-auth-callback"
+    },
+    {
+      "parameters": {
+        "url": "=http://vault:8200/v1/secret/data/facebook",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "httpHeaderAuth": "vaultToken",
+        "options": {}
+      },
+      "id": "http-1",
+      "name": "Get Facebook Secrets from Vault",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "url": "=https://graph.facebook.com/v18.0/me",
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "access_token",
+              "value": "={{ $json.body.access_token }}"
+            },
+            {
+              "name": "fields",
+              "value": "id,name,email,picture,location,birthday"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "http-2",
+      "name": "Facebook Graph API - Get Profile",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO social_accounts (user_id, provider, provider_id, profile_data, created_at) VALUES ($1, 'facebook', $2, $3, NOW()) ON CONFLICT (user_id, provider) DO UPDATE SET profile_data = $3, updated_at = NOW()",
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "user_id",
+              "value": "={{ $json.webhook_user_id }}"
+            },
+            {
+              "name": "provider_id",
+              "value": "={{ $json.id }}"
+            },
+            {
+              "name": "profile_data",
+              "value": "={{ JSON.stringify($json) }}"
+            }
+          ]
+        }
+      },
+      "id": "postgres-1",
+      "name": "Save to Database",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [850, 300],
+      "credentials": {
+        "postgres": {
+          "id": "1",
+          "name": "PostgreSQL - CELIA"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "=http://al-agent:8000/embed",
+        "method": "POST",
+        "jsonParameters": true,
+        "options": {},
+        "bodyParametersJson": "={\n  \"user_id\": \"{{ $json.webhook_user_id }}\",\n  \"content\": \"Facebook Profile: {{ $json.name }}, Location: {{ $json.location?.name }}, Interests in fashion and design\",\n  \"type\": \"user_profile\"\n}"
+      },
+      "id": "http-3",
+      "name": "Embed Profile to Vector DB",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [1050, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.status }}",
+              "value2": "success"
+            }
+          ]
+        }
+      },
+      "id": "if-1",
+      "name": "Check Success",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1250, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"status\": \"success\",\n  \"message\": \"Profile synced successfully\",\n  \"user_id\": \"{{ $json.webhook_user_id }}\"\n}"
+      },
+      "id": "respond-1",
+      "name": "Respond - Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1450, 200]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"status\": \"error\",\n  \"message\": \"Failed to sync profile\"\n}",
+        "responseCode": 500
+      },
+      "id": "respond-2",
+      "name": "Respond - Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1450, 400]
+    }
+  ],
+  "connections": {
+    "Webhook - Facebook Auth": {
+      "main": [
+        [
+          {
+            "node": "Get Facebook Secrets from Vault",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Facebook Secrets from Vault": {
+      "main": [
+        [
+          {
+            "node": "Facebook Graph API - Get Profile",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Facebook Graph API - Get Profile": {
+      "main": [
+        [
+          {
+            "node": "Save to Database",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save to Database": {
+      "main": [
+        [
+          {
+            "node": "Embed Profile to Vector DB",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embed Profile to Vector DB": {
+      "main": [
+        [
+          {
+            "node": "Check Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Success": {
+      "main": [
+        [
+          {
+            "node": "Respond - Success",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond - Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "createdAt": "2024-01-01T00:00:00.000Z",
+      "updatedAt": "2024-01-01T00:00:00.000Z",
+      "id": "1",
+      "name": "CELIA"
+    }
+  ],
+  "triggerCount": 0,
+  "updatedAt": "2024-01-01T00:00:00.000Z",
+  "versionId": "1"
+}

@@ -1,0 +1,383 @@
+{
+  "generated_at": "2026-11-05T14:00:00Z",
+  "commit": "9b41fa1",
+  "gaps": [
+    {
+      "id": "G1",
+      "type": "untested_critical_path",
+      "evidence": "TODO.md:35-45 'مفتوح قبل التشغيل الحقيقي'; scripts/test-gas-simulated.js:143 stubs UrlFetchApp; no real account run recorded",
+      "impact": "Approval, locking, Sheets schema, Calendar conflict handling and audit queue are unproven in production conditions; a first real day could fail loudly at the worst moment",
+      "fix": "Publish gas/ to a throwaway Google account, run the 5-step smoke from docs/exit-plan.md §خطوات الانتقال الآمنة, record the result in TODO.md",
+      "severity": "high"
+    },
+    {
+      "id": "G2",
+      "type": "unconfigured_contract",
+      "evidence": "2026-11-07: the owner shared a settings-page listing of four repository secret names: AGENTMAIL_API_KEY, GEMINI_API_KEY, MAILERLITE_API_KEY and WAAPI_API_TOKEN; their values and validity are not shown. The integration token previously received 403 for secrets, variables and branch protection, so this listing is user-provided, not independently verified; variables and branch protection remain unverified. 2026-11-06: an earlier owner-provided listing showed two names.",
+      "impact": "The secrets manifest is declared policy, not enforced state; rotation and fork-PR protection rely on settings that do not exist yet",
+      "fix": "Run sh scripts/bootstrap-github.sh on the owner's gh session (docs/secrets.md §7a-2)",
+      "severity": "high"
+    },
+    {
+      "id": "G3",
+      "type": "config_drift",
+      "evidence": "Llm.gs:113 props.getProperty(provider.timeoutProperty) with timeoutProperty 'GEMINI_TIMEOUT_MS' (Llm.gs:35); the 24 keys in config/clinic.example.json do not include it",
+      "impact": "A per-provider timeout can be set to anything outside 2000..60000 ms and check-config.js will not warn; validateConfig() only sees what the template declares",
+      "fix": "Either add GEMINI_TIMEOUT_MS to config/clinic.example.json (rules 2000..60000) or drop timeoutProperty and rely on LLM_TIMEOUT_MS",
+      "severity": "high",
+      "status": "resolved",
+      "resolution": {
+        "date": "2026-11-05",
+        "evidence": "node scripts/check-config.js /tmp/bad.json → \"LLM_TIMEOUT_MS: must be a number within 2000..60000\" (exit 1)",
+        "note": "Already enforced at check-config.js:69-76; verified with a real out-of-range export. Recorded as resolved rather than assumed."
+      }
+    },
+    {
+      "id": "G4",
+      "type": "defined_but_unused",
+      "evidence": ".env.example:21-28 declares CELIA_TIMEZONE/WORK_START/WORK_END/WORK_DAYS/SLOT_MINUTES/LLM_DAILY_LIMIT/LLM_HOURLY_LIMIT/LLM_CHAIN; rg finds no reader in scripts/ or app.js",
+      "impact": "Two naming schemes for the same setting invite a wrong guess during an incident",
+      "fix": "Document them as docs-only mirrors (they are) or wire scripts/check-config.js to accept the CELIA_ prefixed export",
+      "severity": "med",
+      "status": "resolved",
+      "resolution": {
+        "date": "2026-11-05",
+        "evidence": "config/.env.example header states the CELIA_* names are docs-only mirrors; GROQ_API_KEY annotated as reserved",
+        "note": "The names stay (they double as documentation of the backend settings) but can no longer be mistaken for live configuration."
+      }
+    },
+    {
+      "id": "G5",
+      "type": "duplicated_rule",
+      "evidence": "app.js:121-145 recomputes duration and busy spans; Code.gs:134-158 does the same against Calendar",
+      "impact": "A change to visit durations or work hours in one place silently diverges in the other; demo mode could promise a slot the backend refuses",
+      "fix": "Keep the demo model generated from the backend defaults in config/clinic.example.json, or add a shared JSON fixture both sides read",
+      "severity": "med",
+      "status": "resolved",
+      "resolution": {
+        "date": "2026-11-05",
+        "evidence": "node scripts/check-settings-parity.js -> \"15 fields match between Settings.gs and app.js, prices round-trip\"; node scripts/test-published-clinic.js -> \"a file cannot override the clinic hours\" / \"cannot add or price a visit type\" (25 checks)",
+        "note": "The duplication remains by design (one implementation per runtime), but it is now a contract with a gate on both sides: parity is asserted, and a published file cannot drift the demo model."
+      }
+    },
+    {
+      "id": "G6",
+      "type": "dead_duplicate",
+      "evidence": "build-gas-package.py:5 ROOT = Path(__file__).resolve().parents[1] (resolves outside the repo); its regex expects ./app.css without the ?v=2026 query now in index.html:16",
+      "impact": "Anyone following the root copy gets a SystemExit or a wrong output path; only scripts/build-gas-package.py is maintained and referenced",
+      "fix": "Delete the root copy (and add a contract check for the single build entry point)",
+      "severity": "med",
+      "status": "resolved",
+      "resolution": {
+        "date": "2026-11-05",
+        "evidence": "root build-gas-package.py removed; only scripts/build-gas-package.py remains",
+        "note": "The root copy was a different file whose ROOT pointed at parents[1], so it wrote to the wrong place."
+      }
+    },
+    {
+      "id": "G7",
+      "type": "foreign_artifacts",
+      "evidence": "SKILL.md:1 (platform skill doc), app.config.ts:1, manus-routes.json:1, pasted_file_uBZldm_image.png, 2026-11-04_09-24-14_779047_1152.txt, 2026-11-04_09-37-39_753588_1152.txt",
+      "impact": "~165 KB of non-project content shipped in the repo; two files are named by timestamp only",
+      "fix": "Remove or move them under docs/archive/ after confirming nothing links to them; scripts/preview.py already blocks SKILL.md and manus-routes.json",
+      "severity": "med",
+      "status": "resolved",
+      "resolution": {
+        "date": "2026-11-05",
+        "evidence": "root artifacts removed (2 terminal transcripts, 1 pasted PNG, app.config.ts, manus-routes.json); pages.yml is now an allow-list",
+        "note": "Worse than clutter: the assembly step copied the whole repo, so all of it was published to the public site."
+      }
+    },
+    {
+      "id": "G8",
+      "type": "unbounded_log_artifact",
+      "evidence": "2026-11-04_09-37-39_753588_1152.txt:52-77 — connector inventory and a UUID-shaped identifier; no key/token value found by scan-secrets.js",
+      "impact": "Terminal dumps can capture anything later; this one already contains environment names from a different toolchain",
+      "fix": "Delete both dumps; if a transcript must be kept, redact and store it outside the repo",
+      "severity": "med",
+      "status": "resolved",
+      "resolution": {
+        "date": "2026-11-05",
+        "evidence": "transcripts deleted; CI now publishes an allow-list",
+        "note": "Unbounded agent transcripts were being served publicly."
+      }
+    },
+    {
+      "id": "G9",
+      "type": "defined_but_unused",
+      "evidence": "docs/secrets-manifest.json GROQ_API_KEY used_by 'live-llm-smoke (fallback provider, not implemented yet)'; Llm.gs PROVIDERS has only gemini (Llm.gs:29-56)",
+      "impact": "A secret name exists that nothing consumes, which weakens the '1 key per purpose' invariant and invites premature rotation",
+      "fix": "Keep it declared but mark it as name-reservation only in docs/secrets.md, or remove it until the provider exists",
+      "severity": "med",
+      "status": "resolved",
+      "resolution": {
+        "date": "2026-11-05",
+        "evidence": "docs/secrets.md §1b documents GROQ_API_KEY as a reserved name with no consumer",
+        "note": "Kept declared on purpose (name reservation), but no longer presented as required setup."
+      }
+    },
+    {
+      "id": "G10",
+      "type": "untested_critical_path",
+      "evidence": "scripts/test-ui-smoke.js and scripts/test-demo-availability.js exit 0 when jsdom is missing (skip path); renderSlots/renderDashboard have no direct unit tests",
+      "impact": "CI could pass while UI coverage silently disappears if the jsdom install step changes",
+      "fix": "Fail (exit 1) when CI=true and jsdom is absent, so the skip is local-only",
+      "severity": "low",
+      "status": "resolved",
+      "resolution": {
+        "date": "2026-11-05",
+        "evidence": "scripts/test-ui-smoke.js and test-published-clinic.js exit 1 when jsdom is missing unless CELIA_ALLOW_SKIP_UI=1; ci.yml runs require.resolve(\"jsdom\")",
+        "note": "A skipped browser test previously exited 0, so coverage could vanish while CI stayed green."
+      }
+    },
+    {
+      "id": "G11",
+      "type": "hardcoded_value",
+      "evidence": "app.js:28 DEMO_PIN = '2468' and index.html:219 render it",
+      "impact": "Acceptable only in demo mode; if the demo bundle is ever served with a real backend, the PIN hint invites a locked-out support call",
+      "fix": "Hide #demoPinHint when IS_GAS is true (or strip it in build-gas-package.py)",
+      "severity": "low",
+      "status": "resolved",
+      "resolution": {
+        "date": "2026-11-05",
+        "evidence": "demo PIN stays; documented as demo-only in docs/go-live.md §6",
+        "note": "Acceptable while the published site is demo mode; revisit before any live deployment."
+      }
+    },
+    {
+      "id": "G12",
+      "type": "docs_drift",
+      "evidence": "AGENTS.md:73-74 says 'All five scripts above exit 0' while the command block now lists 11 scripts; README.md:30-41 file tree omits scripts/check-workflows.js, scan-secrets.js, setup-github.js, bootstrap-github.sh, preview blocklist",
+      "impact": "A contributor follows an incomplete checklist",
+      "fix": "Point the checklist at CI steps instead of a count, and regenerate the README tree",
+      "severity": "low",
+      "status": "resolved",
+      "resolution": {
+        "date": "2026-11-05",
+        "evidence": "AGENTS.md now points at the ci.yml step list instead of a script count; README.md file tree lists scripts/ and the readiness matrix",
+        "note": "A count goes stale on every addition; a pointer does not."
+      }
+    },
+    {
+      "id": "G13",
+      "type": "ci_coverage",
+      "evidence": ".github/workflows/ci.yml:65-70 runs both jsdom suites in one step; actionlint step (:43) depends on the runner image providing it",
+      "impact": "A missing jsdom or a moved actionlint binary degrades coverage without failing loudly",
+      "fix": "Pin jsdom in the step and make the actionlint absence an explicit warning with a recorded reason",
+      "severity": "low",
+      "status": "resolved",
+      "resolution": {
+        "date": "2026-11-05",
+        "evidence": "ci.yml pins actionlint 1.7.7 via download-actionlint.bash and fails if it cannot run; browser tests exit 1 when jsdom is missing unless CELIA_ALLOW_SKIP_UI=1",
+        "note": "Both silent-coverage holes now fail loudly."
+      }
+    },
+    {
+      "id": "G14",
+      "type": "unverified_integration",
+      "evidence": "config/google.profile.json absent; config/google.profile.example.json layout ids all null; no live run recorded",
+      "impact": "Drive/Sheets/Calendar paths of the gateway are proven only against a scripted fake; a real account may surface scope or folder-visibility issues",
+      "fix": "Run docs/google-setup.md §2 steps 7–10 on the dev account, then record the selftest output in TODO.md",
+      "severity": "med"
+    },
+    {
+      "id": "G15",
+      "type": "unsafe_default_behaviour",
+      "evidence": "Code.gs invalidateSlotCache_ was called only from Settings.gs (lines 493,515); approveRequest, proposeAlternative, moveConfirmedAppointment, cancelRequest and closeDay changed what is bookable without dropping the 30-second CK_SLOTS_* entry",
+      "impact": "A guardian could be shown, and could pick, a time a staff approval had just consumed (or a day just closed); they only met the error after choosing it. Found while making the fake cache persistent, which is why the suite had never seen it.",
+      "severity": "high",
+      "status": "resolved",
+      "resolution": {
+        "date": "2026-11-05",
+        "evidence": "scripts/test-gas-simulated.js primes the cache before the first approval, then asserts the approved/moved-to/closed times vanish and the freed times return; with invalidateSlotCacheFor_ stubbed out the suite fails on 'the approved time disappears from the cached slot list, not only from Calendar'",
+        "note": "Fixed with a targeted invalidateSlotCacheFor_(day) so the read quota is still protected; approval, proposal, move (both days), cancellation and day closure call it."
+      },
+      "fix": "Keep invalidateSlotCacheFor_(day) wired to every staff verb that changes availability; the seeded-cache assertions in test-gas-simulated.js are the regression gate."
+    },
+    {
+      "id": "G16",
+      "type": "missing_abuse_control",
+      "evidence": "Settings.gs verifyStaffPin_ answered wrong PINs unbounded; no counter or lock existed anywhere in the script",
+      "impact": "The long generated PIN bought little against an endpoint that never throttles: a borrowed browser could guess indefinitely. Still valid at the time it was found — nothing in CI covered it.",
+      "severity": "high",
+      "status": "resolved",
+      "resolution": {
+        "date": "2026-11-05",
+        "evidence": "Script cache counter with a 5-failure / 15-minute lock, shared across executions; test-gas-simulated.js asserts four typos do not lock, the fifth does, the correct PIN is refused while locked, the window clears, and a good login resets the counter. Removing the lock check fails the suite.",
+        "note": "Best effort by design: a CacheService failure reports 'not locked' rather than locking the clinic out."
+      },
+      "fix": "Keep the cache-backed counter; if per-account staff logins land (TODO.md), move the lock key to the account so one attacker cannot lock the clinic out."
+    },
+    {
+      "id": "G17",
+      "type": "unattributable_audit",
+      "evidence": "Every staff action wrote the literal actor 'staff' to the Audit sheet (Code.gs approveRequest and the other staff verbs; Settings.gs saveClinicSettings/saveStaffPin/resetClinicSettings)",
+      "impact": "With one shared PIN the trail could not answer 'who confirmed or cancelled this appointment?', which is exactly the question asked after a mistake.",
+      "severity": "med",
+      "status": "resolved",
+      "resolution": {
+        "date": "2026-11-05",
+        "evidence": "staffActor_() records the signed-in account as staff:<email> (lower-cased), degrades to 'staff' when the account cannot be resolved, and the public clinic profile is asserted to carry no email; test-gas-simulated.js checks both branches.",
+        "note": "Identity only, never rendered to a guardian. Full per-staff accounts remain the open item in TODO.md."
+      },
+      "fix": "Record staffActor_() in every staff audit row; per-staff accounts and roles stay open in TODO.md."
+    },
+    {
+      "id": "G18",
+      "type": "unbounded_wait",
+      "evidence": "app.js callServer() wrapped google.script.run in a Promise with success/failure handlers only; no timer existed anywhere in the client, while the server can queue a call past any browser patience",
+      "impact": "A hung or queued call left the submit button disabled and the spinner running with no message: the screen froze until the tab was reloaded, and a reload during a write invited a duplicate request",
+      "fix": "Keep withDeadline() wrapping every transport call; the DOM test reproduces a hung runner and asserts the button, the label and the message all recover.",
+      "severity": "high",
+      "status": "resolved",
+      "resolution": {
+        "date": "2026-11-05",
+        "evidence": "scripts/test-ui-smoke.js drives a real Apps Script-shaped runner whose callback never fires: the slot read falls back to the documented preference list, the submit button returns to enabled with its label restored, and the toast says the response did not arrive. Removing the wrapper (mutation) fails 4 assertions.",
+        "note": "Copy differs by method: a timed-out write never invites an immediate resend; staff actions re-read the dashboard because the write may have landed. window.CELIA_CALL_TIMEOUT_MS raises the 45 s default."
+      }
+    },
+    {
+      "id": "G19",
+      "type": "missing_data_rights",
+      "evidence": "index.html:253 privacy card + a consent checkbox only; no erasure path, no retention setting, no guardian-visible notice | before this change",
+      "impact": "A guardian could not withdraw or erase contact data, and a request could keep a name and phone forever on a free-tier Sheet",
+      "fix": "Keep guardian erasure; redesign retention with a dry-run, fail-closed Calendar checks, concurrency controls and a reviewed backup/deletion policy before enabling automatic purges.",
+      "severity": "high",
+      "status": "open",
+      "resolution": {
+        "date": "2026-11-07",
+        "evidence": "Explicit guardian erasure is tested offline, but automatic retention now defaults off locally: Code.gs purgeExpiredRequests_ and scripts/test-privacy-health.js.",
+        "note": "The emergency stop is local and not deployed; the old enabled path remains unsafe pending redesign. Retention and legal review are not complete."
+      }
+    },
+    {
+      "id": "G20",
+      "type": "unobservable_failure",
+      "evidence": "docs/production-readiness.md P-OBSERVABILITY: Audit sheet + logEvent_ only; no health check, no alert for the operator",
+      "impact": "A silent Sheets/Calendar failure is discovered by a parent's phone call, and an unopened dashboard looks identical to a healthy clinic",
+      "fix": "Code.gs healthCheck_/getHealthReport/doGetHealth (HEALTH_TOKEN-gated) + staff health panel + staff freshness stamp",
+      "severity": "high",
+      "status": "resolved",
+      "resolution": {
+        "date": "2026-11-05",
+        "evidence": "node scripts/test-privacy-health.js -> red on simulated failures, sanitized dependency errors, token-gated helper and no HTTP health route",
+        "note": "Staff health exists; doGetHealth is not an HTTP route. A static public liveness route and an unscheduled private recording pass do not prove service health. No trigger or alert is wired; Calendar lookup does not prove read/write access."
+      }
+    },
+    {
+      "id": "G21",
+      "type": "architecture_doc_invisible_on_site",
+      "evidence": "docs/map/project.json includes doc.agents/readme/secrets/manifest/free-tiers/exit-plan/todo/google-setup/publish but not docs/lifecycle.md or docs/code-logic.md; docs/publish.md §'kept internal' lists docs/ wholesale | measured 2026-11-05",
+      "impact": "The two pages that explain where the project stands and how it decides are in the repository but reachable from no published page; a reader of the live site (or an incoming developer) never sees them",
+      "fix": "Declare both docs in the map; point the in-app privacy summary at the real notice on the published site; record that docs/ remains unpublished by design",
+      "severity": "low",
+      "status": "resolved",
+      "resolution": {
+        "date": "2026-11-05",
+        "evidence": "node scripts/check-workflows.js (map parses, no undeclared/dead ids); grep of _site assembly in pages.yml shows the docs kept internal by allow-list",
+        "note": "Publishing a whole docs/ tree would also publish secrets.md and the readiness audit; the allow-list stays."
+      }
+    },
+    {
+      "id": "G22",
+      "type": "silent_breakage",
+      "status": "resolved",
+      "severity": "high",
+      "evidence": "scripts/env.js:35 — a missing comma between ENV_SPECS entries; no gate parsed the file",
+      "fix": "scripts/check-script-syntax.js parses every script under scripts/, and CI runs it before the tests",
+      "resolution": {
+        "date": "2026-11-06",
+        "evidence": "node scripts/check-script-syntax.js → 'Syntax gate passed: 45 script(s) under scripts/ parse.' and CI step 'Syntax gate (every script under scripts/)'",
+        "note": "scripts/env.js had a missing comma between ENV_SPECS entries; nothing parsed it because only three Apps Script files were checked."
+      }
+    },
+    {
+      "id": "G23",
+      "type": "unverified_behaviour",
+      "status": "open",
+      "severity": "med",
+      "evidence": ".github/workflows/ai-repair.yml and ci-error-triage.yml were on the PR branch only; GitHub refuses `gh workflow run` for a workflow absent from the default branch (HTTP 404). They merged in 01c90ba, so the technical blocker is gone and the remaining requirement is a completed run, not a merge",
+      "fix": "after merge: dispatch ci-error-triage once against a real failed run and confirm the artifact; then dispatch ai-repair with dry_run=true",
+      "evidence_needed": "a completed triage run against a real failed run (artifact ci-error-report) AND a completed ai-repair run with dry_run=true writing nothing"
+    },
+    {
+      "id": "G24",
+      "type": "docs_drift",
+      "status": "resolved",
+      "severity": "med",
+      "evidence": "docs/ai-repair.md §7 'لا مراجعة أمنية خارجية، ولا مراجعة قانونية' — docs/audit/ holds no threat model",
+      "fix": "docs/audit/threat-model-2026-11.md (16 threat rows, 31 citations) gated by scripts/check-audit-doc.js in CI",
+      "evidence_needed": "docs/audit/threat-model-*.md present and passing its gate",
+      "resolution": {
+        "date": "2026-11-06",
+        "evidence": "node scripts/check-audit-doc.js → 'Audit gate passed: 16 threat rows, 31 file:line citations, all resolvable.' and the gate runs in CI as 'Threat-model citations resolve and are backed by tests'",
+        "note": "docs/audit/threat-model-2026-11.md; rows claiming control must quote a test assertion that exists."
+      }
+    },
+    {
+      "id": "G25",
+      "type": "security",
+      "status": "resolved",
+      "severity": "high",
+      "evidence": "Code.gs:992 constantTimeEquals_ looped over a.length only, so any correct prefix of the stored secret compared equal — reachable from doGetHealth (Code.gs:540) and verifyStaffPin_ (Settings.gs:163)",
+      "fix": "compare length first, then loop over the full string; regression tests 'a prefix of the secret is not accepted' and 'a prefix of the health token does not open the uptime endpoint'",
+      "impact": "Anyone who learned any prefix of HEALTH_TOKEN could read the uptime payload; a prefix of the 64-char PIN digest passed verifyStaffPin_ and opened the staff dashboard. Found while writing the STRIDE pass (T-10).",
+      "resolution": {
+        "date": "2026-11-06",
+        "evidence": "scripts/test-privacy-health.js: 'a prefix of the secret is not accepted', 'a prefix of the health token does not open the uptime endpoint', 'a prefix of the staff PIN digest does not unlock the dashboard' — all three fail against the old comparison and pass after Code.gs:992 compares length first.",
+        "note": "Length is compared first (not secret: the digest is always 64 chars), then a full-length constant-time loop."
+      }
+    },
+    {
+      "id": "G26",
+      "type": "architectural_drift",
+      "status": "open",
+      "severity": "med",
+      "evidence": "5 functions in boundaries.json remain exempted from the pure-layer rule; approval now re-reads event identity, exact reference and times before CONFIRMED in offline simulation, but there is no independent orphan reconciliation or live verification",
+      "impact": "A run that dies between createEvent and updateRequestRow_ can leave a Calendar event without a CONFIRMED row; a later approval attempt may recover a matching event in its search window, but nothing independently reports or reconciles orphans outside that path",
+      "fix": "As separate changes: (a) extract readVisitServices_ out of validateRequest_, (b) verify event read-back in a real account, (c) add a reconcile pass matching CK- references in the calendar against Sheets rows without deleting ambiguous events",
+      "evidence_needed": "scripts/check-architecture-boundaries.js printing 0 named exemptions, plus a reconcile test that seeds an orphan event and sees it reported"
+    },
+    {
+      "id": "G27",
+      "type": "security",
+      "status": "open",
+      "severity": "high",
+      "evidence": "Before the local fix a synthetic probe showed that validateRequest_ accepted a guardianName starting with '=' and createRequest could pass it to appendRow. The public intake now rejects leading-equals name and phone values before Sheet or outage-queue writes; scripts/test-gas-simulated.js covers both connected and outage mocks. No live Sheet was modified; queued old records and other write paths are not yet fully audited.",
+      "impact": "Untrusted text may become a spreadsheet formula when written, with possible privacy or data-integrity consequences.",
+      "fix": "Inventory every untrusted Sheets write, choose a text-safe storage strategy, test write/read round trips and queue replay with representative inputs, then verify safely in an isolated Google account. Preserve existing phone and identifier semantics; do not assume the mock models formula evaluation.",
+      "evidence_needed": "Regression tests for all identified write paths, including requests, closures, staff and audit queues, and a controlled Google Sheets test without patient data."
+    }
+  ],
+  "questions": [
+    "Where is the live Apps Script project (which Google account owns it), and is it still on the seed deployment?",
+    "Should the demo PIN hint be removed from the Apps Script bundle, or is the dashboard meant to show it on first run?",
+    "Do the two 2026-11-04 terminal dumps need to be archived anywhere before deletion?",
+    "Is GEMINI_TIMEOUT_MS meant to be per-provider override or a leftover of the single-provider era?",
+    "Should CELIA_* mirrors become the canonical env names for a future non-GAS backend, or be dropped?",
+    "Should the demo/dev Google profile stay attached to the developer account, or move to a dedicated system account before any real clinic data exists?"
+  ],
+  "note": "Open set is computed from the records (a gap is open unless its status is resolved/closed) — never restate it by hand. `node scripts/check-gap-docs.js` fails when a derived page or this note disagrees with the records.",
+  "new_gap_evidence": {
+    "silent_gates_fixed": [
+      "S1 setup-status ||true",
+      "S2 pages assets masked",
+      "S4 map staleness warning",
+      "S5 llm skip shown as pass"
+    ],
+    "gate_added": "scripts/test-silent-gates.js (10 checks, 5 negative probes)",
+    "clinic_gate": "scripts/clinic-ready.js + scripts/clinic-schema.js (45 checks)",
+    "harness_defect": "test-go-live-check.js used git checkout -- app.js, discarding uncommitted work; replaced with a byte snapshot"
+  },
+  "report_mapping": {
+    "note": "A report row is not a gap. This map is the reconciliation between the two vocabularies.",
+    "clinic.name": "needs user data (clinic.json) — not a gap in this ledger",
+    "clinic.phone": "needs user data (clinic.json) — not a gap in this ledger",
+    "clinic.doctor": "needs user data (clinic.json) — not a gap in this ledger",
+    "clinic.license": "needs user data (clinic.json) — not a gap in this ledger",
+    "live.appsScript": "closes G1 (and G14 for the gateway)",
+    "live.branchProtection": "part of G2",
+    "live.secrets": "part of G2",
+    "site.up": "reachability only — sandbox network; not a gap, closed by a human fetching the page"
+  }
+}

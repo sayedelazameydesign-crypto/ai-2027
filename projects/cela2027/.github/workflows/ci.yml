@@ -1,0 +1,25 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Required by the change-policy guard to compare the full PR with its base.
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install reproducibly
+        run: npm ci --no-fund --no-audit
+      - name: Compatibility gate (types, regression, contracts, build)
+        run: npm run verify
+        env:
+          # build-time placeholders; real keys live in Vercel env only
+          OPENROUTER_API_KEY: ""

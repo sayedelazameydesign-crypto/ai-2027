@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ultimate-bitnet"
+version = "1.0.0"
+description = "Ultimate BitNet - Multi-Modal Smart Assistant"
+readme = "FINAL_SUMMARY_AR.md"
+requires-python = ">=3.8"
+authors = [
+    {name = "BitNet Team"}
+]
+
+[tool.setuptools]
+packages = ["src"]
+
+[tool.setuptools.package-dir]
+"" = "."
+
+[tool.pyright]
+include = ["src", "examples", "tests"]
+pythonPath = "."
+pythonVersion = "3.14"
+extraPaths = ["src"]
+typeCheckingMode = "basic"
+reportMissingImports = false
+reportMissingModuleSource = false

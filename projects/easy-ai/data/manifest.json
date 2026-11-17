@@ -1,0 +1,631 @@
+{
+ "artifacts": {},
+ "counts": {
+  "by_state": {},
+  "files": 0,
+  "redactions": 0,
+  "with_content": 0
+ },
+ "generated_at": "2026-11-17T03:50:45Z",
+ "generator": "easy-ai-sync/1.0.0",
+ "history": [
+  {
+   "files": 0,
+   "generated_at": "2026-10-23T22:08:32Z",
+   "run_id": "20261023T220832Z",
+   "status": "not_configured"
+  },
+  {
+   "files": 0,
+   "generated_at": "2026-10-24T00:40:26Z",
+   "run_id": "20261024T004026Z",
+   "status": "not_configured"
+  },
+  {
+   "files": 0,
+   "generated_at": "2026-10-24T05:50:40Z",
+   "run_id": "20261024T055040Z",
+   "status": "not_configured"
+  },
+  {
+   "files": 0,
+   "generated_at": "2026-10-24T10:56:59Z",
+   "run_id": "20261024T105659Z",
+   "status": "not_configured"
+  },
+  {
+   "files": 0,
+   "generated_at": "2026-10-24T14:31:02Z",
+   "run_id": "20261024T143102Z",
+   "status": "not_configured"
+  },
+  {
+   "files": 0,
+   "generated_at": "2026-10-24T18:07:40Z",
+   "run_id": "20261024T180740Z",
+   "status": "not_configured"
+  },
+  {
+   "files": 0,
+   "generated_at": "2026-10-24T20:47:00Z",
+   "run_id": "20261024T204700Z",
+   "status": "not_configured"
+  },
+  {
+   "files": 0,
+   "generated_at": "2026-10-24T23:11:43Z",
+   "run_id": "20261024T231143Z",
+   "status": "not_configured"
+  },
+  {
+   "files": 0,
+   "generated_at": "2026-10-25T01:08:52Z",
+   "run_id": "20261025T010852Z",
+   "status": "not_configured"
+  },
+  {
+   "files": 0,
+   "generated_at": "2026-10-25T06:06:08Z",
+   "run_id": "20261025T060608Z",
+   "status": "not_configured"
+  },
+  {
+   "files": 0,
+   "generated_at": "2026-10-25T11:24:04Z",
+   "run_id": "20261025T112404Z",
+   "status": "not_configured"
+  },
+  {
+   "files": 0,
+   "generated_at": "2026-10-25T16:15:05Z",
+   "run_id": "20261025T161505Z",
+   "status": "not_configured"
+  },
+  {
+   "files": 0,
+   "generated_at": "2026-10-25T19:04:18Z",
+   "run_id": "20261025T190418Z",
+   "status": "not_configured"
+  },
+  {
+   "files": 0,
+   "generated_at": "2026-10-25T21:45:55Z",
+   "run_id": "20261025T214555Z",
+   "status": "not_configured"
+  },
+  {
+   "files": 0,
+   "generated_at": "2026-10-26T00:21:42Z",
+   "run_id": "20261026T002142Z",
+   "status": "not_configured"
+  },
+  {
+   "files": 0,
+   "generated_at": "2026-10-26T06:10:41Z",
+   "run_id": "20261026T061041Z",
+   "status": "not_configured"
+  },
+  {
+   "files": 0,
+   "generated_at": "2026-10-26T12:58:09Z",
+   "run_id": "20261026T125809Z",
+   "status": "not_configured"
+  },
+  {
+   "files": 0,
+   "generated_at": "2026-10-26T19:17:22Z",
+   "run_id": "20261026T191722Z",
+   "status": "not_configured"
+  },
+  {
+   "files": 0,
+   "generated_at": "2026-10-26T23:51:22Z",
+   "run_id": "20261026T235122Z",
+   "status": "not_configured"
+  },
+  {
+   "files": 0,
+   "generated_at": "2026-10-27T05:01:08Z",
+   "run_id": "20261027T050108Z",
+   "status": "not_configured"
+  },
+  {
+   "files": 0,
+   "generated_at": "2026-10-27T10:31:38Z",
+   "run_id": "20261027T103138Z",
+   "status": "not_configured"
+  },
+  {
+   "files": 0,
+   "generated_at": "2026-10-27T16:36:33Z",
+   "run_id": "20261027T163633Z",
+   "status": "not_configured"
+  },
+  {
+   "files": 0,
+   "generated_at": "2026-10-27T21:17:18Z",
+   "run_id": "20261027T211718Z",
+   "status": "not_configured"
+  },
+  {
+   "files": 0,
+   "generated_at": "2026-10-28T01:19:18Z",
+   "run_id": "20261028T011918Z",
+   "status": "not_configured"
+  },
+  {
+   "files": 0,
+   "generated_at": "2026-10-28T08:27:14Z",
+   "run_id": "20261028T082714Z",
+   "status": "not_configured"
+  },
+  {
+   "files": 0,
+   "generated_at": "2026-10-28T15:59:31Z",
+   "run_id": "20261028T155931Z",
+   "status": "not_configured"
+  },
+  {
+   "files": 0,
+   "generated_at": "2026-10-28T21:01:40Z",
+   "run_id": "20261028T210140Z",
+   "status": "not_configured"
+  },
+  {
+   "files": 0,
+   "generated_at": "2026-10-29T00:54:02Z",
+   "run_id": "20261029T005402Z",
+   "status": "not_configured"
+  },
+  {
+   "files": 0,
+   "generated_at": "2026-10-29T07:02:14Z",
+   "run_id": "20261029T070214Z",
+   "status": "not_configured"
+  },
+  {
+   "files": 0,
+   "generated_at": "2026-10-29T14:15:48Z",
+   "run_id": "20261029T141548Z",
+   "status": "not_configured"
+  },
+  {
+   "files": 0,
+   "generated_at": "2026-10-29T19:39:44Z",
+   "run_id": "20261029T193944Z",
+   "status": "not_configured"
+  },
+  {
+   "files": 0,
+   "generated_at": "2026-10-29T23:56:06Z",
+   "run_id": "20261029T235606Z",
+   "status": "not_configured"
+  },
+  {
+   "files": 0,
+   "generated_at": "2026-10-30T05:44:30Z",
+   "run_id": "20261030T054430Z",
+   "status": "not_configured"
+  },
+  {
+   "files": 0,
+   "generated_at": "2026-10-30T12:51:57Z",
+   "run_id": "20261030T125157Z",
+   "status": "not_configured"
+  },
+  {
+   "files": 0,
+   "generated_at": "2026-10-30T18:35:50Z",
+   "run_id": "20261030T183550Z",
+   "status": "not_configured"
+  },
+  {
+   "files": 0,
+   "generated_at": "2026-10-30T22:57:26Z",
+   "run_id": "20261030T225726Z",
+   "status": "not_configured"
+  },
+  {
+   "files": 0,
+   "generated_at": "2026-10-31T02:20:02Z",
+   "run_id": "20261031T022002Z",
+   "status": "not_configured"
+  },
+  {
+   "files": 0,
+   "generated_at": "2026-10-31T09:36:13Z",
+   "run_id": "20261031T093613Z",
+   "status": "not_configured"
+  },
+  {
+   "files": 0,
+   "generated_at": "2026-10-31T15:43:33Z",
+   "run_id": "20261031T154333Z",
+   "status": "not_configured"
+  },
+  {
+   "files": 0,
+   "generated_at": "2026-10-31T19:57:44Z",
+   "run_id": "20261031T195744Z",
+   "status": "not_configured"
+  },
+  {
+   "files": 0,
+   "generated_at": "2026-10-31T23:22:26Z",
+   "run_id": "20261031T232226Z",
+   "status": "not_configured"
+  },
+  {
+   "files": 0,
+   "generated_at": "2026-11-01T05:59:08Z",
+   "run_id": "20261101T055908Z",
+   "status": "not_configured"
+  },
+  {
+   "files": 0,
+   "generated_at": "2026-11-01T13:19:20Z",
+   "run_id": "20261101T131920Z",
+   "status": "not_configured"
+  },
+  {
+   "files": 0,
+   "generated_at": "2026-11-01T18:54:51Z",
+   "run_id": "20261101T185451Z",
+   "status": "not_configured"
+  },
+  {
+   "files": 0,
+   "generated_at": "2026-11-01T22:47:32Z",
+   "run_id": "20261101T224732Z",
+   "status": "not_configured"
+  },
+  {
+   "files": 0,
+   "generated_at": "2026-11-02T02:29:02Z",
+   "run_id": "20261102T022902Z",
+   "status": "not_configured"
+  },
+  {
+   "files": 0,
+   "generated_at": "2026-11-02T10:59:49Z",
+   "run_id": "20261102T105949Z",
+   "status": "not_configured"
+  },
+  {
+   "files": 0,
+   "generated_at": "2026-11-02T20:45:13Z",
+   "run_id": "20261102T204513Z",
+   "status": "not_configured"
+  },
+  {
+   "files": 0,
+   "generated_at": "2026-11-03T02:54:19Z",
+   "run_id": "20261103T025419Z",
+   "status": "not_configured"
+  },
+  {
+   "files": 0,
+   "generated_at": "2026-11-03T10:49:37Z",
+   "run_id": "20261103T104937Z",
+   "status": "not_configured"
+  },
+  {
+   "files": 0,
+   "generated_at": "2026-11-03T18:25:18Z",
+   "run_id": "20261103T182518Z",
+   "status": "not_configured"
+  },
+  {
+   "files": 0,
+   "generated_at": "2026-11-03T23:58:03Z",
+   "run_id": "20261103T235803Z",
+   "status": "not_configured"
+  },
+  {
+   "files": 0,
+   "generated_at": "2026-11-04T06:15:44Z",
+   "run_id": "20261104T061544Z",
+   "status": "not_configured"
+  },
+  {
+   "files": 0,
+   "generated_at": "2026-11-04T14:37:14Z",
+   "run_id": "20261104T143714Z",
+   "status": "not_configured"
+  },
+  {
+   "files": 0,
+   "generated_at": "2026-11-04T21:19:31Z",
+   "run_id": "20261104T211931Z",
+   "status": "not_configured"
+  },
+  {
+   "files": 0,
+   "generated_at": "2026-11-05T02:25:36Z",
+   "run_id": "20261105T022536Z",
+   "status": "not_configured"
+  },
+  {
+   "files": 0,
+   "generated_at": "2026-11-05T10:51:33Z",
+   "run_id": "20261105T105133Z",
+   "status": "not_configured"
+  },
+  {
+   "files": 0,
+   "generated_at": "2026-11-05T18:43:50Z",
+   "run_id": "20261105T184350Z",
+   "status": "not_configured"
+  },
+  {
+   "files": 0,
+   "generated_at": "2026-11-06T00:13:54Z",
+   "run_id": "20261106T001354Z",
+   "status": "not_configured"
+  },
+  {
+   "files": 0,
+   "generated_at": "2026-11-06T06:46:02Z",
+   "run_id": "20261106T064602Z",
+   "status": "not_configured"
+  },
+  {
+   "files": 0,
+   "generated_at": "2026-11-06T15:00:12Z",
+   "run_id": "20261106T150012Z",
+   "status": "not_configured"
+  },
+  {
+   "files": 0,
+   "generated_at": "2026-11-06T20:52:43Z",
+   "run_id": "20261106T205243Z",
+   "status": "not_configured"
+  },
+  {
+   "files": 0,
+   "generated_at": "2026-11-07T00:55:12Z",
+   "run_id": "20261107T005512Z",
+   "status": "not_configured"
+  },
+  {
+   "files": 0,
+   "generated_at": "2026-11-07T07:07:44Z",
+   "run_id": "20261107T070744Z",
+   "status": "not_configured"
+  },
+  {
+   "files": 0,
+   "generated_at": "2026-11-07T13:59:25Z",
+   "run_id": "20261107T135925Z",
+   "status": "not_configured"
+  },
+  {
+   "files": 0,
+   "generated_at": "2026-11-07T18:45:54Z",
+   "run_id": "20261107T184554Z",
+   "status": "not_configured"
+  },
+  {
+   "files": 0,
+   "generated_at": "2026-11-07T22:43:58Z",
+   "run_id": "20261107T224358Z",
+   "status": "not_configured"
+  },
+  {
+   "files": 0,
+   "generated_at": "2026-11-08T02:27:52Z",
+   "run_id": "20261108T022752Z",
+   "status": "not_configured"
+  },
+  {
+   "files": 0,
+   "generated_at": "2026-11-08T10:17:31Z",
+   "run_id": "20261108T101731Z",
+   "status": "not_configured"
+  },
+  {
+   "files": 0,
+   "generated_at": "2026-11-08T17:01:50Z",
+   "run_id": "20261108T170150Z",
+   "status": "not_configured"
+  },
+  {
+   "files": 0,
+   "generated_at": "2026-11-08T21:09:20Z",
+   "run_id": "20261108T210920Z",
+   "status": "not_configured"
+  },
+  {
+   "files": 0,
+   "generated_at": "2026-11-09T00:52:38Z",
+   "run_id": "20261109T005238Z",
+   "status": "not_configured"
+  },
+  {
+   "files": 0,
+   "generated_at": "2026-11-09T07:56:56Z",
+   "run_id": "20261109T075656Z",
+   "status": "not_configured"
+  },
+  {
+   "files": 0,
+   "generated_at": "2026-11-09T18:46:19Z",
+   "run_id": "20261109T184619Z",
+   "status": "not_configured"
+  },
+  {
+   "files": 0,
+   "generated_at": "2026-11-10T02:05:54Z",
+   "run_id": "20261110T020554Z",
+   "status": "not_configured"
+  },
+  {
+   "files": 0,
+   "generated_at": "2026-11-10T09:46:28Z",
+   "run_id": "20261110T094628Z",
+   "status": "not_configured"
+  },
+  {
+   "files": 0,
+   "generated_at": "2026-11-10T17:48:40Z",
+   "run_id": "20261110T174840Z",
+   "status": "not_configured"
+  },
+  {
+   "files": 0,
+   "generated_at": "2026-11-10T23:17:31Z",
+   "run_id": "20261110T231731Z",
+   "status": "not_configured"
+  },
+  {
+   "files": 0,
+   "generated_at": "2026-11-11T06:12:41Z",
+   "run_id": "20261111T061241Z",
+   "status": "not_configured"
+  },
+  {
+   "files": 0,
+   "generated_at": "2026-11-11T14:20:09Z",
+   "run_id": "20261111T142009Z",
+   "status": "not_configured"
+  },
+  {
+   "files": 0,
+   "generated_at": "2026-11-11T21:55:50Z",
+   "run_id": "20261111T215550Z",
+   "status": "not_configured"
+  },
+  {
+   "files": 0,
+   "generated_at": "2026-11-12T02:57:08Z",
+   "run_id": "20261112T025708Z",
+   "status": "not_configured"
+  },
+  {
+   "files": 0,
+   "generated_at": "2026-11-12T11:02:10Z",
+   "run_id": "20261112T110210Z",
+   "status": "not_configured"
+  },
+  {
+   "files": 0,
+   "generated_at": "2026-11-12T18:53:42Z",
+   "run_id": "20261112T185342Z",
+   "status": "not_configured"
+  },
+  {
+   "files": 0,
+   "generated_at": "2026-11-13T00:19:37Z",
+   "run_id": "20261113T001937Z",
+   "status": "not_configured"
+  },
+  {
+   "files": 0,
+   "generated_at": "2026-11-13T07:54:47Z",
+   "run_id": "20261113T075447Z",
+   "status": "not_configured"
+  },
+  {
+   "files": 0,
+   "generated_at": "2026-11-13T16:19:35Z",
+   "run_id": "20261113T161935Z",
+   "status": "not_configured"
+  },
+  {
+   "files": 0,
+   "generated_at": "2026-11-13T22:36:14Z",
+   "run_id": "20261113T223614Z",
+   "status": "not_configured"
+  },
+  {
+   "files": 0,
+   "generated_at": "2026-11-14T03:11:50Z",
+   "run_id": "20261114T031150Z",
+   "status": "not_configured"
+  },
+  {
+   "files": 0,
+   "generated_at": "2026-11-14T10:24:39Z",
+   "run_id": "20261114T102439Z",
+   "status": "not_configured"
+  },
+  {
+   "files": 0,
+   "generated_at": "2026-11-14T17:04:52Z",
+   "run_id": "20261114T170452Z",
+   "status": "not_configured"
+  },
+  {
+   "files": 0,
+   "generated_at": "2026-11-14T21:28:14Z",
+   "run_id": "20261114T212814Z",
+   "status": "not_configured"
+  },
+  {
+   "files": 0,
+   "generated_at": "2026-11-15T01:53:11Z",
+   "run_id": "20261115T015311Z",
+   "status": "not_configured"
+  },
+  {
+   "files": 0,
+   "generated_at": "2026-11-15T09:21:49Z",
+   "run_id": "20261115T092149Z",
+   "status": "not_configured"
+  },
+  {
+   "files": 0,
+   "generated_at": "2026-11-15T17:07:15Z",
+   "run_id": "20261115T170715Z",
+   "status": "not_configured"
+  },
+  {
+   "files": 0,
+   "generated_at": "2026-11-15T21:47:05Z",
+   "run_id": "20261115T214705Z",
+   "status": "not_configured"
+  },
+  {
+   "files": 0,
+   "generated_at": "2026-11-16T02:03:30Z",
+   "run_id": "20261116T020330Z",
+   "status": "not_configured"
+  },
+  {
+   "files": 0,
+   "generated_at": "2026-11-16T09:38:59Z",
+   "run_id": "20261116T093859Z",
+   "status": "not_configured"
+  },
+  {
+   "files": 0,
+   "generated_at": "2026-11-16T20:26:54Z",
+   "run_id": "20261116T202654Z",
+   "status": "not_configured"
+  }
+ ],
+ "last_good_run": {
+  "files": null,
+  "generated_at": "",
+  "run_id": "seeded",
+  "status": "ok"
+ },
+ "missing": [
+  "GOOGLE_DRIVE_REFRESH_TOKEN",
+  "GOOGLE_DRIVE_CLIENT_ID",
+  "GOOGLE_DRIVE_CLIENT_SECRET"
+ ],
+ "notes": [
+  "half-configured credentials are treated as not configured (gateway rule) — nothing was attempted"
+ ],
+ "run_id": "20261117T035045Z",
+ "scan_findings": [],
+ "schema": 1,
+ "source": {
+  "credential_mode": "none",
+  "folder_id": null,
+  "query": null,
+  "type": "google-drive"
+ },
+ "status": "not_configured"
+}

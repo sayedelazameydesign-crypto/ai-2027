@@ -1,0 +1,70 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pro Web Engine - Firestore Sync</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-900 text-white p-10">
+    
+    <div class="max-w-md mx-auto bg-slate-800 rounded-xl shadow-2xl border border-slate-700 p-6 text-center">
+        <h1 class="text-2xl font-bold text-sky-400 mb-4">🔥 Firestore Live Sync</h1>
+        
+        <div id="status" class="text-xs mb-4 px-3 py-1 bg-slate-700 rounded-full inline-block">
+            ⌛ Connecting...
+        </div>
+
+        <button id="sendBtn" class="w-full bg-sky-500 hover:bg-sky-600 text-white font-bold py-2 px-4 rounded transition">
+            Send Test Data
+        </button>
+        
+        <div id="logs" class="mt-4 text-left text-xs font-mono bg-black p-3 rounded h-32 overflow-y-auto">
+            > Ready for logs...
+        </div>
+    </div>
+
+    <script type="module">
+      import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+      import { getFirestore, collection, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+      // ضع إعداداتك هنا مرة أخرى
+      const firebaseConfig = {
+        apiKey: "YOUR_API_KEY",
+        authDomain: "YOUR_PROJECT.firebaseapp.com",
+        projectId: "YOUR_PROJECT_ID",
+        storageBucket: "YOUR_PROJECT.appspot.com",
+        messagingSenderId: "YOUR_SENDER_ID",
+        appId: "YOUR_APP_ID"
+      };
+
+      try {
+          const app = initializeApp(firebaseConfig);
+          const db = getFirestore(app);
+          
+          const status = document.getElementById('status');
+          const logs = document.getElementById('logs');
+          
+          status.innerHTML = "✅ Firebase Connected";
+          status.classList.add('text-green-400');
+
+          document.getElementById('sendBtn').onclick = async () => {
+              logs.innerHTML += "<br>> Sending data...";
+              try {
+                  const docRef = await addDoc(collection(db, "pro_logs"), {
+                      user: "Pro Programmer",
+                      action: "Button Clicked",
+                      time: serverTimestamp()
+                  });
+                  logs.innerHTML += `<br><span class="text-green-400">> Success! ID: ${docRef.id}</span>`;
+              } catch (e) {
+                  logs.innerHTML += `<br><span class="text-red-400">> Error: ${e.message}</span>`;
+              }
+          };
+      } catch (e) {
+          console.error(e);
+      }
+    </script>
+</body>
+</html>
