@@ -1,0 +1,20 @@
+# Render Blueprint — zero-card deployment (free web service + Turso)
+# Docs: deploy/render/README.md
+# Policy note: set Auto-Deploy OFF in dashboard and deploy the Official
+# Deployment Source SHA manually (pinned-SHA policy, AUDIT-002).
+services:
+  - type: web
+    name: nawah-agent
+    runtime: node
+    plan: free
+    buildCommand: npm ci --no-audit --no-fund && npm run build
+    startCommand: npx next start -H 0.0.0.0 -p $PORT
+    healthCheckPath: /api/health
+    envVars:
+      - key: BROWSER_DISABLED
+        value: "1"                # 512MB free tier cannot host chromium
+      - key: NODE_VERSION
+        value: "20"
+      # Set these five in the dashboard as SECRET env vars (never here):
+      # OPENAI_API_KEY, OPENAI_BASE_URL, OPENAI_MODEL,
+      # TURSO_DATABASE_URL, TURSO_AUTH_TOKEN

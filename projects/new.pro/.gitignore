@@ -1,0 +1,22 @@
+# dependencies
+node_modules
+
+# next.js
+.next
+out
+next-env.d.ts
+
+# env — المفاتيح لا ترفع أبدًا على GitHub
+.env
+.env*.local
+.env.production
+
+# misc
+.vercel
+*.tsbuildinfo
+.DS_Store
+npm-debug.log*
+
+# Playwright (Item 4) — artifacts محلية فقط، لا تُدفع
+/test-results/
+/playwright-report/

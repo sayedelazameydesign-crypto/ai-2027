@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# Local pre-commit hook: block PII and secrets before they enter history.
+# Install with: bash scripts/install-hooks.sh
+# Policy: docs/security/pii-guard.md · docs/adr/0012-pii-dlp-guard.md
+#
+# This is the earliest boundary where data can enter the repository, and the
+# cheapest one to enforce. CI repeats the scan on tracked files, so
+# `git commit --no-verify` does not get anything merged.
+
+set -Eeuo pipefail
+
+if ! command -v node >/dev/null 2>&1; then
+  printf '\033[33m! node not found — privacy scan skipped locally (CI still runs it)\033[0m\n'
+  exit 0
+fi
+
+if ! node scripts/check-pii.mjs --staged; then
+  printf '\n\033[31m✗ commit blocked: staged content looks like PII or a secret\033[0m\n'
+  printf '  fix: remove the data, or add a reviewed exemption to .pii-allowlist.json\n'
+  printf '  why: docs/security/pii-guard.md\n'
+  exit 1
+fi
+
+# Adversarial inputs: warn-only on purpose. A blocked commit on a legitimate
+# Persian ZWNJ or a policy quoting an attack would train people to use
+# --no-verify, which disables the PII guard above as well. CI blocks.
+if ! node scripts/adversarial-scan.mjs --staged >/tmp/.adversarial-staged.log 2>&1; then
+  printf '\n\033[33m! staged content has an adversarial finding (warn-only locally)\033[0m\n'
+  sed -n '3,12p' /tmp/.adversarial-staged.log
+  printf '  fix: remove the codepoint, or add a reviewed entry to .adversarial-allowlist.json\n'
+  printf '  why: docs/security/adversarial-inputs.md\n'
+  printf '  CI blocks on this; the commit is allowed so a false positive cannot stop your work.\n'
+fi

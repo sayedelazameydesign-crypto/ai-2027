@@ -1,0 +1,188 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "cela-use-browser"
+version = "0.1.0"
+description = "cela_use_browser — autonomous browser & sandboxed execution platform with a dedicated private API (/cela/v1 + CelaBrowser facade)."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { file = "LICENSE" }
+authors = [{ name = "open_source maintainers" }]
+keywords = ["agents", "llm", "mcp", "sandbox", "open-source"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Typing :: Typed",
+]
+dependencies = [
+    "pydantic>=2.7",
+    "httpx>=0.27,<1.0",
+    "httpcore>=1.0,<2.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+    "pytest-cov>=5.0",
+    "ruff>=0.6",
+    # tests/test_eval_workflow_security.py parses the workflow YAML to
+    # assert the eval job cannot be given a free-text destination;
+    # the `reach` extra also pulls PyYAML, but CI must not rely on that optional
+    # integration extra, so the test dependency is declared here.
+    "pyyaml>=6.0",
+]
+server = [
+    "fastapi>=0.115",
+    "uvicorn>=0.30",
+    "websockets>=13.0",
+]
+# os_memory and os_know (ADR-0016) deliberately add **no** extra: they are
+# pydantic + httpx only, so `pip install -e ".[dev,server]"` still runs the whole
+# durable-memory corpus offline. A provider that needs its own SDK arrives behind
+# [memory-<provider>] when such an adapter is actually written — not before.
+browser = [
+    "playwright>=1.47",
+]
+# Paper PDFs are untrusted input: the floor clears every pypdf DoS advisory
+# published up to 6.19.0 (GHSA-v247-6f48-mgcj, GHSA-php9-fj8v-98fj, …).
+papers = [
+    "pypdf>=6.19.0",
+]
+sandbox = [
+    "e2b-code-interpreter>=1.5",
+]
+# Agent-Reach is not on PyPI (the maintainers explicitly warn about the
+# unrelated package of that name there), so the adapter pins the GitHub repo at
+# a known commit. Install only when the CLI-shaped channels are wanted:
+#   pip install -e ".[dev,server,reach]"
+reach = [
+    "agent-reach @ git+https://github.com/Panniantong/agent-reach@94f06c1969dfc1834001269d79d3ad0972d9dee6",
+]
+distributed = [
+    "psycopg[binary]>=3.2",
+    "redis>=5.0",
+]
+ai = [
+    "scikit-learn>=1.5",
+    "spacy>=3.7",
+    "sentence-transformers>=3.0",
+    "faiss-cpu>=1.8",
+    "opencv-python-headless>=4.10",
+    "paddleocr>=2.8",
+    "faster-whisper>=1.0",
+]
+# Resource preflight (ADR-0020) runs fine without psutil — procfs/sysconf cover
+# Linux and POSIX. Install this extra only where the richer psutil reading is
+# wanted (e.g. macOS process-level accounting for capacity planning).
+local = [
+    "psutil>=5.9",
+]
+
+[project.urls]
+Homepage = "https://github.com/sayedelazameydesign-crypto/open_source-"
+Repository = "https://github.com/sayedelazameydesign-crypto/open_source-"
+Issues = "https://github.com/sayedelazameydesign-crypto/open_source-/issues"
+
+[project.scripts]
+cela = "os_server.cli:main"
+
+# The optional `reach` extra pins Agent-Reach from GitHub by full commit SHA
+# (it is not published on PyPI on purpose). Hatchling refuses direct references
+# unless this is set, and without it `pip install -e ".[dev,server]"` fails at
+# metadata generation — so the flag is load-bearing for every install path.
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.hatch.build.targets.sdist]
+# The vendored ArtCraft Launcher snapshot (ADR-0015) must never be redistributed
+# by us. Hatchling's sdist defaults to every git-tracked file, which would ship
+# 4.6 MB of third-party code — including the ArtCraft marks, which are NOT open
+# source (packages/craft-launcher/docs/brand/LICENSE-brand.txt) — to a package
+# index carrying *our* MIT metadata. The wheel target below already lists only
+# the first-party os_* packages; the sdist must match that scope.
+# See docs/THIRD_PARTY_POLICY.md rule T-4 and tests/test_vendored_integrity.py.
+exclude = ["packages/craft-launcher"]
+
+[tool.hatch.build.targets.wheel]
+packages = [
+    "packages/os_core/os_core",
+    "packages/os_agents/os_agents",
+    "packages/os_tools/os_tools",
+    "packages/os_orchestration/os_orchestration",
+    "packages/os_server/os_server",
+    "packages/os_evals/os_evals",
+    "packages/os_skills/os_skills",
+    "packages/os_reach/os_reach",
+    "packages/os_launcher/os_launcher",
+    "packages/os_memory/os_memory",
+    "packages/os_know/os_know",
+    "packages/os_mcp/os_mcp",
+]
+
+# --- Monorepo path setup: every package is importable without installation ---
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+# ``-m "not network"``: live-channel tests (ADR-0013) never run in the default
+# suite — the promise is ``pytest -q`` with no network and no keys. Run them
+# explicitly with ``pytest -m network`` (CLI -m overrides this default).
+addopts = "-ra --strict-markers -m \"not network\""
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+pythonpath = [
+    "packages/os_core",
+    "packages/os_agents",
+    "packages/os_tools",
+    "packages/os_orchestration",
+    "packages/os_server",
+    "packages/os_evals",
+    "packages/os_skills",
+    "packages/os_reach",
+    "packages/os_launcher",
+    "packages/os_memory",
+    "packages/os_know",
+    "packages/os_mcp",
+    "packages/legacy/src",
+]
+markers = [
+    "network: tests that require real network access (deselected by default)",
+    "browser: tests that require a real Playwright browser",
+]
+filterwarnings = ["error::RuntimeWarning"]
+
+[tool.coverage.run]
+branch = true
+source = ["os_core", "os_agents", "os_tools", "os_orchestration", "os_server", "os_evals", "os_skills", "os_reach", "os_launcher", "os_memory", "os_know", "os_mcp"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["packages", "tests"]
+extend-exclude = ["packages/legacy", "packages/web", "packages/craft-launcher"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "C4", "SIM", "RUF", "ASYNC"]
+ignore = ["RUF001", "RUF002", "RUF003", "B008"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["B011", "S101"]
+"packages/*/os_*/__init__.py" = ["F401"]
+# ASYNC109 wants timeouts expressed via asyncio.timeout() rather than a
+# parameter. The sandbox is the exception: a per-call timeout is part of the
+# CodeExecBackend contract, because the caller — not the backend — owns the
+# deadline for untrusted code. Likewise, CelaBrowser.browse/wait accept a
+# caller wait deadline while shielding the underlying run task.
+"packages/os_tools/os_tools/code_exec.py" = ["ASYNC109"]
+"packages/os_server/os_server/cela.py" = ["ASYNC109"]
+# Same contract for the MCP clients: the per-request deadline belongs to the
+# caller (handshake vs. tool call vs. teardown each have their own), and it
+# must be reported in the timeout result the model sees.
+"packages/os_mcp/os_mcp/client.py" = ["ASYNC109"]

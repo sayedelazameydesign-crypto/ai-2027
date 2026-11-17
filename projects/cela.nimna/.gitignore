@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Secrets & local config
+.env
+.env.*
+!.env.example
+*.local.env
+
+# Runtime data
+*.db
+*.sqlite
+*.sqlite3
+data/
+workspace/reports/
+workspace/tmp/
+workspace/**/*.png
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/
+
+# offline code snapshots from scripts/snapshot-prod.sh (tarballs: never commit)
+.snapshots/
+
+# FastAPI Cloud local link (app id in CI comes from FASTAPI_CLOUD_APP_ID)
+.fastapicloud/

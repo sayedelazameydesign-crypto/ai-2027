@@ -1,0 +1,110 @@
+# 🚀 دليل نشر متجر CELIA FASHION DESIGN
+
+> **تحديث:** الآن يدعم نشر مجاني 100% بدون بطاقة بنكية!
+
+---
+
+## 📋 خيارات النشر
+
+### ⭐ الخيار 1: Vercel + Koyeb (موصى به - مجاني بدون بطاقة)
+
+✅ **مجاني 100%**  
+✅ **بدون بطاقة بنكية**  
+✅ **سهل الإعداد**
+
+📖 **الدليل الكامل:** `DEPLOYMENT_GUIDE_KOYEB.md`  
+⚡ **الدليل السريع:** `QUICK_DEPLOY.md`
+
+---
+
+### الخيار 2: Vercel + Render (مجاني مع محدودات)
+
+يتطلب بطاقة بنكية لـ Render (لكن لا يخصم)
+
+---
+
+## 🎯 الخطة الموصى بها
+
+| الخدمة | المنصة | التكلفة |
+|--------|--------|----------|
+| Frontend | Vercel | مجاني |
+| Node Backend | Koyeb | مجاني ($5 رصيد شهري) |
+| ML Backend | Koyeb | مجاني ($5 رصيد شهري) |
+| Database | MongoDB Atlas | مجاني (512 MB) |
+
+---
+
+## 📚 الأدلة المتوفرة
+
+1. **`DEPLOYMENT_GUIDE_KOYEB.md`** - دليل شامل مفصل (Vercel + Koyeb)
+2. **`QUICK_DEPLOY.md`** - دليل سريع (5 دقائق)
+3. **`SETUP_GUIDE.md`** - للتشغيل المحلي
+
+---
+
+## 🚀 الخطوات السريعة
+
+### 1️⃣ الواجهة الأمامية (Vercel)
+
+```bash
+1. https://vercel.com/signup
+2. استيراد المشروع من GitHub
+3. Root Directory: frontend
+4. Deploy
+```
+
+### 2️⃣ السيرفرات الخلفية (Koyeb)
+
+```bash
+1. https://app.koyeb.com/auth/signup
+2. إنشاء Web Service للـ Node Backend
+3. إنشاء Web Service للـ ML Backend
+```
+
+### 3️⃣ الربط
+
+```bash
+1. تحديث Environment Variables في Vercel
+2. Redeploy
+```
+
+---
+
+## 📖 للتفاصيل الكاملة
+
+راجع **`DEPLOYMENT_GUIDE_KOYEB.md`** للحصول على:
+- خطوات مفصلة بالصور
+- إعدادات Build/Start Commands
+- متغيرات البيئة
+- حل المشاكل الشائعة
+
+---
+
+## ⚠️ ملاحظات هامة
+
+1. **Koyeb** يعطيك **$5 رصيد مجاني شهرياً**
+2. هذا الرصيد كافي لتشغيل **تطبيق واحد** بشكل مستمر
+3. لتشغيل اثنين، قد تحتاج تحسين الموارد أو استخدام منصة إضافية
+
+---
+
+## 🎉 بعد النشر
+
+سيكون لديك:
+```
+Frontend:  https://your-app.vercel.app
+Node API:  https://your-node-backend.koyeb.app
+ML API:    https://your-ml-backend.koyeb.app
+```
+
+---
+
+## 📞 الدعم
+
+للمساعدة:
+- واتساب: 01126212452
+- إيميل: sayedelazameydesign@gmail.com
+
+---
+
+**مبروك! متجرك سيعمل 100% مجاناً على الإنترنت!** 🎉

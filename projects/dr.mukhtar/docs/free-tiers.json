@@ -1,0 +1,349 @@
+{
+  "$schema_note": "Zero-Card ledger. One entry per external service. Re-verify every 30 days against the official pricing page before adopting. Limits are snapshots, not guarantees.",
+  "policy": {
+    "checked": "2026-11-06",
+    "reverify_by": "2026-12-06",
+    "allowed_signup": [
+      "email",
+      "GitHub",
+      "Google"
+    ],
+    "forbidden": [
+      "card at sign-up",
+      "card-required trial",
+      "pre-auth hold",
+      "verification charge"
+    ],
+    "rule_if_card_requested": "stop, do not enter card, pick fallback, log the incident here"
+  },
+  "services": [
+    {
+      "service": "github-pages",
+      "role": "static hosting of the booking site",
+      "checked": "2026-11-04",
+      "card_required": false,
+      "signup": "GitHub account",
+      "limits": "public repos: 1 GB site, 100 GB/month soft bandwidth; 10 builds/hour soft limit does not apply when building and publishing with a custom GitHub Actions workflow",
+      "terms_note": "static sites only; GitHub Pages prohibits use primarily to facilitate commercial transactions or commercial SaaS, and should not be used for sensitive transactions. Assess the clinic's proposed use against current terms before production; a general claim that commercial use is allowed would be misleading.",
+      "quota_config": "n/a (platform limits)",
+      "fallback": "cloudflare-pages",
+      "adapter": "static files at repo root; no provider-specific code"
+    },
+    {
+      "service": "cloudflare-pages",
+      "role": "fallback static host / preview builds",
+      "checked": "2026-11-04",
+      "card_required": false,
+      "signup": "email",
+      "limits": "Workers free: 100k requests/day, 500 builds/month",
+      "terms_note": "verify current free plan wording before adopting",
+      "quota_config": "n/a",
+      "fallback": "netlify-static",
+      "adapter": "same static bundle, no code change"
+    },
+    {
+      "service": "netlify-static",
+      "role": "second fallback static host",
+      "checked": "2026-11-04",
+      "card_required": false,
+      "signup": "GitHub or email",
+      "limits": "free credit-based plan; verify credit allotment",
+      "terms_note": "credit model changes often — read the pricing page before adopting",
+      "quota_config": "n/a",
+      "fallback": "github-pages",
+      "adapter": "same static bundle"
+    },
+    {
+      "service": "google-apps-script",
+      "role": "clinic backend: booking rules, Sheets persistence, Calendar events",
+      "checked": "2026-11-04",
+      "card_required": false,
+      "signup": "Google account",
+      "limits": "consumer account quotas: 20k UrlFetch calls/day, 90 min/day trigger runtime, Sheets 10M cells, Calendar read/write subject to Google quota changes",
+      "terms_note": "consumer quotas are not an SLA; clinic must accept documented limits before go-live",
+      "quota_config": "SLOT_MINUTES, WORK_DAYS, WORK_START/END, LLM_DAILY_LIMIT, LLM_HOURLY_LIMIT (Script Properties)",
+      "fallback": "self-hosted Node backend behind the same google.script.run-shaped API",
+      "adapter": "app.js talks only to api()/callServer(); Code.gs is the single provider file"
+    },
+    {
+      "service": "google-sheets",
+      "role": "system of record for requests, audit trail, closures",
+      "checked": "2026-11-04",
+      "card_required": false,
+      "signup": "Google account",
+      "limits": "no automatic backups on free tier; 10M cells per file",
+      "terms_note": "no PII beyond contact fields; no medical data ever",
+      "quota_config": "MAX_OUTAGE_REQUESTS=25, MAX_OUTAGE_AUDITS=100 (bounded outage queues)",
+      "fallback": "turso",
+      "adapter": "requestsSheet_/auditSheet_/closuresSheet_ are the only Sheet touch points"
+    },
+    {
+      "service": "google-calendar",
+      "role": "source of truth for doctor availability",
+      "checked": "2026-11-04",
+      "card_required": false,
+      "signup": "Google account",
+      "limits": "read/write quotas change without notice; availability reads cached 30s",
+      "terms_note": "clinic-owned calendar; never share credentials",
+      "quota_config": "availability cache 30s (CK getAvailableSlotsCached_)",
+      "fallback": "caldav-provider",
+      "adapter": "getCalendar_() + findCalendarEvent_() only"
+    },
+    {
+      "service": "gemini-api",
+      "role": "optional administrative assistant (never in booking decisions)",
+      "checked": "2026-11-04",
+      "card_required": false,
+      "signup": "email / Google",
+      "limits": "free tier limits were reduced in Dec 2025 — read live limits in AI Studio; this app caps itself at LLM_DAILY_LIMIT (25) and LLM_HOURLY_LIMIT (20)",
+      "terms_note": "free-tier inputs may be used to improve models → no PII/medical text is forwarded (screened in Code.gs before the adapter)",
+      "quota_config": "LLM_DAILY_LIMIT, LLM_HOURLY_LIMIT, LLM_CACHE_TTL_SEC, LLM_CIRCUIT_FAILS, LLM_COOLDOWN_S",
+      "fallback": "groq",
+      "adapter": "Llm.gs only — swapping provider = editing LLM.PROVIDERS"
+    },
+    {
+      "service": "groq",
+      "role": "fallback LLM provider for the administrative assistant",
+      "checked": "2026-11-04",
+      "card_required": false,
+      "signup": "email / GitHub / Google",
+      "limits": "free tier with per-minute and per-day token limits — verify live in console",
+      "terms_note": "add a PROVIDERS entry before relying on it; do not send PII",
+      "quota_config": "reuses LLM_* settings; provider model name stays in Script Properties",
+      "fallback": "local-ollama",
+      "adapter": "Llm.gs PROVIDERS.groq (not implemented yet — secondary chain slot in LLM_CHAIN is ignored until defined)"
+    },
+    {
+      "service": "google-drive-oauth",
+      "role": "bridge long memory: evidence, backups, inbox (drive.file)",
+      "checked": "2026-11-04",
+      "card_required": false,
+      "signup": "Google account (2-Step Verification)",
+      "limits": "15 GB shared with Gmail and Photos; ~750 GB/day upload soft cap; 12k requests/min per user",
+      "terms_note": "free consumer quota; no billing required for API use within quota",
+      "quota_config": "quota() in scripts/google/selftest.js; alert at 80% in profile",
+      "fallback": "local adapter (scripts/google/gateway.js LocalAdapter)",
+      "adapter": "GoogleGateway storage + local fallback"
+    },
+    {
+      "service": "google-oauth-desktop",
+      "role": "OAuth 2.0 Desktop client for the system account's refresh token",
+      "checked": "2026-11-04",
+      "card_required": false,
+      "signup": "Google account (2-Step Verification)",
+      "limits": "no cost; 100 refresh tokens per client per account (oldest invalidated)",
+      "terms_note": "Testing status tokens die in 7 days → publish to In production",
+      "quota_config": "auth_mode in config/google.profile.example.json",
+      "fallback": "local adapter; no OAuth needed for CI",
+      "adapter": "scripts/google/auth.js → per-profile token name"
+    },
+    {
+      "service": "github-actions",
+      "role": "CI runtime for all gates: lint/test/build/audit, E2E, Lighthouse, security scans",
+      "checked": "2026-11-06",
+      "card_required": false,
+      "signup": "GitHub account",
+      "limits": "public repositories: standard runners free, no minutes billed; per-job 6h cap; concurrency subject to plan",
+      "terms_note": "public repos get free unlimited-ish minutes under GitHub's fair-use model; no SLA",
+      "quota_config": "timeout-minutes on every job; concurrency groups cancel superseded runs",
+      "fallback": "local gates (npm run gates, sh scripts/pre-commit.sh) or a self-hosted runner you control",
+      "adapter": ".github/workflows/* — no provider SDK anywhere"
+    },
+    {
+      "service": "codeql",
+      "role": "Semantic SAST in CI (javascript-typescript + python) feeding Security → Code scanning",
+      "checked": "2026-11-06",
+      "card_required": false,
+      "signup": "GitHub account (public repository)",
+      "limits": "free for public repositories on GitHub.com; private repos require GitHub Advanced Security",
+      "terms_note": "*.gs (Apps Script) is not a supported language — covered by repo gates instead",
+      "quota_config": "build-mode: none; weekly cron + push/PR triggers",
+      "fallback": "semgrep-community-edition (rules: p/javascript, p/security-audit) added as a local gate",
+      "adapter": ".github/workflows/codeql.yml — no code references"
+    },
+    {
+      "service": "dependabot",
+      "role": "Security update pull requests + dependency alerts (version bumps delegated to Renovate)",
+      "checked": "2026-11-06",
+      "card_required": false,
+      "signup": "GitHub account (native feature)",
+      "limits": "free for all repositories; security updates do not consume the PR limit set to 0",
+      "terms_note": "open-pull-requests-limit: 0 in .github/dependabot.yml blocks version-update PRs only; security fixes still arrive",
+      "quota_config": "cooldown default-days: 7; interval: weekly; npm + github-actions",
+      "fallback": "Renovate with vulnerabilityAlerts.enabled=true (one bot, both jobs) or monthly manual audit",
+      "adapter": ".github/dependabot.yml — declarative, no keys"
+    },
+    {
+      "service": "renovate",
+      "role": "Dependency version update PRs: weekly, grouped, quarantined, never auto-merged",
+      "checked": "2026-11-06",
+      "card_required": false,
+      "signup": "GitHub App install (repository access) by the owner",
+      "limits": "free for public and private repositories on the hosted (Mend) service",
+      "terms_note": "minimumReleaseAge 7 days; prConcurrentLimit 5; prHourlyLimit 2; vulnerabilityAlerts disabled here (Dependabot owns security)",
+      "quota_config": "renovate.json — schedule before 6am on monday, Africa/Cairo",
+      "fallback": "dependabot version updates (raise open-pull-requests-limit above 0) or a monthly scripted outdated-deps report",
+      "adapter": "renovate.json — no keys, no hosted dashboard configuration"
+    },
+    {
+      "service": "gitleaks",
+      "role": "Secret scanning gate in CI and pre-commit (second opinion to scripts/scan-secrets.js)",
+      "checked": "2026-11-06",
+      "card_required": false,
+      "signup": "none (open-source binary, pinned v8.30.1, release downloaded in CI)",
+      "limits": "unlimited local/CI scans; MIT licensed",
+      "terms_note": "run in GitHub Actions with a pinned release; a failed download fails the job (never a silent green)",
+      "quota_config": ".gitleaks.toml allow-list; CI fails on any finding",
+      "fallback": "scripts/scan-secrets.js (dependency-free, always on) plus GitHub secret scanning (free for public repos)",
+      "adapter": "CI step in .github/workflows/ci.yml — no keys"
+    },
+    {
+      "service": "actionlint",
+      "role": "GitHub Actions workflow linter gate in CI (syntax, shellcheck integration, expression checks)",
+      "checked": "2026-11-06",
+      "card_required": false,
+      "signup": "none (open-source binary, pinned v1.7.7, release downloaded in CI)",
+      "limits": "unlimited local/CI runs; MIT licensed",
+      "terms_note": "unreachable release host = failed job by design; never a warning-only pass",
+      "quota_config": "pinned version via ACTIONLINT_VERSION in ci.yml",
+      "fallback": "scripts/check-workflows.js contract (secrets/permissions/SHA pinning) + shellcheck",
+      "adapter": "CI step in .github/workflows/ci.yml — no keys"
+    },
+    {
+      "service": "osv-scanner",
+      "role": "Known-vulnerability scan of the dependency tree against the OSV database",
+      "checked": "2026-11-06",
+      "card_required": false,
+      "signup": "none (Google open-source CLI; workflow pinned to release SHA)",
+      "limits": "free, anonymous queries to api.osv.dev; no account required",
+      "terms_note": "full-tree recursive scan; SARIF uploaded to Security tab; fail-on-vuln blocks merges",
+      "quota_config": ".github/workflows/osv-scan.yml — reusable workflow @b1d267a, weekly Monday 06:23 UTC + push/PR",
+      "fallback": "npm audit (registry advisories) + manual GHSA review before each release",
+      "adapter": "workflow only — no code instrumentation"
+    },
+    {
+      "service": "zizmor",
+      "role": "Static security audit of the GitHub Actions workflows themselves",
+      "checked": "2026-11-06",
+      "card_required": false,
+      "signup": "none (open-source Rust binary; also on PyPI for local runs)",
+      "limits": "unlimited scans; MIT licensed; online audits use the workflow's GITHUB_TOKEN read-only",
+      "terms_note": "v1.32.0 verified locally: 48 findings (8 artipacked, 2 excessive-permissions, 1 dangerous-trigger, 26+ unpinned-uses under upstream default blanket policy); repo pinned all actions to SHAs so the gate runs strict (min-confidence: medium) with exactly one documented inline exception",
+      "quota_config": ".github/workflows/zizmor.yml — weekly Monday 05:17 UTC + push/PR; SARIF to Security tab",
+      "fallback": "actionlint + scripts/check-workflows.js + manual review checklist (docs/secrets.md §CI)",
+      "adapter": "workflow + optional local binary (pip install zizmor) — no keys"
+    },
+    {
+      "service": "openssf-scorecard",
+      "role": "Weekly supply-chain security score (branch protection, token permissions, pinned deps, dangerous workflows)",
+      "checked": "2026-11-06",
+      "card_required": false,
+      "signup": "none beyond the GitHub account (public repository)",
+      "limits": "free for public repositories; private needs Advanced Security",
+      "terms_note": "publish_results: true shares score with api.scorecard.dev (public metadata of an already-public repo) and enables the badge; SARIF mirrored to code scanning",
+      "quota_config": ".github/workflows/scorecard.yml — Wednesdays 05:27 UTC; job-scoped id-token: write (OIDC)",
+      "fallback": "manual monthly checklist against the Scorecard checks (docs/engineering-stack.md §٥-7)",
+      "adapter": "workflow only — no keys"
+    },
+    {
+      "service": "release-please",
+      "role": "Release PR automation: version bump + CHANGELOG from Conventional Commits",
+      "checked": "2026-11-06",
+      "card_required": false,
+      "signup": "none (open-source action; built-in GITHUB_TOKEN only)",
+      "limits": "free; opens/updates a release PR on main; nothing publishes or merges without a human",
+      "terms_note": "manifest mode (.release-please-manifest.json @ 1.0.0, release-type node); first release PR may appear from full history — the owner closes it if unwanted",
+      "quota_config": "release-please-config.json; block runs on push to main only; concurrency never cancelled",
+      "fallback": "manual: bump package.json version, handwritten CHANGELOG.md entry, git tag + gh release create",
+      "adapter": "workflow only — no keys"
+    },
+    {
+      "service": "playwright",
+      "role": "Browser E2E for the public site in demo mode (booking, tracking, staff board, a11y/RTL)",
+      "checked": "2026-11-06",
+      "card_required": false,
+      "signup": "none (MIT open-source; browsers installed on the runner)",
+      "limits": "free; runs in GitHub Actions runners or locally; no browser download inside the repo",
+      "terms_note": "chromium only (--with-deps on ubuntu-latest); tests never touch the real clinic — fake phones, localStorage demo backend",
+      "quota_config": "playwright.config.mjs — 1 worker, retries: 1 in CI, webServer via scripts/preview.py:0.0.0.0:8080",
+      "fallback": "scripts/test-ui-smoke.js (jsdom DOM journeys, always-on in npm test) — zero install beyond dev deps",
+      "adapter": "e2e/clinic.spec.mjs — no test needs network beyond localhost"
+    },
+    {
+      "service": "lighthouse-ci",
+      "role": "Performance / accessibility / SEO audit of the static site in CI (a11y ≥ 0.9 is an error)",
+      "checked": "2026-11-06",
+      "card_required": false,
+      "signup": "none (open-source; uses the Chrome preinstalled on ubuntu-latest via chrome-launcher)",
+      "limits": "free; filesystem upload only — reports stay in the run artifacts, never on an external service",
+      "terms_note": "desktop preset, 1 run; performance/SEO/best-practices are warnings with recorded floors (perf 0.5, seo/best-practices 0.8); a11y is the only error-level category",
+      "quota_config": ".lighthouserc.json — served by scripts/preview.py on 8080",
+      "fallback": "manual Lighthouse run in Chrome before each release; a11y spot-check via jsdom smoke + keyboard audit",
+      "adapter": "npx @lhci/cli@0.16.0 — pinned; no account, no token"
+    },
+    {
+      "service": "github-branch-protection",
+      "role": "main protection: pull request required + required status check + enforce admins (config ready; enabling is an owner step)",
+      "checked": "2026-11-06",
+      "card_required": false,
+      "signup": "GitHub account with Administration permission (integration tokens return 403 — verified 2026-11-06)",
+      "limits": "free for public repositories; classic branch protection or Repository Rulesets",
+      "terms_note": "REQUIRED CONTEXT IS THE JOB NAME (lint · typecheck · test · build · audit), not the YAML job id — scripts/bootstrap-github.sh was corrected accordingly. No approving-review requirement is configured (single-maintainer repo; enforce_admins would otherwise block all merges)",
+      "quota_config": "enforce_admins=true; strict=true; restrictions=null",
+      "fallback": "process discipline + required CI via repository rules; no technical substitute exists for protection itself",
+      "adapter": "owner-run command (docs/engineering-stack.md §٥) — no code change once enabled"
+    }
+  ],
+  "known_card_required_avoided": [
+    {
+      "service": "fly.io",
+      "reason": "card required at sign-up"
+    },
+    {
+      "service": "koyeb",
+      "reason": "card required"
+    },
+    {
+      "service": "aws",
+      "reason": "card required"
+    },
+    {
+      "service": "gcp-cloud-run",
+      "reason": "billing account + card"
+    },
+    {
+      "service": "azure",
+      "reason": "card required"
+    },
+    {
+      "service": "oracle-cloud",
+      "reason": "card verification"
+    },
+    {
+      "service": "anthropic-api",
+      "reason": "direct API requires paid account"
+    },
+    {
+      "service": "whatsapp-cloud-api (sending to real numbers)",
+      "reason": "billed per delivered message, and without a payment method delivery stops once a number's 1,000 free service messages for the month are used; adopted here only as an off/dry-run adapter — see docs/prd/whatsapp-cloud-api.md",
+      "checked": "2026-11-05",
+      "sources": [
+        {
+          "url": "https://developers.facebook.com/documentation/business-messaging/whatsapp/pricing",
+          "page_updated": "2026-09-30",
+          "verified": "Since 2026-10-01 service messages are billed per message; each business phone number gets 1,000 free service messages per month (no roll-over), charged from the 1,001st. Every template (marketing, utility, authentication) is billed per delivered message; service messages are the non-template replies. Billing happens on delivery only. Without a payment method on the account, service messages are still delivered inside the 1,000-message monthly allowance and are NOT delivered after it — so a card-free account works for replies up to that ceiling and for nothing else."
+        },
+        {
+          "url": "https://developers.facebook.com/documentation/business-messaging/whatsapp/business-phone-numbers/phone-numbers",
+          "page_updated": "2026-05-21",
+          "verified": "A test business phone number is generated and registered automatically by the Get Started flow; a number already in use with WhatsApp cannot be registered unless it is deleted first (and deletion is blocked while paid messages were sent in the last 30 days); registration requires a two-step-verification PIN plus an SMS or voice code. Recipients must be in E.164 form: if the leading plus sign is omitted, Meta prepends the BUSINESS number's country calling code — the documented example turns (631) 555-1234 into +916315551234 — so a local form such as 01113593643 would become +2001113593643 and be misrouted. A new business portfolio is initially capped at two registered business phone numbers, rising to 20 after business verification (or at the 2,000-number limit)."
+        }
+      ],
+      "unverified": [
+        "the maximum number of recipients a test number may message (not stated on the pages read; the two-number figure on the phone-numbers page is a cap on registered business numbers per portfolio, not on recipients)",
+        "whether a given Graph API version is still served, and for how long: neither page states a support window; their examples use v23.0 and v27.0, while WhatsApp.gs previously pinned v21.0 — the version is now a validated setting with a v23.0 default"
+      ],
+      "note": "Access to Cloud API itself is free; messages are billed. This entry exists because the adapter is adopted in dry-run only. Two consequences recorded 2026-11-05: replies inside the monthly 1,000 are deliverable without a card, and the recipient format is E.164 on the wire (fixed in WhatsApp.gs, which now also takes the Graph version from a validated setting)."
+    }
+  ]
+}
