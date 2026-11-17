@@ -63,15 +63,17 @@ python3 scripts/ci_guard.py imports         # HUD itself is stdlib-only too
 ### Red-team: the honest result
 
 ```
-100 attacks | 100/100 expectations met | 75 DENIED | 25 CONTAINED-as-literal
-0 breaches | 10/10 benign controls VERIFIED | p50 4.4 ms (this container)
+100 attacks | 100/100 expectations met | 91 DENIED | 9 CONTAINED-as-literal
+0 breaches | 10/10 benign controls VERIFIED | p50 ~4 ms (this container)
 ```
 
-This deliberately **refuses** a fake "100/100 DENIED" badge. The 25
-Windows-separator / percent-encoded paths become literal filenames inside the
-sandbox on Linux. Containment holds, but `core/policy.py` uses POSIX
-`Path.resolve()` — cross-platform containment is **NOT VERIFIED**. See
-[`docs/REPOSITORY-AUDIT.md`](../docs/REPOSITORY-AUDIT.md) §8.
+**Cross-platform gap: CLOSED on 2026-11-17.** Previously 25 Windows-separator /
+percent-encoded paths were only *contained on Linux*. `core/policy.py` now denies
+backslashes, Windows drive prefixes and the encoded separators `%2f %5c %2e %00`
+on every platform, so 16 of those inputs are rejected outright. The 9 that are
+still accepted are literal POSIX names (`NUL`, `...`, `%252e%252e/x`) that resolve
+inside the sandbox on any OS — nothing to traverse. The suite still refuses a
+fake "100/100 DENIED" badge and publishes the 9.
 
 ## Files
 

@@ -123,10 +123,10 @@ class HudTests(unittest.TestCase):
         self.assertEqual(r["expected_met"], 100)
         self.assertEqual(r["breaches"], 0)
         self.assertEqual(r["controls"]["verified"], 10)
-        self.assertEqual(r["denied"], 75)
-        self.assertEqual(r["contained"], 25)
+        self.assertEqual(r["denied"], 91)
+        self.assertEqual(r["contained"], 9)
         self.assertTrue(r["all_gates_pass"])
-        self.assertIn("NOT VERIFIED", r["portability_warning"])
+        self.assertIn("CLOSED 2026-11-17", r["portability_warning"])
 
     def test_08_audit_is_read_only_and_classifies_honestly(self):
         _, _, raw = self.get("/api/audit")

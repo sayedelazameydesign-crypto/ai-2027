@@ -4,16 +4,20 @@
 
 ### Open AI Systems. Real Intelligence. Built in Public.
 
-**An open ecosystem of 48 AI agent systems, platforms & tools — Evidence-First agents that prove their work.**
+**An open ecosystem of 48 archived AI projects — and one agent kernel that proves its work.**
+
+*Verified on 2026-11-17, not assumed:* **1 project PROVEN by execution · 40 declared only ·
+6 explicitly simulated · 1 with a concrete defect** → [`docs/GROUND-TRUTH-2026-11-17.md`](docs/GROUND-TRUTH-2026-11-17.md)
 
 [![Projects](https://img.shields.io/badge/projects-48-00e5a0)](#the-ecosystem)
 [![Files](https://img.shields.io/badge/files-3%2C967-38bdf8)](catalog.json)
 [![Audited](https://img.shields.io/badge/post--merge%20audit-passed-brightgreen)](AUDIT.md)
+[![Proven](https://img.shields.io/badge/executed%20here-1%20PROVEN%20%C2%B7%2040%20declared%20%C2%B7%206%20simulated-orange)](docs/GROUND-TRUTH-2026-11-17.md)
 [![License](https://img.shields.io/badge/licenses-mixed%20(per--project)-orange)](#-licensing)
 [![CI](https://github.com/sayedelazameydesign-crypto/ai-2027/actions/workflows/ci.yml/badge.svg)](https://github.com/sayedelazameydesign-crypto/ai-2027/actions/workflows/ci.yml)
 [![Pages](https://github.com/sayedelazameydesign-crypto/ai-2027/actions/workflows/pages.yml/badge.svg)](https://github.com/sayedelazameydesign-crypto/ai-2027/actions/workflows/pages.yml)
 
-[🌐 Live demo](https://sayedelazameydesign-crypto.github.io/ai-2027/demo.html) · [العربية ⬇](#-ai-2027--المستودع-الجامع-لكل-الأدوات-والميزات) · [Catalog](catalog.json) · [Audit Report](AUDIT.md) · [Phase-0 Readiness](docs/PHASE-0-READINESS.md) · [Launch Kit](launch/)
+[🌐 Live demo](https://sayedelazameydesign-crypto.github.io/ai-2027/demo.html) · [Ground truth](docs/GROUND-TRUTH-2026-11-17.md) · [Deviations](docs/DEVIATIONS.md) · [العربية ⬇](#-ai-2027--المستودع-الجامع-لكل-الأدوات-والميزات) · [Catalog](catalog.json) · [Audit Report](AUDIT.md) · [Phase-0 Readiness](docs/PHASE-0-READINESS.md) · [Launch Kit](launch/)
 
 </div>
 
@@ -24,7 +28,11 @@
 Most AI agents say *"done"* — AI-2027 agents must **prove it**.
 This repository is the central hub unifying every tool and feature from [@sayedelazameydesign-crypto](https://github.com/sayedelazameydesign-crypto)'s 68 repositories into one verified, categorized ecosystem:
 
-> **48 projects · 3,967 files · byte-identical to their upstream sources · independently audited** (see [AUDIT.md](AUDIT.md))
+> **48 projects · 3,967 files · 46 byte-identical to upstream + 2 documented deviations · independently audited** (see [AUDIT.md](AUDIT.md), [DEVIATIONS.md](docs/DEVIATIONS.md))
+>
+> **What "archived" means here:** a folder is a byte-mirror of an upstream repository, *not* evidence that it runs.
+> `catalog.json` now carries an `operational_status` field per project (`PROVEN` / `DECLARED` / `SIMULATED` / `FAILED`),
+> measured by `python3 command-hud/audit.py`, so the index cannot be read as "48 working systems".
 
 Every project lives 1:1 under [`projects/`](projects/) with its original license. [`catalog.json`](catalog.json) is the machine-readable index.
 
@@ -51,7 +59,7 @@ Understand → Plan → Policy → Execute → Verify → Evidence → Report
 
 | Category | Count | Highlights |
 |---|---|---|
-| 🤖 AI Agent Systems | 16 | cela2027 · agi-system · CeliaOS · NOVA · Nimna (26 tools) · open_source- · celia.pro · 10-agent services |
+| 🤖 AI Agent Systems | 16 | cela2027 · agi-system · CeliaOS · NOVA · Nimna (28 tools) · open_source- · celia.pro · 10-agent services |
 | 🌐 Chat & Web Platforms | 9 | ui (agentic-first baseline) · Nawah AI · Waha · leader2027 · Easy AI · celia.sh |
 | 👗 Fashion & E-Commerce | 8 | ELAZAMET1 · CELIA FASHION 2026 · AI stylist · smart importing |
 | 🏥 Specialized Apps | 8 | Celia Kids clinic · MIVW · educational competencies · BitNet system |
@@ -101,10 +109,14 @@ repo — see [`command-hud/README.md`](command-hud/README.md) for the correction
 and [`docs/REPOSITORY-AUDIT.md`](docs/REPOSITORY-AUDIT.md) for the full
 project-by-project health report (PROVEN / DECLARED / SIMULATED / FAILED).
 
-Verified results, not claims: `python3 command-hud/test_hud.py -v` (13 tests),
+Verified results, not claims: `python3 command-hud/test_hud.py -v` (14 tests),
 `python3 command-hud/redteam.py --markdown --assert` → **100 attacks, 0 breaches,
-10/10 benign controls VERIFIED**, with 25 cross-platform literal-path cases
-reported honestly rather than hidden behind a fake "100/100 DENIED" badge.
+10/10 benign controls VERIFIED · 91 DENIED · 9 accepted literal POSIX names that
+resolve inside the sandbox on every OS**. The cross-platform gap found on
+2026-11-17 is **closed**: `core/policy.py` now refuses backslashes, Windows drive
+prefixes and percent-encoded separators (`%2f %5c %2e %00`) on every platform.
+See [`docs/GROUND-TRUTH-2026-11-17.md`](docs/GROUND-TRUTH-2026-11-17.md) for what
+was executed versus what is only declared.
 
 ## 📣 Build in Public — proof-first publishing kit
 
@@ -173,8 +185,8 @@ Each project keeps **its own license** inside its folder. Most are MIT/Apache-2.
 | [`projects/agi-system`](projects/agi-system) | Python | **نواة AGI Kernel بـ Python صرفة بدون أي اعتمادات**: حلقة إدراكية كاملة (Planner→Policy→Executor→Verifier→Evidence→DecisionRecord→EventLedger)، 86 اختبار وحدة، `python3 -m core doctor`، فلسفة التحقق المستقل |
 | [`projects/12pro`](projects/12pro) | TypeScript | **CeliaOS v1.0.0 — Agent OS Control Plane**: معمارية 12 طبقة، Benchmarks (latency/memory/planning/tool-use/long-horizon)، Certification + Attestations + SBOM، Monorepo (apps/api + apps/web + apps/agent-ui)، جاهزية نشر Docker/Fly.io/Render/Railway |
 | [`projects/open_source-`](projects/open_source-) | Python | **`cela_use_browser` — منصة متصفح مستقلة مفتوحة المصدر**: استدلال وكيلي ReAct، واجهة تصفح خاصة `/cela/v1` + CelaBrowser، Artifacts لحظية بنمط Claude، تنفيذ معزول بنمط Manus، أدلة اختبارات مولّدة (`make evidence`) |
-| [`projects/cela.nimna`](projects/cela.nimna) | Python | **Nimna — وكيل بمهارات قابلة لإعادة الاستخدام**: 26 أداة، مكتبة SKILL.md قابلة للتبديل، ذاكرة متجهة (Qdrant + fallback بـ 768 بُعد)، موافقة بصرية للأدوات الخطرة (TTL 5د)، بوابة رؤية، يعمل على مفتاح Gemini المجاني، 83 اختبارًا |
-| [`projects/celia-pro-deployment`](projects/celia-pro-deployment) | Python | **celia.pro — نظام وكيل متقدم 2026**: FastAPI + React 19، Gemini + HuggingFace (مجاني)، 93 اختبارًا ناجحًا، أدوات متعددة |
+| [`projects/cela.nimna`](projects/cela.nimna) | Python | **Nimna — وكيل بمهارات قابلة لإعادة الاستخدام**: 28 أداة، مكتبة SKILL.md قابلة للتبديل، ذاكرة متجهة (Qdrant + fallback بـ 768 بُعد)، موافقة بصرية للأدوات الخطرة (TTL 5د)، بوابة رؤية، يعمل على مفتاح Gemini المجاني، 510 اختبارات (504 ناجحة، 6 تحتاج google-genai) |
+| [`projects/celia-pro-deployment`](projects/celia-pro-deployment) | Python | **celia.pro — نظام وكيل متقدم 2026**: FastAPI + React 19، Gemini + HuggingFace (مجاني)، 304 اختبارات (تعريفات، لم تُشغَّل هنا)، أدوات متعددة |
 | [`projects/CELIA_SERVICES`](projects/CELIA_SERVICES) | JavaScript | **نظام 10 وكلاء متخصصين**: Orchestrator، دعم عملاء، توليد محتوى، تحليلات، مراقبة، أمان، تكامل، تعلّم، UX، DevOps — مع REST APIs + WebSocket + PostgreSQL/MongoDB + Redis/Bull + Docker + Prometheus/Grafana |
 | [`projects/ai-task`](projects/ai-task) | TypeScript | **NOVA · Personal AI OS**: واجهة محادثة عربية RTL داكنة، Agent Runtime بحد أقصى لدورات الأدوات، طبقة LLMProvider (مدار / NVIDIA NIM)، Tool Registry بمستويات خطورة، ذاكرة طويلة المدى، Queue/Worker بـ leases وretry وidempotency، Approval Engine، تكامل Google Calendar/Drive/Sheets عبر OAuth |
 | [`projects/platform`](projects/platform) | TypeScript | **Single-Worker Agent Loop**: مخطط LLM (2–4 خطوات) → منفّذ أدوات تسلسلي → بث SSE → حفظ بالقاعدة، Next.js 14 + Drizzle ORM + SQLite + Zod (تحقق مزدوج) + Playwright، مخطط بديل حتمي يعمل دون مفاتيح |

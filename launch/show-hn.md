@@ -79,8 +79,9 @@ would plug a model in as a proposer only — that's an open decision, not a ship
 Known limits, stated up front (full list in the case study):
   - The "independent" verifier is a separate component in the same process that
     re-reads disk — not a boundary against a malicious in-process executor.
-  - Cross-platform containment is NOT VERIFIED: 25 Windows-separator/encoded
-    paths became literal filenames on Linux. 0 escapes, but don't deploy on Windows.
+  - Cross-platform containment was NOT VERIFIED (25 Windows/encoded paths became
+    literal filenames on Linux) — that gap is now CLOSED: those encodings are
+    denied on every platform. 0 escapes; 9 literal POSIX names stay contained.
   - Only 1 of the 48 archived projects is PROVEN in my own audit; the rest are
     documented/simulated/unverified. Licenses are mixed; the kernel's is pending.
 
