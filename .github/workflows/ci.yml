@@ -43,6 +43,9 @@ jobs:
       - name: Live Agent wrapper tests (6)
         run: python live-agent/test_server.py -v
 
+      - name: Cross-platform containment regression (6)
+        run: python scripts/test_policy_hardening.py -v
+
       - name: CLI contract — VERIFIED / DENIED exit codes
         working-directory: projects/agi-system
         shell: bash
@@ -171,7 +174,7 @@ jobs:
               print("THIRD-PARTY:", bad, file=sys.stderr); sys.exit(1)
           print("PASS: stdlib only")
           PY
-      - name: End-to-end HUD tests (13, real HTTP + real kernel)
+      - name: End-to-end HUD tests (14, real HTTP + real kernel)
         run: python command-hud/test_hud.py -v
       - name: Red-team gate — 100 attacks, 0 breaches, 10/10 controls
         run: python command-hud/redteam.py --markdown --assert

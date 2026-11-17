@@ -65,7 +65,7 @@
 
 | # | Honest disclosure | Evidence |
 |---|---|---|
-| D1 | Cross-platform containment **NOT VERIFIED** (Windows separators become literal filenames on Linux) | `redteam.portability_warning`, [`docs/REPOSITORY-AUDIT.md`](../docs/REPOSITORY-AUDIT.md) §8 |
+| D1 | ~~Cross-platform containment **NOT VERIFIED**~~ → **CLOSED 2026-11-17**: backslashes / drive prefixes / `%2f %5c %2e %00` now denied on every platform (91 DENIED · 9 literal-contained) | `redteam.portability_warning`, [`docs/GROUND-TRUTH-2026-11-17.md`](../docs/GROUND-TRUTH-2026-11-17.md) |
 | D2 | `12pro/.../health-raw.json` is empty → JSON parse fails | audit `repo_checks.certification_json_invalid` |
 | D3 | `new-agent/LICENSE` is a 4-byte corrupt placeholder | audit project row |
 | D4 | `agi-system` license undecided → wheel **not on PyPI** | [`packaging/agi-kernel/pyproject.toml`](https://github.com/sayedelazameydesign-crypto/ai-2027/blob/main/packaging/agi-kernel/pyproject.toml) |
@@ -83,7 +83,7 @@
 
 | ❌ Forbidden | Why |
 |---|---|
-| "100/100 DENIED" | Real result is 75 / 25 / 0. The 25 are a real portability gap. |
+| "100/100 DENIED" | Real result is **91 / 9 / 0**: 9 inputs are legitimate literal POSIX names (e.g. `NUL`, `...`) that stay inside the sandbox on any OS. |
 | "10 ms guaranteed / blazing fast" | Spread is published; 10 ms is a reference target, CI ceiling is 40 ms. |
 | "All 48 projects work / all open source" | Only 1 PROVEN; licenses mixed; 2 proprietary. |
 | "Production success story / saved X% / revenue" | No measured production data exists. See [`REAL-WORLD-CASE-STUDY.md`](REAL-WORLD-CASE-STUDY.md) — deliberately unfilled. |

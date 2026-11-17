@@ -151,6 +151,10 @@ class PolicyEngine:
         the path escapes the sandbox (path traversal, absolute paths outside the
         sandbox, symlinks pointing out, ...).
         """
+        cross_platform = self._cross_platform_reason(path)
+        if cross_platform is not None:
+            return None, cross_platform
+
         try:
             candidate = Path(path)
             if candidate.is_absolute():
@@ -168,6 +172,43 @@ class PolicyEngine:
                 f"which is outside {self.sandbox_root}"
             )
         return resolved, None
+
+    @staticmethod
+    def _cross_platform_reason(path: os.PathLike | str) -> Optional[str]:
+        """Refuse inputs whose meaning changes on another platform.
+
+        A backslash or a percent-encoded separator is a LITERAL filename
+        character on POSIX, so ``Path.resolve()`` keeps it inside the sandbox
+        here — but the same string is a separator on Windows (or after any
+        later URL-decode), where it would traverse. Containment that only holds
+        on one OS is not containment, so these are denied everywhere instead.
+        """
+        try:
+            text = os.fspath(path)
+        except TypeError:
+            text = str(path)
+        if isinstance(text, bytes):
+            text = text.decode("utf-8", "replace")
+
+        if "\\" in text:
+            return (
+                f"path {text!r} contains a backslash, which is a path separator "
+                "on Windows; refused for cross-platform containment"
+            )
+        if len(text) >= 2 and text[1] == ":" and text[0].isalpha():
+            return (
+                f"path {text!r} looks like a Windows drive path; refused for "
+                "cross-platform containment"
+            )
+        lowered = text.lower()
+        for token, label in (("%2f", "a forward slash"), ("%5c", "a backslash"),
+                             ("%2e", "a dot"), ("%00", "a NUL byte")):
+            if token in lowered:
+                return (
+                    f"path {text!r} contains the percent-encoded {label} "
+                    f"({token}); refused for cross-platform containment"
+                )
+        return None
 
     # -- risk model --------------------------------------------------------- #
     def risk(self, action: Action, resolved: Optional[Path] = None) -> float:
