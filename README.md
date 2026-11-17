@@ -93,6 +93,35 @@ python3 memory/test_memory.py -v        # 16 tests
 embedding (no `sqlite-vec`, no model). Measured paraphrase recall@3 is **2/16** —
 it misses synonyms. That number is published, not hidden: [`memory/README.md`](memory/README.md).
 
+## ▶️ Actually running — verified over HTTP, not asserted
+
+Two servers, one real kernel, and a smoke test that hits them the way a human does:
+
+```bash
+python3 live-agent/server.py  --port 8090 &     # real kernel, real sandbox
+python3 command-hud/server.py --port 8091 &     # dashboard over the same kernel
+python3 scripts/runtime_smoke.py                # 10 checks, PASS/FAIL per promise
+```
+
+Latest run against live servers (`2026-11-17`):
+
+```
+PASS  live-agent: health + honest scope        [REAL execution — deterministic planner, NO LLM]
+PASS  live-agent: create_file -> VERIFIED (5/5 checks)
+PASS  live-agent: artifact download matches byte-for-byte     [26 bytes]
+PASS  live-agent: evidence retrievable by run_id
+PASS  live-agent: POSIX traversal -> DENIED
+PASS  live-agent: Windows-style traversal -> DENIED           [cross-platform containment]
+PASS  hud: health (stdlib, no LLM)
+PASS  hud: dispatch -> real kernel VERIFIED
+PASS  hud: built-in escape test -> DENIED
+PASS  hud: 100-attack gate (0 breaches, all gates)            [denied=91 contained=9]
+10/10 checks passed
+```
+
+CI job **`Runtime smoke · real servers over HTTP`** boots both servers and runs exactly this,
+so "it runs" cannot regress silently.
+
 ## 🎛️ Live Command HUD — see the kernel move
 
 A single-screen, stdlib-only dashboard over the **real** kernel: live p50 chart,
