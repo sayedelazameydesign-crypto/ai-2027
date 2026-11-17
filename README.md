@@ -90,6 +90,19 @@ Verified results, not claims: `python3 command-hud/test_hud.py -v` (13 tests),
 10/10 benign controls VERIFIED**, with 25 cross-platform literal-path cases
 reported honestly rather than hidden behind a fake "100/100 DENIED" badge.
 
+## 📣 Build in Public — proof-first publishing kit
+
+The first technical case study is **ready to publish**: [`launch/case-study-deterministic-core.md`](launch/case-study-deterministic-core.md) — with freshly measured numbers, published jitter, a "what I got wrong" section, and a [proof ledger](launch/PROOF-LEDGER.md) mapping every claim to a command. Companion assets: [Show HN post](launch/show-hn.md), [HN comment playbook](launch/hn-comments-playbook.md), [Build-in-Public series](launch/build-in-public.md).
+
+```bash
+python3 scripts/generate_launch_evidence.py --assert   # regenerate EVERY public number
+python3 launch/test_launch_claims.py -v                # a claim without evidence breaks CI
+```
+
+> The real-world business case study is deliberately **NOT PUBLISHABLE** until
+> measured production data exists — see [`launch/REAL-WORLD-CASE-STUDY.md`](launch/REAL-WORLD-CASE-STUDY.md).
+> No invented customers, savings or revenue.
+
 ## ⚡ Quick start (zero dependencies)
 
 ```bash
