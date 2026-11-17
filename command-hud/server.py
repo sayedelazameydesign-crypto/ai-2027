@@ -194,7 +194,12 @@ def dispatch(goal_type: str, params: dict, source: str = "manual") -> dict:
             "evidence_checks": {}, "sandbox_files": [],
         }
     out["ts"] = ts
-    if MEM is not None and out.get("status") == "VERIFIED":
+    # Offer EVERY run to memory, not only VERIFIED ones: the admission gate is
+    # the single door, and its refusals must be logged. Skipping refused runs
+    # here silently emptied admission_log — caught by the live smoke test
+    # (refused_events stayed 0 while a DENIED run happened) and fixed so the
+    # "refused and logged" claim is actually true.
+    if MEM is not None:
         try:
             v = MEM.ingest(rec)
             out["memory"] = {"admitted": v.admitted, "duplicate": v.duplicate,

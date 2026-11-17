@@ -184,6 +184,19 @@ class MemoryTests(unittest.TestCase):
         self.assertIn("no sqlite-vec", st["backend"])
         self.assertEqual(st["memories"], 1)
 
+    def test_17_refusals_are_durable_across_connections(self):
+        """Regression: _log() did not commit, so refusals vanished and the
+        'refused and logged' claim was false. A fresh connection must see it."""
+        rec = self.run_goal(path="../../escape.txt", content="x")
+        self.assertFalse(self.store.ingest(rec).admitted)
+        reopen = ms.EvidenceMemoryStore(self.store.db_path,
+                                       sandbox_root=self.store.sandbox_root)
+        rows = reopen.log()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["admitted"], 0)
+        self.assertEqual(rows[0]["raw_status"], "DENIED")
+        self.assertEqual(reopen.stats()["refused_events"], 1)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
