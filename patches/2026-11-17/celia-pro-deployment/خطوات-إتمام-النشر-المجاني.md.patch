@@ -1,0 +1,20 @@
+--- a/خطوات-إتمام-النشر-المجاني.md
++++ b/خطوات-إتمام-النشر-المجاني.md
+@@ -55,7 +55,7 @@
+ 
+ ## الخطوة 4 — تدوين رابط الخلفية
+ 
+-من صفحة الخدمة على Render، انسخ الرابط من أعلى الصفحة (نمطه `https://celia-pro.onrender.com`). هذا هو **رابط الواجهة الخلفية النهائي** — ستحتاجه في الخطوة 5.
++من صفحة الخدمة على Render، انسخ الرابط من أعلى الصفحة (نمطه `https://YOUR-SERVICE.onrender.com`). هذا هو **رابط الواجهة الخلفية النهائي** — ستحتاجه في الخطوة 5.
+ 
+ ---
+ 
+@@ -63,7 +63,7 @@
+ 
+ 1. افتح لوحة Netlify: [app.netlify.com/sites/cerulean-boba-48f59a](https://app.netlify.com/sites/cerulean-boba-48f59a)
+ 2. **Site configuration → Environment variables → Add a variable**
+-3. أضف: الاسم `VITE_API_URL` — القيمة = رابط الخلفية من الخطوة 4 **بدون شرطة مائلة في النهاية** (مثل `https://celia-pro.onrender.com`)
++3. أضف: الاسم `VITE_API_URL` — القيمة = رابط الخلفية من الخطوة 4 **بدون شرطة مائلة في النهاية** (مثل `https://YOUR-SERVICE.onrender.com`؛ ملاحظة: `celia-pro.onrender.com` يعيد Not Found — تحقّق 2026-11-17)
+ 4. أعد النشر: **Deploys → Trigger deploy → Clear cache and deploy site**
+ 
+ > **مهم:** `VITE_API_URL` يُحقن في الكود أثناء البناء، لذا يجب **إعادة البناء** (Trigger deploy) وليس مجرد حفظ المتغير.
