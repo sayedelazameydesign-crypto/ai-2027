@@ -69,7 +69,7 @@ Full categorized catalog with per-project features: **below in Arabic** ⬇ and 
 
 ## ✅ Verified — not just claimed
 
-- 🔍 **Post-merge audit passed**: all 48 projects byte-identical to upstream sources ([AUDIT.md](AUDIT.md))
+- 🔍 **Post-merge audit re-run 2026-11-17**: 46/48 byte-identical to upstream + 2 deviations documented in [DEVIATIONS.md](docs/DEVIATIONS.md) — the archive is a mirror, not a claim that it runs ([GROUND-TRUTH](docs/GROUND-TRUTH-2026-11-17.md))
 - 📊 **Measured, not claimed**: full verified cycle **p50 7.5 ms** · denial at the policy wall **3.1 ms** · zero deps · 86/86 tests → [BENCHMARKS.md](docs/BENCHMARKS.md) (reproducible: `live-agent/bench.py`)
 - 📦 **Installable**: 40 KB wheel, CLI smoke-tested → `packaging/agi-kernel` (PyPI publish gated on the pending license decision)
 - 🔐 **Secrets scan**: one exposed key found → redacted here (rotation tracked in AUDIT.md)
@@ -156,7 +156,8 @@ Each project keeps **its own license** inside its folder. Most are MIT/Apache-2.
 # 🧠 ai-2027 — المستودع الجامع لكل الأدوات والميزات
 
 > **كل أداة وميزة من مستودعات [sayedelazameydesign-crypto](https://github.com/sayedelazameydesign-crypto) في مكان واحد.**
-> تم دمج **48 مشروعًا** (≈3,970 ملفًا) من 68 مستودعًا في مجلد واحد منظّم تحت [`projects/`](projects/).
+> تم دمج **48 مشروعًا** (3,967 ملفًا) من 68 مستودعًا في مجلد واحد منظّم تحت [`projects/`](projects/).
+> ⚠️ **الدمج ليس تشغيلًا:** القياس الفعلي = **1 مُثبت بالتشغيل · 40 وصف فقط · 6 محاكاة · 1 فيه عيب** — [`docs/GROUND-TRUTH-2026-11-17.md`](docs/GROUND-TRUTH-2026-11-17.md)، وكل مشروع في [`catalog.json`](catalog.json) يحمل حقل `operational_status`.
 
 كل مشروع محفوظ **كما هو 1:1** داخل `projects/<اسم-المستودع>/` مع ترخيصه وملفاته،
 والفهرس أدناه يصنّف كل أداة وميزة حسب الوظيفة. للفهرس الآلي القابل للبرمجة: [`catalog.json`](catalog.json).
@@ -274,7 +275,7 @@ rsync -a --delete --exclude __pycache__ <repo>-main/ projects/<repo>/
 
 ---
 
-**الإحصاء الكلي:** 48 مشروعًا · 3,967 ملفًا (catalog.json مصدر الحقيقة) · 16 وكيلًا ذكيًا · 9 منصات ويب · 8 مشاريع تجارة أزياء · 8 تطبيقات متخصصة · 7 بذور
+**الإحصاء الكلي:** 48 مشروعًا · 3,967 ملفًا (catalog.json مصدر الحقيقة) · 16 مشروع وكلاء · 9 منصات ويب · 8 مشاريع تجارة أزياء · 8 تطبيقات متخصصة · 7 بذور — **منها 1 مُثبت بالتشغيل فقط**
 **تاريخ الدمج:** 2026-11-17 · **المصدر:** [github.com/sayedelazameydesign-crypto](https://github.com/sayedelazameydesign-crypto?tab=repositories)
 
 ---
