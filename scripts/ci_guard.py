@@ -37,7 +37,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 KERNEL_DIR = ROOT / "projects" / "agi-system" / "core"
 LIVE_DIR = ROOT / "live-agent"
-FIRST_PARTY = {"core", "server", "agi_kernel"}
+# Repo-local modules the scanned files are allowed to import. Every name here
+# MUST resolve to a path inside this repo — checked below, so the gate cannot be
+# widened to an installed package by accident.
+FIRST_PARTY = {"core", "server", "agi_kernel", "memory"}
 # Stdlib modules that exist only on NEWER supported Pythons. `tomllib` landed in
 # 3.11; `core/config.py` imports it lazily inside a try/except and raises a
 # clean "requires Python 3.11+" error on 3.10. It is NOT a third-party
@@ -51,6 +54,13 @@ EXPECTED_IMPORT_PROOF = "NONE (stdlib only)"
 
 def scan_imports() -> int:
     stdlib = set(sys.stdlib_module_names) | CONDITIONAL_STDLIB
+    for name in sorted(FIRST_PARTY - {"server", "agi_kernel"}):
+        candidates = [ROOT / name, KERNEL_DIR.parent / name]
+        local = next((c for c in candidates if c.is_dir()), None)
+        if local is None or ROOT.resolve() not in local.resolve().parents:
+            print(f"FAIL: first-party allowlist entry {name!r} is not a repo-local "
+                  f"directory (looked in {[str(c) for c in candidates]})", file=sys.stderr)
+            return 1
     files = sorted(KERNEL_DIR.glob("*.py")) + [LIVE_DIR / "server.py", LIVE_DIR / "bench.py"]
     bad: dict[str, set[str]] = {}
     for path in files:
