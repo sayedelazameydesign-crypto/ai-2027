@@ -1,0 +1,29 @@
+--- a/DEPLOYMENT_GUIDE_KOYEB.md
++++ b/DEPLOYMENT_GUIDE_KOYEB.md
+@@ -60,7 +60,7 @@
+ 
+ 1. اضغط **Deploy**
+ 2. انتظر 2-3 دقائق
+-3. ستحصل على رابط مثل: `https://elazamet1.vercel.app`
++3. ستحصل على رابط مثل: `https://YOUR-APP.vercel.app` (الرابط القديم يعيد 404 — تحقّق 2026-11-17)
+ 
+ ✅ **احفظ هذا الرابط!**
+ 
+@@ -101,7 +101,7 @@
+ #### Environment Variables:
+ ```
+ MONGO_URI=mongodb+srv://username:password@cluster.mongodb.net/EcommerceDB
+-FRONTEND_URL=https://elazamet1.vercel.app
++FRONTEND_URL=https://YOUR-APP.vercel.app   # ضع رابطك بعد النشر
+ PORT=8000
+ ```
+ 
+@@ -140,7 +140,7 @@
+ #### Environment Variables:
+ ```
+ OPENAI_API_KEY=sk-your-key-here
+-FRONTEND_URL=https://elazamet1.vercel.app
++FRONTEND_URL=https://YOUR-APP.vercel.app   # ضع رابطك بعد النشر
+ DATABASE_URL=sqlite:///./enhanced_store.db
+ ```
+ 

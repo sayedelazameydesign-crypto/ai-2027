@@ -1,0 +1,14 @@
+--- a/deploy/render/README.md
++++ b/deploy/render/README.md
+@@ -40,9 +40,9 @@
+ 
+ ### 4) التحقق (نفس معيار hf-verify، بأداة Render)
+ ```bash
+-bash deploy/hf-verify.sh https://nawah-agent.onrender.com phase1
++bash deploy/hf-verify.sh https://YOUR-SERVICE.onrender.com phase1   # nawah-agent.onrender.com يعيد Not Found (تحقّق 2026-11-17)
+ #  → Manual Deploy لنفس الـ SHA (يعيد بناء الحاوية = محو القرص المؤقت)
+-bash deploy/hf-verify.sh https://nawah-agent.onrender.com phase2
++bash deploy/hf-verify.sh https://YOUR-SERVICE.onrender.com phase2
+ #  → نفس runId يعود من Turso = برهان الاستمرارية
+ ```
+ (المهمة الحية في phase1 ستخطط عبر `web.fetch` تلقائيًا — بلا متصفح.)

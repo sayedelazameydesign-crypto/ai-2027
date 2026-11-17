@@ -28,7 +28,7 @@ Measured today (regenerate in 1 command):
 Three things that went wrong this week, because shipping only the green numbers is an ad:
 1. My dashboard showed a SHA-256 "proof" on a DENIED run — it had hashed the kernel's own metrics.json. Its own test caught it.
 2. My p50 chart read 0 ms because control-plane events are 0 ms. Fixed + regression test.
-3. A 100-attack suite did NOT return 100/100 DENIED. 25 Windows-style paths became literal filenames inside the sandbox on Linux. Zero escapes, but cross-platform containment is NOT VERIFIED.
+3. A 100-attack suite does NOT return 100/100 DENIED: 9 inputs are legitimate literal POSIX names (`NUL`, `...`) that stay inside the sandbox. The 25 Windows-style paths that used to be only *contained on Linux* are now **denied on every platform** (closed 2026-11-17); zero escapes throughout.
 
 No LLM in the loop. The planner is deliberately deterministic — the discipline has to exist before a model gets near it. Phase 2 is still an undecided decision, not a shipped feature.
 

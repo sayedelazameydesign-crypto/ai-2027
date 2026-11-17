@@ -1,0 +1,29 @@
+--- a/QUICK_DEPLOY.md
++++ b/QUICK_DEPLOY.md
+@@ -43,7 +43,7 @@
+    - Port: 8000
+ 4. Environment:
+    MONGO_URI=mongodb+srv://...
+-   FRONTEND_URL=https://elazamet1.vercel.app
++   FRONTEND_URL=https://YOUR-APP.vercel.app   # ضع رابطك بعد النشر
+    PORT=8000
+ 5. Deploy → احفظ الرابط
+ ```
+@@ -59,7 +59,7 @@
+    - Port: 8000
+ 3. Environment:
+    OPENAI_API_KEY=sk-...
+-   FRONTEND_URL=https://elazamet1.vercel.app
++   FRONTEND_URL=https://YOUR-APP.vercel.app   # ضع رابطك بعد النشر
+ 4. Deploy → احفظ الرابط
+ ```
+ 
+@@ -76,7 +76,7 @@
+ 
+ ## ✅ التحقق
+ 
+-- Frontend: `https://elazamet1.vercel.app`
++- Frontend: `https://YOUR-APP.vercel.app` (⚠️ الرابط القديم `elazamet1.vercel.app` يعيد 404 — تحقّق 2026-11-17)
+ - Node API: `https://celia-node-backend.koyeb.app`
+ - ML API: `https://celia-ml-backend.koyeb.app/docs`
+ 

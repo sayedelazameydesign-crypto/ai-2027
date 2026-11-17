@@ -1,0 +1,9 @@
+--- a/certification/v1.0.0-raw/health-raw.json
++++ b/certification/v1.0.0-raw/health-raw.json
+@@ -1,2 +1,4 @@
+---- Health ---
+-{"status":"ok","timestamp":"2026-09-16T12:28:08.908Z","version":"0.1.0","sseClients":0}
++{
++  "note": "Repaired 2026-11-17. This artifact shipped with a non-JSON header (\"--- Health ---\"), so every JSON parse failed. The probe payload below is byte-preserved; nothing was re-run or invented.",
++  "probe": {"status":"ok","timestamp":"2026-09-16T12:28:08.908Z","version":"0.1.0","sseClients":0}
++}
