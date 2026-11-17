@@ -10,3 +10,9 @@ dist/
 env.local
 live-agent/runs/
 live-agent/sandboxes/
+packaging/agi-kernel/dist/
+packaging/agi-kernel/src/agi_kernel/
+packaging/agi-kernel/*.egg-info/
+live-agent/benchmarks/
+packaging/agi-kernel/build/
+packaging/agi-kernel/src/*.egg-info/

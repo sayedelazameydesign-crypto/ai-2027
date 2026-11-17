@@ -27,3 +27,10 @@ Upload a 1280×640 image — generate one on request.
 
 ---
 ✅ Done? The readiness gate in `launch/README.md` updates to: metadata complete.
+
+## 6. Enable Discussions (Settings → General → Features)
+Integration has no admin access (verified 403) — one checkbox from you:
+✅ **Discussions** — this unlocks the community channel for contributors.
+
+## Already done by the agent (2026-11-17)
+- ✅ 3 good-first-issues opened: #5 (AR translations), #6 (hardware benchmark map), #7 (new capability proposal)
