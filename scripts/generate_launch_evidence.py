@@ -38,6 +38,7 @@ TESTS = [
     ("public_demo_contract", ["node", "website/kernel-demo.test.js"],
      r"(\d+) demo contract tests passed"),
     ("command_hud_e2e", [PY, "command-hud/test_hud.py"], r"Ran (\d+) tests"),
+    ("l1_memory", [PY, "memory/test_memory.py"], r"Ran (\d+) tests"),
 ]
 
 

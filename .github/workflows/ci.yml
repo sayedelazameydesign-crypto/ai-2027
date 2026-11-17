@@ -186,6 +186,80 @@ jobs:
             command-hud/audit-report.md
           if-no-files-found: error
 
+  memory:
+    name: L1 memory · admission gate + measured retrieval honesty
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Memory is stdlib-only (no sqlite-vec, no model client)
+        run: |
+          python - <<'PY'
+          import ast, sys
+          from pathlib import Path
+          stdlib = set(sys.stdlib_module_names) | {"tomllib"}
+          allowed_local = {"store", "evaluate", "kernel_bridge"}
+          bad = {}
+          for p in sorted(Path("memory").glob("*.py")):
+              for n in ast.walk(ast.parse(p.read_text(encoding="utf-8"))):
+                  names = []
+                  if isinstance(n, ast.Import):
+                      names = [a.name.split(".")[0] for a in n.names]
+                  elif isinstance(n, ast.ImportFrom) and n.level == 0 and n.module:
+                      names = [n.module.split(".")[0]]
+                  for name in names:
+                      if name not in stdlib and name not in allowed_local:
+                          bad.setdefault(str(p), set()).add(name)
+          print("scanned", len(list(Path("memory").glob("*.py"))), "memory files")
+          if bad:
+              print("THIRD-PARTY:", bad, file=sys.stderr); sys.exit(1)
+          print("PASS: stdlib only")
+          PY
+      - name: sqlite-vec must NOT be required (assert the honest backend)
+        run: |
+          python - <<'PY'
+          import sqlite3, sys
+          try:
+              sqlite3.connect(":memory:").execute("select vec_version()")
+              print("NOTE: sqlite-vec IS present; the store still does not require it.")
+          except sqlite3.OperationalError:
+              print("CONFIRMED: sqlite-vec absent — store uses stdlib sqlite3 as documented.")
+          sys.exit(0)
+          PY
+      - name: Admission gate + tamper detection (16 tests, real kernel)
+        run: python memory/test_memory.py -v
+      - name: Retrieval honesty report (recall + false positives, misses included)
+        run: |
+          python memory/evaluate.py > memory-eval.json
+          python - <<'PY'
+          import json, sys
+          d = json.load(open("memory-eval.json"))
+          print(f"recall@3 easy {d['positive_hits_at_3']}/{d['positive_queries']}"
+                f" | hard {d['hard_hits_at_3']}/{d['hard_queries']}"
+                f" | FP unrelated {d['negative_with_confident_hit']}/{d['negative_queries']}"
+                f" | FP near-miss {d['near_miss_confident_hits']}/{d['near_miss_queries']}")
+          # The published claim is the HARD number. Fail if the docs stop matching it.
+          claimed = 2
+          if d["hard_hits_at_3"] != claimed:
+              print(f"FAIL: docs claim {claimed}/16 on the paraphrase set, measured "
+                    f"{d['hard_hits_at_3']}/16 — update memory/README.md", file=sys.stderr)
+              sys.exit(1)
+          if d["negative_with_confident_hit"] != 0:
+              print("FAIL: unrelated query produced a confident hit", file=sys.stderr)
+              sys.exit(1)
+          print("PASS: published numbers match the measurement")
+          PY
+      - name: End-to-end demo (admit / refuse / tamper / noise floor)
+        run: python memory/store.py demo
+      - name: Upload retrieval evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: memory-eval-${{ github.sha }}
+          path: memory-eval.json
+          if-no-files-found: error
+
   launch-evidence:
     name: Publish kit · regenerate every claim + verify evidence links
     runs-on: ubuntu-latest

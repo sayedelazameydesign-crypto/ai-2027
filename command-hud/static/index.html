@@ -162,6 +162,23 @@ footer a{color:var(--acc2)}
       </div>
 
       <div class="panel">
+        <h2>🧠 <span data-en="Evidence-gated memory (L1)" data-ar="الذاكرة المحكومة بالأدلة (L1)">Evidence-gated memory (L1)</span> <span class="pill" id="memPill">—</span></h2>
+        <div class="hint" data-en="Only VERIFIED runs whose independent hash check passed are admitted. DENIED and FAILED runs are refused and logged. Backend: stdlib sqlite3 + deterministic lexical embedding — NOT neural, NOT sqlite-vec. Measured paraphrase recall@3 = 2/16, so it misses synonyms; that limit is published, not hidden." data-ar="لا تُقبل إلا التشغيلات المُتحقَّقة التي نجح فيها فحص البصمة المستقل. المرفوض والفاشل يُسجَّلان كرفض. الخلفية: sqlite3 من المكتبة القياسية + تمثيل لفظي حتمي — ليس عصبيًا ولا sqlite-vec. الاستدعاء على الصياغات المعادِية ٢/١٦، أي أنه يفوّت المرادفات؛ وهذا الحد منشور لا مخفي.">Only VERIFIED runs whose independent hash check passed are admitted. DENIED and FAILED runs are refused and logged. Backend: stdlib sqlite3 + deterministic lexical embedding — NOT neural, NOT sqlite-vec. Measured paraphrase recall@3 = 2/16, so it misses synonyms; that limit is published, not hidden.</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <input id="memQuery" placeholder="halftone 55 lpi" style="flex:1;min-width:160px" spellcheck="false">
+          <button class="btn" id="memBtn" data-en="🔎 Search memory" data-ar="🔎 ابحث في الذاكرة">🔎 Search memory</button>
+        </div>
+        <div class="rt-grid" id="memGrid">
+          <div class="rt"><b>—</b><span data-en="run a goal first" data-ar="شغّل هدفًا أولًا">run a goal first</span></div>
+        </div>
+        <div class="scroll" style="max-height:220px;margin-top:10px"><table><thead><tr>
+          <th data-en="score" data-ar="التشابه">score</th><th data-en="above noise" data-ar="فوق الضوضاء">above noise</th>
+          <th data-en="goal / content" data-ar="الهدف / المحتوى">goal / content</th><th>sha256</th>
+        </tr></thead><tbody id="memBody"><tr><td colspan="4" class="mono">—</td></tr></tbody></table></div>
+        <div class="warnbox" id="memWarn" style="display:none"></div>
+      </div>
+
+      <div class="panel">
         <h2>🗂️ <span data-en="48-project health (read-only audit)" data-ar="صحة المشاريع الـ48 (تدقيق قراءة فقط)">48-project health (read-only audit)</span> <span class="pill" id="auditPill">—</span></h2>
         <div class="hint" data-en="PROVEN = a command actually ran here. DECLARED = documented but NOT executed. SIMULATED = README says simulation. Nothing under projects/ was modified." data-ar="مُثبت = أمر نفّذ فعليًا هنا. مُعلَن = موثّق لكن لم يُنفَّذ. محاكاة = README يذكر وضع محاكاة. لم يُعدّل أي ملف تحت projects/.">PROVEN = a command actually ran here. DECLARED = documented but NOT executed. SIMULATED = README says simulation. Nothing under projects/ was modified.</div>
         <div class="filters" id="filters"></div>
@@ -181,6 +198,7 @@ footer a{color:var(--acc2)}
       <li data-en="`http://localhost:8090` points at YOUR machine, not this sandbox. In Arena use the live preview URL; relative API paths keep it working behind the proxy." data-ar="`http://localhost:8090` يشير إلى جهازك لا إلى هذا الصندوق. في Arena استخدم رابط المعاينة الحية؛ المسارات النسبية تبقيه يعمل خلف البروكسي."><code>http://localhost:8090</code> points at YOUR machine, not this sandbox. In Arena use the live preview URL; relative API paths keep it working behind the proxy.</li>
       <li data-en="DENIED at ~3.1 ms is the reference p50 from docs/BENCHMARKS.md; re-runs on loaded containers reached 12.1 ms with 172% spread. Timings here are measured live and are NOT an SLA." data-ar="الرفض عند ~3.1ms هو p50 المرجعي من docs/BENCHMARKS.md؛ إعادة التشغيل على حاوية محمّلة وصلت 12.1ms بضوضاء 172%. الأزمنة هنا مقاسة لحظيًا وليست SLA.">DENIED at ~3.1 ms is the reference p50 from <code>docs/BENCHMARKS.md</code>; re-runs on loaded containers reached 12.1 ms with 172% spread. Timings here are measured live and are NOT an SLA.</li>
       <li data-en="The deterministic planner is deliberate: NO LLM is called anywhere. Phase 2 (cloud / local / defer) is still your undecided decision." data-ar="المخطط الحتمي مقصود: لا يُستدعى أي نموذج لغوي. Phase 2 (سحابي/محلي/تأجيل) ما زال قرارك غير المحسوم.">The deterministic planner is deliberate: <b>NO LLM is called anywhere</b>. Phase 2 (cloud / local / defer) is still your undecided decision.</li>
+      <li data-en="🧠 Memory is lexical, not neural. Only VERIFIED runs are admitted, but a paraphrase like “dot pattern resolution” will NOT retrieve “halftone 55 lpi” — measured recall@3 on the hard set is 2/16. sqlite-vec is not installed, so this uses stdlib sqlite3." data-ar="🧠 الذاكرة لفظية لا عصبية. لا تُقبل إلا التشغيلات المُتحقَّقة، لكن صياغة مثل «دقة النقاط» لن تستدعي «halftone 55 lpi» — الاستدعاء المقاس على المجموعة الصعبة ٢/١٦. sqlite-vec غير مثبّت، لذا نستخدم sqlite3 القياسي.">🧠 Memory is lexical, not neural. Only VERIFIED runs are admitted, but a paraphrase like “dot pattern resolution” will NOT retrieve “halftone 55 lpi” — measured recall@3 on the hard set is 2/16. sqlite-vec is not installed, so this uses stdlib sqlite3.</li>
       <li data-en="25 Windows-separator/encoded paths became literal filenames INSIDE the sandbox on Linux (0 breaches, but cross-platform containment is NOT VERIFIED). This is reported, not hidden." data-ar="٢٥ مسارًا بفواصل Windows/مرمّزة تحوّلت إلى أسماء ملفات حرفية داخل الصندوق على Linux (صفر اختراق، لكن الاحتواء عبر المنصات غير مُثبت). هذا مُعلَن لا مُخفى.">25 Windows-separator/encoded paths became literal filenames INSIDE the sandbox on Linux (0 breaches, but cross-platform containment is NOT VERIFIED). This is reported, not hidden.</li>
     </ul>
   </div>
