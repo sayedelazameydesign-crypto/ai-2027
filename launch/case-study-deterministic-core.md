@@ -65,4 +65,4 @@ benchmark JSON. Break it and tell me where — that's the point.
 
 ---
 
-*Author: Sayed El-Azamey — independent AI systems builder, Egypt. Building in public.*
+*Author & rights holder: [Sayed El-Azamey (سيد العزامي)](https://www.facebook.com/sayed.elazamy) — independent AI systems builder, Egypt. Building in public.*
