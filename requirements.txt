@@ -1,0 +1,16 @@
+# Requirements for cloud deployment.
+#
+# This file is intentionally EMPTY of dependencies, and that is a measured claim,
+# not an aspiration: `python3 scripts/ci_guard.py imports` walks the AST of every
+# kernel module and fails the build if any non-stdlib import appears. The CI
+# matrix also runs the 86 kernel tests on Python 3.10, 3.11 and 3.12.
+#
+# Do not add a package here to "make deployment work". If deployment needs one,
+# the zero-dependency guarantee is broken and that decision deserves its own
+# commit, its own ledger row, and an explicit note in launch/PROOF-LEDGER.md.
+#
+# The PEP 508 marker below pulls in nothing; it exists so that a tool which
+# insists on parsing at least one requirement does not fail on an empty file.
+# (Comments alone are valid for pip, but some PaaS builders are stricter.)
+# Example of the only shape allowed if this ever changes:
+#   some-stdlib-only-shim ; python_version < "0"
