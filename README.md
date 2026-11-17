@@ -100,7 +100,7 @@ Two servers, one real kernel, and a smoke test that hits them the way a human do
 ```bash
 python3 live-agent/server.py  --port 8090 &     # real kernel, real sandbox
 python3 command-hud/server.py --port 8091 &     # dashboard over the same kernel
-python3 scripts/runtime_smoke.py                # 13 checks, PASS/FAIL per promise
+python3 scripts/runtime_smoke.py                # 15 checks, PASS/FAIL per promise
 ```
 
 Latest run against live servers (`2026-11-17`):
@@ -115,11 +115,13 @@ PASS  live-agent: Windows-style traversal -> DENIED           [cross-platform co
 PASS  live-agent: VERIFIED run admitted to memory, DENIED run refused   [memories=1 refused=2]
 PASS  live-agent: memory search returns the real run above noise        [score=0.7078 thr=0.15]
 PASS  live-agent: unrelated query -> no confident hit (honest recall)   [top_score=0.0]
+PASS  live-agent: agent card is valid + declares its limits             [9 endpoints · 4 limits]
+PASS  live-agent: metrics expose real counters (Prometheus text)        [verified_runs>=1]
 PASS  hud: health (stdlib, no LLM)
 PASS  hud: dispatch -> real kernel VERIFIED
 PASS  hud: built-in escape test -> DENIED
 PASS  hud: 100-attack gate (0 breaches, all gates)            [denied=91 contained=9]
-13/13 checks passed
+15/15 checks passed
 ```
 
 The memory checks are the **evidence gate in motion**: `POST /api/run` offers every
@@ -132,6 +134,26 @@ lexical scores plus the measured noise-floor threshold — recall is measured
 
 CI job **`Runtime smoke · real servers over HTTP`** boots both servers and runs exactly this,
 so "it runs" cannot regress silently.
+
+**Machine-discoverable, not just human-readable:** `GET /api/agent-card` serves an
+A2A-style card (`agent-card.json`) that declares skills **and** `honest_limits`, and
+`GET /api/metrics` serves Prometheus counters (runs by status, memories, refusals,
+uptime). The smoke test refuses an agent card whose endpoints are not real `/api/` paths
+or that hides its limits.
+
+**It also runs without you:** `.github/workflows/ember.yml` beats every 6 hours —
+boots both servers, runs the 15 checks, recomputes a measured **Heat Index**, publishes
+`ember/status.json` + `STATUS.md` to the `heartbeat` branch, opens one issue when
+degraded and closes it on recovery.
+
+```bash
+python3 scripts/ember_beat.py --write     # one beat, right now
+python3 scripts/ember_beat.py --json      # same, machine-readable
+```
+
+[![Ember beat](https://github.com/sayedelazameydesign-crypto/ai-2027/actions/workflows/ember.yml/badge.svg)](https://github.com/sayedelazameydesign-crypto/ai-2027/actions/workflows/ember.yml)
+· [Live status (heartbeat branch)](https://github.com/sayedelazameydesign-crypto/ai-2027/blob/heartbeat/STATUS.md)
+· [2027 roadmap](docs/ROADMAP-2027.md)
 
 ## 🎛️ Live Command HUD — see the kernel move
 

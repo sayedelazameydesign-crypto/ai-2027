@@ -11,6 +11,10 @@ env.local
 live-agent/runs/
 live-agent/sandboxes/
 live-agent/memory.db
+# Ember beat output — regenerated every beat; the live series lives on the
+# `heartbeat` branch, so a copy in main would only ever be a stale claim.
+ember/
+STATUS.md
 packaging/agi-kernel/dist/
 packaging/agi-kernel/src/agi_kernel/
 packaging/agi-kernel/*.egg-info/
