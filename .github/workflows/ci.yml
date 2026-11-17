@@ -331,9 +331,10 @@ jobs:
           python - <<'PY'
           import ast, sys
           from pathlib import Path
-          stdlib = set(sys.stdlib_module_names) | {"tomllib", "adapter"}
+          stdlib = set(sys.stdlib_module_names) | {"tomllib"}
           bad = {}
           files = sorted(Path("render_control_adapter").glob("*.py"))
+          siblings = {p.stem for p in files}
           for p in files:
               tree = ast.parse(p.read_text(encoding="utf-8"))
               for n in ast.walk(tree):
@@ -343,9 +344,10 @@ jobs:
                   elif isinstance(n, ast.ImportFrom) and n.level == 0 and n.module:
                       names = [n.module.split(".")[0]]
                   for name in names:
-                      if name not in stdlib:
-                          bad.setdefault(str(p), set()).add(name)
-          print("scanned", len(files), "adapter files")
+                      if name in stdlib or name in siblings:
+                          continue
+                      bad.setdefault(str(p), set()).add(name)
+          print("scanned", len(files), "adapter files; siblings:", sorted(siblings))
           if bad:
               print("THIRD-PARTY:", bad, file=sys.stderr); sys.exit(1)
           print("PASS: render adapter imports nothing from outside the stdlib")
@@ -372,9 +374,25 @@ jobs:
           python - <<'PY'
           import ast, sys
           from pathlib import Path
-          stdlib = set(sys.stdlib_module_names) | {"tomllib", "adapter"}
-          bad = {}
+          # A sibling module inside the SAME directory is not a dependency:
+          # `import local_watchdog` from test_watchdog.py is a local import.
+          # Deriving that set from the files on disk (instead of hard-coding
+          # names) is what keeps this gate honest as the directory grows.
+          # The first version hard-coded only the shared names and failed CI on
+          # a legitimate sibling import — the gate was wrong, not the code.
+          stdlib = set(sys.stdlib_module_names) | {"tomllib"}
           files = sorted(Path("monitoring").glob("*.py"))
+          siblings = {p.stem for p in files}
+          # ONE declared exception, and it is a deliberate architectural
+          # boundary rather than a convenience: render_source.py calls the
+          # separate render_control_adapter package. The Render layer must not
+          # become part of the watchdog any more than it may become part of Core.
+          # Declaring it here means the exception is visible and reviewable; a
+          # blanket "allow anything in try/except" would hide the next one.
+          ALLOWED_CROSS_PACKAGE = {
+              ("render_source.py", "adapter"): "calls render_control_adapter (separate package)",
+          }
+          bad = {}
           for p in files:
               tree = ast.parse(p.read_text(encoding="utf-8"))
               for n in ast.walk(tree):
@@ -384,9 +402,14 @@ jobs:
                   elif isinstance(n, ast.ImportFrom) and n.level == 0 and n.module:
                       names = [n.module.split(".")[0]]
                   for name in names:
-                      if name not in stdlib:
-                          bad.setdefault(str(p), set()).add(name)
-          print("scanned", len(files), "monitoring files")
+                      if name in stdlib or name in siblings:
+                          continue
+                      if (p.name, name) in ALLOWED_CROSS_PACKAGE:
+                          print(f"  allowed cross-package import in {p.name}: "
+                                f"{name} ({ALLOWED_CROSS_PACKAGE[(p.name, name)]})")
+                          continue
+                      bad.setdefault(str(p), set()).add(name)
+          print("scanned", len(files), "monitoring files; siblings:", sorted(siblings))
           if bad:
               print("THIRD-PARTY:", bad, file=sys.stderr); sys.exit(1)
           print("PASS: watchdog imports nothing outside the stdlib")

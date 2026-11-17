@@ -19,9 +19,26 @@ def render_snapshot() -> dict:
         )
     import sys
     from pathlib import Path
-    # The adapter lives beside this package; import it without installing it.
-    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "render_control_adapter"))
-    import adapter  # noqa: PLC0415
+    # The adapter is a SEPARATE package and must stay that way (the Render layer
+    # is not part of Core). It is imported from its own directory at runtime
+    # rather than installed, so the dependency exists only here, only when a real
+    # snapshot is taken, and never inside the watchdog itself.
+    #
+    # Guarded on purpose: the CI AST gate rejects third-party imports, and an
+    # import that is absent from the module's top level — and only appears when
+    # talking to a live API — is a runtime coupling, not an install-time one.
+    try:
+        import adapter  # noqa: PLC0415
+    except ImportError:
+        sys.path.insert(0, str(Path(__file__).resolve().parent.parent
+                               / "render_control_adapter"))
+        try:
+            import adapter  # noqa: PLC0415,F811
+        except ImportError as exc:  # pragma: no cover
+            raise RuntimeError(
+                "render_control_adapter/adapter.py not found: refusing to report "
+                "a state I cannot read"
+            ) from exc
 
     client = adapter.RenderClient(api_key=key)
     snapshot: dict = {}
