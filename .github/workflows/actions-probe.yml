@@ -18,6 +18,11 @@ jobs:
   probe:
     runs-on: ubuntu-latest
     steps:
+      - name: Uses one pinned GitHub-authored action (allowlist test)
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+        with:
+          fetch-depth: 1
+
       - name: Pipeline starts without any third-party action
         run: |
           echo "OK: shell-only step executed"
