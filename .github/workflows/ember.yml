@@ -73,6 +73,25 @@ jobs:
           tail -40 /tmp/live-agent.log /tmp/hud.log || true
           exit 1
 
+      - name: Restore the recorded past (history lives on the heartbeat branch)
+        run: |
+          # The beat's memory is not in `main` (ember/ is intentionally ignored
+          # there): it is published to the `heartbeat` branch. Without this step
+          # every run starts with an empty history, the streak can never grow,
+          # and stage-3 escalation would be unreachable. Found by running it.
+          set -euo pipefail
+          mkdir -p ember
+          : > ember/history.jsonl
+          : > ember/gate.jsonl
+          if git fetch --depth=1 origin heartbeat 2>/dev/null; then
+            git show FETCH_HEAD:ember/history.jsonl > ember/history.jsonl 2>/dev/null || true
+            git show FETCH_HEAD:ember/gate.jsonl   > ember/gate.jsonl   2>/dev/null || true
+            echo "restored the past from origin/heartbeat"
+          else
+            echo "no heartbeat branch yet — this is the first beat on record"
+          fi
+          echo "history rows: $(wc -l < ember/history.jsonl) · gate rows: $(wc -l < ember/gate.jsonl)"
+
       - name: Beat, then gate it — one retry before any human is paged
         id: gate
         run: |
