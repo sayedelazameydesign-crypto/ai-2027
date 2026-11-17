@@ -72,6 +72,9 @@ jobs:
       - name: CI guard self-tests (keeps the gates honest)
         run: python scripts/test_ci_guard.py -v
 
+      - name: Ember beat tests — heat index + honest publishing (7)
+        run: python scripts/test_ember_beat.py -v
+
   demo-tests:
     name: Public demo contract (12 tests)
     runs-on: ubuntu-latest
@@ -526,7 +529,7 @@ jobs:
           done
           echo "servers did not start within 20s" >&2
           exit 1
-      - name: End-to-end smoke against the running servers (13 checks)
+      - name: End-to-end smoke against the running servers (15 checks)
         run: python scripts/runtime_smoke.py
       - name: Stop the servers
         if: always()
