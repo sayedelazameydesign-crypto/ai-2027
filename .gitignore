@@ -32,3 +32,8 @@ launch/evidence/
 # L1 memory runtime artefacts
 memory/out/
 memory/__pycache__/
+
+# Render Phase 0 audit output: contains real service IDs, owner IDs and repo
+# URLs. Never commit it — it is handed back to build fixtures, not published.
+render_control_adapter/phase0-report.json
+render-control-audit*.json

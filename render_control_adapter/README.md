@@ -80,3 +80,30 @@ defects, each now a named regression test (`test_80`–`test_83`):
 Each gate was then *removed on purpose* to confirm the tests fail: approval off
 → an unapproved restart is sent; redaction off → the secret appears in log
 output; limiter off → 12 requests where the limit is 10.
+
+## Phase 0 hand-off (the one thing that cannot be done from here)
+
+The sandbox that wrote this code **cannot reach `api.render.com`** (TCP opens,
+TLS is reset; `api.github.com` returns 200 as a control). So no live call has
+been made, and nothing here claims otherwise.
+
+The owner runs exactly one command:
+
+```bash
+RENDER_API_KEY=rnd_... python3 render_control_adapter/probe.py \
+    --report render_control_adapter/phase0-report.json
+```
+
+It reads only, performs zero mutations (asserted, and exiting non-zero if not),
+and writes one file. That file is gitignored on purpose: it contains real
+service IDs and owner IDs. It answers the two questions code cannot answer from
+here:
+
+1. **Do the fixture shapes match reality?** Every endpoint is recorded as
+   ok/status/latency. A shape mismatch shows up as a failure, not a silent pass.
+2. **What is actually deployed?** Service count, types, regions, plans, health
+   check paths, env-var *key names and lengths* only — never values.
+
+That report becomes the fixture set for Phase 2. Until it exists, Phase 2 code
+would be built on guessed shapes, which is the failure mode this whole adapter
+was written to avoid.
