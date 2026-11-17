@@ -135,3 +135,53 @@ jobs:
         run: |
           ls -l dist/
           du -h dist/*.whl
+
+  command-hud:
+    name: Command HUD · real kernel + 100-attack gate + 48-project audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: HUD is stdlib-only too (AST gate on the new code path)
+        run: |
+          python - <<'PY'
+          import ast, sys
+          from pathlib import Path
+          stdlib = set(sys.stdlib_module_names) | {"tomllib"}
+          bad = {}
+          for p in sorted(Path("command-hud").glob("*.py")):
+              for n in ast.walk(ast.parse(p.read_text(encoding="utf-8"))):
+                  names = []
+                  if isinstance(n, ast.Import):
+                      names = [a.name.split(".")[0] for a in n.names]
+                  elif isinstance(n, ast.ImportFrom) and n.level == 0 and n.module:
+                      names = [n.module.split(".")[0]]
+                  for name in names:
+                      if name not in stdlib and name not in {"audit", "redteam", "kernel_bridge", "server"}:
+                          bad.setdefault(str(p), set()).add(name)
+          print("scanned", len(list(Path("command-hud").glob("*.py"))), "HUD files")
+          if bad:
+              print("THIRD-PARTY:", bad, file=sys.stderr); sys.exit(1)
+          print("PASS: stdlib only")
+          PY
+      - name: End-to-end HUD tests (12, real HTTP + real kernel)
+        run: python command-hud/test_hud.py -v
+      - name: Red-team gate — 100 attacks, 0 breaches, 10/10 controls
+        run: python command-hud/redteam.py --markdown --assert
+      - name: Repository audit — 48 projects, 5 probes must pass
+        run: |
+          python command-hud/audit.py --assert-probes > command-hud/audit-latest.json
+          python command-hud/audit.py --fast --report command-hud/audit-report.md
+      - name: Upload audit evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: repository-audit-${{ github.sha }}
+          path: |
+            command-hud/audit-latest.json
+            command-hud/audit-report.md
+          if-no-files-found: error

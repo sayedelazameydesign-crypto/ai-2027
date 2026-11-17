@@ -17,6 +17,8 @@ python3 live-agent/test_server.py                                               
 node website/kernel-demo.test.js                                                    # 12 tests
 python3 scripts/ci_guard.py imports                                                 # zero-deps proof
 python3 scripts/test_ci_guard.py                                                    # 9 gate self-tests
+python3 command-hud/test_hud.py                                                     # 12 HUD end-to-end tests
+python3 command-hud/redteam.py --markdown --assert                                  # 100 real attacks, 0 breaches
 cd projects/agi-system && python3 -m core doctor
 ```
 
