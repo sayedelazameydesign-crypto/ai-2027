@@ -63,15 +63,25 @@ From `python3 memory/evaluate.py` on a 20-run corpus (real kernel runs):
 |---|---:|
 | Noise floor p95 (unrelated pairs) | 0.20 |
 | Recall@3 — **easy** set (reuses corpus vocabulary) | 16/16 = 1.000 |
-| Recall@3 — **hard** paraphrase set | **2/16 = 0.125** |
+| Recall@3 — **hard** paraphrase set | **11/16 = 0.688** |
 | False positives — unrelated queries | 0/5 = 0.000 |
 | False positives — near-miss queries | 0/7 = 0.000 |
 
-**The honest headline is 0.125, not 1.000.** The easy set only proves the wiring
-works; the hard set deliberately avoids the stored tokens, and a lexical model
-misses true synonyms ("dot pattern resolution" ≠ "halftone 55 lpi"). If you want
-semantic recall, that requires an embedding model — which is **L4**, an undecided
-Phase 2 decision, not something quietly smuggled in here.
+**The honest headline is 0.688, not 1.000** — and it was **0.125** before v2.
+
+What changed in v2 (`memory/retrieval.py`, still zero-dependency):
+
+| Device | Declared? | Effect |
+|---|---|---|
+| Hand-written thesaurus, **34 groups / 212 terms** | yes — the file is the resource | makes "dot pattern" meet "halftone" |
+| Light stemming (EN suffixes, AR clitics) | yes — constants in the same file | "قطنية" meets "قطني", "plates" meets "plate" |
+| IDF-weighted concept coverage + a **2-concept** guard | yes — three constants | keeps near-miss negatives at **0/7** |
+| Language-scoped concept ids | yes — built at import | bilingual groups had produced 2/7 false positives |
+
+Still true: phrasing outside the declared thesaurus is missed (5 of 16), it is
+not a neural model, and the thresholds were tuned **on this labelled set**, so
+treat 0.688 as indicative, not a benchmark. `test_11c` fails loudly if we ever
+pretend otherwise.
 
 ## Refusal durability (a bug worth publishing)
 

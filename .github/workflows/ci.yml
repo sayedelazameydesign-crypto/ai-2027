@@ -236,7 +236,7 @@ jobs:
               print("CONFIRMED: sqlite-vec absent — store uses stdlib sqlite3 as documented.")
           sys.exit(0)
           PY
-      - name: Admission gate + tamper detection (16 tests, real kernel)
+      - name: Admission gate + tamper detection (19 tests, real kernel)
         run: python memory/test_memory.py -v
       - name: Retrieval honesty report (recall + false positives, misses included)
         run: |
@@ -248,14 +248,25 @@ jobs:
                 f" | hard {d['hard_hits_at_3']}/{d['hard_queries']}"
                 f" | FP unrelated {d['negative_with_confident_hit']}/{d['negative_queries']}"
                 f" | FP near-miss {d['near_miss_confident_hits']}/{d['near_miss_queries']}")
-          # The published claim is the HARD number. Fail if the docs stop matching it.
-          claimed = 2
+          # The published claim is the HARD number, read from the docs themselves so
+          # code and docs can never drift apart.
+          import re, pathlib
+          doc = pathlib.Path("memory/README.md").read_text(encoding="utf-8")
+          m = re.search(r"paraphrase set \| \*\*(\d+)/16", doc)
+          claimed = int(m.group(1)) if m else -1
+          if claimed < 0:
+              print("FAIL: memory/README.md no longer publishes the hard-set claim", file=sys.stderr)
+              sys.exit(1)
           if d["hard_hits_at_3"] != claimed:
               print(f"FAIL: docs claim {claimed}/16 on the paraphrase set, measured "
                     f"{d['hard_hits_at_3']}/16 — update memory/README.md", file=sys.stderr)
               sys.exit(1)
           if d["negative_with_confident_hit"] != 0:
               print("FAIL: unrelated query produced a confident hit", file=sys.stderr)
+              sys.exit(1)
+          if d["near_miss_confident_hits"] != 0:
+              print("FAIL: a near-miss negative became a confident hit — raising "
+                    "recall must never cost false positives", file=sys.stderr)
               sys.exit(1)
           print("PASS: published numbers match the measurement")
           PY

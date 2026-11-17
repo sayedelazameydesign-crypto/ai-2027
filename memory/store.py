@@ -54,6 +54,9 @@ import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import retrieval  # noqa: E402  (repo-local, stdlib-only — see memory/retrieval.py)
+
 DIM = 512
 TOKEN_RE = re.compile(r"[a-z0-9\u0600-\u06FF]+")
 ARABIC_DIACRITICS = re.compile(r"[\u0610-\u061A\u064B-\u065F\u0670\u06D6-\u06ED]")
@@ -340,23 +343,38 @@ class EvidenceMemoryStore:
         }
 
     def search(self, query: str, k: int = 5) -> dict:
-        qv = embed(query)
-        floor = self.noise_floor()
-        threshold = max(0.15, float(floor["p95"] or 0.0))
+        """Concept-coverage retrieval (v2) with an explicit, measured gate.
+
+        v1 (hashed-cosine only) measured 2/16 on the paraphrase set. v2 scores
+        IDF-weighted concept coverage from `memory/retrieval.py` — still lexical,
+        still hand-written resources, still measured by `memory/evaluate.py`.
+        """
+        rows = self.rows()
+        doc_concepts = [retrieval.concepts(r["text"]) for r in rows]
+        idf = retrieval.idf_map(doc_concepts)
+        floor = retrieval.pair_floor([r["text"] for r in rows], idf)
+        threshold = max(retrieval.MIN_SCORE, float(floor["p95"] or 0.0))
+        qc = retrieval.concept_tokens(query)
         hits = []
-        for r in self.rows():
-            score = cosine(qv, json.loads(r["vector"]))
+        for r, dc in zip(rows, doc_concepts):
+            s = retrieval.score_with(qc, dc, idf)
             hits.append({
-                "memory_id": r["memory_id"], "score": round(score, 4),
-                "above_noise": score > threshold,
+                "memory_id": r["memory_id"], "score": s["score"],
+                "coverage": s["coverage"], "matched": s["matched"],
+                "above_noise": retrieval.confident(s, threshold),
                 "goal_type": r["goal_type"], "sha256": r["sha256"],
                 "trust": r["trust"], "artifact_verified": bool(r["artifact_verified"]),
                 "text": r["text"][:160],
             })
-        hits.sort(key=lambda h: (-h["score"], h["memory_id"]))
+        hits.sort(key=lambda h: (-h["score"], -h["matched"], h["memory_id"]))
         return {"query": query, "k": k, "threshold": round(threshold, 4),
                 "noise_floor": floor, "results": hits[:k],
-                "confident": sum(1 for h in hits[:k] if h["above_noise"])}
+                "confident": sum(1 for h in hits[:k] if h["above_noise"]),
+                "scoring": {"version": retrieval.THESAURUS_VERSION,
+                            "thesaurus_groups": len(retrieval.SYNONYM_GROUPS),
+                            "min_coverage": retrieval.MIN_COVERAGE,
+                            "min_matched_concepts": retrieval.MIN_MATCHED_CONCEPTS,
+                            "backend": "IDF concept coverage (lexical, no model)"}}
 
     def verify(self) -> dict:
         """Re-derive every trust claim from disk. Reports tamper, does not hide it."""
@@ -393,7 +411,12 @@ class EvidenceMemoryStore:
             "memories": mem["c"], "mean_trust": round(mem["t"], 3) if mem["t"] else None,
             "admitted_events": log["a"] or 0, "refused_events": log["r"] or 0,
             "duplicates_skipped": log["d"] or 0,
-            "dim": DIM, "backend": "sqlite3 + hashed-lexical (no sqlite-vec)",
+            "dim": DIM,
+            "backend": ("sqlite3 + IDF concept coverage over a declared thesaurus "
+                        "(no model, no sqlite-vec)"),
+            "retrieval": {k: v for k, v in retrieval.describe().items()
+                          if k in ("version", "thesaurus_groups", "thesaurus_terms",
+                                   "min_coverage", "min_matched_concepts")},
             "noise_floor": self.noise_floor(),
         }
 
