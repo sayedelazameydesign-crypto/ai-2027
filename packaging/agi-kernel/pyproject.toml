@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agi-kernel"
+version = "0.1.0"
+description = "Evidence-first cognitive loop kernel (Goal->Plan->Policy->Execute->Verify->Evidence->Ledger). Zero dependencies."
+readme = "README.md"
+requires-python = ">=3.10"
+# LICENSE PENDING — see docs/LICENSE-DECISIONS.md. Do NOT publish to PyPI
+# until the owner decides a license for projects/agi-system.
+license = {text = "UNLICENSED — all rights reserved, pending owner decision"}
+authors = [{name = "Sayed El-Azamey"}]
+keywords = ["ai-agents", "verification", "evidence", "agentic-ai", "deterministic"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: POSIX :: Linux",
+    "Intended Audience :: Developers",
+    "Topic :: Software Development :: Libraries",
+]
+
+[project.scripts]
+agi-kernel = "agi_kernel.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
