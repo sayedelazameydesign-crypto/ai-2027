@@ -305,6 +305,9 @@ class EvidenceMemoryStore:
             (time.time(), memory_id, 1 if admitted else 0, reason,
              rec.get("status"), 1 if checks.get("hash_matches") else 0,
              1 if duplicate else 0))
+        # A refusal MUST be durable: without this commit the log was silently
+        # lost for self-contained connections, so "refused and logged" was false.
+        self.conn.commit()
 
     # -- read ------------------------------------------------------------ #
     def rows(self) -> list[sqlite3.Row]:

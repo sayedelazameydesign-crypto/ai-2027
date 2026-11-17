@@ -73,6 +73,15 @@ misses true synonyms ("dot pattern resolution" ≠ "halftone 55 lpi"). If you wa
 semantic recall, that requires an embedding model — which is **L4**, an undecided
 Phase 2 decision, not something quietly smuggled in here.
 
+## Refusal durability (a bug worth publishing)
+
+`_log()` originally inserted a refusal row **without committing**, so on a
+self-contained connection the `admission_log` silently stayed empty while the
+verdict said "refused". The claim "refused *and logged*" was therefore false.
+Found by the live HUD smoke test (a `DENIED` run left `refused_events` at 0),
+fixed with an explicit commit, and now guarded by `test_17` which reopens the
+database on a **new connection** and requires the refusal to still be there.
+
 ## Known limits (do not overclaim)
 
 1. **Lexical, not neural.** Synonyms are missed; quantified above and asserted by `test_11`.
