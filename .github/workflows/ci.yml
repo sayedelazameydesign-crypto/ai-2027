@@ -526,7 +526,7 @@ jobs:
           done
           echo "servers did not start within 20s" >&2
           exit 1
-      - name: End-to-end smoke against the running servers (10 checks)
+      - name: End-to-end smoke against the running servers (13 checks)
         run: python scripts/runtime_smoke.py
       - name: Stop the servers
         if: always()
