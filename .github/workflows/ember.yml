@@ -1,0 +1,169 @@
+# 🔥 Ember beat — the workflow that keeps this repository burning without a human.
+#
+# Why it exists: measured on 2026-11-17, `grep -rn "schedule|cron" .github/workflows/`
+# returned NOTHING. The project only moved when someone pushed. A repo that stops
+# when its owner sleeps is a hot stone, not an ember.
+#
+# What each beat does (all of it real, none of it simulated):
+#   1. boots the real live-agent (real kernel) + the real Command HUD;
+#   2. runs `scripts/runtime_smoke.py` (15 checks over real HTTP);
+#   3. computes the Heat Index from measured history and writes ember/status.json
+#      + STATUS.md from the same variables;
+#   4. opens (or updates) ONE issue when degraded, and closes it on recovery;
+#   5. pushes a heartbeat commit to the `heartbeat` branch.
+#
+# Two honest constraints are handled here, not hidden:
+#   * GitHub disables `schedule:` on public repos after ~60 days without repo
+#     activity — the heartbeat commit is the fuel that keeps the cron alive;
+#   * a scheduled job is NOT an uptime SLA (GitHub delays cron under load), so the
+#     status is published as measured fact with timestamps, never as "always up".
+name: Ember beat
+
+on:
+  schedule:
+    - cron: "15 */6 * * *"      # 04 beats/day, offset from the hour to dodge load
+  workflow_dispatch:
+
+permissions:
+  contents: write      # heartbeat branch + status files
+  issues: write        # degraded/recovered issue
+  actions: read
+
+concurrency:
+  group: ember-beat
+  cancel-in-progress: false
+
+jobs:
+  beat:
+    name: One measured beat (real servers, real HTTP)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
+        with:
+          python-version: "3.11"
+
+      - name: Boot the real services
+        run: |
+          set -euo pipefail
+          python live-agent/server.py --port 8090 --host 127.0.0.1 > /tmp/live-agent.log 2>&1 &
+          python command-hud/server.py --port 8091 --host 127.0.0.1 > /tmp/hud.log 2>&1 &
+          for i in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:8090/api/health > /dev/null \
+               && curl -sf http://127.0.0.1:8091/api/health > /dev/null; then
+              echo "both services healthy after ${i}s"; exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::services did not become healthy in 30s"
+          tail -40 /tmp/live-agent.log /tmp/hud.log || true
+          exit 1
+
+      - name: Beat (smoke + heat + status)
+        id: beat
+        run: |
+          set +e
+          python scripts/ember_beat.py --write --json \
+            --live-agent http://127.0.0.1:8090 \
+            --hud http://127.0.0.1:8091 \
+            --pages-url "https://sayedelazameydesign-crypto.github.io/ai-2027/demo.html" \
+            > /tmp/beat.json
+          echo "beat exit code: $?"
+          python - <<'PY'
+          import json, pathlib
+          d = json.loads(pathlib.Path("/tmp/beat.json").read_text())
+          print(f"### 🔥 Ember beat — heat {d['heat']['heat']} ({d['heat']['verdict']})")
+          print(f"- smoke: **{d['smoke']['passed']}/{d['smoke']['total']}**")
+          print(f"- memories: {d['memory']['memories']} (refused {d['memory']['refusals']})")
+          print(f"- embers live: {d['heat']['embers_live']}/3")
+          print(f"- beats in 7d: {d['heat']['beats_7d']} · success {d['heat']['success_rate_7d']}")
+          print(f"- degraded: **{d['degraded']}**")
+          pathlib.Path("/tmp/beat_degraded").write_text("1" if d["degraded"] else "0")
+          pathlib.Path("/tmp/beat_body.md").write_text(
+              f"Heat **{d['heat']['heat']}** ({d['heat']['verdict']}) · "
+              f"smoke {d['smoke']['passed']}/{d['smoke']['total']} · "
+              f"memories {d['memory']['memories']} · "
+              f"beat at {d['beat_at_iso']}\n\n"
+              + "\n".join(f"- {'PASS' if c['ok'] else 'FAIL'} · {c['name']}"
+                          for c in d["smoke"]["checks"]))
+          PY
+          cat /tmp/beat.json >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
+
+      - name: Declare failure honestly if degraded
+        run: |
+          if [ "$(cat /tmp/beat_degraded)" = "1" ]; then
+            echo "::error::ember degraded — a check failed; opening/updating the issue"
+            exit 1
+          fi
+          echo "healthy beat"
+
+      - name: Upload beat evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        with:
+          name: ember-beat-${{ github.run_id }}
+          path: |
+            ember/status.json
+            STATUS.md
+            /tmp/beat.json
+          if-no-files-found: warn
+
+      - name: Open or update the degraded issue
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh label create ember-degraded --color B60205             --description "Ember beat degraded — opened automatically" 2>/dev/null || true
+          body_file=/tmp/beat_body.md
+          [ -f "$body_file" ] || echo "beat did not produce a body" > "$body_file"
+          existing=$(gh issue list --label ember-degraded --state open \
+                     --json number --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body-file "$body_file"
+            echo "updated issue #$existing"
+          else
+            gh issue create --label ember-degraded \
+              --title "🔥 Ember degraded — a beat failed" \
+              --body-file "$body_file"
+          fi
+
+      - name: Close the issue on recovery
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          existing=$(gh issue list --label ember-degraded --state open \
+                     --json number --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body "Recovered: the next beat is healthy. Comment written by .github/workflows/ember.yml."
+            gh issue close "$existing"
+            echo "closed issue #$existing"
+          else
+            echo "no open ember-degraded issue"
+          fi
+
+      - name: Heartbeat commit (this is what keeps the cron alive)
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ ! -d ember ]; then
+            echo "no ember directory produced; nothing to publish"
+            exit 0
+          fi
+          git config user.name  "ember-bot"
+          git config user.email "ember-bot@users.noreply.github.com"
+          SUMMARY=$(python -c 'import json;d=json.load(open("ember/status.json"));print("heat=%s smoke=%s/%s" % (d["heat"]["heat"], d["smoke"]["passed"], d["smoke"]["total"]))')
+          # Orphan index => the branch holds ONLY the ember snapshot, so the
+          # working tree (and the real branch history) is never touched.
+          git checkout --orphan heartbeat-build
+          git rm -r --cached . -q
+          git add -f ember STATUS.md
+          git -c commit.gpgsign=false commit -q -m "beat: $(date -u +%Y-%m-%dT%H:%M:%SZ) · $SUMMARY" \
+            || echo "nothing changed this beat"
+          git push --force origin HEAD:heartbeat
+          echo "heartbeat pushed: $SUMMARY"

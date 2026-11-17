@@ -68,6 +68,7 @@ SUPPORTED_GOALS = SequentialPlanner().supported_goal_types
 
 _lock = threading.Lock()               # the kernel is single-run per instance
 _run_index: dict[str, dict] = {}       # run_id -> {record, sandbox, ts}
+_BOOT_TS = time.time()
 _memory: EvidenceMemoryStore | None = None
 _memory_lock = threading.Lock()
 
@@ -201,6 +202,16 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _text(self, body: str, content_type: str = "text/plain; charset=utf-8",
+              status: int = 200) -> None:
+        raw = body.encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(raw)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(raw)
+
     def _static(self, path: Path, content_type: str) -> None:
         data = path.read_bytes()
         self.send_response(200)
@@ -227,6 +238,39 @@ class Handler(BaseHTTPRequestHandler):
                 "memory": memory().stats()["memories"],
                 "memory_backend": "sqlite3 + hashed-lexical (no model, no sqlite-vec)",
             })
+        if u.path == "/api/agent-card":
+            card_path = HERE.parent / "agent-card.json"
+            if not card_path.is_file():
+                return self._json({"error": "agent-card.json missing"}, 404)
+            card = json.loads(card_path.read_text(encoding="utf-8"))
+            card["served_by"] = "live-agent/server.py"
+            card["live"] = {"runs": len(_run_index),
+                            "memories": memory().stats()["memories"]}
+            return self._json(card)
+        if u.path == "/api/metrics":
+            # Prometheus text format. Counters only — no derived "health score"
+            # that could flatter us; the smoke test decides pass/fail.
+            runs = list(_run_index.values())
+            st = memory().stats()
+            lines = [
+                "# HELP ai2027_runs_total Kernel runs by final status.",
+                "# TYPE ai2027_runs_total counter",
+            ]
+            for status in ("VERIFIED", "DENIED", "FAILED", "ABORTED", "INCONCLUSIVE"):
+                n = sum(1 for r in runs if r.get("status") == status)
+                lines.append(f'ai2027_runs_total{{status="{status}"}} {n}')
+            lines += [
+                "# HELP ai2027_memories Evidence-gated memories admitted.",
+                "# TYPE ai2027_memories gauge",
+                f"ai2027_memories {st['memories']}",
+                "# HELP ai2027_memory_refusals Runs refused by the evidence gate.",
+                "# TYPE ai2027_memory_refusals counter",
+                f"ai2027_memory_refusals {st['refused_events']}",
+                "# HELP ai2027_uptime_seconds Seconds since this process booted.",
+                "# TYPE ai2027_uptime_seconds gauge",
+                f"ai2027_uptime_seconds {round(time.time() - _BOOT_TS, 3)}",
+            ]
+            return self._text("\n".join(lines) + "\n")
         if u.path == "/api/memory":
             return self._json(memory().stats())
         if u.path == "/api/memory/search":
