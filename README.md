@@ -17,7 +17,7 @@
 [![CI](https://github.com/sayedelazameydesign-crypto/ai-2027/actions/workflows/ci.yml/badge.svg)](https://github.com/sayedelazameydesign-crypto/ai-2027/actions/workflows/ci.yml)
 [![Pages](https://github.com/sayedelazameydesign-crypto/ai-2027/actions/workflows/pages.yml/badge.svg)](https://github.com/sayedelazameydesign-crypto/ai-2027/actions/workflows/pages.yml)
 
-[🌐 Live demo](https://sayedelazameydesign-crypto.github.io/ai-2027/demo.html) · [Ground truth](docs/GROUND-TRUTH-2026-11-17.md) · [Deviations](docs/DEVIATIONS.md) · [العربية ⬇](#-ai-2027--المستودع-الجامع-لكل-الأدوات-والميزات) · [Catalog](catalog.json) · [Audit Report](AUDIT.md) · [Phase-0 Readiness](docs/PHASE-0-READINESS.md) · [Launch Kit](launch/)
+[🌐 Live demo](https://sayedelazameydesign-crypto.github.io/ai-2027/demo.html) · [Ground truth](docs/GROUND-TRUTH-2026-11-17.md) · [Deviations](docs/DEVIATIONS.md) · [العربية ⬇](#-ai-2027--المستودع-الجامع-لكل-الأدوات-والميزات) · [Catalog](catalog.json) · [Audit Report](AUDIT.md) · [Phase-0 Readiness](docs/PHASE-0-READINESS.md) · [Launch Kit](launch/) · [🔥 Ember plan](docs/EMBER-PLAN.md)
 
 </div>
 
