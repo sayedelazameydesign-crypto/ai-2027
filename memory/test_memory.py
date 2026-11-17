@@ -126,11 +126,34 @@ class MemoryTests(unittest.TestCase):
         res = self.store.search("kubernetes cluster autoscaling", k=3)
         self.assertEqual(res["confident"], 0)
 
-    def test_11_paraphrase_is_missed_honestly(self):
-        """This test asserts a LIMITATION so nobody can claim synonyms work."""
+    def test_11a_paraphrase_inside_the_declared_thesaurus_is_found(self):
+        """v2 behaviour, measured — and only because the thesaurus is DECLARED.
+
+        v1 missed this query (2/16 on the paraphrase set). v2 finds it through
+        `memory/retrieval.py` SYNONYM_GROUPS (a hand-written, inspectable
+        resource — not a model). `memory/evaluate.py` re-measures the whole set:
+        11/16 with zero near-miss false positives.
+        """
         self.store.ingest(self.run_goal(path="h.txt",
                                         content="halftone 55 lpi cmyk separation"))
         res = self.store.search("dot pattern resolution for silk screens", k=3)
+        self.assertGreaterEqual(res["confident"], 1)
+        self.assertGreaterEqual(res["results"][0]["matched"], 2)
+
+    def test_11b_one_shared_concept_is_not_enough(self):
+        """The guard that keeps near-miss negatives quiet, tested directly."""
+        self.store.ingest(self.run_goal(path="h.txt",
+                                        content="halftone 55 lpi cmyk separation"))
+        res = self.store.search("separation", k=3)
+        self.assertEqual(res["confident"], 0,
+                         "a single shared concept must never count as a memory")
+        self.assertEqual(res["results"][0]["matched"], 1)
+
+    def test_11c_paraphrase_outside_the_thesaurus_is_still_missed(self):
+        """This test asserts a LIMITATION so nobody can claim we became neural."""
+        self.store.ingest(self.run_goal(path="h.txt",
+                                        content="halftone 55 lpi cmyk separation"))
+        res = self.store.search("wavy lines appear when colours overlap", k=3)
         self.assertEqual(res["confident"], 0,
                          "if this ever passes, re-measure recall and update docs")
 
