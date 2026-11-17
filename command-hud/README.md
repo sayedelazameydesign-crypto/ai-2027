@@ -54,7 +54,7 @@ your own machine, `http://localhost:8090` works.
 ## Verification (reproducible)
 
 ```bash
-python3 command-hud/test_hud.py -v          # 12 end-to-end tests, real HTTP + real kernel
+python3 command-hud/test_hud.py -v          # 13 end-to-end tests, real HTTP + real kernel
 python3 command-hud/redteam.py --markdown --assert
 python3 command-hud/audit.py --report docs/REPOSITORY-AUDIT.md --assert-probes
 python3 scripts/ci_guard.py imports         # HUD itself is stdlib-only too
@@ -82,7 +82,7 @@ sandbox on Linux. Containment holds, but `core/policy.py` uses POSIX
 | `audit.py` | **Read-only** 48-project inspection + 5 executed probes → classified JSON/Markdown |
 | `redteam.py` | 100 adversarial inputs + 10 controls against the real policy wall |
 | `static/` | Dark bilingual HUD, zero external requests |
-| `test_hud.py` | 12 end-to-end tests (real HTTP, real kernel) |
+| `test_hud.py` | 13 end-to-end tests (real HTTP, real kernel) |
 | `runtime/` | Generated evidence trail — **gitignored**, never committed |
 
 ## Scope discipline
