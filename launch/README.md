@@ -21,6 +21,7 @@
 | [`founder-posts.md`](founder-posts.md) | 6 سكربتات مقالات/فيديو | DRAFT |
 | [`manual-github-settings.md`](manual-github-settings.md) | إعدادات يدوية موثّقة + ما صار آليًا | READY |
 | [`REAL-WORLD-CASE-STUDY.md`](REAL-WORLD-CASE-STUDY.md) | قالب قصة الإنتاج الحقيقي (Pro-Print / CELIA…) | 🔴 **NOT PUBLISHABLE — UNFILLED عمدًا** |
+| [`../docs/TIERED-ARCHITECTURE.md`](../docs/TIERED-ARCHITECTURE.md) | ما يعمل فعلًا (L0–L3 ✅) وما هو غير موجود بقرار (L4/L5 🔴) | ✅ READY |
 | [`production_evidence.py`](production_evidence.py) | أداة قياس ترفض أي بيانات بلا طريقة قياس ومصدر | ✅ عاملة + 10 اختبارات |
 
 ## ✅ أعد إنتاج كل رقم قبل أي نشر

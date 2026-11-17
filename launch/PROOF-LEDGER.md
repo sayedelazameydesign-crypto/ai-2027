@@ -41,6 +41,9 @@
 | B7 | Peak RSS growth over 70 runs | **416 KB** (other runs: 568–636 KB) | `python3 live-agent/bench.py` | `kernel.rss_growth_kb_over_70_runs` |
 | B8 | 48 projects, 3,967 files | exact match between `catalog.json` and disk | `python3 command-hud/audit.py` | [`docs/REPOSITORY-AUDIT.md`](../docs/REPOSITORY-AUDIT.md) |
 | B9 | Only 1 project `PROVEN` | 1 PROVEN / 40 DECLARED / 6 SIMULATED / 1 FAILED | same | same |
+| B11 | L1 memory: admission gate | `VERIFIED` + `hash_matches` + SHA-256 + on-disk hash match | `python3 memory/test_memory.py -v` | 16/16 tests; refusals logged in `admission_log` |
+| B12 | L1 memory: retrieval quality | recall@3 **2/16 = 0.125** on paraphrase set · FP 0/5 unrelated · 0/7 near-miss | `python3 memory/evaluate.py --markdown` | `memory/README.md` §Measured quality |
+| B13 | L1 memory: backend honesty | `sqlite3` + hashed-lexical, **no `sqlite-vec`** (`vec_version()` → OperationalError) | `python3 memory/store.py stats` | `stats.backend` |
 | B10 | 5/5 verification probes pass | 86 tests, 6 wrapper, AST gate, 9 guard, 12 demo | same | `probes` block |
 
 ## C. Structural claims (code-reading, not measurement)
@@ -66,6 +69,8 @@
 | D5 | 23 projects without LICENSE, 2 proprietary | [`docs/PHASE-0-READINESS.md`](https://github.com/sayedelazameydesign-crypto/ai-2027/blob/main/docs/PHASE-0-READINESS.md) |
 | D6 | Redundant legacy Pages build fails cosmetically on each push | [`manual-github-settings.md`](manual-github-settings.md) §6 |
 | D7 | Own bugs found & fixed: false SHA-256 on `DENIED`, p50 polluted by 0 ms control events, Python 3.10 `tomllib` gate, 4 failed Jekyll deploys | `command-hud/test_hud.py`, `scripts/test_ci_guard.py`, git history |
+| D8 | L1 memory is **lexical, not neural** — misses synonyms (2/16 on paraphrase set) | [`memory/evaluate.py`](../memory/evaluate.py), `test_memory.py::test_11` |
+| D9 | L1 memory is tamper-**evident**, not tamper-proof; no signing, single-writer assumption | `store.verify()`, [`memory/README.md`](../memory/README.md) §limits |
 
 ## E. Claims we REFUSE to make
 

@@ -17,7 +17,10 @@ var L = {
        killOn:'Kill switch ENGAGED — HUD dispatch is frozen (verification still works).',
        killOff:'Kill switch RELEASED — dispatch active.',
        rtDone:'Red-team finished', rtFail:'Red-team gate FAILED',
-       noAudit:'audit still computing', ms:'ms'},
+       noAudit:'audit still computing', ms:'ms',
+       memSearch:'search memory', memNone:'run a goal first',
+       memMemories:'memories', memRefused:'refused & logged', memDuplicates:'duplicates skipped',
+       memIntact:'artifacts intact', memNoise:'noise floor p95', memRecall:'recall@3 (paraphrase)'},
   ar: {events:'حدثًا', noEvents:'لا أحداث بعد — اضغط «شغّل الهدف».',
        pressRT:'اضغط هجمات ×100', running:'جاري تنفيذ ١٠٠ هجوم…',
        denied:'مرفوض', contained:'محتوى كاسم ملف', breaches:'اختراقات',
@@ -30,7 +33,10 @@ var L = {
        killOn:'مفتاح الإيقاف مفعّل — إرسال اللوحة مجمّد (التحقق ما زال يعمل).',
        killOff:'أُطلق مفتاح الإيقاف — الإرسال نشط.',
        rtDone:'انتهت الهجمات', rtFail:'فشلت بوابة الهجمات',
-       noAudit:'التدقيق قيد الحساب', ms:'ms'}
+       noAudit:'التدقيق قيد الحساب', ms:'ms',
+       memSearch:'ابحث في الذاكرة', memNone:'شغّل هدفًا أولًا',
+       memMemories:'ذكريات', memRefused:'مرفوض ومسجّل', memDuplicates:'مكرر متخطى',
+       memIntact:'ملفات سليمة', memNoise:'أرضية الضوضاء p95', memRecall:'استدعاء@3 (صياغة)'}
 };
 function t(k){ return L[lang][k]; }
 function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
@@ -269,5 +275,48 @@ document.getElementById('pulseBox').addEventListener('change', function(){
   }
 });
 
-refresh();
+async function refreshMemory(){
+  try {
+    var m = await api('api/memory');
+    var s = m.stats || {}, v = m.verify || {};
+    document.getElementById('memPill').textContent = s.backend || 'memory';
+    document.getElementById('memGrid').innerHTML = [
+      [s.memories != null ? s.memories : '—', t('memMemories')],
+      [s.refused_events != null ? s.refused_events : '—', t('memRefused')],
+      [s.duplicates_skipped != null ? s.duplicates_skipped : '—', t('memDuplicates')],
+      [v.intact ? '✅' : '🔴', t('memIntact')],
+      [s.noise_floor && s.noise_floor.p95 != null ? s.noise_floor.p95 : '—', t('memNoise')],
+      [s.memories ? '2/16' : '—', t('memRecall')]
+    ].map(function(x){ return '<div class="rt"><b>' + esc(x[0]) + '</b><span>' + esc(x[1]) + '</span></div>'; }).join('');
+    var warn = document.getElementById('memWarn');
+    if (v.intact === false){ warn.style.display='block';
+      warn.textContent = '🔴 ' + (v.hash_mismatches || 0) + ' artifact hash mismatch(es) — memory tampered on disk.'; }
+    else warn.style.display='none';
+  } catch(e) { /* memory panel is optional */ }
+}
+
+document.getElementById('memBtn').addEventListener('click', async function(){
+  var q = document.getElementById('memQuery').value.trim();
+  if (!q) return;
+  var body = document.getElementById('memBody');
+  body.innerHTML = '<tr><td colspan="4" class="mono">…</td></tr>';
+  try {
+    var r = await post('api/memory/search', {query:q, k:8});
+    body.innerHTML = (r.results || []).map(function(h){
+      return '<tr><td class="mono">' + h.score + '</td>' +
+        '<td>' + (h.above_noise ? '✔' : '·') + '</td>' +
+        '<td><b>' + esc(h.goal_type) + '</b><br><span class="mono">' + esc(h.text) + '</span></td>' +
+        '<td class="hash">' + esc((h.sha256||'').slice(0,16)) + '…</td></tr>';
+    }).join('') || '<tr><td colspan="4" class="mono">no memories</td></tr>';
+    if (r.results && r.results.length){
+      var w = document.getElementById('memWarn');
+      w.style.display = 'block';
+      w.textContent = 'threshold ' + r.threshold + ' (measured noise floor p95) · ' +
+                      r.confident + ' confident of ' + r.results.length + ' shown';
+    }
+  } catch(e){ body.innerHTML = '<tr><td colspan="4" class="mono">' + esc(String(e)) + '</td></tr>'; }
+});
+
+refresh(); refreshMemory();
 setInterval(refresh, 1000);
+setInterval(refreshMemory, 5000);

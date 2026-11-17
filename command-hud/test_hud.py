@@ -186,6 +186,35 @@ class HudTests(unittest.TestCase):
         self.assertEqual(d["timings"]["n"], 1, "only real kernel calls may be timed")
         self.assertGreater(d["timings"]["p50_ms"], 0)
 
+    def test_14_refused_runs_are_logged_in_memory(self):
+        """Regression: only VERIFIED runs were offered to memory, so the
+        admission log recorded zero refusals while DENIED runs happened."""
+        from pathlib import Path as _P
+        import tempfile as _tf
+        import store as _store
+        tmp = _P(_tf.mkdtemp(prefix="hud-mem-"))
+        prev = hud.MEM
+        hud.MEM = _store.EvidenceMemoryStore(tmp / "m.sqlite",
+                                            sandbox_root=hud.SRV.SANDBOXES_DIR)
+        try:
+            before = hud.MEM.stats()["refused_events"]
+            _, d = self.post("/api/run", {"goal_type": "create_file",
+                                          "params": {"path": "../../escape.txt",
+                                                     "content": "x"}})
+            self.assertEqual(d["status"], "DENIED")
+            self.assertIn("memory", d)
+            self.assertFalse(d["memory"]["admitted"])
+            after = hud.MEM.stats()["refused_events"]
+            self.assertEqual(after, before + 1, "a DENIED run must be refused AND logged")
+            _, ok = self.post("/api/run", {"goal_type": "create_file",
+                                           "params": {"path": "mem/ok.txt",
+                                                      "content": "fine"}})
+            self.assertTrue(ok["memory"]["admitted"])
+            st = hud.MEM.stats()
+            self.assertEqual(st["memories"], 1)
+            self.assertEqual(st["refused_events"], before + 1)
+        finally:
+            hud.MEM = prev
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
