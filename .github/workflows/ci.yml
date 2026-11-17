@@ -75,6 +75,9 @@ jobs:
       - name: Ember beat tests — heat index + honest publishing (7)
         run: python scripts/test_ember_beat.py -v
 
+      - name: Every GitHub Action must be pinned to a full SHA (SBOM verifier)
+        run: python scripts/sbom.py --assert-pinned --out /tmp/sbom.json
+
   demo-tests:
     name: Public demo contract (12 tests)
     runs-on: ubuntu-latest
