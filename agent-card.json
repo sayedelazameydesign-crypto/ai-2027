@@ -1,0 +1,63 @@
+{
+  "$schema": "https://raw.githubusercontent.com/a2aproject/A2A/main/specification/json/a2a.json",
+  "protocolVersion": "0.2.0",
+  "name": "AI-2027 Live Agent",
+  "description": "Evidence-first execution agent: a deterministic planner over a real kernel (projects/agi-system) that refuses to claim success without an independent verifier and a hash-matching artifact on disk. Every VERIFIED run is offered to an evidence-gated memory store.",
+  "version": "1.0.0",
+  "url": "http://localhost:8090",
+  "preferredTransport": "HTTP+JSON",
+  "defaultInputModes": ["application/json"],
+  "defaultOutputModes": ["application/json", "text/plain"],
+  "capabilities": {
+    "streaming": false,
+    "pushNotifications": false,
+    "stateTransitionHistory": true,
+    "evidenceRequired": true
+  },
+  "skills": [
+    {
+      "id": "create_file",
+      "name": "Create a file inside an isolated run sandbox",
+      "description": "Writes content to a path inside a per-run sandbox. Path traversal (POSIX and Windows) is DENIED by policy, not by convention. Success requires 5/5 independent verifier checks: claimed_ok, file_exists, correct_path, correct_content, hash_matches.",
+      "tags": ["filesystem", "sandboxed", "verified"],
+      "inputModes": ["application/json"],
+      "outputModes": ["application/json"],
+      "evidence": {
+        "record": "GET /api/run/{run_id}",
+        "artifact": "GET /api/file?run={run_id}&path={path}",
+        "ledger": "per-run ledger.jsonl (tamper-evident, never served)"
+      }
+    }
+  ],
+  "endpoints": {
+    "health": "/api/health",
+    "run": "/api/run",
+    "runs": "/api/runs",
+    "run_record": "/api/run/{run_id}",
+    "artifact": "/api/file?run={run_id}&path={path}",
+    "agent_card": "/api/agent-card",
+    "metrics": "/api/metrics",
+    "memory_stats": "/api/memory",
+    "memory_search": "/api/memory/search?q={query}&k={k}"
+  },
+  "honest_limits": [
+    "No LLM in the loop: the planner is deterministic and rule-based. This card describes what runs, not what is planned.",
+    "Memory retrieval is lexical (hashed uni/bi-grams), not neural. Measured: 16/16 on corpus-vocabulary queries, 2/16 on paraphrases.",
+    "No authentication or tenancy: this is a single-tenant demo surface. Do not expose it to the public internet as-is.",
+    "The agent cannot prove outcomes it did not verify: unverified runs are reported DENIED/FAILED/INCONCLUSIVE and are refused by the memory gate."
+  ],
+  "verification": {
+    "rule": "A claim is valid only if an executed command reproduces it.",
+    "commands": [
+      "python3 scripts/runtime_smoke.py",
+      "python3 memory/evaluate.py --json",
+      "python3 live-agent/test_server.py",
+      "python3 command-hud/test_hud.py",
+      "python3 scripts/ember_beat.py --json"
+    ]
+  },
+  "provider": {
+    "organization": "sayedelazameydesign-crypto",
+    "repository": "https://github.com/sayedelazameydesign-crypto/ai-2027"
+  }
+}

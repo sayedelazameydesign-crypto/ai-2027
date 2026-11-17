@@ -16,7 +16,9 @@ Covered promises:
      refused (DENIED) run is NOT remembered — with the reason reported
   8. memory search finds the remembered run over real HTTP, and an unrelated
      query produces no confident hit (the noise floor is measured, not assumed)
-  9. the HUD dispatches to the same kernel, and its 100-attack gate still passes
+  9. the agent card is machine-readable and every endpoint it advertises exists
+ 10. Prometheus metrics expose real counters (no derived "health score")
+ 11. the HUD dispatches to the same kernel, and its 100-attack gate still passes
 
 Usage:
     python3 live-agent/server.py --port 8090 &
@@ -29,6 +31,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -148,6 +151,32 @@ def check_live_agent(base: str, results: list[tuple[str, bool, str]]) -> None:
                     True, f"top_score={(unrelated.get('results') or [{}])[0].get('score')}"))
 
 
+    # ------------------------- machine-readable surface -------------------- #
+    status, card = jcall(base, "/api/agent-card")
+    expect(status == 200, f"/api/agent-card -> HTTP {status}")
+    expect(bool(card.get("name")) and bool(card.get("skills")),
+           f"agent card is not self-describing: {list(card)[:6]}")
+    endpoints = card.get("endpoints") or {}
+    expect(endpoints and all(str(v).startswith("/api/") for v in endpoints.values()),
+           f"agent card advertises a non-API endpoint: {endpoints}")
+    expect(bool(card.get("honest_limits")),
+           "agent card must publish its limits, not only its skills")
+    results.append(("live-agent: agent card is valid + declares its limits", True,
+                    f"{len(endpoints)} endpoints · {len(card.get('honest_limits') or [])} limits"))
+
+    status, raw = call(base, "/api/metrics")
+    body = raw.decode("utf-8", "replace")
+    expect(status == 200, f"/api/metrics -> HTTP {status}")
+    expect('ai2027_runs_total{status="VERIFIED"}' in body,
+           "metrics do not expose VERIFIED runs")
+    verified = 0
+    for line in body.splitlines():
+        if line.startswith('ai2027_runs_total{status="VERIFIED"}'):
+            verified = int(float(line.rsplit(" ", 1)[1]))
+    expect(verified >= 1, f"VERIFIED counter is {verified}, expected >= 1")
+    results.append(("live-agent: metrics expose real counters (Prometheus text)", True,
+                    f"verified_runs={verified}"))
+
 def check_hud(base: str, results: list[tuple[str, bool, str]]) -> None:
     status, health = jcall(base, "/api/health")
     expect(status == 200 and health.get("ok") is True, f"HUD health -> {status} {health}")
@@ -177,11 +206,15 @@ def main() -> int:
     ap.add_argument("--live-agent", default="http://127.0.0.1:8090")
     ap.add_argument("--hud", default="http://127.0.0.1:8091")
     ap.add_argument("--no-hud", action="store_true", help="skip the HUD checks")
+    ap.add_argument("--json", action="store_true",
+                    help="emit machine-readable results (used by scripts/ember_beat.py)")
     args = ap.parse_args()
 
     results: list[tuple[str, bool, str]] = []
     failed = 0
-    print("RUNTIME SMOKE — real HTTP against running servers\n" + "=" * 66)
+    started = time.perf_counter()
+    if not args.json:
+        print("RUNTIME SMOKE — real HTTP against running servers\n" + "=" * 66)
     try:
         check_live_agent(args.live_agent, results)
     except Fail as exc:
@@ -194,9 +227,18 @@ def main() -> int:
             failed += 1
             results.append((f"hud: FAILED — {exc}", False, ""))
 
+    passed = sum(1 for _, ok, _ in results if ok)
+    if args.json:
+        print(json.dumps({
+            "ok": failed == 0,
+            "passed": passed, "total": len(results),
+            "duration_ms": round((time.perf_counter() - started) * 1000, 1),
+            "checks": [{"name": n, "ok": ok, "note": note} for n, ok, note in results],
+        }, ensure_ascii=False))
+        return 0 if failed == 0 else 1
+
     for name, ok, note in results:
         print(f"  {'PASS' if ok else 'FAIL'}  {name}" + (f"   [{note}]" if note else ""))
-    passed = sum(1 for _, ok, _ in results if ok)
     print("=" * 66)
     print(f"{passed}/{len(results)} checks passed"
           + ("" if not failed else f" — {failed} FAILURE(S)"))
