@@ -14,7 +14,8 @@ listed as not enforced.** Aspirations live in `docs/ROADMAP-2027.md`, not here.
 | Actions must be SHA-pinned | SBOM verifier | `python3 scripts/sbom.py --assert-pinned` |
 | Static analysis on every PR | CodeQL security-extended (Python + JS/TS) | `.github/workflows/codeql.yml` |
 | Dependency updates are proposed | Dependabot (actions weekly, pip monthly) | `.github/dependabot.yml` |
-| Degradation is announced | Ember beat opens/closes one labelled issue | issue #34 (opened + closed 2026-11-17) |
+| Degradation is announced | Ember beat opens/closes one labelled issue | issues #34, #39 (opened + closed 2026-11-17) |
+| Escalation is real, not decorative | stage 3 adds `escalation/s3` + code-owner mention | issue #39 (3 degraded runs, then closed by a healthy beat) |
 | **Silent degradation is refused** | `scripts/health_gate.py` — 11 checks, 3 escalation stages | `python3 scripts/test_health_gate.py` (24 tests) |
 | The retry cannot inflate the record | history row written once by the gate (`--commit-beat`) | `test_19b` (idempotent on `beat_ts`) |
 | Recovery is one command and timed | `scripts/ember_up.sh` | 2.46 s · 15/15 (cold) |
