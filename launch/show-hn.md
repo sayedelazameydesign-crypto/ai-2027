@@ -80,6 +80,12 @@ pending, which is why the wheel is not on PyPI yet.
 | GitHub description / topics / Discussions | ⚠️ **manual, 403 re-verified today** — does not block HN, but nice to have |
 | Video / Product Hunt | ⏳ separate, not needed for HN |
 
+> Note: GitHub also runs a redundant *legacy* Jekyll build on each push to `main`
+> that fails cosmetically in the Actions tab. It does **not** affect the live URL —
+> verified by re-fetching the site after both merges. One-click cleanup (owner
+> only, 403 for the integration) is documented in `manual-github-settings.md` §6.
+> Do not let a red icon in someone else's workflow delay the post.
+
 **✅ GATE OPEN.** The live URL was fetched successfully after the deploy; re-check
 anytime with `curl -I https://sayedelazameydesign-crypto.github.io/ai-2027/demo.html`.
 The remaining unchecked items (GitHub metadata, license decision) are nice-to-have,

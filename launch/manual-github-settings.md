@@ -5,8 +5,9 @@ version were wrong, so this file corrects them with evidence:
 
 | Earlier claim | Verified reality |
 |---|---|
-| "GitHub Pages is not enabled — you must enable it" | ❌ **Already enabled.** `GET /repos/.../pages` returns `build_type: "workflow"`, `html_url: https://sayedelazameydesign-crypto.github.io/ai-2027/`, `https_enforced: true`. No manual Settings → Pages step is needed. |
+| "GitHub Pages is not enabled — you must enable it" | ❌ **Already enabled.** `GET /repos/.../pages` returns `html_url: https://sayedelazameydesign-crypto.github.io/ai-2027/`, `https_enforced: true`. No *enablement* step is needed. ⚠️ The `build_type` field has since flipped to `legacy` (source `main /`) — see §6 below. |
 | "The site is live, just not linked" | ❌ **It never deployed.** The generated `jekyll-gh-pages.yml` built Jekyll from the repo root `./`, not from `website/`. All 4 pushes to `main` failed at *Build with Jekyll*. Fixed in code by `.github/workflows/pages.yml`, which uploads `website/` as a static artifact. |
+| "One manual step remains: Pages source `main` + `/website`" | ⚠️ **Not required for the launch.** Our workflow deploy succeeded twice (`44073888821` on push, `44075625763` on dispatch) and the URL was fetched over HTTPS. The branch-source setting only produces a *redundant* failing build — see §6. |
 | "Integration token is read-only for admin settings" | ✅ **Confirmed.** `permissions.admin: true` in the repo payload is the *user's* permission, but the GitHub App installation token has `X-OAuth-Scopes: (empty)` and `X-Accepted-Github-Permissions: metadata=read`. `PATCH /repos/...` and `PUT /repos/.../topics` both return **403 "Resource not accessible by integration"** (re-tested today). |
 
 ## ✅ Now fully automatic (no clicks needed)
@@ -41,6 +42,29 @@ Unlocks the community channel for contributors from the global launch.
 
 ### 5. Optional — Social preview (1280×640)
 Upload in Settings → General. Ask and I'll generate one.
+
+### 6. Optional cleanup — stop the redundant failing "pages build and deployment" runs
+Discovered after merging #10/#11, documented so the Actions tab is not
+misread. With every push to `main`, GitHub ALSO runs its internal
+`pages-build-deployment` workflow in **legacy** Jekyll mode against the repo
+root (`build_type: legacy`, `source: {branch: main, path: "/"}`). Both runs
+(`44073889835`, `44075191517`) failed at *Build with Jekyll*.
+
+**This does NOT break the site.** Our `Deploy static site to GitHub Pages`
+workflow deploys the static `website/` artifact independently and succeeded;
+`/ai-2027/` and `/ai-2027/demo.html` were re-fetched successfully after both
+merges. A failed legacy build does not overwrite a successful deployment.
+
+Switching the source back to **GitHub Actions** would remove that red X:
+`PUT /repos/.../pages {"build_type":"workflow"}` → **403 Resource not
+accessible by integration** (re-verified). So it is one more owner click:
+
+> **Settings → Pages → Build and deployment → Source → `GitHub Actions`**
+> (or, alternatively, `Deploy from a branch` → `main` + `/website`; we added
+> `website/.nojekyll` so that mode copies files verbatim without Jekyll).
+
+Either choice is safe. Do **not** point the branch source at `/` again — that
+is exactly the root-level Jekyll build that failed 4 times before.
 
 ---
 
