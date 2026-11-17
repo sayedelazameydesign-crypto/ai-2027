@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI-2027 — Open AI Systems. Real Intelligence. Built in Public.</title>
+<meta name="description" content="An open ecosystem of 48 AI agent systems, platforms & tools. Evidence-First agents that prove their work.">
+<style>
+:root{--bg:#06090f;--bg2:#0b1120;--card:#0e1626;--line:#1c2942;--txt:#e6edf7;--dim:#8fa1bd;--acc:#00e5a0;--acc2:#38bdf8;--warn:#fbbf24}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--txt);font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;overflow-x:hidden}
+.bg{position:fixed;inset:0;z-index:-1;background:radial-gradient(60% 50% at 20% 0%,rgba(0,229,160,.08),transparent 60%),radial-gradient(50% 40% at 85% 15%,rgba(56,189,248,.09),transparent 60%),radial-gradient(40% 40% at 50% 100%,rgba(139,92,246,.06),transparent 60%),var(--bg)}
+nav{position:sticky;top:0;z-index:50;display:flex;align-items:center;justify-content:space-between;padding:14px 28px;background:rgba(6,9,15,.75);backdrop-filter:blur(14px);border-bottom:1px solid var(--line)}
+.logo{font-weight:800;font-size:20px;letter-spacing:.5px}.logo b{color:var(--acc)}
+nav .links{display:flex;gap:22px;align-items:center}
+nav a{color:var(--dim);text-decoration:none;font-size:14px;transition:.2s}nav a:hover{color:var(--txt)}
+.btn{display:inline-block;padding:10px 20px;border-radius:10px;font-weight:600;font-size:14px;text-decoration:none;transition:.2s;border:1px solid var(--line);color:var(--txt);background:var(--card)}
+.btn:hover{transform:translateY(-2px);border-color:var(--acc)}
+.btn.primary{background:linear-gradient(135deg,var(--acc),#00b8d4);color:#04121a;border:none}
+.lang{cursor:pointer;font-family:inherit}
+.hero{max-width:1100px;margin:0 auto;padding:96px 28px 64px;text-align:center}
+.badge{display:inline-block;padding:6px 16px;border:1px solid var(--line);border-radius:99px;font-size:13px;color:var(--acc);background:rgba(0,229,160,.06);margin-bottom:26px}
+h1{font-size:clamp(40px,7vw,76px);line-height:1.05;font-weight:900;letter-spacing:-1.5px}
+h1 .grad{background:linear-gradient(120deg,var(--acc),var(--acc2),#a78bfa);-webkit-background-clip:text;background-clip:text;color:transparent}
+.hero p{max-width:640px;margin:26px auto 0;color:var(--dim);font-size:19px;line-height:1.7}
+.cta{display:flex;gap:14px;justify-content:center;margin-top:38px;flex-wrap:wrap}
+.stats{display:flex;gap:14px;justify-content:center;flex-wrap:wrap;margin-top:60px}
+.stat{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 30px;min-width:140px}
+.stat b{display:block;font-size:30px;color:var(--acc)}
+.stat span{color:var(--dim);font-size:13px}
+section{max-width:1100px;margin:0 auto;padding:72px 28px}
+h2{font-size:clamp(26px,4vw,38px);font-weight:800;letter-spacing:-.5px;margin-bottom:12px}
+.sub{color:var(--dim);font-size:16px;margin-bottom:40px;max-width:640px;line-height:1.7}
+.cycle{display:flex;gap:0;align-items:stretch;justify-content:space-between;flex-wrap:wrap;background:var(--bg2);border:1px solid var(--line);border-radius:18px;padding:34px 26px}
+.step{flex:1;min-width:120px;text-align:center;position:relative;padding:10px 6px}
+.step .n{width:46px;height:46px;margin:0 auto 12px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;background:var(--card);border:1px solid var(--line);color:var(--acc);position:relative;z-index:2}
+.step:not(:last-child)::after{content:"";position:absolute;top:33px;inset-inline-start:calc(50% + 26px);width:calc(100% - 52px);height:2px;background:linear-gradient(90deg,var(--acc),transparent);z-index:1}
+.step h4{font-size:14px;margin-bottom:4px}
+.step p{font-size:12px;color:var(--dim);line-height:1.5}
+.quote{margin-top:26px;text-align:center;color:var(--acc);font-size:17px;font-style:italic}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:20px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:28px;transition:.25s;position:relative;overflow:hidden}
+.card:hover{transform:translateY(-4px);border-color:var(--acc);box-shadow:0 18px 40px -20px rgba(0,229,160,.25)}
+.card .tag{position:absolute;top:18px;inset-inline-end:18px;font-size:11px;padding:3px 10px;border-radius:99px;background:rgba(56,189,248,.12);color:var(--acc2);border:1px solid rgba(56,189,248,.25)}
+.card h3{font-size:20px;margin-bottom:10px}
+.card p{color:var(--dim);font-size:14px;line-height:1.7}
+.card a{color:var(--acc);font-size:13px;text-decoration:none;display:inline-block;margin-top:14px}
+table{width:100%;border-collapse:collapse;background:var(--card);border-radius:14px;overflow:hidden;border:1px solid var(--line)}
+th,td{padding:14px 18px;text-align:start;border-bottom:1px solid var(--line);font-size:14px}
+th{color:var(--acc);font-size:12px;text-transform:uppercase;letter-spacing:1px;background:var(--bg2)}
+td{color:var(--dim)}td b{color:var(--txt)}
+tr:last-child td{border-bottom:none}
+.demos{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px}
+.demo{display:flex;flex-direction:column;gap:6px;background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:20px;text-decoration:none;transition:.2s}
+.demo:hover{border-color:var(--acc)}
+.demo b{color:var(--txt);font-size:15px}
+.demo span{color:var(--dim);font-size:12px}
+.note{margin-top:16px;font-size:12px;color:var(--warn);opacity:.85}
+.trust{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:20px}
+.trust .card b{color:var(--acc)}
+.founder{background:linear-gradient(135deg,rgba(0,229,160,.07),rgba(56,189,248,.06));border:1px solid var(--line);border-radius:20px;padding:48px;text-align:center}
+.founder h3{font-size:26px;margin-bottom:6px}
+.founder .role{color:var(--acc);font-size:14px;letter-spacing:2px;text-transform:uppercase;margin-bottom:18px}
+.founder p{color:var(--dim);max-width:560px;margin:0 auto;line-height:1.8;font-size:15px}
+footer{border-top:1px solid var(--line);padding:40px 28px;text-align:center;color:var(--dim);font-size:13px;line-height:2}
+footer a{color:var(--acc2);text-decoration:none}
+[dir="rtl"] body{font-family:"Segoe UI",Tahoma,Arial,sans-serif}
+@media(max-width:720px){nav .links a:not(.btn):not(.lang){display:none}.step:not(:last-child)::after{display:none}}
+</style>
+</head>
+<body>
+<div class="bg"></div>
+<nav>
+  <div class="logo">AI<b>-2027</b></div>
+  <div class="links">
+    <a href="#ecosystem" data-en="Ecosystem" data-ar="المنظومة">Ecosystem</a>
+    <a href="#flagships" data-en="Flagships" data-ar="الرائدة">Flagships</a>
+    <a href="#proof" data-en="Proof" data-ar="الإثبات">Proof</a>
+    <a href="https://github.com/sayedelazameydesign-crypto/ai-2027" data-en="GitHub" data-ar="جيتهب">GitHub</a>
+    <button class="btn lang" id="langBtn" onclick="toggleLang()">العربية</button>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="badge" data-en="48 projects · independently audited · built in public" data-ar="٤٨ مشروعًا · مدقَّق باستقلالية · يُبنى علنًا">48 projects · independently audited · built in public</div>
+  <h1><span data-en="AI agents that" data-ar="وكلاء ذكاء اصطناعي">AI agents that</span><br><span class="grad" data-en="prove their work." data-ar="يثبتون عملهم.">prove their work.</span></h1>
+  <p data-en="AI-2027 is an open ecosystem of 48 agent systems, platforms and tools unified around one principle: no claims without evidence. An agent reaches VERIFIED only after an independent check — never by its own word." data-ar="AI-2027 منظومة مفتوحة تضم ٤٨ نظام وكلاء ومنصات وأدوات حول مبدأ واحد: لا ادعاءات بدون أدلة. لا يصل الوكيل إلى «تم التحقق» إلا بعد فحص مستقل — أبدًا بكلمته وحده.">AI-2027 is an open ecosystem of 48 agent systems, platforms and tools unified around one principle: no claims without evidence. An agent reaches VERIFIED only after an independent check — never by its own word.</p>
+  <div class="cta">
+    <a class="btn primary" href="https://github.com/sayedelazameydesign-crypto/ai-2027" data-en="Explore on GitHub →" data-ar="استكشف على جيتهب ←">Explore on GitHub</a>
+    <a class="btn" href="https://github.com/sayedelazameydesign-crypto/ai-2027/blob/main/catalog.json" data-en="Machine-readable catalog" data-ar="الفهرس الآلي">Machine-readable catalog</a>
+  </div>
+  <div class="stats">
+    <div class="stat"><b>48</b><span data-en="projects unified" data-ar="مشروعًا موحّدًا">projects unified</span></div>
+    <div class="stat"><b>3,970</b><span data-en="files, byte-audited" data-ar="ملفًا مدققًا بايتيًا">files, byte-audited</span></div>
+    <div class="stat"><b>16</b><span data-en="AI agent systems" data-ar="نظام وكلاء ذكي">AI agent systems</span></div>
+    <div class="stat"><b>7</b><span data-en="verification stages" data-ar="مراحل تحقق">verification stages</span></div>
+  </div>
+</header>
+
+<section>
+  <h2 data-en="⚡ The Evidence-First Cycle" data-ar="⚡ دورة الدليل أولًا">⚡ The Evidence-First Cycle</h2>
+  <p class="sub" data-en="Every flagship agent in the ecosystem runs the same discipline — and the UI shows it live, including failures." data-ar="كل وكيل رائد في المنظومة يعمل بنفس الانضباط — والواجهة تعرضه مباشرة، بما فيه حالات الفشل.">Every agent in the ecosystem runs the same discipline — and the UI shows it live, including failures.</p>
+  <div class="cycle">
+    <div class="step"><div class="n">01</div><h4 data-en="Understand" data-ar="الفهم">Understand</h4><p data-en="Parse the goal" data-ar="تحليل الهدف">Parse the goal</p></div>
+    <div class="step"><div class="n">02</div><h4 data-en="Plan" data-ar="الخطة">Plan</h4><p data-en="Public step list" data-ar="خطوات علنية">Public step list</p></div>
+    <div class="step"><div class="n">03</div><h4 data-en="Policy" data-ar="السياسة">Policy</h4><p data-en="Permission check" data-ar="فحص الصلاحيات">Permission check</p></div>
+    <div class="step"><div class="n">04</div><h4 data-en="Execute" data-ar="التنفيذ">Execute</h4><p data-en="Allowed tools only" data-ar="أدوات مسموحة فقط">Allowed tools only</p></div>
+    <div class="step"><div class="n">05</div><h4 data-en="Verify" data-ar="التحقق">Verify</h4><p data-en="Independent check" data-ar="فحص مستقل">Independent check</p></div>
+    <div class="step"><div class="n">06</div><h4 data-en="Evidence" data-ar="الأدلة">Evidence</h4><p data-en="Recorded artifacts" data-ar="سجل موثق">Recorded artifacts</p></div>
+    <div class="step"><div class="n">07</div><h4 data-en="Report" data-ar="التقرير">Report</h4><p data-en="Successes & failures" data-ar="النجاحات والإخفاقات">Successes & failures</p></div>
+  </div>
+  <p class="quote" data-en="“No claims without evidence.” — the ecosystem's shared philosophy" data-ar="«لا ادعاءات بدون أدلة» — الفلسفة المشتركة للمنظومة">“No claims without evidence.” — the ecosystem's shared philosophy</p>
+</section>
+
+<section id="flagships">
+  <h2 data-en="🌟 Flagships" data-ar="🌟 المشاريع الرائدة">🌟 Flagships</h2>
+  <p class="sub" data-en="Three systems lead the ecosystem — one experience, one engine, one kernel." data-ar="ثلاثة أنظمة تقود المنظومة — تجربة، ومحرك، ونواة.">Three systems lead the ecosystem — one experience, one engine, one kernel.</p>
+  <div class="cards">
+    <div class="card"><span class="tag" data-en="Experience" data-ar="التجربة">Experience</span><h3>Cela 2027</h3><p data-en="Autonomous Manus-style agent with an Arabic dark UI: write a goal, watch it plan publicly, execute with coding tools in a Pyodide sandbox, then verify independently. Ships with a clearly-labeled local simulation mode — no API key needed to explore." data-ar="وكيل مستقل بأسلوب Manus بواجهة عربية داكنة: اكتب هدفًا، شاهده يخطط علنًا، ينفذ بأدوات برمجية في صندوق Pyodide معزول، ثم يتحقق باستقلالية. يعمل بوضع محاكاة موضَّح بوضوح — بلا مفتاح API.">Autonomous Manus-style agent with an Arabic dark UI: write a goal, watch it plan publicly, execute with coding tools in a Pyodide sandbox, then verify independently. Ships with a clearly-labeled local simulation mode — no API key needed to explore.</p><a href="https://github.com/sayedelazameydesign-crypto/ai-2027/tree/main/projects/cela2027">github.com/…/projects/cela2027 →</a></div>
+    <div class="card"><span class="tag" data-en="Engine" data-ar="المحرك">Engine</span><h3>CeliaOS · 12pro</h3><p data-en="A 12-layer Agent OS control plane: latency/memory/planning/tool-use benchmarks, certification gates G0–G15 with raw evidence artifacts, attestation supply chain, and a monorepo (api + web + agent-ui) certified on Node 24." data-ar="منصة تحكم لنظام وكلاء بـ ١٢ طبقة: قياسات زمن/ذاكرة/تخطيط/أدوات، بوابات اعتماد G0–G15 بأدلة خام، سلسلة شهادات، ومونوريبو معتمد على Node 24.">A 12-layer Agent OS control plane: latency/memory/planning/tool-use benchmarks, certification gates G0–G15 with raw evidence artifacts, attestation supply chain, and a monorepo (api + web + agent-ui) certified on Node 24.</p><a href="https://github.com/sayedelazameydesign-crypto/ai-2027/tree/main/projects/12pro">github.com/…/projects/12pro →</a></div>
+    <div class="card"><span class="tag" data-en="Kernel" data-ar="النواة">Kernel</span><h3>agi-system</h3><p data-en="A pure-Python AGI kernel with zero dependencies: Goal → Planner → Policy → Executor → Verifier → Evidence → DecisionRecord → EventLedger. 86 unit tests. The Verifier never trusts the Executor." data-ar="نواة AGI ببايثون صرفة بلا أي اعتمادات: هدف ← مخطط ← سياسة ← منفذ ← متحقق ← أدلة ← سجل قرارات. ٨٦ اختبار وحدة. المُتحقق لا يثق بالمنفذ أبدًا.">A pure-Python AGI kernel with zero dependencies: Goal → Planner → Policy → Executor → Verifier → Evidence → DecisionRecord → EventLedger. 86 unit tests. The Verifier never trusts the Executor.</p><a href="https://github.com/sayedelazameydesign-crypto/ai-2027/tree/main/projects/agi-system">github.com/…/projects/agi-system →</a></div>
+  </div>
+</section>
+
+<section id="ecosystem">
+  <h2 data-en="🗂️ The Ecosystem" data-ar="🗂️ المنظومة">🗂️ The Ecosystem</h2>
+  <p class="sub" data-en="48 projects, five categories — each preserved 1:1 with its original license." data-ar="٤٨ مشروعًا في خمس فئات — كلٌّ منها محفوظ ١:١ بترخيصه الأصلي.">48 projects, five categories — each preserved 1:1 with its original license.</p>
+  <table>
+    <tr><th data-en="Category" data-ar="الفئة">Category</th><th data-en="Count" data-ar="العدد">Count</th><th data-en="Highlights" data-ar="أبرز المشاريع">Highlights</th></tr>
+    <tr><td><b data-en="🤖 AI Agent Systems" data-ar="🤖 أنظمة الوكلاء">🤖 AI Agent Systems</b></td><td>16</td><td data-en="cela2027 · agi-system · CeliaOS · NOVA · Nimna · open_source- · celia.pro" data-ar="cela2027 · agi-system · CeliaOS · NOVA · Nimna · open_source- · celia.pro">cela2027 · agi-system · CeliaOS · NOVA · Nimna · open_source- · celia.pro</td></tr>
+    <tr><td><b data-en="🌐 Chat & Web Platforms" data-ar="🌐 منصات المحادثة والويب">🌐 Chat & Web Platforms</b></td><td>9</td><td data-en="ui · Nawah AI · Waha · leader2027 · Easy AI · celia.sh" data-ar="ui · Nawah AI · Waha · leader2027 · Easy AI · celia.sh">ui · Nawah AI · Waha · leader2027 · Easy AI · celia.sh</td></tr>
+    <tr><td><b data-en="👗 Fashion & E-Commerce" data-ar="👗 الأزياء والتجارة">👗 Fashion & E-Commerce</b></td><td>8</td><td data-en="ELAZAMET1 · CELIA FASHION 2026 · AI stylist · smart import" data-ar="ELAZAMET1 · CELIA FASHION 2026 · منسق ذكي · استيراد ذكي">ELAZAMET1 · CELIA FASHION 2026 · AI stylist · smart import</td></tr>
+    <tr><td><b data-en="🏥 Specialized Apps" data-ar="🏥 تطبيقات متخصصة">🏥 Specialized Apps</b></td><td>8</td><td data-en="Celia Kids clinic · MIVW · teacher exams · BitNet system" data-ar="عيادة Celia Kids · MIVW · اختبار الكفاءات · نظام BitNet">Celia Kids clinic · MIVW · teacher exams · BitNet system</td></tr>
+    <tr><td><b data-en="🧱 Foundations & Seeds" data-ar="🧱 أسس وبذور">🧱 Foundations & Seeds</b></td><td>7</td><td data-en="ai.2027 · Celia-2027 starter · early seeds" data-ar="ai.2027 · قالب Celia-2027 · بذور أولية">ai.2027 · Celia-2027 starter · early seeds</td></tr>
+  </table>
+</section>
+
+<section>
+  <h2 data-en="🔗 Live Experiences" data-ar="🔗 تجارب حية">🔗 Live Experiences</h2>
+  <p class="sub" data-en="Deployments declared by the project's own READMEs:" data-ar="عمليات نشر مُعلنة في ملفات README الخاصة بالمشاريع:">Deployments declared by the project's own READMEs:</p>
+  <div class="demos">
+    <a class="demo" href="https://sayedelazameydesign-crypto.github.io/dr.mukhtar/"><b data-en="Celia Kids Clinic" data-ar="عيادة Celia Kids">Celia Kids Clinic</b><span>github.io/dr.mukhtar</span></a>
+    <a class="demo" href="https://new-pro-kohl.vercel.app"><b data-en="Nawah AI Chat" data-ar="محادثة نواة AI">Nawah AI Chat</b><span>new-pro-kohl.vercel.app</span></a>
+    <a class="demo" href="https://cela-umber.vercel.app"><b data-en="Waha API" data-ar="واجهة واحة API">Waha API</b><span>cela-umber.vercel.app</span></a>
+    <a class="demo" href="https://sayedelazameydesign-crypto.github.io/easy-ai/sync/"><b data-en="Easy AI Sync Dashboard" data-ar="لوحة مزامنة Easy AI">Easy AI Sync Dashboard</b><span>github.io/easy-ai/sync</span></a>
+  </div>
+  <p class="note" data-en="⚠ Links are as declared in source READMEs; availability of free-tier deployments may vary." data-ar="⚠️ الروابط كما وردت في ملفات المصدر؛ توافر الاستضافات المجانية قد يتغير.">⚠️ Links are as declared in source READMEs; availability of free-tier deployments may vary.</p>
+</section>
+
+<section id="proof">
+  <h2 data-en="✅ Verified, not just claimed" data-ar="✅ موثَّق، لا مجرد ادعاء">✅ Verified, not just claimed</h2>
+  <div class="trust">
+    <div class="card"><h3 data-en="🔍 Independent audit" data-ar="🔍 تدقيق مستقل">🔍 Independent audit</h3><p data-en="All 48 projects re-downloaded from source and diffed byte-by-byte against main. 3 evidence files silently dropped by a *.log gitignore rule were caught and restored." data-ar="أُعيد تنزيل المشاريع الـ٤٨ من مصدرها وقورنت بايتيًا مع main. اكتُشفت ٣ ملفات أدلة أسقطتها قاعدة gitignore صامتًا وأُعيدت."><b>48/48</b> byte-identical</p><a href="https://github.com/sayedelazameydesign-crypto/ai-2027/blob/main/AUDIT.md" data-en="Read AUDIT.md →" data-ar="اقرأ AUDIT.md ←">Read AUDIT.md →</a></div>
+    <div class="card"><h3 data-en="🔐 Secrets scan" data-ar="🔐 فحص الأسرار">🔐 Secrets scan</h3><p data-en="Pattern-scanned for PEM keys, GitHub/OpenAI/Google/AWS/Slack tokens and JWTs. One live Gemini key found in ai-store2 → redacted here, rotation tracked in the audit report." data-ar="فُحصت أنماط المفاتيح والتوكنات. وُجد مفتاح Gemini حي واحد في ai-store2 ← حُجب هنا، والإبطال موثق في تقرير التدقيق."><b>1</b> found & redacted</p></div>
+    <div class="card"><h3 data-en="⚖️ License honesty" data-ar="⚖️ شفافية التراخيص">⚖️ License honesty</h3><p data-en="Not an all-MIT archive: 17 MIT · 4 Apache-2.0 · 2 proprietary (WEB, celia.pro) · 2 undecided (agi-system, ccelia2027) · 23 without a LICENSE file. Check each project before reuse." data-ar="ليست أرشيفًا MIT بالكامل: ١٧ MIT · ٤ أباتشي · ٢ ملكية خاصة · ٢ غير محسومة · ٢٣ بلا ملف ترخيص. راجع كل مشروع قبل إعادة الاستخدام.">Full inventory in Phase-0 report</p><a href="https://github.com/sayedelazameydesign-crypto/ai-2027/blob/main/docs/PHASE-0-READINESS.md" data-en="Readiness report →" data-ar="تقرير الجاهزية ←">Readiness report →</a></div>
+  </div>
+</section>
+
+<section>
+  <div class="founder">
+    <div class="role" data-en="Independent AI Systems Builder" data-ar="باني أنظمة ذكاء اصطناعي مستقل">Independent AI Systems Builder</div>
+    <h3>Sayed El-Azamey</h3>
+    <p data-en="Building reliable, transparent and verifiable AI agents — from Egypt to the open-source community. Every claim on this page links to code, tests or an audit you can re-run yourself." data-ar="أبني وكلاء ذكاء اصطناعي موثوقين وشفافين وقابلين للتحقق — من مصر إلى مجتمع المصادر المفتوحة. كل ادعاء في هذه الصفحة مرتبط بكود أو اختبارات أو تدقيق يمكنك إعادة تشغيله بنفسك.">Building reliable, transparent and verifiable AI agents — from Egypt to the open-source community. Every claim on this page links to code, tests or an audit you can re-run yourself.</p>
+  </div>
+</section>
+
+<footer>
+  <b>AI-2027</b> · <span data-en="Open AI Systems. Real Intelligence. Built in Public." data-ar="أنظمة ذكاء مفتوحة. ذكاء حقيقي. يُبنى علنًا.">Open AI Systems. Real Intelligence. Built in Public.</span><br>
+  <a href="https://github.com/sayedelazameydesign-crypto/ai-2027">GitHub</a> · <a href="https://github.com/sayedelazameydesign-crypto/ai-2027/blob/main/catalog.json">catalog.json</a> · <a href="https://github.com/sayedelazameydesign-crypto/ai-2027/blob/main/AUDIT.md">AUDIT.md</a><br>
+  <span data-en="Each project under projects/ keeps its own license — check before reuse." data-ar="كل مشروع تحت projects/ يحتفظ بترخيصه الخاص — راجعه قبل إعادة الاستخدام.">Each project under projects/ keeps its own license — check before reuse.</span>
+</footer>
+
+<script>
+let lang='en';
+function toggleLang(){
+  lang = lang==='en'?'ar':'en';
+  document.documentElement.lang=lang;
+  document.documentElement.dir=lang==='ar'?'rtl':'ltr';
+  document.getElementById('langBtn').textContent=lang==='ar'?'English':'العربية';
+  document.querySelectorAll('[data-en]').forEach(el=>{
+    el.textContent = lang==='ar' ? el.dataset.ar : el.dataset.en;
+  });
+}
+</script>
+</body>
+</html>

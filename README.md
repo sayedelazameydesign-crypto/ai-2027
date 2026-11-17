@@ -1,3 +1,73 @@
+<div align="center">
+
+# 🧠 AI-2027
+
+### Open AI Systems. Real Intelligence. Built in Public.
+
+**An open ecosystem of 48 AI agent systems, platforms & tools — Evidence-First agents that prove their work.**
+
+[![Projects](https://img.shields.io/badge/projects-48-00e5a0)](#the-ecosystem)
+[![Files](https://img.shields.io/badge/files-3%2C970-38bdf8)](catalog.json)
+[![Audited](https://img.shields.io/badge/post--merge%20audit-passed-brightgreen)](AUDIT.md)
+[![License](https://img.shields.io/badge/licenses-mixed%20(per--project)-orange)](#-licensing)
+
+[العربية ⬇](#-ai-2027--المستودع-الجامع-لكل-الأدوات-والميزات) · [Catalog](catalog.json) · [Audit Report](AUDIT.md) · [Phase-0 Readiness](docs/PHASE-0-READINESS.md) · [Launch Kit](launch/)
+
+</div>
+
+---
+
+## What is AI-2027?
+
+Most AI agents say *"done"* — AI-2027 agents must **prove it**.
+This repository is the central hub unifying every tool and feature from [@sayedelazameydesign-crypto](https://github.com/sayedelazameydesign-crypto)'s 68 repositories into one verified, categorized ecosystem:
+
+> **48 projects · ~3,970 files · byte-identical to their upstream sources · independently audited** (see [AUDIT.md](AUDIT.md))
+
+Every project lives 1:1 under [`projects/`](projects/) with its original license. [`catalog.json`](catalog.json) is the machine-readable index.
+
+## ⚡ The Evidence-First Cycle
+
+The shared philosophy across the ecosystem — an agent never declares success without independent verification:
+
+```
+Understand → Plan → Policy → Execute → Verify → Evidence → Report
+```
+
+*"No claims without evidence."* — the agent reaches `VERIFIED` only after an independent verifier checks the world itself.
+
+## 🌟 Flagships
+
+| Project | What it is |
+|---|---|
+| **[Cela 2027](projects/cela2027)** | Autonomous Manus-style agent: Goal→Plan→Execute→Verify→Evidence loop, coding agent tools, Pyodide sandbox, live 3D pipeline UI, Arabic dark interface — with a clearly-labeled local simulation mode (no API key needed) |
+| **[CeliaOS · 12pro](projects/12pro)** | 12-layer Agent OS control plane: benchmarks (latency/memory/planning/tool-use), certification gates G0–G15, attestations, monorepo (api + web + agent-ui) |
+| **[agi-system](projects/agi-system)** | Pure-Python AGI kernel, zero dependencies: full cognitive loop with independent Verifier + EventLedger, 86 unit tests |
+
+## 🗂️ The Ecosystem
+
+| Category | Count | Highlights |
+|---|---|---|
+| 🤖 AI Agent Systems | 16 | cela2027 · agi-system · CeliaOS · NOVA · Nimna (26 tools) · open_source- · celia.pro · 10-agent services |
+| 🌐 Chat & Web Platforms | 9 | ui (agentic-first baseline) · Nawah AI · Waha · leader2027 · Easy AI · celia.sh |
+| 👗 Fashion & E-Commerce | 8 | ELAZAMET1 · CELIA FASHION 2026 · AI stylist · smart importing |
+| 🏥 Specialized Apps | 8 | Celia Kids clinic · MIVW · educational competencies · BitNet system |
+| 🧱 Foundations & Seeds | 7 | ai.2027 · Celia-2027 starter · early seeds |
+
+Full categorized catalog with per-project features: **below in Arabic** ⬇ and machine-readable in [`catalog.json`](catalog.json).
+
+## ✅ Verified — not just claimed
+
+- 🔍 **Post-merge audit passed**: all 48 projects byte-identical to upstream sources ([AUDIT.md](AUDIT.md))
+- 🔐 **Secrets scan**: one exposed key found → redacted here (rotation tracked in AUDIT.md)
+- 📄 **Readiness review**: what's proven vs. declared vs. simulated → [docs/PHASE-0-READINESS.md](docs/PHASE-0-READINESS.md)
+
+## ⚖️ Licensing
+
+Each project keeps **its own license** inside its folder. Most are MIT/Apache-2.0; two projects (`WEB`, `celia-pro-deployment`) carry proprietary notices, one is undecided (`agi-system`), one is pending (`ccelia2027`). This is **not** an all-MIT archive — check each project's LICENSE before reuse. See the [license inventory](docs/PHASE-0-READINESS.md#2-license-inventory).
+
+---
+
 <div dir="rtl">
 
 # 🧠 ai-2027 — المستودع الجامع لكل الأدوات والميزات
