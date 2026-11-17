@@ -1,0 +1,250 @@
+name: Setup status
+
+# Reports which declared secrets/variables/environments actually exist.
+# NAMES ONLY in output — GitHub never exposes secret values; variable values are not logged.
+# Non-blocking: it is a dashboard, not a gate (the CI job is the gate).
+
+on:
+  workflow_dispatch:
+    inputs:
+      check_test_contact:
+        description: 'Check the test contact status (read-only; no messages)'
+        required: false
+        type: boolean
+        default: false
+  schedule:
+    - cron: '0 6 * * 1' # Mondays 06:00 UTC — catches drift after rotation
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: setup-status
+  cancel-in-progress: true
+
+jobs:
+  waapi-presence:
+    name: WAAPI token and read-only API check
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions: {}
+    steps:
+      # No checkout and no network calls: repository scripts never see the secret.
+      - name: Check WAAPI token presence
+        env:
+          WAAPI_API_TOKEN: ${{ secrets.WAAPI_API_TOKEN }}
+        run: |
+          if [ -n "$WAAPI_API_TOKEN" ]; then
+            echo 'WAAPI token is available to this job. Provider validity was not tested.'
+          else
+            echo '::error::WAAPI token is not available to this job; check its name and scope.'
+            exit 1
+          fi
+
+      # Manual read-only probe: the bounded response is inspected in memory, never logged.
+      - name: Verify WAAPI token with read-only API
+        env:
+          WAAPI_API_TOKEN: ${{ secrets.WAAPI_API_TOKEN }}
+        run: |
+          node --input-type=module <<'NODE'
+          const token = process.env.WAAPI_API_TOKEN;
+          if (!token || !token.trim()) {
+            console.error('WAAPI token unavailable to this job.');
+            process.exit(1);
+          }
+          try {
+            const response = await fetch('https://waapi.app/api/v1/instances', {
+              method: 'GET',
+              headers: { Authorization: 'Bearer ' + token, Accept: 'application/json', 'Content-Type': 'application/json' },
+              redirect: 'error',
+              signal: AbortSignal.timeout(15000)
+            });
+            if (!response.ok) {
+              if (response.body) await response.body.cancel();
+              console.error('WAAPI read-only API returned HTTP ' + response.status + '.');
+              process.exitCode = 1;
+            } else if (!/^application\/json(?:\s*;|\s*$)/i.test(response.headers.get('content-type') || '') || !response.body) {
+              if (response.body) await response.body.cancel();
+              console.error('WAAPI returned an unexpected response; authentication is not verified.');
+              process.exitCode = 1;
+            } else {
+              // The list may contain account data: cap it, inspect in memory, never log it.
+              const reader = response.body.getReader();
+              const decoder = new TextDecoder();
+              let size = 0;
+              let text = '';
+              while (true) {
+                const part = await reader.read();
+                if (part.done) break;
+                size += part.value.byteLength;
+                if (size > 1024 * 1024) {
+                  await reader.cancel();
+                  throw new Error('response too large');
+                }
+                text += decoder.decode(part.value, { stream: true });
+              }
+              text += decoder.decode();
+              const data = JSON.parse(text);
+              if (!data || data.status !== 'success' || !Array.isArray(data.instances)) {
+                console.error('WAAPI response did not confirm the instances API; authentication is not verified.');
+                process.exitCode = 1;
+              } else {
+                console.log('WAAPI instances API returned a valid success response. No message was sent.');
+              }
+            }
+          } catch (error) {
+            // Do not print errors: provider or runtime messages may contain sensitive details.
+            console.error('WAAPI read-only API request could not be completed.');
+            process.exitCode = 1;
+          }
+          NODE
+
+  waapi-test-contact:
+    name: Test contact connection status (read-only)
+    if: github.event_name == 'workflow_dispatch' && inputs.check_test_contact == true
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: '20'
+      - name: Verify the read-only probe using fake responses
+        run: node scripts/test-waapi-contact-status.js
+      # This test-only contact is read from existing public config; never print it,
+      # any returned account data, the instance ID, an exception, or the token.
+      - name: Compare the test contact and read client status
+        env:
+          WAAPI_API_TOKEN: ${{ secrets.WAAPI_API_TOKEN }}
+        run: |
+          node --input-type=commonjs <<'STATUS_CHECK'
+          (async () => {
+            const token = process.env.WAAPI_API_TOKEN;
+            const base = 'https://waapi.app/api/v1/instances';
+            function egyptian(raw) {
+              const text = String(raw || '').trim();
+              if (!/^\+?[0-9 ()-]{8,24}$/.test(text)) return '';
+              let digits = text.replace(/\D/g, '');
+              if (digits.startsWith('0020')) digits = digits.slice(2);
+              if (digits.startsWith('0')) digits = '20' + digits.slice(1);
+              return /^20(?:10|11|12|15)\d{8}$/.test(digits) ? digits : '';
+            }
+            async function get(url) {
+              const r = await fetch(url, { method: 'GET', redirect: 'error',
+                headers: { Authorization: 'Bearer ' + token, Accept: 'application/json' },
+                signal: AbortSignal.timeout(15000) });
+              if (!r.ok || !/^application\/json(?:\s*;|\s*$)/i.test(r.headers.get('content-type') || '') || !r.body) throw new Error('unavailable');
+              const reader = r.body.getReader(); const decoder = new TextDecoder();
+              let size = 0; let text = '';
+              for (;;) {
+                const part = await reader.read();
+                if (part.done) break;
+                size += part.value.byteLength;
+                if (size > 1048576) { await reader.cancel(); throw new Error('large'); }
+                text += decoder.decode(part.value, { stream: true });
+              }
+              return JSON.parse(text + decoder.decode());
+            }
+            let stage = 'CONFIG';
+            try {
+              if (!token || !token.trim()) throw new Error('unavailable');
+              const config = JSON.parse(require('node:fs').readFileSync('clinic.json', 'utf8'));
+              const expected = egyptian(config.developerPhone);
+              if (!expected) throw new Error('unavailable');
+              stage = 'INSTANCE_LIST_READ';
+              const list = await get(base);
+              stage = 'INSTANCE_LIST_SHAPE';
+              if (list.status !== 'success' || !Array.isArray(list.instances)) throw new Error('unavailable');
+              stage = list.instances.length === 0 ? 'INSTANCE_NONE' : 'INSTANCE_MULTIPLE';
+              if (list.instances.length !== 1) throw new Error('unavailable');
+              stage = 'INSTANCE_ID';
+              const rawId = list.instances[0] && list.instances[0].id;
+              const id = typeof rawId === 'number' && Number.isSafeInteger(rawId) ? String(rawId) : typeof rawId === 'string' ? rawId : '';
+              if (!/^[1-9]\d{0,18}$/.test(id)) throw new Error('unavailable');
+              stage = 'CLIENT_INFO_READ';
+              const me = await get(base + '/' + id + '/client/me');
+              stage = 'CLIENT_INFO_SHAPE';
+              if (me.status !== 'success' || !me.me || me.me.status !== 'success' || String(me.me.instanceId) !== id || !me.me.data) throw new Error('unavailable');
+              const actual = egyptian(me.me.data.formattedNumber);
+              if (!actual) throw new Error('unavailable');
+              stage = 'CONTACT_MISMATCH';
+              if (actual !== expected) throw new Error('unavailable');
+              stage = 'CLIENT_STATUS_READ';
+              const observed = await get(base + '/' + id + '/client/status');
+              stage = 'CLIENT_STATUS_SHAPE';
+              if (observed.status !== 'success' || !observed.clientStatus || observed.clientStatus.status !== 'success' ||
+                  String(observed.clientStatus.instanceId) !== id ||
+                  !['booting', 'loading_screen', 'qr', 'authenticated', 'auth_failure', 'ready', 'disconnected'].includes(observed.clientStatus.instanceStatus)) throw new Error('unavailable');
+              console.log(observed.clientStatus.instanceStatus === 'ready' ? '::notice title=Test contact status::CONNECTED' : '::notice title=Test contact status::NOT_READY');
+            } catch (_) {
+              console.error('::error title=Test contact status::UNKNOWN (' + stage + ')');
+              process.exitCode = 1;
+            }
+          })();
+          STATUS_CHECK
+
+  report:
+    name: declared vs configured
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: ${{ vars.NODE_VERSION || '20' }}
+
+      # This step used to end in `|| true`, so the only reporter of G2/U3 — the one job
+      # that compares the manifest with the real repository settings — could never fail.
+      # It ran green by construction. It now reports a verdict:
+      #   exit 0 → every declared name that must exist exists
+      #   exit 1 → drift: a declared name is missing while zero is not the correct state
+      #   exit 2 → the settings cannot be read with this token (a real, reportable condition)
+      - name: Compare docs/secrets-manifest.json with repository settings
+        id: setup
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          # No `set +e` and no `|| true`: the step must fail when the check fails. The output
+          # is captured by the shell's tee so the reason survives into the summary.
+          set -euo pipefail
+          node scripts/setup-github.js 2>&1 | tee /tmp/setup-github.txt || code=$?
+          code=${code:-0}
+          {
+            echo '<details><summary>setup-github.js output</summary>'
+            echo ''
+            echo '```'
+            cat /tmp/setup-github.txt
+            echo '```'
+            echo '</details>'
+          } >> "$GITHUB_STEP_SUMMARY"
+          case "$code" in
+            0) echo "::notice title=GitHub settings::Required name checks complete; optional names may be absent. Runtime and branch protection were not checked." ;;
+            2) echo "::error title=GitHub settings not verified::One or more settings could not be checked. Review the report and GitHub UI; no secret values are needed." ;;
+            *) echo "::error title=GitHub settings drift::One or more required names are missing; review the report." ;;
+          esac
+          exit "$code"
+
+      - name: Write a summary (names only)
+        if: always()
+        run: |
+          {
+            echo "### Secrets / variables setup status"
+            echo ""
+            echo "Declared in \`docs/secrets-manifest.json\`; values and API response bodies are never printed."
+            echo ""
+            echo '```'
+            node -e "const m=require('./docs/secrets-manifest.json'); console.log('secrets:   ' + m.secrets.map(s=>s.name+'@'+s.level).join(', ')); console.log('variables: ' + m.variables.map(v=>v.name).join(', '));"
+            echo '```'
+            echo ""
+            echo "Gaps and copy-paste commands: \`node scripts/setup-github.js\` locally, or \`docs/secrets.md\` §7c."
+          } >> "$GITHUB_STEP_SUMMARY"

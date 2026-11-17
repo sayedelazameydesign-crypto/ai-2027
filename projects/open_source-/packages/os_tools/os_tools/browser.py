@@ -1,0 +1,892 @@
+"""Browser automation with dynamic retry and vision fallback.
+
+The edge case named in the design doc: a selector that was valid when the plan
+was written stops matching after a DOM mutation. The strategy implemented
+here, in order:
+
+1. **Retry with re-resolution** — re-query the selector (React re-renders can
+   make a later attempt succeed).
+2. **Text-based relocation** — if the element carried accessible text, find
+   any element with the same text/role instead of the brittle CSS path.
+3. **Vision fallback** — hand the screenshot to the VLM tier and let it return
+   coordinates, so the flow survives a total selector collapse.
+
+Two backends implement the same protocol: :class:`PlaywrightBrowser` (real
+headless Chromium, needs ``pip install playwright && playwright install
+chromium``) and :class:`FakeBrowser` (in-memory DOM, used by the test-suite so
+the retry/fallback logic is exercised deterministically and offline).
+"""
+
+from __future__ import annotations
+
+import asyncio
+import ipaddress
+from collections.abc import Awaitable, Callable
+from typing import Any, Literal, Protocol, runtime_checkable
+
+from os_core.types import Artifact, ToolResult, ToolStatus
+from pydantic import BaseModel, Field, PrivateAttr
+
+from os_tools.egress import parse_http_target
+from os_tools.ssrf import SSRFGuard
+
+SelectorStrategy = Literal["css", "text", "vision"]
+
+# Tool-name -> canonical action mapping used by browser_action().
+_BROWSER_ACTION_MAP: dict[str, str] = {
+    "browser_navigate": "goto",
+    "browser_goto": "goto",
+    "browser_click": "click",
+    "browser_fill": "fill",
+    "browser_type": "type",
+    "browser_scroll": "scroll",
+    "browser_key": "key",
+    "browser_press": "key",
+}
+
+
+class PageSnapshot(BaseModel):
+    url: str
+    title: str = ""
+    html: str = ""
+    elements: list[dict[str, Any]] = Field(default_factory=list)
+    screenshot_b64: str | None = None
+
+
+class StaleElementError(RuntimeError):
+    """Raised when a selector no longer resolves (DOM mutation)."""
+
+
+@runtime_checkable
+class BrowserBackend(Protocol):
+    async def navigate(self, url: str, *, connect_ip: str | None = None) -> PageSnapshot: ...
+    async def click(self, selector: str) -> PageSnapshot: ...
+    async def fill(self, selector: str, value: str) -> PageSnapshot: ...
+    async def type(self, selector: str, text: str) -> PageSnapshot: ...
+    async def scroll(self, selector: str, dx: int = 0, dy: int = 0) -> PageSnapshot: ...
+    async def key(self, key: str, selector: str = "") -> PageSnapshot: ...
+    async def snapshot(self) -> PageSnapshot: ...
+    async def close(self) -> None: ...
+
+
+def _deterministic_center(
+    selector: str, *, width: int = 1280, height: int = 800
+) -> tuple[int, int]:
+    """Stable integer center point derived from the selector string.
+
+    Hashing the selector gives a reproducible (x, y) inside the viewport so the
+    fake backend's click/fill always report a concrete click location without
+    needing a real DOM layout.
+    """
+    import hashlib
+
+    digest = hashlib.sha256(selector.encode("utf-8")).digest()
+    # First 4 bytes -> x in [40, width-40], next 4 -> y in [40, height-40]
+    xi = int.from_bytes(digest[:4], "big", signed=False)
+    yi = int.from_bytes(digest[4:8], "big", signed=False)
+    margin = 40
+    x = margin + (xi % (width - 2 * margin))
+    y = margin + (yi % (height - 2 * margin))
+    return int(x), int(y)
+
+
+class FakeBrowser(BaseModel):
+    """In-memory DOM with scriptable failures — how the fallbacks get tested."""
+
+    pages: dict[str, PageSnapshot] = Field(default_factory=dict)
+    fail_selectors: set[str] = Field(default_factory=set)
+    fail_until_attempt: dict[str, int] = Field(default_factory=dict)
+    attempts: dict[str, int] = Field(default_factory=dict)
+    current: PageSnapshot | None = None
+    actions: list[str] = Field(default_factory=list)
+    navigated: list[str] = Field(default_factory=list)
+    navigated_connect_ips: list[str | None] = Field(default_factory=list)
+    viewport: tuple[int, int] = (1280, 800)
+
+    async def navigate(self, url: str, *, connect_ip: str | None = None) -> PageSnapshot:
+        self.navigated.append(url)
+        self.navigated_connect_ips.append(connect_ip)  # FakeBrowser performs no network I/O.
+        page = self.pages.get(url)
+        if page is None:
+            raise StaleElementError(f"no such page in fake browser: {url}")
+        self.current = page
+        return page
+
+    async def click(self, selector: str) -> PageSnapshot:
+        self._bump(selector)
+        if self._should_fail(selector):
+            raise StaleElementError(f"selector '{selector}' did not resolve (DOM mutated)")
+        self.actions.append(f"click:{selector}")
+        return self.current or PageSnapshot(url="about:blank")
+
+    async def fill(self, selector: str, value: str) -> PageSnapshot:
+        self._bump(selector)
+        if self._should_fail(selector):
+            raise StaleElementError(f"selector '{selector}' did not resolve (DOM mutated)")
+        self.actions.append(f"fill:{selector}={value}")
+        return self.current or PageSnapshot(url="about:blank")
+
+    async def type(self, selector: str, text: str) -> PageSnapshot:
+        self._bump(selector)
+        if self._should_fail(selector):
+            raise StaleElementError(f"selector '{selector}' did not resolve (DOM mutated)")
+        self.actions.append(f"type:{selector}={text}")
+        return self.current or PageSnapshot(url="about:blank")
+
+    async def scroll(self, selector: str, dx: int = 0, dy: int = 0) -> PageSnapshot:
+        self.actions.append(f"scroll:{selector}:{dx},{dy}")
+        return self.current or PageSnapshot(url="about:blank")
+
+    async def key(self, key: str, selector: str = "") -> PageSnapshot:
+        target = selector or "<document>"
+        self.actions.append(f"key:{target}:{key}")
+        return self.current or PageSnapshot(url="about:blank")
+
+    async def snapshot(self) -> PageSnapshot:
+        return self.current or PageSnapshot(url="about:blank")
+
+    async def close(self) -> None:
+        self.current = None
+
+    def bounding_box(self, selector: str) -> dict[str, int]:
+        """Deterministic element bounding box used to drive center coords."""
+        x, y = _deterministic_center(selector, width=self.viewport[0], height=self.viewport[1])
+        return {
+            "x": x - 32,
+            "y": y - 12,
+            "width": 64,
+            "height": 24,
+        }
+
+    def center(self, selector: str) -> tuple[int, int]:
+        """Integer (x, y) center of the deterministic bounding box."""
+        box = self.bounding_box(selector)
+        cx = box["x"] + box["width"] // 2
+        cy = box["y"] + box["height"] // 2
+        return int(cx), int(cy)
+
+    def _bump(self, selector: str) -> None:
+        self.attempts[selector] = self.attempts.get(selector, 0) + 1
+
+    def _should_fail(self, selector: str) -> bool:
+        if selector in self.fail_selectors:
+            return True
+        threshold = self.fail_until_attempt.get(selector)
+        if threshold is None:
+            return False
+        return self.attempts[selector] <= threshold
+
+
+class PlaywrightBrowser(BaseModel):
+    """Real headless Chromium. Imported lazily so Playwright stays optional."""
+
+    headless: bool = True
+    viewport: tuple[int, int] = (1280, 800)
+    timeout_ms: int = 15_000
+    _pw: Any = PrivateAttr(default=None)
+    _browser: Any = PrivateAttr(default=None)
+    _context: Any = PrivateAttr(default=None)
+    _page: Any = PrivateAttr(default=None)
+    _pinned_origin: tuple[str, str, int, str] | None = PrivateAttr(default=None)
+    _last_center: tuple[int, int] | None = PrivateAttr(default=None)
+
+    model_config = {"arbitrary_types_allowed": True}
+
+    @staticmethod
+    def _origin(url: str) -> tuple[str, str, int]:
+        return parse_http_target(url)
+
+    async def _ensure_page(self, url: str | None = None, connect_ip: str | None = None) -> Any:
+        if url is None and connect_ip is None:
+            if self._page is not None:
+                return self._page
+            raise RuntimeError("navigate to a DNS-authorized HTTP(S) URL before using the browser")
+        if url is None:
+            raise RuntimeError("browser navigation requires a URL")
+        if connect_ip is None:
+            raise RuntimeError("browser navigation requires a DNS-authorized, approved connect_ip")
+
+        scheme, host, port = self._origin(url)
+        boundary = SSRFGuard(resolve_dns=False).check(url, resolve_dns=False)
+        if not boundary.allowed:
+            raise RuntimeError(f"browser URL refused by SSRF boundary: {boundary.reason}")
+        try:
+            address = ipaddress.ip_address(connect_ip)
+        except ValueError as exc:
+            raise RuntimeError(f"invalid approved browser connect_ip {connect_ip!r}") from exc
+        if getattr(address, "scope_id", None):
+            raise RuntimeError("scoped IP addresses cannot be used as browser destinations")
+        effective_address = getattr(address, "ipv4_mapped", None) or address
+        if not (
+            effective_address.is_global
+            and not (
+                effective_address.is_loopback
+                or effective_address.is_link_local
+                or effective_address.is_reserved
+                or effective_address.is_multicast
+                or effective_address.is_unspecified
+            )
+        ):
+            raise RuntimeError(
+                "browser connect_ip must be a globally routable address approved by policy"
+            )
+        pin = (scheme, host, port, address.compressed)
+        if self._page is not None and self._pinned_origin == pin:
+            return self._page
+        if self._page is not None:
+            await self._reset_browser()
+
+        try:
+            from playwright.async_api import async_playwright
+        except ImportError as exc:  # pragma: no cover - optional dependency
+            raise RuntimeError(
+                "Playwright is not installed. Run: pip install playwright && "
+                "playwright install chromium"
+            ) from exc
+
+        host_rule = f"[{host}]" if ":" in host else host
+        ip_rule = f"[{address.compressed}]" if address.version == 6 else address.compressed
+        resolver_rules = f"MAP {host_rule} {ip_rule},MAP * ~NOTFOUND"
+        self._pw = await async_playwright().start()
+        self._browser = await self._pw.chromium.launch(
+            headless=self.headless,
+            args=[
+                f"--host-resolver-rules={resolver_rules}",
+                "--disable-extensions",
+                "--disable-background-networking",
+                "--disable-quic",
+                "--force-webrtc-ip-handling-policy=disable_non_proxied_udp",
+                "--no-proxy-server",
+                "--disable-dev-shm-usage",
+            ],
+        )
+        self._context = await self._browser.new_context(
+            viewport={"width": self.viewport[0], "height": self.viewport[1]},
+            service_workers="block",
+        )
+
+        async def _same_origin_only(route: Any) -> None:
+            try:
+                request_origin = self._origin(route.request.url)
+            except ValueError:
+                await route.abort("blockedbyclient")
+                return
+            if request_origin != (scheme, host, port):
+                await route.abort("blockedbyclient")
+                return
+            await route.continue_()
+
+        await self._context.route("**/*", _same_origin_only)
+        # Do not let page scripts open a second, un-routed network channel.
+        await self._context.add_init_script(
+            "Object.defineProperty(window, 'WebSocket', {"
+            "value: class { constructor() { "
+            "throw new Error('WebSocket blocked by egress policy'); "
+            "} }"
+            "});"
+        )
+        self._page = await self._context.new_page()
+        self._page.set_default_timeout(self.timeout_ms)
+        self._pinned_origin = pin
+        return self._page
+
+    async def _reset_browser(self) -> None:
+        if self._context is not None:
+            await self._context.close()
+            self._context = None
+        if self._browser is not None:
+            await self._browser.close()
+            self._browser = None
+        if self._pw is not None:
+            await self._pw.stop()
+            self._pw = None
+        self._page = None
+        self._pinned_origin = None
+
+    async def navigate(self, url: str, *, connect_ip: str | None = None) -> PageSnapshot:
+        page = await self._ensure_page(url, connect_ip)
+        await page.goto(url, wait_until="domcontentloaded")
+        return await self._snapshot(page)
+
+    async def click(self, selector: str) -> PageSnapshot:
+        page = await self._ensure_page()
+        try:
+            box = await page.locator(selector).first.bounding_box()
+            await page.click(selector)
+        except Exception as exc:
+            raise StaleElementError(f"click failed for '{selector}': {exc}") from exc
+        if box is not None:
+            self._last_center = (
+                round(box["x"] + box["width"] / 2),
+                round(box["y"] + box["height"] / 2),
+            )
+        else:
+            self._last_center = None
+        return await self._snapshot(page)
+
+    async def fill(self, selector: str, value: str) -> PageSnapshot:
+        page = await self._ensure_page()
+        try:
+            box = await page.locator(selector).first.bounding_box()
+            await page.fill(selector, value)
+        except Exception as exc:
+            raise StaleElementError(f"fill failed for '{selector}': {exc}") from exc
+        if box is not None:
+            self._last_center = (
+                round(box["x"] + box["width"] / 2),
+                round(box["y"] + box["height"] / 2),
+            )
+        else:
+            self._last_center = None
+        return await self._snapshot(page)
+
+    async def type(self, selector: str, text: str) -> PageSnapshot:
+        page = await self._ensure_page()
+        try:
+            loc = page.locator(selector).first
+            box = await loc.bounding_box()
+            await loc.press_sequentially(text)
+        except Exception as exc:
+            raise StaleElementError(f"type failed for '{selector}': {exc}") from exc
+        if box is not None:
+            self._last_center = (
+                round(box["x"] + box["width"] / 2),
+                round(box["y"] + box["height"] / 2),
+            )
+        else:
+            self._last_center = None
+        return await self._snapshot(page)
+
+    def center(self, selector: str) -> tuple[int, int] | None:
+        """Center of the last clicked/filled/typed element, or None if unknown."""
+        return self._last_center
+
+    async def scroll(self, selector: str, dx: int = 0, dy: int = 0) -> PageSnapshot:
+        page = await self._ensure_page()
+        try:
+            await page.evaluate(
+                "(args) => { const el = document.querySelector(args.s);"
+                " if (el) { el.scrollLeft += args.dx; el.scrollTop += args.dy; } }",
+                {"s": selector, "dx": dx, "dy": dy},
+            )
+        except Exception as exc:
+            raise StaleElementError(f"scroll failed for '{selector}': {exc}") from exc
+        return await self._snapshot(page)
+
+    async def key(self, key: str, selector: str = "") -> PageSnapshot:
+        page = await self._ensure_page()
+        try:
+            if selector:
+                await page.focus(selector)
+            await page.keyboard.press(key)
+        except Exception as exc:
+            raise StaleElementError(f"key failed for '{key}': {exc}") from exc
+        return await self._snapshot(page)
+
+    async def snapshot(self) -> PageSnapshot:
+        page = await self._ensure_page()
+        return await self._snapshot(page)
+
+    async def close(self) -> None:
+        await self._reset_browser()
+
+    async def _snapshot(self, page: Any) -> PageSnapshot:
+        import base64
+
+        elements = await page.evaluate(
+            """() => Array.from(document.querySelectorAll('a,button,input,[role=button]'))
+                .slice(0, 200).map((el, i) => ({
+                    index: i, tag: el.tagName.toLowerCase(),
+                    text: (el.innerText || el.value || '').trim().slice(0, 120),
+                    role: el.getAttribute('role') || '',
+                    id: el.id || '', cls: el.className || ''
+                }))"""
+        )
+        shot = await page.screenshot()
+        return PageSnapshot(
+            url=page.url,
+            title=await page.title(),
+            html=await page.content(),
+            elements=elements,
+            screenshot_b64=base64.b64encode(shot).decode(),
+        )
+
+
+class RetryPolicy(BaseModel):
+    """Dynamic retry & fallback configuration."""
+
+    max_attempts: int = 3
+    backoff: float = 0.2
+    enable_text_relocation: bool = True
+    enable_vision_fallback: bool = True
+
+
+VisionFn = Callable[[str, str], Awaitable[str]]
+
+
+class BrowserTool(BaseModel):
+    """The agent-facing browser capability."""
+
+    backend: BrowserBackend
+    policy: RetryPolicy = Field(default_factory=RetryPolicy)
+    vision: VisionFn | None = None
+    history: list[dict[str, Any]] = Field(default_factory=list)
+    blocked_urls: list[str] = Field(default_factory=list)
+
+    model_config = {"arbitrary_types_allowed": True}
+
+    async def navigate(
+        self, url: str, *, ssrf_check: Callable[[str], Any] | None = None
+    ) -> ToolResult:
+        connect_ip: str | None = None
+        if ssrf_check is not None:
+            verdict = ssrf_check(url)
+            if not getattr(verdict, "allowed", True):
+                self.blocked_urls.append(url)
+                return ToolResult(
+                    tool_call_id="",
+                    tool_name="browser_navigate",
+                    status=ToolStatus.DENIED,
+                    error=f"SSRF guard blocked navigation: {getattr(verdict, 'reason', '')}",
+                )
+            connect_ip = getattr(verdict, "connect_ip", None)
+        try:
+            page = await self.backend.navigate(url, connect_ip=connect_ip)
+        except Exception as exc:
+            return ToolResult(
+                tool_call_id="",
+                tool_name="browser_navigate",
+                status=ToolStatus.ERROR,
+                error=f"navigation to {url} failed: {exc}",
+            )
+        return self._page_result(
+            "browser_navigate",
+            page,
+            note=f"navigated to {url}",
+            action="goto",
+            metadata={"action": "goto", "url": url},
+        )
+
+    async def act(self, action: str, selector: str, *, value: str = "") -> ToolResult:
+        """Click/fill/type with the full retry -> relocate -> vision chain."""
+        if action not in {"click", "fill", "type"}:
+            return ToolResult(
+                tool_call_id="",
+                tool_name=f"browser_{action}",
+                status=ToolStatus.ERROR,
+                error=f"unsupported browser action '{action}' (supported: click, fill, type)",
+            )
+        last_error = "unknown error"
+        for attempt in range(1, self.policy.max_attempts + 1):
+            try:
+                page = await self._dispatch(action, selector, value)
+                self.history.append(
+                    {"action": action, "selector": selector, "attempt": attempt, "strategy": "css"}
+                )
+                meta: dict[str, Any] = {
+                    "action": action,
+                    "selector": selector,
+                    "attempt": attempt,
+                    "strategy": "css",
+                }
+                # Backend may expose the last interaction's center coords.
+                center = getattr(self.backend, "center", None)
+                if callable(center) and action in {"click", "fill", "type"}:
+                    pt = center(selector)
+                    if pt is not None:
+                        cx, cy = pt
+                        meta["x"] = int(cx)
+                        meta["y"] = int(cy)
+                return self._page_result(
+                    f"browser_{action}",
+                    page,
+                    note=f"{action} '{selector}' ok on attempt {attempt}",
+                    action=action,
+                    metadata=meta,
+                )
+            except StaleElementError as exc:
+                last_error = str(exc)
+                if attempt < self.policy.max_attempts:
+                    await asyncio.sleep(self.policy.backoff * attempt)
+
+        # Fallback 1: relocate by accessible text instead of a brittle path.
+        if self.policy.enable_text_relocation:
+            relocated = self._relocate_by_text(selector)
+            if relocated:
+                try:
+                    page = await self._dispatch(action, relocated, value)
+                    self.history.append(
+                        {
+                            "action": action,
+                            "selector": relocated,
+                            "strategy": "text",
+                            "original": selector,
+                        }
+                    )
+                    meta = {
+                        "action": action,
+                        "selector": relocated,
+                        "strategy": "text",
+                        "original": selector,
+                    }
+                    center = getattr(self.backend, "center", None)
+                    if callable(center) and action in {"click", "fill", "type"}:
+                        pt = center(relocated)
+                        if pt is not None:
+                            cx, cy = pt
+                            meta["x"] = int(cx)
+                            meta["y"] = int(cy)
+                    return self._page_result(
+                        f"browser_{action}",
+                        page,
+                        note=f"relocated '{selector}' -> '{relocated}' by accessible text",
+                        action=action,
+                        metadata=meta,
+                    )
+                except StaleElementError as exc:
+                    last_error = str(exc)
+
+        # Fallback 2: ask the VLM for coordinates from the screenshot.
+        if self.policy.enable_vision_fallback and self.vision is not None:
+            try:
+                snap = await self.backend.snapshot()
+            except Exception:
+                snap = PageSnapshot(url="about:blank")
+            coords = await self.vision(snap.screenshot_b64 or "", selector)
+            self.history.append(
+                {"action": action, "selector": selector, "strategy": "vision", "coords": coords}
+            )
+            # Parse "x=412,y=318" if the vision function returns that format.
+            x_val: int | None = None
+            y_val: int | None = None
+            try:
+                for part in coords.replace(" ", "").split(","):
+                    k, v = part.split("=")
+                    if k == "x":
+                        x_val = int(float(v))
+                    elif k == "y":
+                        y_val = int(float(v))
+            except Exception:
+                x_val = y_val = None
+            return ToolResult(
+                tool_call_id="",
+                tool_name=f"browser_{action}",
+                status=ToolStatus.SUCCESS,
+                output=f"vision fallback produced target '{coords}' for '{selector}'",
+                metadata={
+                    "action": action,
+                    "strategy": "vision",
+                    "coords": coords,
+                    "x": x_val,
+                    "y": y_val,
+                    "css_error": last_error,
+                    "url": snap.url,
+                },
+            )
+
+        return ToolResult(
+            tool_call_id="",
+            tool_name=f"browser_{action}",
+            status=ToolStatus.ERROR,
+            error=f"selector '{selector}' failed after {self.policy.max_attempts} attempts "
+            f"and both fallbacks: {last_error}",
+            metadata={
+                "action": action,
+                "selector": selector,
+                "attempts": self.policy.max_attempts,
+                "fallbacks_exhausted": True,
+            },
+        )
+
+    async def scroll(self, selector: str, dx: int = 0, dy: int = 0) -> ToolResult:
+        try:
+            page = await self.backend.scroll(selector, dx=dx, dy=dy)
+        except Exception as exc:
+            return ToolResult(
+                tool_call_id="",
+                tool_name="browser_scroll",
+                status=ToolStatus.ERROR,
+                error=f"scroll failed on '{selector}': {exc}",
+                metadata={"action": "scroll", "selector": selector},
+            )
+        return self._page_result(
+            "browser_scroll",
+            page,
+            note=f"scrolled {selector} by dx={dx}, dy={dy}",
+            action="scroll",
+            metadata={"action": "scroll", "selector": selector, "dx": dx, "dy": dy},
+        )
+
+    async def key(self, key: str, selector: str = "") -> ToolResult:
+        try:
+            page = await self.backend.key(key, selector=selector)
+        except Exception as exc:
+            return ToolResult(
+                tool_call_id="",
+                tool_name="browser_key",
+                status=ToolStatus.ERROR,
+                error=f"key '{key}' failed: {exc}",
+                metadata={"action": "key", "key": key, "selector": selector},
+            )
+        return self._page_result(
+            "browser_key",
+            page,
+            note=f"pressed key '{key}'" + (f" on {selector}" if selector else ""),
+            action="key",
+            metadata={"action": "key", "key": key, "selector": selector},
+        )
+
+    async def browser_action(self, action: str, **kwargs: Any) -> ToolResult:
+        """Dispatch a canonical action name to the matching method.
+
+        Supported canonical actions: ``goto``, ``click``, ``fill``, ``type``,
+        ``scroll``, ``key``.  Tool names (e.g. ``browser_navigate``) are also
+        accepted for convenience.
+        """
+        canonical = _BROWSER_ACTION_MAP.get(action, action)
+        if canonical == "goto":
+            url = kwargs.get("url", "")
+            ssrf = kwargs.get("ssrf_check")
+            return await self.navigate(url, ssrf_check=ssrf)
+        if canonical == "click":
+            return await self.act("click", kwargs.get("selector", ""))
+        if canonical == "fill":
+            return await self.act("fill", kwargs.get("selector", ""), value=kwargs.get("value", ""))
+        if canonical == "type":
+            return await self.act("type", kwargs.get("selector", ""), value=kwargs.get("text", ""))
+        if canonical == "scroll":
+            return await self.scroll(
+                kwargs.get("selector", ""),
+                dx=int(kwargs.get("dx", 0)),
+                dy=int(kwargs.get("dy", 0)),
+            )
+        if canonical == "key":
+            return await self.key(kwargs.get("key", ""), selector=kwargs.get("selector", ""))
+        return ToolResult(
+            tool_call_id="",
+            tool_name=f"browser_{canonical}",
+            status=ToolStatus.ERROR,
+            error=f"unknown browser action '{action}'",
+            metadata={"action": action},
+        )
+
+    async def close(self) -> None:
+        await self.backend.close()
+
+    # -- internals ------------------------------------------------------
+    async def _dispatch(self, action: str, selector: str, value: str) -> PageSnapshot:
+        if action == "click":
+            return await self.backend.click(selector)
+        if action == "fill":
+            return await self.backend.fill(selector, value)
+        if action == "type":
+            return await self.backend.type(selector, value)
+        raise ValueError(f"unsupported browser action '{action}'")
+
+    def _relocate_by_text(self, selector: str) -> str | None:
+        """Turn '#submit-btn' into a text locator when the element had text."""
+        if selector.startswith("text="):
+            return None
+        for entry in self.history:
+            if entry.get("selector") == selector and entry.get("text"):
+                return f"text={entry['text']}"
+        cleaned = selector.lstrip("#.").replace("-", " ").replace("_", " ").strip()
+        if not cleaned or " " in cleaned:
+            return None
+        return f"text={cleaned}"
+
+    def _page_result(
+        self,
+        tool_name: str,
+        page: PageSnapshot,
+        *,
+        note: str = "",
+        action: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> ToolResult:
+        artifacts: list[Artifact] = []
+        if page.screenshot_b64:
+            artifacts.append(
+                Artifact(
+                    kind="image",
+                    filename="screenshot.png",
+                    content=page.screenshot_b64,
+                    mime_type="image/png",
+                    metadata={"encoding": "base64"},
+                )
+            )
+        elements = page.elements[:40]
+        summary = (
+            "\n".join(
+                f"- [{el.get('tag', '?')}] {(el.get('text') or el.get('id') or '')[:60]}"
+                for el in elements
+            )
+            or "(no interactive elements)"
+        )
+        meta: dict[str, Any] = {
+            "url": page.url,
+            "title": page.title,
+            "element_count": len(page.elements),
+        }
+        if action is not None:
+            meta["action"] = action
+        if metadata:
+            meta.update(metadata)
+        return ToolResult(
+            tool_call_id="",
+            tool_name=tool_name,
+            status=ToolStatus.SUCCESS,
+            output=f"{note}\nURL: {page.url}\nTitle: {page.title}\n"
+            f"Interactive elements ({len(page.elements)}):\n{summary}",
+            artifacts=artifacts,
+            metadata=meta,
+        )
+
+
+def browser_tools(tool: BrowserTool, *, ssrf_check: Callable[[str], Any] | None = None):
+    """Expose the browser as registry tools."""
+    from os_core.types import RiskLevel
+
+    from os_tools.registry import Tool
+
+    async def _navigate(url: str) -> ToolResult:
+        return await tool.navigate(url, ssrf_check=ssrf_check)
+
+    async def _click(selector: str) -> ToolResult:
+        return await tool.act("click", selector)
+
+    async def _fill(selector: str, value: str) -> ToolResult:
+        return await tool.act("fill", selector, value=value)
+
+    async def _type(selector: str, text: str) -> ToolResult:
+        return await tool.act("type", selector, value=text)
+
+    async def _scroll(selector: str, dx: int = 0, dy: int = 0) -> ToolResult:
+        return await tool.scroll(selector, dx=dx, dy=dy)
+
+    async def _key(key: str, selector: str = "") -> ToolResult:
+        return await tool.key(key, selector=selector)
+
+    async def _snapshot() -> ToolResult:
+        page = await tool.backend.snapshot()
+        return tool._page_result(
+            "browser_snapshot", page, note="snapshot of current page", action="snapshot"
+        )
+
+    async def _action(action: str, **kwargs: Any) -> ToolResult:
+        if ssrf_check is not None and action in {"goto", "browser_navigate", "browser_goto"}:
+            kwargs["ssrf_check"] = ssrf_check
+        return await tool.browser_action(action, **kwargs)
+
+    return [
+        Tool(
+            name="browser_navigate",
+            description=(
+                "Open a URL in the sandboxed headless browser and return the page structure."
+            ),
+            parameters={
+                "type": "object",
+                "properties": {"url": {"type": "string"}},
+                "required": ["url"],
+            },
+            risk=RiskLevel.NETWORK,
+            fn=_navigate,
+        ),
+        Tool(
+            name="browser_click",
+            description="Click an element. Uses retry, text relocation and vision fallback.",
+            parameters={
+                "type": "object",
+                "properties": {"selector": {"type": "string"}},
+                "required": ["selector"],
+            },
+            risk=RiskLevel.WRITE,
+            fn=_click,
+        ),
+        Tool(
+            name="browser_fill",
+            description="Type a value into an input element (replaces existing content).",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "selector": {"type": "string"},
+                    "value": {"type": "string"},
+                },
+                "required": ["selector", "value"],
+            },
+            risk=RiskLevel.WRITE,
+            fn=_fill,
+        ),
+        Tool(
+            name="browser_type",
+            description="Append text into a focused element character-by-character.",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "selector": {"type": "string"},
+                    "text": {"type": "string"},
+                },
+                "required": ["selector", "text"],
+            },
+            risk=RiskLevel.WRITE,
+            fn=_type,
+        ),
+        Tool(
+            name="browser_scroll",
+            description="Scroll an element by dx, dy pixels.",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "selector": {"type": "string"},
+                    "dx": {"type": "integer", "default": 0},
+                    "dy": {"type": "integer", "default": 0},
+                },
+                "required": ["selector"],
+            },
+            risk=RiskLevel.READ_ONLY,
+            fn=_scroll,
+        ),
+        Tool(
+            name="browser_key",
+            description="Press a keyboard key, optionally scoped to a selector.",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "key": {"type": "string"},
+                    "selector": {"type": "string"},
+                },
+                "required": ["key"],
+            },
+            risk=RiskLevel.WRITE,
+            fn=_key,
+        ),
+        Tool(
+            name="browser_snapshot",
+            description="Return the current page structure and a screenshot artifact.",
+            parameters={"type": "object", "properties": {}},
+            risk=RiskLevel.READ_ONLY,
+            fn=_snapshot,
+        ),
+        Tool(
+            name="browser_action",
+            description=(
+                "Unified browser action dispatcher: goto | click | fill | type | scroll | key."
+            ),
+            parameters={
+                "type": "object",
+                "properties": {
+                    "action": {"type": "string"},
+                    "url": {"type": "string"},
+                    "selector": {"type": "string"},
+                    "value": {"type": "string"},
+                    "text": {"type": "string"},
+                    "key": {"type": "string"},
+                    "dx": {"type": "integer"},
+                    "dy": {"type": "integer"},
+                },
+                "required": ["action"],
+            },
+            risk=RiskLevel.WRITE,
+            fn=_action,
+        ),
+    ]

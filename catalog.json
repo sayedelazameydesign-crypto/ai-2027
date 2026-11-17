@@ -1,0 +1,467 @@
+{
+  "repository": "ai-2027",
+  "owner": "sayedelazameydesign-crypto",
+  "merged_at": "2026-11-17",
+  "total_projects": 48,
+  "total_files": 3967,
+  "excluded": [
+    {
+      "name": "skills-introduction-to-github",
+      "reason": "تمرين GitHub Skills التعليمي الرسمي — ليس أداة خاصة"
+    }
+  ],
+  "empty_source_repos": [
+    "cela.mcp",
+    "ELAZAMEY",
+    "celia-pro-ai",
+    "celia_tv-pro",
+    "caeli_elazamey",
+    "Strong_Agent_AI",
+    "Strong.agent",
+    "CELIA-2026",
+    "Celia.2027",
+    "ai.2028a",
+    "29-8-pro",
+    "new-repo2026",
+    "aborofyda",
+    "celia.pro",
+    "cela",
+    "cloab",
+    "STORE3",
+    "cautious-garbanzo"
+  ],
+  "projects": [
+    {
+      "name": "cela2027",
+      "path": "projects/cela2027",
+      "category": "agents",
+      "category_ar": "أنظمة الوكلاء الذكية",
+      "source": "https://github.com/sayedelazameydesign-crypto/cela2027",
+      "files": 86,
+      "description_ar": "وكيل مستقل بأسلوب Manus: حلقة Goal→Plan→Execute→Verify→Evidence، وكيل برمجي، Pyodide sandbox، شبكة 3D حية، واجهة عربية"
+    },
+    {
+      "name": "agi-system",
+      "path": "projects/agi-system",
+      "category": "agents",
+      "category_ar": "أنظمة الوكلاء الذكية",
+      "source": "https://github.com/sayedelazameydesign-crypto/agi-system",
+      "files": 27,
+      "description_ar": "نواة AGI بـ Python صرفة بدون اعتمادات، حلقة إدراكية كاملة مع تحقق مستقل، 86 اختبارًا"
+    },
+    {
+      "name": "12pro",
+      "path": "projects/12pro",
+      "category": "agents",
+      "category_ar": "أنظمة الوكلاء الذكية",
+      "source": "https://github.com/sayedelazameydesign-crypto/12pro",
+      "files": 457,
+      "description_ar": "CeliaOS v1.0.0 — Agent OS Control Plane بـ 12 طبقة + benchmarks + attestations + monorepo"
+    },
+    {
+      "name": "open_source-",
+      "path": "projects/open_source-",
+      "category": "agents",
+      "category_ar": "أنظمة الوكلاء الذكية",
+      "source": "https://github.com/sayedelazameydesign-crypto/open_source-",
+      "files": 609,
+      "description_ar": "cela_use_browser — منصة متصفح مستقلة: ReAct + Artifacts + تنفيذ معزول"
+    },
+    {
+      "name": "cela.nimna",
+      "path": "projects/cela.nimna",
+      "category": "agents",
+      "category_ar": "أنظمة الوكلاء الذكية",
+      "source": "https://github.com/sayedelazameydesign-crypto/cela.nimna",
+      "files": 204,
+      "description_ar": "وكيل مهارات قابلة لإعادة الاستخدام: 26 أداة، SKILL.md، ذاكرة Qdrant 768-dim، موافقات للأدوات الخطرة، 83 اختبارًا"
+    },
+    {
+      "name": "celia-pro-deployment",
+      "path": "projects/celia-pro-deployment",
+      "category": "agents",
+      "category_ar": "أنظمة الوكلاء الذكية",
+      "source": "https://github.com/sayedelazameydesign-crypto/celia-pro-deployment",
+      "files": 164,
+      "description_ar": "celia.pro — وكيل متقدم FastAPI + React 19، Gemini/HuggingFace مجاني، 93 اختبارًا"
+    },
+    {
+      "name": "CELIA_SERVICES",
+      "path": "projects/CELIA_SERVICES",
+      "category": "agents",
+      "category_ar": "أنظمة الوكلاء الذكية",
+      "source": "https://github.com/sayedelazameydesign-crypto/CELIA_SERVICES",
+      "files": 31,
+      "description_ar": "نظام 10 وكلاء متخصصين: REST + WebSocket + PostgreSQL/MongoDB + Redis/Bull + Docker + مراقبة"
+    },
+    {
+      "name": "ai-task",
+      "path": "projects/ai-task",
+      "category": "agents",
+      "category_ar": "أنظمة الوكلاء الذكية",
+      "source": "https://github.com/sayedelazameydesign-crypto/ai-task",
+      "files": 142,
+      "description_ar": "NOVA Personal AI OS: محادثة عربية RTL، Tool Registry، ذاكرة طويلة، Queue/Worker، Approval Engine، Google OAuth"
+    },
+    {
+      "name": "platform",
+      "path": "projects/platform",
+      "category": "agents",
+      "category_ar": "أنظمة الوكلاء الذكية",
+      "source": "https://github.com/sayedelazameydesign-crypto/platform",
+      "files": 76,
+      "description_ar": "حلقة وكيل Single-Worker: مخطط LLM + منفذ تسلسلي + SSE، Next.js 14 + Drizzle + Zod + Playwright"
+    },
+    {
+      "name": "new-agent",
+      "path": "projects/new-agent",
+      "category": "agents",
+      "category_ar": "أنظمة الوكلاء الذكية",
+      "source": "https://github.com/sayedelazameydesign-crypto/new-agent",
+      "files": 31,
+      "description_ar": "Celia AI Agent v2.5: Gemini 3 Pro، صوت لحظي، Veo 3.1 فيديو، Maps Grounding، React 19 + FastAPI"
+    },
+    {
+      "name": "gethip_agen",
+      "path": "projects/gethip_agen",
+      "category": "agents",
+      "category_ar": "أنظمة الوكلاء الذكية",
+      "source": "https://github.com/sayedelazameydesign-crypto/gethip_agen",
+      "files": 97,
+      "description_ar": "وكيل GitHub عربي RTL بدورة آمنة وموافقات متدرجة"
+    },
+    {
+      "name": "celiaos-agent-framework",
+      "path": "projects/celiaos-agent-framework",
+      "category": "agents",
+      "category_ar": "أنظمة الوكلاء الذكية",
+      "source": "https://github.com/sayedelazameydesign-crypto/celiaos-agent-framework",
+      "files": 57,
+      "description_ar": "إطار وكلاء Python: planner/executor/learner/reflector/reporter + memory/tools/verification"
+    },
+    {
+      "name": "agentic-ai-system-2026",
+      "path": "projects/agentic-ai-system-2026",
+      "category": "agents",
+      "category_ar": "أنظمة الوكلاء الذكية",
+      "source": "https://github.com/sayedelazameydesign-crypto/agentic-ai-system-2026",
+      "files": 5,
+      "description_ar": "تنسيق وكلاء متعددين مع Gemini"
+    },
+    {
+      "name": "Cela2",
+      "path": "projects/Cela2",
+      "category": "agents",
+      "category_ar": "أنظمة الوكلاء الذكية",
+      "source": "https://github.com/sayedelazameydesign-crypto/Cela2",
+      "files": 8,
+      "description_ar": "وكيل متصفح: Streamlit + LangGraph + browser-use + أرشفة Google Drive"
+    },
+    {
+      "name": "SICA-Self-Improving-Coding-Agent-",
+      "path": "projects/SICA-Self-Improving-Coding-Agent-",
+      "category": "agents",
+      "category_ar": "أنظمة الوكلاء الذكية",
+      "source": "https://github.com/sayedelazameydesign-crypto/SICA-Self-Improving-Coding-Agent-",
+      "files": 10,
+      "description_ar": "وكيل معماري ذاتي التحسين: Plan-Execute-Critique عبر Gemini Function Calling"
+    },
+    {
+      "name": "Software-Agent-Architect",
+      "path": "projects/Software-Agent-Architect",
+      "category": "agents",
+      "category_ar": "أنظمة الوكلاء الذكية",
+      "source": "https://github.com/sayedelazameydesign-crypto/Software-Agent-Architect",
+      "files": 37,
+      "description_ar": "لوحة هندسة سياق: 7 طبقات، تدفقات بيانات، محاكاة Gemini 2.5 Flash"
+    },
+    {
+      "name": "ui",
+      "path": "projects/ui",
+      "category": "web-platforms",
+      "category_ar": "منصات المحادثة والويب",
+      "source": "https://github.com/sayedelazameydesign-crypto/ui",
+      "files": 158,
+      "description_ar": "أساس واجهات Agentic-First 2026: بحث هجين، fail-closed، PII guard، RTL-first، provenance"
+    },
+    {
+      "name": "new.pro",
+      "path": "projects/new.pro",
+      "category": "web-platforms",
+      "category_ar": "منصات المحادثة والويب",
+      "source": "https://github.com/sayedelazameydesign-crypto/new.pro",
+      "files": 128,
+      "description_ar": "نواة AI — Nawah: محادثة Next.js 16 بمزودين مجانيين (Gemini/Groq/HF) وبث مباشر"
+    },
+    {
+      "name": "new-new",
+      "path": "projects/new-new",
+      "category": "web-platforms",
+      "category_ar": "منصات المحادثة والويب",
+      "source": "https://github.com/sayedelazameydesign-crypto/new-new",
+      "files": 142,
+      "description_ar": "تطبيق ويب كامل مع Dockerfile وخطة نشر مجانية وبوابات CI"
+    },
+    {
+      "name": "system-",
+      "path": "projects/system-",
+      "category": "web-platforms",
+      "category_ar": "منصات المحادثة والويب",
+      "source": "https://github.com/sayedelazameydesign-crypto/system-",
+      "files": 126,
+      "description_ar": "هيكل تطبيق React: AIChatBox + DashboardLayout + useAuth"
+    },
+    {
+      "name": "WEB",
+      "path": "projects/WEB",
+      "category": "web-platforms",
+      "category_ar": "منصات المحادثة والويب",
+      "source": "https://github.com/sayedelazameydesign-crypto/WEB",
+      "files": 63,
+      "description_ar": "AI Providers System 2026 — Neural Quantum Interface (Flask + واجهة هولوجرامية)"
+    },
+    {
+      "name": "leader2027",
+      "path": "projects/leader2027",
+      "category": "web-platforms",
+      "category_ar": "منصات المحادثة والويب",
+      "source": "https://github.com/sayedelazameydesign-crypto/leader2027",
+      "files": 190,
+      "description_ar": "منصة إدارة حملة انتخابية: PostgreSQL، بوابة وكلاء MCP، مهام موزعة exactly-once، 197 اختبارًا"
+    },
+    {
+      "name": "easy-ai",
+      "path": "projects/easy-ai",
+      "category": "web-platforms",
+      "category_ar": "منصات المحادثة والويب",
+      "source": "https://github.com/sayedelazameydesign-crypto/easy-ai",
+      "files": 38,
+      "description_ar": "مساعد ذكي ثنائي اللغة + قناة مزامنة آمنة Drive→GitHub Pages"
+    },
+    {
+      "name": "1pro",
+      "path": "projects/1pro",
+      "category": "web-platforms",
+      "category_ar": "منصات المحادثة والويب",
+      "source": "https://github.com/sayedelazameydesign-crypto/1pro",
+      "files": 125,
+      "description_ar": "واحة Waha MVP: Flask + RAG بطبقات R1→R6، 452 اختبارًا، منشور على Vercel"
+    },
+    {
+      "name": "celia.sh",
+      "path": "projects/celia.sh",
+      "category": "web-platforms",
+      "category_ar": "منصات المحادثة والويب",
+      "source": "https://github.com/sayedelazameydesign-crypto/celia.sh",
+      "files": 126,
+      "description_ar": "3 أدوات عربية: مولد محتوى، ملخص نصوص، وضع محلي مجاني + Groq اختياري"
+    },
+    {
+      "name": "ELAZAMET1",
+      "path": "projects/ELAZAMET1",
+      "category": "fashion-ecommerce",
+      "category_ar": "الأزياء والتجارة الإلكترونية",
+      "source": "https://github.com/sayedelazameydesign-crypto/ELAZAMET1",
+      "files": 79,
+      "description_ar": "متجر أزياء ذكي: chatbot، مساعد مقاسات، مدونة SEO، توصيات، Express + frontend"
+    },
+    {
+      "name": "celia-fashion-2026.",
+      "path": "projects/celia-fashion-2026.",
+      "category": "fashion-ecommerce",
+      "category_ar": "الأزياء والتجارة الإلكترونية",
+      "source": "https://github.com/sayedelazameydesign-crypto/celia-fashion-2026.",
+      "files": 90,
+      "description_ar": "CELIA FASHION 2026 Retail OS: Next.js 16 + Supabase + HF، Virtual Stylist، Aura"
+    },
+    {
+      "name": "celia-fashion-design",
+      "path": "projects/celia-fashion-design",
+      "category": "fashion-ecommerce",
+      "category_ar": "الأزياء والتجارة الإلكترونية",
+      "source": "https://github.com/sayedelazameydesign-crypto/celia-fashion-design",
+      "files": 51,
+      "description_ar": "منصة موضة: كونسيرج Gemini، Supabase، استيراد Amazon/AliExpress بهامش 15%، بحث بصري"
+    },
+    {
+      "name": "celia-fashion-live-master",
+      "path": "projects/celia-fashion-live-master",
+      "category": "fashion-ecommerce",
+      "category_ar": "الأزياء والتجارة الإلكترونية",
+      "source": "https://github.com/sayedelazameydesign-crypto/celia-fashion-live-master",
+      "files": 14,
+      "description_ar": "متجر أزياء Flask + HTML مع ai_assistant وai_recommender"
+    },
+    {
+      "name": "CeliaFashionDesign",
+      "path": "projects/CeliaFashionDesign",
+      "category": "fashion-ecommerce",
+      "category_ar": "الأزياء والتجارة الإلكترونية",
+      "source": "https://github.com/sayedelazameydesign-crypto/CeliaFashionDesign",
+      "files": 22,
+      "description_ar": "منصة أزياء بذكاء محلي: Ollama + Qdrant + N8n + Directus + Vault + مراقبة"
+    },
+    {
+      "name": "CELIA22",
+      "path": "projects/CELIA22",
+      "category": "fashion-ecommerce",
+      "category_ar": "الأزياء والتجارة الإلكترونية",
+      "source": "https://github.com/sayedelazameydesign-crypto/CELIA22",
+      "files": 22,
+      "description_ar": "بنية منصة CELIA للأزياء: ai-core + Docker Compose + Traefik + N8n"
+    },
+    {
+      "name": "ai-store2",
+      "path": "projects/ai-store2",
+      "category": "fashion-ecommerce",
+      "category_ar": "الأزياء والتجارة الإلكترونية",
+      "source": "https://github.com/sayedelazameydesign-crypto/ai-store2",
+      "files": 21,
+      "description_ar": "متجر Next.js قابل للتوسع"
+    },
+    {
+      "name": "ai-store",
+      "path": "projects/ai-store",
+      "category": "fashion-ecommerce",
+      "category_ar": "الأزياء والتجارة الإلكترونية",
+      "source": "https://github.com/sayedelazameydesign-crypto/ai-store",
+      "files": 1,
+      "description_ar": "بذرة (ترخيص فقط)"
+    },
+    {
+      "name": "dr.mukhtar",
+      "path": "projects/dr.mukhtar",
+      "category": "specialized-apps",
+      "category_ar": "تطبيقات متخصصة",
+      "source": "https://github.com/sayedelazameydesign-crypto/dr.mukhtar",
+      "files": 237,
+      "description_ar": "بوابة مواعيد عيادة أطفال: مراجعة بشرية قبل تأكيد Google Calendar"
+    },
+    {
+      "name": "arbic",
+      "path": "projects/arbic",
+      "category": "specialized-apps",
+      "category_ar": "تطبيقات متخصصة",
+      "source": "https://github.com/sayedelazameydesign-crypto/arbic",
+      "files": 30,
+      "description_ar": "اختبار الكفاءات التربوية: 250 سؤالًا مصنفًا مع تفسير"
+    },
+    {
+      "name": "My-Independent-Virtual-World",
+      "path": "projects/My-Independent-Virtual-World",
+      "category": "specialized-apps",
+      "category_ar": "تطبيقات متخصصة",
+      "source": "https://github.com/sayedelazameydesign-crypto/My-Independent-Virtual-World",
+      "files": 29,
+      "description_ar": "MIVW: عالم افتراضي + مركز قيادة مستقل، توثيق معماري، صفر تكلفة"
+    },
+    {
+      "name": "new-project",
+      "path": "projects/new-project",
+      "category": "specialized-apps",
+      "category_ar": "تطبيقات متخصصة",
+      "source": "https://github.com/sayedelazameydesign-crypto/new-project",
+      "files": 68,
+      "description_ar": "Ultimate BitNet Smart System: سوشيال ميديا + GitHub + قاعدة معرفة + تعلم"
+    },
+    {
+      "name": "ccelia2027",
+      "path": "projects/ccelia2027",
+      "category": "specialized-apps",
+      "category_ar": "تطبيقات متخصصة",
+      "source": "https://github.com/sayedelazameydesign-crypto/ccelia2027",
+      "files": 36,
+      "description_ar": "أساس Cloudflare Worker آمن: /health + CI + CodeQL + Pages"
+    },
+    {
+      "name": "support-tickets",
+      "path": "projects/support-tickets",
+      "category": "specialized-apps",
+      "category_ar": "تطبيقات متخصصة",
+      "source": "https://github.com/sayedelazameydesign-crypto/support-tickets",
+      "files": 7,
+      "description_ar": "تطبيق Streamlit لتذاكر الدعم"
+    },
+    {
+      "name": "blank-app",
+      "path": "projects/blank-app",
+      "category": "specialized-apps",
+      "category_ar": "تطبيقات متخصصة",
+      "source": "https://github.com/sayedelazameydesign-crypto/blank-app",
+      "files": 10,
+      "description_ar": "قالب Streamlit فارغ"
+    },
+    {
+      "name": "firebase-ai-app",
+      "path": "projects/firebase-ai-app",
+      "category": "specialized-apps",
+      "category_ar": "تطبيقات متخصصة",
+      "source": "https://github.com/sayedelazameydesign-crypto/firebase-ai-app",
+      "files": 2,
+      "description_ar": "تطبيق صفحة واحدة بـ Firebase AI"
+    },
+    {
+      "name": "ai.2027",
+      "path": "projects/ai.2027",
+      "category": "seeds",
+      "category_ar": "أسس وبذور أولية",
+      "source": "https://github.com/sayedelazameydesign-crypto/ai.2027",
+      "files": 37,
+      "description_ar": "مساحة تجارب AI: src/tests/config/prompts/docs + hooks"
+    },
+    {
+      "name": "Celia-2027",
+      "path": "projects/Celia-2027",
+      "category": "seeds",
+      "category_ar": "أسس وبذور أولية",
+      "source": "https://github.com/sayedelazameydesign-crypto/Celia-2027",
+      "files": 68,
+      "description_ar": "قالب تطوير منضبط: make setup/test/build/verify + بوابات CI"
+    },
+    {
+      "name": "cela.ai",
+      "path": "projects/cela.ai",
+      "category": "seeds",
+      "category_ar": "أسس وبذور أولية",
+      "source": "https://github.com/sayedelazameydesign-crypto/cela.ai",
+      "files": 1,
+      "description_ar": "بذرة أولية"
+    },
+    {
+      "name": "cela.h",
+      "path": "projects/cela.h",
+      "category": "seeds",
+      "category_ar": "أسس وبذور أولية",
+      "source": "https://github.com/sayedelazameydesign-crypto/cela.h",
+      "files": 2,
+      "description_ar": "بذرة أولية"
+    },
+    {
+      "name": "New33",
+      "path": "projects/New33",
+      "category": "seeds",
+      "category_ar": "أسس وبذور أولية",
+      "source": "https://github.com/sayedelazameydesign-crypto/New33",
+      "files": 1,
+      "description_ar": "بذرة أولية"
+    },
+    {
+      "name": "if-you-can",
+      "path": "projects/if-you-can",
+      "category": "seeds",
+      "category_ar": "أسس وبذور أولية",
+      "source": "https://github.com/sayedelazameydesign-crypto/if-you-can",
+      "files": 1,
+      "description_ar": "بذرة أولية"
+    },
+    {
+      "name": "celia_elazamey-pro",
+      "path": "projects/celia_elazamey-pro",
+      "category": "seeds",
+      "category_ar": "أسس وبذور أولية",
+      "source": "https://github.com/sayedelazameydesign-crypto/celia_elazamey-pro",
+      "files": 1,
+      "description_ar": "بذرة أولية"
+    }
+  ]
+}

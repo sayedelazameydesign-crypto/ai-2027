@@ -1,0 +1,54 @@
+name: Web CI
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "packages/web/**"
+      - "tests/web/**"
+      - ".github/workflows/web-ci.yml"
+  push:
+    branches: [main]
+    paths:
+      - "packages/web/**"
+      - "tests/web/**"
+      - ".github/workflows/web-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/web
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: packages/web/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run test:components
+      - run: npm run test:hooks
+      - run: npm run test:platform-console
+      - run: npm run test:deploy
+      - run: npm run test:next-proxy
+      - run: npm run test:gate-parity
+      - run: npm run test:access-gate
+      # `/ai-tools` had a suite but it was never wired into CI. Same rule as the
+      # others: a suite that does not run on every web change cannot fail.
+      - run: npm run test:ai-tools
+      - run: npm run test:page-links
+      - run: npm run build
+      # The Cloudflare Pages shape is a different build: static export with the
+      # Next proxy excluded and the edge BFF taking over. Build it in CI so a
+      # change that breaks `output: "export"` fails here, not at deploy time.
+      - run: npm run build:pages

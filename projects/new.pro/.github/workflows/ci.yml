@@ -1,0 +1,41 @@
+name: CI — فحص النواة تلقائيًا
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: تثبيت الاعتماديات
+        run: npm ci
+
+      - name: فحص الأنواع (TypeScript)
+        run: npm run typecheck
+
+      - name: بناء الإنتاج
+        run: npm run build
+
+      - name: تشغيل الاختبارات (ضد خادم الإنتاج)
+        run: |
+          npm run start &
+          sleep 6
+          npm test
+          EXIT=$?
+          kill %1 2>/dev/null || true
+          exit $EXIT
+
+      - name: تثبيت متصفح Playwright (E2E)
+        run: npx playwright install --with-deps chromium
+
+      - name: تشغيل E2E (إرسال / حذف / إعدادات)
+        run: npx playwright test

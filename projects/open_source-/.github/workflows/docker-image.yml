@@ -1,0 +1,110 @@
+name: Docker image (build, smoke-test, GHCR)
+
+# CI for the deployable container image (root Dockerfile):
+#   1. docker build          — the exact image Back4App / ClawCloud Run build,
+#                             with its identity baked in as build args
+#                             (CELA_IMAGE_REF / CELA_BUILD_SHA / CELA_BUILD_TIME
+#                             → GET /platform/info → the Image Registry page)
+#   2. container smoke test  — boots uvicorn, asserts /health and the auth gate
+#   3. publish to GHCR       — main and version tags only. Main updates
+#                             :latest and :edge; `v*` tags publish versioned
+#                             images. `arena/**` runs build/smoke only.
+#
+# Cost: $0 — this repository is public, and GitHub-hosted standard runners are
+# free with unlimited minutes for public repositories
+# (docs.github.com/en/actions/concepts/billing-and-usage).
+#
+# NOTE (ToS): this workflow is CI/CD for THIS repository's artifact — build,
+# test, publish. It must NOT be turned into an always-on host or a keep-alive
+# pinger: using Actions for general compute or persistent hosting violates the
+# GitHub Additional Product Terms and gets accounts suspended.
+
+on:
+  push:
+    branches: [main, "arena/**"]
+    tags: ["v*"]
+    paths:
+      - "Dockerfile"
+      - "deploy/g1a/**"
+      - "packages/**"
+      - "pyproject.toml"
+      - ".dockerignore"
+      - ".github/workflows/docker-image.yml"
+      # The composite action *is* the build+smoke path; without this line a
+      # change to it (e.g. a new assertion) would never run in CI.
+      - ".github/actions/**"
+  pull_request:
+    branches: [main]
+    paths:
+      - "Dockerfile"
+      - "deploy/g1a/**"
+      - "packages/**"
+      - "pyproject.toml"
+      - ".dockerignore"
+      - ".github/workflows/docker-image.yml"
+      # The composite action *is* the build+smoke path; without this line a
+      # change to it (e.g. a new assertion) would never run in CI.
+      - ".github/actions/**"
+  workflow_dispatch:
+
+concurrency:
+  group: docker-image-${{ github.ref }}
+  cancel-in-progress: true
+
+# NOTE: image names are computed at runtime (not here) because Docker
+# references must start/end with an alphanumeric — and this repository's name
+# ("open_source-") ends with a hyphen, which is an invalid reference format.
+# The compute step strips invalid trailing characters.
+
+permissions:
+  contents: read
+
+jobs:
+  # PRs, session-branch pushes, and manual runs get only the read-only build job.
+  # In particular, a fork PR cannot enter a job with packages: write permission.
+  build-smoke-publish:
+    if: github.event_name != 'push' || (github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build and smoke-test image
+        uses: ./.github/actions/docker-build-smoke
+
+  # This job alone receives registry-write permission, and its event/ref guard
+  # agrees with the `push` branches/tags filters above.
+  publish:
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build and smoke-test image
+        uses: ./.github/actions/docker-build-smoke
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish to GHCR
+        run: |
+          set -euo pipefail
+          docker push "$IMAGE_SHA"
+          if [ "$GITHUB_REF" = "refs/heads/main" ]; then
+            for tag in latest edge; do
+              docker tag "$IMAGE_SHA" "$IMAGE:$tag"
+              docker push "$IMAGE:$tag"
+            done
+          else
+            tag="${GITHUB_REF#refs/tags/}"
+            docker tag "$IMAGE_SHA" "$IMAGE:$tag"
+            docker push "$IMAGE:$tag"
+          fi

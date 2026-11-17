@@ -1,0 +1,352 @@
+# 🔒 Git Ignore File - ملف تجاهل الملفات الحساسة
+
+# ═════════════════════════════════════════════════════════════════════════════
+
+# 🐍 بيئة Python - Python Environment
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# 📦 PIP
+pip-log.txt
+pip-delete-this-directory.txt
+
+# 📝 Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+
+# 🔍 Translations
+*.mo
+*.pot
+
+# 📖 Django
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+
+# 💾 Flask
+instance/
+.webassets-cache
+
+# 🗂️ Scrapy
+.scrapy
+
+# 📊 Sphinx documentation
+docs/_build/
+
+# 📝 PyBuilder
+target/
+
+# ✏️ Jupyter Notebook
+.ipynb_checkpoints
+
+# 🔬 IPython
+profile_default/
+ipython_config.py
+
+# 🐚 pyenv
+.python-version
+
+# 🔨 pipenv
+Pipfile.lock
+
+# 📦 PEP 582
+__pypackages__/
+
+# 🎯 Celery stuff
+celerybeat-schedule
+celerybeat.pid
+
+# 💾 SageMath parsed files
+*.sage.py
+
+# 🖥️ Environments
+.env
+.venv
+env.bak/
+venv.bak/
+
+# 🎨 Spyder project settings
+.spyderproject
+.spyproject
+
+# 🔍 Rope project settings
+.ropeproject
+
+# 🎓 mkdocs documentation
+/site
+
+# 📚 mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# 🔎 Pyre type checker
+.pyre/
+
+# ═════════════════════════════════════════════════════════════════════════════
+
+# 🖥️ IDE والمحررات - IDE and Editors
+.vscode/
+.idea/
+.sublime-text-3/
+*.sublime-project
+*.sublime-workspace
+*.swp
+*.swo
+*~
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+.IntelliJIdea*/
+*.iml
+*.iws
+*.swp
+*.swo
+*~
+.classpath
+.project
+.c9/
+*.launch
+.settings/
+.vscode/extensions/
+.idea/
+
+# ═════════════════════════════════════════════════════════════════════════════
+
+# 🔐 ملفات البيانات الحساسة - Sensitive Files
+.env
+.env.local
+.env.*.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env.example
+config/secrets.json
+secrets.json
+credentials.json
+.credentials.json
+*.key
+*.pem
+*.p12
+token.txt
+
+# ═════════════════════════════════════════════════════════════════════════════
+
+# 📁 نتائج التشغيل - Runtime Output
+*.log
+logs/
+log/
+results/
+output/
+outputs/
+temp/
+tmp/
+cache/
+.cache/
+*.tmp
+*.temp
+__*/
+
+# ═════════════════════════════════════════════════════════════════════════════
+
+# 🤖 ملفات النموذج - Model Files (كبيرة جداً)
+models/*.pt
+models/*.pth
+models/*.pickle
+models/*.pkl
+models/*.pkl.gz
+*.h5
+*.hdf5
+*.npy
+*.npz
+model_state.pth
+checkpoint/
+checkpoints/
+
+# ═════════════════════════════════════════════════════════════════════════════
+
+# 💾 قاعدة البيانات - Database Files
+*.db
+*.sqlite
+*.sqlite3
+*.sqlite-journal
+*.db-shm
+*.db-wal
+*.dbf
+*.mdb
+
+# ═════════════════════════════════════════════════════════════════════════════
+
+# 📊 ملفات البيانات - Data Files
+data/
+datasets/
+dataset/
+data_raw/
+*.csv
+*.tsv
+*.json
+*.xlsx
+*.xls
+*.parquet
+*.feather
+
+# ═════════════════════════════════════════════════════════════════════════════
+
+# 🔧 Build والتوزيع - Build and Distribution
+dist/
+build/
+*.egg-info/
+*.whl
+*.tar.gz
+*.zip
+.eggs/
+
+# ═════════════════════════════════════════════════════════════════════════════
+
+# 🐳 Docker
+Dockerfile.local
+docker-compose.local.yml
+.dockerignore
+
+# ═════════════════════════════════════════════════════════════════════════════
+
+# 🎬 الوسائط - Media Files (اختياري)
+*.mp4
+*.avi
+*.mov
+*.mkv
+*.flv
+*.wmv
+*.m4v
+*.webm
+*.mp3
+*.wav
+*.flac
+*.aac
+*.ogg
+
+# ═════════════════════════════════════════════════════════════════════════════
+
+# 🖼️ صور كبيرة - Large Images (اختياري)
+*.psd
+*.ai
+*.sketch
+*.fig
+
+# ═════════════════════════════════════════════════════════════════════════════
+
+# 📝 ملفات مؤقتة - Temporary Files
+*~
+*.orig
+*.rej
+.DS_Store
+*.swp
+*.swo
+*.bak
+*.class
+*.jar
+*.war
+*.ear
+
+# ═════════════════════════════════════════════════════════════════════════════
+
+# 🔍 قوائم نتائج البحث - Search Results
+.vscode-search-example/
+
+# ═════════════════════════════════════════════════════════════════════════════
+
+# ⚙️ ملفات النظام - OS Files
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# ═════════════════════════════════════════════════════════════════════════════
+
+# 📋 ملفات المشروع الخاصة - Project-Specific
+.pytest_cache
+.mypy_cache
+.dmypy.json
+dmypy.json
+.pyre/
+.coverage
+htmlcov/
+.tox/
+.hypothesis/
+*.cover
+*.coverage
+
+# ═════════════════════════════════════════════════════════════════════════════
+
+# 🎯 Migration files واختبارات
+migrations/
+test_results/
+coverage_html_report/
+
+# ═════════════════════════════════════════════════════════════════════════════
+
+# ملاحظات شخصية - Personal Notes
+NOTES.txt
+TODO.txt
+*.private
+*.secret
+
+# ═════════════════════════════════════════════════════════════════════════════
+
+# Keep important directories even if empty
+!.github/
+!.github/workflows/
+!src/
+!tests/
+!docs/
+!examples/
+!config/
+
+# ═════════════════════════════════════════════════════════════════════════════
+# نهاية ملف .gitignore - End of .gitignore

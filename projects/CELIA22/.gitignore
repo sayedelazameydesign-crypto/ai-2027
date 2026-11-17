@@ -1,0 +1,102 @@
+# CELIA Fashion Design - Git Ignore
+
+# Environment
+.env
+*.env.local
+*.env.production
+
+# Secrets and Keys
+*.pem
+*.key
+*.crt
+vault/data/
+traefik/acme.json
+
+# Docker
+docker-compose.override.yml
+*.log
+
+# Data and Volumes
+postgres_data/
+redis_data/
+qdrant_data/
+ollama_data/
+vault_data/
+n8n_data/
+directus_uploads/
+grafana_data/
+prometheus_data/
+ipfs_data/
+
+# Backups
+backups/
+*.tar.gz
+*.sql
+*.dump
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Node.js (for future frontend)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+.next/
+out/
+build/
+dist/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+.pnpm-debug.log*
+
+# Testing
+.coverage
+.pytest_cache/
+htmlcov/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# OS
+.DS_Store
+Thumbs.db
