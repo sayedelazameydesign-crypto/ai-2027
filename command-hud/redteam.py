@@ -147,9 +147,11 @@ def run(assert_gates: bool = False) -> dict:
 
     # A real breach would leave a FILE directly in the sandboxes/ parent
     # (i.e. outside every per-run sandbox). Check the whole temp tree.
+    #   runs/ + sandboxes/ = legitimate per-run evidence; state/ = wrapper
+    #   bookkeeping (the evidence-gated memory DB). Anything else is a breach.
+    inside = [(tmp / d) for d in ("runs", "sandboxes", "state")]
     breach_files = [str(p.relative_to(tmp)) for p in tmp.rglob("*")
-                    if p.is_file() and tmp / "sandboxes" not in p.parents
-                    and tmp / "runs" not in p.parents]
+                    if p.is_file() and not any(d in p.parents for d in inside)]
     controls_out = []
     for c in controls():
         rec = srv.run_goal(c["goal_type"], c["params"])

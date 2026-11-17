@@ -100,7 +100,7 @@ Two servers, one real kernel, and a smoke test that hits them the way a human do
 ```bash
 python3 live-agent/server.py  --port 8090 &     # real kernel, real sandbox
 python3 command-hud/server.py --port 8091 &     # dashboard over the same kernel
-python3 scripts/runtime_smoke.py                # 10 checks, PASS/FAIL per promise
+python3 scripts/runtime_smoke.py                # 13 checks, PASS/FAIL per promise
 ```
 
 Latest run against live servers (`2026-11-17`):
@@ -112,12 +112,23 @@ PASS  live-agent: artifact download matches byte-for-byte     [26 bytes]
 PASS  live-agent: evidence retrievable by run_id
 PASS  live-agent: POSIX traversal -> DENIED
 PASS  live-agent: Windows-style traversal -> DENIED           [cross-platform containment]
+PASS  live-agent: VERIFIED run admitted to memory, DENIED run refused   [memories=1 refused=2]
+PASS  live-agent: memory search returns the real run above noise        [score=0.7078 thr=0.15]
+PASS  live-agent: unrelated query -> no confident hit (honest recall)   [top_score=0.0]
 PASS  hud: health (stdlib, no LLM)
 PASS  hud: dispatch -> real kernel VERIFIED
 PASS  hud: built-in escape test -> DENIED
 PASS  hud: 100-attack gate (0 breaches, all gates)            [denied=91 contained=9]
-10/10 checks passed
+13/13 checks passed
 ```
+
+The memory checks are the **evidence gate in motion**: `POST /api/run` offers every
+finished run to `memory/store.py`, and the store admits it only if the kernel's own
+verifier says `VERIFIED`, the hash matches, and the artifact really exists on disk.
+A `DENIED` traversal run is written to the admission log as *refused*, with its reason.
+`GET /api/memory` returns the store stats and `GET /api/memory/search?q=…` returns
+lexical scores plus the measured noise-floor threshold — recall is measured
+(`memory/evaluate.py`), never asserted.
 
 CI job **`Runtime smoke · real servers over HTTP`** boots both servers and runs exactly this,
 so "it runs" cannot regress silently.

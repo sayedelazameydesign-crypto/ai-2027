@@ -17,6 +17,12 @@ evidence-first execution discipline: Plan -> Policy -> Execute -> Verify ->
 Evidence -> Report, with independent verification and a tamper-evident
 ledger. A local/free LLM brain is Phase 2 (see docs/KIMI-K3-UTILIZATION.md).
 
+Every VERIFIED run is also offered to the evidence-gated memory store
+(memory/store.py): the kernel's own verifier decides what may be remembered,
+and a DENIED or unverified run is refused with a reason. Search is lexical,
+not neural — `GET /api/memory/search?q=...` returns the measured score and an
+`above_noise` flag derived from the corpus noise floor.
+
 Run:  python3 server.py [--port 8090]
 Stdlib only. Python 3.10+.
 """
@@ -49,8 +55,12 @@ from core.kernel import Kernel, KernelConfig          # noqa: E402
 from core.models import Goal                          # noqa: E402
 from core.planner import SequentialPlanner            # noqa: E402
 
+sys.path.insert(0, str(HERE.parent))
+from memory.store import EvidenceMemoryStore          # noqa: E402
+
 RUNS_DIR = HERE / "runs"
 SANDBOXES_DIR = HERE / "sandboxes"
+MEMORY_DB = HERE / "memory.db"
 STATIC_DIR = HERE / "static"
 MAX_CONTENT_BYTES = 64 * 1024          # goal param payloads
 MAX_PARAM_STR = 4096                   # any single string param
@@ -58,14 +68,33 @@ SUPPORTED_GOALS = SequentialPlanner().supported_goal_types
 
 _lock = threading.Lock()               # the kernel is single-run per instance
 _run_index: dict[str, dict] = {}       # run_id -> {record, sandbox, ts}
+_memory: EvidenceMemoryStore | None = None
+_memory_lock = threading.Lock()
+
+
+def memory() -> EvidenceMemoryStore:
+    """Lazy store: sandbox artifacts must exist before admission is checked."""
+    global _memory
+    with _memory_lock:
+        if _memory is None:
+            _memory = EvidenceMemoryStore(MEMORY_DB, sandbox_root=SANDBOXES_DIR)
+        return _memory
 
 
 def _fresh_state() -> None:
     """Each boot starts with a clean evidence trail (demo hygiene)."""
+    global _memory
     for d in (RUNS_DIR, SANDBOXES_DIR):
         if d.exists():
             shutil.rmtree(d)
         d.mkdir(parents=True, exist_ok=True)
+    Path(MEMORY_DB).parent.mkdir(parents=True, exist_ok=True)
+    with _memory_lock:
+        _memory = None
+        for suffix in ("", "-wal", "-shm"):
+            f = Path(str(MEMORY_DB) + suffix)
+            if f.exists():
+                f.unlink()
 
 
 def _sanitize_params(params: object) -> dict:
@@ -110,6 +139,18 @@ def run_goal(goal_type: str, params: dict) -> dict:
         if p.is_file() and p.name != "ledger.jsonl":
             files.append(str(p.relative_to(sandbox)))
     payload["sandbox_files"] = files
+
+    # Evidence-gated memory: only VERIFIED runs with a real, hash-matching
+    # artifact are admitted; refusals are logged with their reason.
+    try:
+        verdict = memory().ingest(payload)
+        payload["memory"] = {"admitted": bool(verdict.admitted),
+                             "reason": verdict.reason,
+                             "memory_id": verdict.memory_id,
+                             "trust": verdict.trust,
+                             "artifact_verified": bool(verdict.artifact_verified)}
+    except Exception as exc:                      # memory must never break a run
+        payload["memory"] = {"admitted": False, "reason": f"memory error: {exc}"}
 
     (RUNS_DIR / f"{run_id}.json").write_text(
         json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
@@ -183,7 +224,25 @@ class Handler(BaseHTTPRequestHandler):
                 "kernel_tests": "86 passing (verified 2026-11-17)",
                 "mode": "REAL execution — deterministic planner, NO LLM (Phase 1)",
                 "supported_goals": SUPPORTED_GOALS,
+                "memory": memory().stats()["memories"],
+                "memory_backend": "sqlite3 + hashed-lexical (no model, no sqlite-vec)",
             })
+        if u.path == "/api/memory":
+            return self._json(memory().stats())
+        if u.path == "/api/memory/search":
+            q = parse_qs(u.query).get("q", [""])[0].strip()
+            if not q:
+                return self._json({"error": "missing q"}, 400)
+            try:
+                k = max(1, min(20, int(parse_qs(u.query).get("k", ["5"])[0])))
+            except ValueError:
+                return self._json({"error": "bad k"}, 400)
+            res = memory().search(q, k=k)
+            res["honest_limits"] = [
+                "Lexical, not neural: true synonyms are missed (measured, not assumed).",
+                "Only VERIFIED runs with a hash-matching artifact are remembered.",
+            ]
+            return self._json(res)
         if u.path == "/api/runs":
             runs = sorted(
                 ({"run_id": k, **v} for k, v in _run_index.items()),

@@ -38,6 +38,10 @@ def load(runtime: Path | None = None, fresh: bool = True):
     rt = Path(runtime) if runtime is not None else RUNTIME
     mod.RUNS_DIR = rt / "runs"
     mod.SANDBOXES_DIR = rt / "sandboxes"
+    # The evidence-gated memory DB is runtime state too: redirect it, otherwise
+    # this process would share (and _fresh_state would DELETE) the live-agent's
+    # memory file. That bug was found by the HTTP smoke test, not by review.
+    mod.MEMORY_DB = rt / "state" / "memory.db"
     if fresh:
         mod._fresh_state()
     return mod

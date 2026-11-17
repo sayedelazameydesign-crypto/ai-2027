@@ -19,6 +19,9 @@ class TestRunGoal(unittest.TestCase):
         self.tmp = tempfile.mkdtemp()
         server.RUNS_DIR = Path(self.tmp) / "runs"
         server.SANDBOXES_DIR = Path(self.tmp) / "sandboxes"
+        # Redirect the memory DB too: `_fresh_state()` deletes it, and without
+        # this the test suite wipes the memory of a live running server.
+        server.MEMORY_DB = Path(self.tmp) / "memory.db"
         server._fresh_state()
 
     def tearDown(self):
