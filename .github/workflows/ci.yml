@@ -208,7 +208,9 @@ jobs:
           import ast, sys
           from pathlib import Path
           stdlib = set(sys.stdlib_module_names) | {"tomllib"}
-          allowed_local = {"store", "evaluate", "kernel_bridge"}
+          # repo-local modules inside memory/ (stdlib-only themselves, scanned
+          # by this same loop): "retrieval" is the v2 scoring layer.
+          allowed_local = {"store", "evaluate", "kernel_bridge", "retrieval"}
           bad = {}
           for p in sorted(Path("memory").glob("*.py")):
               for n in ast.walk(ast.parse(p.read_text(encoding="utf-8"))):
