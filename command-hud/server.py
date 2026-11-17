@@ -44,12 +44,17 @@ import audit as audit_mod          # noqa: E402
 import kernel_bridge              # noqa: E402
 import redteam                    # noqa: E402
 
+sys.path.insert(0, str(HERE.parent / "memory"))
+import store as memory_store      # noqa: E402  (L1 memory, stdlib sqlite3)
+
 STATIC = HERE / "static"
 MAX_BODY = 64 * 1024
 
 BOOT = time.time()
 LOCK = threading.RLock()
 SRV = None  # the real live-agent module, loaded in main()
+
+MEM = None   # EvidenceMemoryStore, loaded in main()
 
 STATE = {
     "frozen": False,
@@ -68,6 +73,9 @@ HONESTY = {
     "timings": "browser/HUD measurements on this container; NOT the published bench.py reference numbers (jitter published)",
     "audit": "read-only. DECLARED != PROVEN. 47 of 48 projects were NOT executed in this sandbox.",
     "redteam": "100 real adversarial inputs. 75 DENIED + 25 CONTAINED-as-literal + 0 breaches is the honest result, not '100/100 DENIED'.",
+    "memory": ("L1 cumulative memory: sqlite3 + hashed-lexical embedding (NOT neural, NOT sqlite-vec). "
+               "Only VERIFIED runs with a passing independent hash check are admitted. Measured recall@3 on a "
+               "paraphrase set is 2/16 = 0.125 — lexical memory misses synonyms; see memory/README.md."),
 }
 
 
@@ -186,6 +194,13 @@ def dispatch(goal_type: str, params: dict, source: str = "manual") -> dict:
             "evidence_checks": {}, "sandbox_files": [],
         }
     out["ts"] = ts
+    if MEM is not None and out.get("status") == "VERIFIED":
+        try:
+            v = MEM.ingest(rec)
+            out["memory"] = {"admitted": v.admitted, "duplicate": v.duplicate,
+                             "memory_id": v.memory_id, "reason": v.reason}
+        except Exception as exc:  # memory must never break the kernel path
+            out["memory"] = {"admitted": False, "reason": f"memory error: {exc}"}
     _record(out)
     return out
 
@@ -297,6 +312,11 @@ class Handler(BaseHTTPRequestHandler):
                                "no_llm": True, "stdlib_only": True})
         if p == "/api/state":
             return self._json(state_payload())
+        if p == "/api/memory":
+            if MEM is None:
+                return self._json({"error": "memory not initialised"}, 503)
+            return self._json({"stats": MEM.stats(), "verify": MEM.verify(),
+                               "recent": [dict(r) for r in reversed(MEM.rows()[-10:])]})
         if p == "/api/audit":
             a = STATE["audit"]
             return self._json(a) if a else self._json({"error": "audit still computing"}, 503)
@@ -343,6 +363,10 @@ class Handler(BaseHTTPRequestHandler):
             with LOCK:
                 STATE["redteam"] = r
             return self._json(r)
+        if p == "/api/memory/search":
+            if MEM is None or not isinstance(body.get("query"), str) or not body["query"].strip():
+                return self._json({"error": "query required"}, 400)
+            return self._json(MEM.search(body["query"], int(body.get("k", 5))))
         if p == "/api/audit/refresh":
             _run_audit(full=True, background=True)
             return self._json({"ok": True, "status": "audit refresh started",
@@ -359,7 +383,11 @@ def main() -> None:
                     help="skip the 5 subprocess probes at boot")
     args = ap.parse_args()
 
+    global MEM
     SRV = kernel_bridge.load()
+    MEM = memory_store.EvidenceMemoryStore(
+        HERE / "runtime" / "memory.sqlite",
+        sandbox_root=kernel_bridge.RUNTIME / "sandboxes")
     STATE["audit"] = audit_mod.build(fast=True)
     if not args.fast_audit:
         _run_audit(full=True, background=True)

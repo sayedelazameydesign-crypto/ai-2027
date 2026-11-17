@@ -28,3 +28,7 @@ command-hud/audit-latest.json
 command-hud/audit-report.md
 # Regenerated launch evidence (never commit a snapshot as a claim)
 launch/evidence/
+
+# L1 memory runtime artefacts
+memory/out/
+memory/__pycache__/

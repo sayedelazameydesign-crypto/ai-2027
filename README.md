@@ -69,6 +69,22 @@ Full categorized catalog with per-project features: **below in Arabic** ⬇ and 
 - 🧪 **Try it in your browser**: the [public kernel demo](https://sayedelazameydesign-crypto.github.io/ai-2027/demo.html) runs the 7-stage loop with a real policy wall, an independent verifier and SHA-256 evidence. Honest scope: a dependency-free JS **port** on an in-memory sandbox, not the Python kernel and not an LLM (12 contract tests in [`website/kernel-demo.test.js`](website/kernel-demo.test.js)).
 - 🤖 **CI on every push** → [`.github/workflows/ci.yml`](.github/workflows/ci.yml): 86 kernel tests + 6 wrapper tests across Python 3.10/3.11/3.12, CLI VERIFIED/DENIED contract, AST zero-dependency gate (+ 9 self-tests for the gates themselves), 12 demo tests, `bench.py` with raw JSON artifacts, and a wheel smoke test. Regression gate is jitter-aware by design → [`scripts/ci_guard.py`](scripts/ci_guard.py).
 
+## 🧠 Cumulative memory that only remembers what was proven
+
+L1 memory admits a fact **only** if the kernel returned `VERIFIED`, the independent
+verifier's `hash_matches` check passed, and the artifact still hashes to the recorded
+SHA-256. `DENIED`/`FAILED` are refused *and logged*.
+
+```bash
+python3 memory/store.py demo            # admit · refuse · tamper · measured noise floor
+python3 memory/evaluate.py --markdown   # recall + false positives, misses included
+python3 memory/test_memory.py -v        # 16 tests
+```
+
+**Honest headline:** the backend is stdlib `sqlite3` + a deterministic **lexical**
+embedding (no `sqlite-vec`, no model). Measured paraphrase recall@3 is **2/16** —
+it misses synonyms. That number is published, not hidden: [`memory/README.md`](memory/README.md).
+
 ## 🎛️ Live Command HUD — see the kernel move
 
 A single-screen, stdlib-only dashboard over the **real** kernel: live p50 chart,
