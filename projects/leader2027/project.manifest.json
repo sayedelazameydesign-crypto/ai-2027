@@ -1,0 +1,1385 @@
+{
+  "$comment": "مصدر الحقيقة الوحيد (Single Source of Truth) لوثائق المشروع. README.md و README.en.md ملفات مُولَّدة آليًا من هذا الملف — لا تُعدَّل يدويًا. عدّل هنا ثم شغّل: npm run readme:generate",
+  "name": "Leader 2027",
+  "slug": "leader2027",
+  "version": "0.1.0",
+  "license": "MIT",
+  "repository": "https://github.com/sayedelazameydesign-crypto/leader2027",
+  "node": "22",
+  "generated": {
+    "generator": "scripts/generate-readme.mjs",
+    "targets": [
+      "README.md",
+      "README.en.md"
+    ],
+    "banner": "GENERATED"
+  },
+  "description": {
+    "ar": "منصة تشغيل وإدارة للحملة الانتخابية: أشخاص (وعي بالمصدر)، متطوعون، عمل ميداني، تقارير، مؤشرات تشغيلية — في لوحة قيادة واحدة. **بلا أي تفضيلات سياسية** (عقد المنتج §5).",
+    "en": "An operations and management platform for an election campaign: people (source-aware), volunteers, field work, reports, and operational KPIs — in a single command dashboard. **No political preference data of any kind** (Product Contract §5)."
+  },
+  "status": {
+    "phase": "VS4",
+    "ar": "VS1+VS2 = **MERGED في main (PR #1)** · VS3 (نواة الحملة الإدارية) = **منفَّذ — بوابات خضراء** · VS4 (النواة الحيّة + الأنوية الذرية) = **منفَّذ — بوابات خضراء** · VS5/T1 (محوّل PostgreSQL) + T2 (سر الجلسة) + V5.1 (بوابة الوكلاء MCP) = **منفَّذ — 197/197 منها 6 حيّة ضد Postgres · smoke 49/49** · GEN-3 (محرك المهام الدائم) = **منفَّذ — بوابات خضراء****. · GEN-4: تنفيذ موزّع بإيجار/fencing/exactly-once · صفر تعديل في lib/tasks وlib/authorization · GEN4_GATE خضراء {LAST_UPDATED}**. · V5.3: منسّق HTTP (مطالبة/نبض/تحرير/تنفيذ مجاني/دفعات/حالة) · صفر تعديل في lib/tasks وlib/workers وlib/authorization · V53_GATE خضراء {LAST_UPDATED}",
+    "en": "VS1+VS2 = **MERGED into main (PR #1)** · VS3 (administrative campaign core) = **implemented — gates green** · VS4 (live kernel + atomic nuclei) = **implemented — gates green** · VS5/T1 (PostgreSQL adapter) + T2 (session secret) + V5.1 (MCP Agent Gateway) = **implemented — 197/197 incl. 6 live Postgres · smoke 49/49** · GEN-3 (durable task engine) = **implemented — gates green****. · GEN-4: distributed execution via leases/fencing/exactly-once · zero edits in lib/tasks & lib/authorization · GEN4_GATE green {LAST_UPDATED}**. · V5.3: HTTP orchestrator (claim/heartbeat/release/free-execute/batch/status) · zero edits in lib/tasks, lib/workers & lib/authorization · V53_GATE green {LAST_UPDATED}"
+  },
+  "principles": {
+    "ar": [
+      "**§5 محظور مطلقًا:** لا انتماء سياسي ولا «درجة إقناع» ولا استنتاجها آليًا — أي payload يحملها يُرفض صراحةً.",
+      "**بلا إخفاء أزرار كـauthorization:** الصلاحيات تُفرض على الخادم (policy + service + API)، وإخفاء الـUI تحسين تجربة فقط.",
+      "**العقد قبل الكود:** كل شريحة تُقفل بعقد (`docs/contract-*.md`) قبل سطر تنفيذ واحد.",
+      "**لا ادعاء بلا إثبات:** كل بند مقبول له ملف دليل (اختبار/فحص smoke/سجل).",
+      "**العزل قبل الذكاء:** كل قدرة ذكاء اصطناعي تمرّ ببوابة موافقة بشرية مُدقَّقة، وبلا استيراد بين الأنوية."
+    ],
+    "en": [
+      "**§5 is absolute:** no political affiliation, no \"persuadability score\", no inferring them from behavior — any payload carrying them is explicitly rejected.",
+      "**No button-hiding as authorization:** permissions are enforced server-side (policy + service + API); hiding UI is a UX nicety only.",
+      "**Contract before code:** every slice is locked by a contract (`docs/contract-*.md`) before a single line of implementation.",
+      "**No claim without evidence:** every accepted criterion has an evidence artifact (test / smoke check / log).",
+      "**Isolation before intelligence:** every AI capability passes an audited human-approval gate, with no cross-nucleus imports."
+    ]
+  },
+  "milestones": [
+    {
+      "id": "VS1",
+      "name": {
+        "ar": "الأساس",
+        "en": "Foundation"
+      },
+      "state": "merged",
+      "evidence": "PR #1"
+    },
+    {
+      "id": "VS2",
+      "name": {
+        "ar": "أشخاص + متطوعون + تقارير ميدانية",
+        "en": "People + Volunteers + Field Reports"
+      },
+      "state": "merged",
+      "evidence": "PR #1"
+    },
+    {
+      "id": "VS3",
+      "name": {
+        "ar": "نواة الحملة الإدارية",
+        "en": "Administrative Campaign Core"
+      },
+      "state": "implemented",
+      "evidence": "docs/contract-vs3.md"
+    },
+    {
+      "id": "VS4",
+      "name": {
+        "ar": "النواة الحيّة + الأنوية الذرية",
+        "en": "Live Kernel + Atomic Nuclei"
+      },
+      "state": "implemented",
+      "evidence": "docs/kernel.md"
+    },
+    {
+      "id": "VS5",
+      "name": {
+        "ar": "بوابة الوكلاء (MCP)",
+        "en": "Agent Gateway (MCP)"
+      },
+      "state": "V5.1 implemented",
+      "evidence": "docs/contract-vs5.md"
+    }
+  ],
+  "gates": [
+    {
+      "id": "typecheck",
+      "script": "npm run typecheck",
+      "expected": "clean"
+    },
+    {
+      "id": "tests",
+      "script": "npm test",
+      "expected": "346/346 (12 skipped: pg-live)"
+    },
+    {
+      "id": "build",
+      "script": "npm run build",
+      "expected": "PASS"
+    },
+    {
+      "id": "smoke",
+      "script": "npm run smoke",
+      "expected": "58/58"
+    },
+    {
+      "id": "ci",
+      "script": "GitHub Actions",
+      "expected": "PASS"
+    }
+  ],
+  "skipScripts": [
+    "readme",
+    "readme:warn"
+  ],
+  "scriptNotes": {
+    "dev": {
+      "ar": "تطوير على http://localhost:3000",
+      "en": "Dev server on http://localhost:3000"
+    },
+    "build": {
+      "ar": "بناء إنتاجي",
+      "en": "Production build"
+    },
+    "start": {
+      "ar": "إنتاج على 0.0.0.0:3000",
+      "en": "Production server on 0.0.0.0:3000"
+    },
+    "test": {
+      "ar": "298 unit/integration (237 قائمة + 61 جديدًا — GEN-3: آلة حالة + Round-trip ملف + مصافحة API + عقد تخزين موسَّع)",
+      "en": "298 unit/integration (237 existing + 61 new — GEN-3: state machine + file Round-trip + API handshake + extended storage contract)"
+    },
+    "smoke": {
+      "ar": "49 فحص production ضد خادم قائم (`BASE_URL` اختياري) — تشمل بوابة الوكلاء MCP",
+      "en": "49 production checks against a running server (`BASE_URL` optional) — includes the MCP Agent Gateway"
+    },
+    "typecheck": {
+      "ar": "فحص TypeScript بلا إخراج",
+      "en": "TypeScript check, no emit"
+    },
+    "readme:generate": {
+      "ar": "توليد README من الـmanifest",
+      "en": "Generate the README from the manifest"
+    },
+    "readme:check": {
+      "ar": "كشف انحراف README عن الـmanifest",
+      "en": "Detect README drift from the manifest"
+    },
+    "readme:drift": {
+      "ar": "فحص استشاري: الـmanifest مقابل الكود (تحذيرات فقط)",
+      "en": "Advisory check: manifest vs code (warnings only)"
+    }
+  },
+  "features": {
+    "ar": [
+      "أشخاص وعي بالمصدر (source-aware) — بلا أي حقل تفضيل سياسي",
+      "متطوعون بدورة حياة كاملة (تسجيل ← تفعيل/إيقاف)",
+      "تقارير ميدانية + ملاحظات + حالات",
+      "مؤشرات تشغيلية ولوحة قيادة",
+      "إدارة الحملة والدورات الانتخابية والمناطق والفرق",
+      "إدارة المستخدمين + إبطال الجلسات عند تغيير الدور",
+      "تدقيق (Audit) لكل عملية تعديل",
+      "مصفوفة صلاحيات لستة أدوار + `settings:manage`",
+      "**نواة حيّة**: إقلاع، فحص صحة، عزل فشل لكل ركن (degraded/blocked) بلا إسقاط النظام",
+      "**أنوية ذرية**: كل ركن وحدة مكتفية ذاتيًا تُعلن قدراتها وأحداثها ومَقابض تعديلها",
+      "**استبدال ساخن**: نسخة جديدة تحلّ محل القديمة بلا إعادة تشغيل وبلا فقدان إعدادات",
+      "**مَقابض تعديل لكل ركن**: تعديل سلوك ركن واحد من الواجهة/الـAPI بلا نشر وبلا أثر على غيره",
+      "**بوابة موافقة بشرية (2027)**: وكيل ذكاء اصطناعي لا يكتب بلا تصريح إنسان، والتصريح لاستخدام واحد",
+      "**بوابة الوكلاء (MCP)**: سطح قراءة JSON-RPC للوكلاء الخارجيين — الكتابة مرفوضة قبل التنفيذ ومُوثَّقة في التدقيق (Replay)",
+      "**محرك مهام دائم (GEN-3)**: آلة حالة بنيوية + checkpoints مسلسلة + موافقات معلَّقة بمنح أحادية + استئناف بعد القتل",
+      "GEN-4: تنفيذ موزّع للإيجار/fencing/exactly-once + GEN4_GATE (مكتبة، بلا HTTP جديد)",
+      "V5.3: منسّق HTTP فوق lib/workers (6 مسارات + V53_GATE، المدفوع fail-closed حتى P2)"
+    ],
+    "en": [
+      "Source-aware people records — with no political-preference fields",
+      "Volunteers with a full lifecycle (register → activate/deactivate)",
+      "Field reports with notes and statuses",
+      "Operational KPIs and a command dashboard",
+      "Campaign, election cycles, regions, and teams management",
+      "User management + session invalidation on role change",
+      "An audit event for every mutation",
+      "A permission matrix for six roles plus `settings:manage`",
+      "**Live kernel**: boot, health checks, per-corner failure isolation (degraded/blocked) without taking the system down",
+      "**Atomic nuclei**: each corner is a self-contained unit declaring its capabilities, events, and tuning knobs",
+      "**Hot swap**: a newer version replaces the old one with no restart and no lost configuration",
+      "**Per-corner knobs**: change one corner's behavior from the UI/API with no redeploy and no effect on others",
+      "**Human approval gate (2027)**: an AI agent cannot write without a human authorization, and each authorization is single-use",
+      "**Agent Gateway (MCP)**: a read-only JSON-RPC surface for external agents — writes rejected pre-execution and audited (replayable)",
+      "**Durable task engine (GEN-3)**: structural state machine + hash-chained checkpoints + pending approvals with single-use grants + resume-after-kill",
+      "GEN-4: distributed leases/fencing/exactly-once execution + GEN4_GATE (library, no new HTTP)",
+      "V5.3: HTTP orchestrator over lib/workers (6 routes + V53_GATE, paid fail-closed until P2)"
+    ]
+  },
+  "levels": {
+    "manager": {
+      "ar": "إداري",
+      "en": "Management"
+    },
+    "field": {
+      "ar": "ميداني",
+      "en": "Field"
+    },
+    "readonly": {
+      "ar": "قراءة فقط",
+      "en": "Read-only"
+    }
+  },
+  "roles": [
+    {
+      "id": "OWNER",
+      "label": {
+        "ar": "المالك",
+        "en": "Owner"
+      },
+      "account": "owner@leader2027.test",
+      "level": "manager"
+    },
+    {
+      "id": "CAMPAIGN_ADMIN",
+      "label": {
+        "ar": "مدير النظام",
+        "en": "Campaign Admin"
+      },
+      "account": "admin@leader2027.test",
+      "level": "manager"
+    },
+    {
+      "id": "CAMPAIGN_MANAGER",
+      "label": {
+        "ar": "مدير الحملة",
+        "en": "Campaign Manager"
+      },
+      "account": "manager@leader2027.test",
+      "level": "manager"
+    },
+    {
+      "id": "FIELD_COORDINATOR",
+      "label": {
+        "ar": "منسق ميداني",
+        "en": "Field Coordinator"
+      },
+      "account": "coordinator@leader2027.test",
+      "level": "field"
+    },
+    {
+      "id": "FIELD_WORKER",
+      "label": {
+        "ar": "عامل ميداني",
+        "en": "Field Worker"
+      },
+      "account": "worker@leader2027.test",
+      "level": "field"
+    },
+    {
+      "id": "VIEWER",
+      "label": {
+        "ar": "مُطلع",
+        "en": "Viewer"
+      },
+      "account": "viewer@leader2027.test",
+      "level": "readonly"
+    }
+  ],
+  "actions": [
+    {
+      "id": "dashboard:view",
+      "label": {
+        "ar": "لوحة القيادة",
+        "en": "Dashboard"
+      },
+      "group": "view"
+    },
+    {
+      "id": "people:view",
+      "label": {
+        "ar": "عرض الأشخاص",
+        "en": "View people"
+      },
+      "group": "view"
+    },
+    {
+      "id": "people:create",
+      "label": {
+        "ar": "إنشاء شخص",
+        "en": "Create person"
+      },
+      "group": "write"
+    },
+    {
+      "id": "people:update",
+      "label": {
+        "ar": "تعديل شخص",
+        "en": "Update person"
+      },
+      "group": "write"
+    },
+    {
+      "id": "volunteers:view",
+      "label": {
+        "ar": "عرض المتطوعين",
+        "en": "View volunteers"
+      },
+      "group": "view"
+    },
+    {
+      "id": "volunteers:create",
+      "label": {
+        "ar": "إنشاء متطوع",
+        "en": "Create volunteer"
+      },
+      "group": "write"
+    },
+    {
+      "id": "volunteers:update",
+      "label": {
+        "ar": "تعديل متطوع",
+        "en": "Update volunteer"
+      },
+      "group": "write"
+    },
+    {
+      "id": "reports:view",
+      "label": {
+        "ar": "عرض التقارير",
+        "en": "View reports"
+      },
+      "group": "view"
+    },
+    {
+      "id": "reports:create",
+      "label": {
+        "ar": "إنشاء تقرير",
+        "en": "Create report"
+      },
+      "group": "write"
+    },
+    {
+      "id": "reports:update_notes",
+      "label": {
+        "ar": "تعديل ملاحظات",
+        "en": "Update notes"
+      },
+      "group": "write"
+    },
+    {
+      "id": "reports:update_status",
+      "label": {
+        "ar": "تعديل حالة",
+        "en": "Update status"
+      },
+      "group": "write"
+    },
+    {
+      "id": "users:manage",
+      "label": {
+        "ar": "إدارة المستخدمين",
+        "en": "Manage users"
+      },
+      "group": "admin"
+    },
+    {
+      "id": "settings:manage",
+      "label": {
+        "ar": "إدارة الإعدادات",
+        "en": "Manage settings"
+      },
+      "group": "admin"
+    },
+    {
+      "id": "audit:view",
+      "label": {
+        "ar": "عرض التدقيق",
+        "en": "View audit"
+      },
+      "group": "admin"
+    },
+    {
+      "id": "tasks:view",
+      "label": {
+        "ar": "عرض المهام",
+        "en": "View tasks"
+      },
+      "group": "view"
+    },
+    {
+      "id": "tasks:manage",
+      "label": {
+        "ar": "إدارة المهام",
+        "en": "Manage tasks"
+      },
+      "group": "write"
+    }
+  ],
+  "matrix": {
+    "OWNER": [
+      "dashboard:view",
+      "people:view",
+      "people:create",
+      "people:update",
+      "volunteers:view",
+      "volunteers:create",
+      "volunteers:update",
+      "reports:view",
+      "reports:create",
+      "reports:update_notes",
+      "reports:update_status",
+      "users:manage",
+      "settings:manage",
+      "audit:view",
+      "tasks:view",
+      "tasks:manage"
+    ],
+    "CAMPAIGN_ADMIN": [
+      "dashboard:view",
+      "people:view",
+      "people:create",
+      "people:update",
+      "volunteers:view",
+      "volunteers:create",
+      "volunteers:update",
+      "reports:view",
+      "reports:create",
+      "reports:update_notes",
+      "reports:update_status",
+      "users:manage",
+      "settings:manage",
+      "audit:view",
+      "tasks:view",
+      "tasks:manage"
+    ],
+    "CAMPAIGN_MANAGER": [
+      "dashboard:view",
+      "people:view",
+      "people:create",
+      "people:update",
+      "volunteers:view",
+      "volunteers:create",
+      "volunteers:update",
+      "reports:view",
+      "reports:create",
+      "reports:update_notes",
+      "reports:update_status",
+      "users:manage",
+      "settings:manage",
+      "audit:view",
+      "tasks:view",
+      "tasks:manage"
+    ],
+    "FIELD_COORDINATOR": [
+      "dashboard:view",
+      "people:view",
+      "people:create",
+      "people:update",
+      "volunteers:view",
+      "volunteers:create",
+      "volunteers:update",
+      "reports:view",
+      "reports:create",
+      "reports:update_notes",
+      "reports:update_status",
+      "audit:view",
+      "tasks:view",
+      "tasks:manage"
+    ],
+    "FIELD_WORKER": [
+      "dashboard:view",
+      "people:view",
+      "volunteers:view",
+      "reports:view",
+      "reports:create",
+      "reports:update_notes",
+      "tasks:view"
+    ],
+    "VIEWER": [
+      "dashboard:view",
+      "people:view",
+      "volunteers:view",
+      "reports:view",
+      "tasks:view"
+    ]
+  },
+  "api": [
+    {
+      "method": "POST",
+      "path": "/api/auth/login",
+      "note": {
+        "ar": "الدخول (cookie موقّع)",
+        "en": "Sign in (signed cookie)"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/logout",
+      "note": {
+        "ar": "الخروج",
+        "en": "Sign out"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/health",
+      "note": {
+        "ar": "فحص الصحة (بلا مصادقة)",
+        "en": "Health check (no auth)"
+      }
+    },
+    {
+      "method": "GET/POST",
+      "path": "/api/people",
+      "note": {
+        "ar": "قائمة / إنشاء",
+        "en": "List / create"
+      }
+    },
+    {
+      "method": "GET/PATCH",
+      "path": "/api/people/:id",
+      "note": {
+        "ar": "قراءة / تعديل",
+        "en": "Read / update"
+      }
+    },
+    {
+      "method": "GET/POST",
+      "path": "/api/volunteers",
+      "note": {
+        "ar": "قائمة / إنشاء",
+        "en": "List / create"
+      }
+    },
+    {
+      "method": "GET/PATCH",
+      "path": "/api/volunteers/:id",
+      "note": {
+        "ar": "قراءة / تعديل الحالة",
+        "en": "Read / update status"
+      }
+    },
+    {
+      "method": "GET/POST",
+      "path": "/api/field/reports",
+      "note": {
+        "ar": "قائمة / إنشاء",
+        "en": "List / create"
+      }
+    },
+    {
+      "method": "GET/PATCH",
+      "path": "/api/field/reports/:id",
+      "note": {
+        "ar": "قراءة / ملاحظات+حالة",
+        "en": "Read / notes + status"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/stats",
+      "note": {
+        "ar": "المؤشرات التشغيلية",
+        "en": "Operational KPIs"
+      }
+    },
+    {
+      "method": "GET/PATCH",
+      "path": "/api/campaign",
+      "note": {
+        "ar": "الحملة (settings:manage)",
+        "en": "Campaign (settings:manage)"
+      }
+    },
+    {
+      "method": "GET/POST",
+      "path": "/api/cycles",
+      "note": {
+        "ar": "الدورات الانتخابية",
+        "en": "Election cycles"
+      }
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/cycles/:id",
+      "note": {
+        "ar": "تعديل دورة",
+        "en": "Update a cycle"
+      }
+    },
+    {
+      "method": "GET/POST",
+      "path": "/api/regions",
+      "note": {
+        "ar": "المناطق",
+        "en": "Regions"
+      }
+    },
+    {
+      "method": "GET/POST",
+      "path": "/api/teams",
+      "note": {
+        "ar": "الفرق",
+        "en": "Teams"
+      }
+    },
+    {
+      "method": "GET/POST",
+      "path": "/api/users",
+      "note": {
+        "ar": "المستخدمون (users:manage)",
+        "en": "Users (users:manage)"
+      }
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/users/:id",
+      "note": {
+        "ar": "اسم/دور/فريق/منطقة — البريد وكلمة المرور غير قابلين للتعديل في v1",
+        "en": "Name/role/team/region — email and password are immutable in v1"
+      }
+    },
+    {
+      "method": "GET/PATCH",
+      "path": "/api/kernel",
+      "note": {
+        "ar": "الصورة الحيّة للأنوية / تعديل مَقابض نواة (settings:manage)",
+        "en": "Live nuclei snapshot / tune a nucleus (settings:manage)"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/kernel/cells",
+      "note": {
+        "ar": "كتالوج الأنوية والأدوات للوكلاء",
+        "en": "Nucleus and tool catalogue for agents"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/kernel/actions",
+      "note": {
+        "ar": "تنفيذ أداة / اعتماد أو رفض موافقة",
+        "en": "Execute a tool / grant or deny an approval"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/mcp",
+      "note": {
+        "ar": "بوابة الوكلاء — سطح MCP للقراءة (JSON-RPC 2.0): initialize/ping/tools/list/tools/call — الكتابة مرفوضة قبل التنفيذ + موثّقة",
+        "en": "Agent Gateway — read-only MCP surface (JSON-RPC 2.0): initialize/ping/tools/list/tools/call — writes rejected pre-execution and audited"
+      }
+    },
+    {
+      "method": "GET/POST",
+      "path": "/api/tasks",
+      "note": {
+        "ar": "المهام الدائمة GEN-3: قائمة / إنشاء",
+        "en": "GEN-3 durable tasks: list / create"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/tasks/:id",
+      "note": {
+        "ar": "تفاصيل مهمة + checkpoints + سلامة السلسلة",
+        "en": "Task detail + checkpoints + chain integrity"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/tasks/:id/approvals",
+      "note": {
+        "ar": "طلب موافقة ⇒ WAITING_APPROVAL (tasks:manage)",
+        "en": "Request approval ⇒ WAITING_APPROVAL (tasks:manage)"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/tasks/:id/resume",
+      "note": {
+        "ar": "استئناف بمنح ⇒ READY أو DENY (tasks:manage)",
+        "en": "Resume with grant ⇒ READY or DENY (tasks:manage)"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/tasks/approvals/:id",
+      "note": {
+        "ar": "قرار بشري approved/rejected (users:manage)",
+        "en": "Human decision approved/rejected (users:manage)"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/debug/headers",
+      "note": {
+        "ar": "route تشخيص الحافة — يعكس 3 ترويسات IP فقط؛ 404 إلا مع L27_DEBUG_HEADERS=1 (مرحلة التحقق الحيّ — لا يُفعَّل في الإنتاج بعد T4)",
+        "en": "Edge diagnostic route — reflects only 3 IP headers; 404 unless L27_DEBUG_HEADERS=1 (live-verification phase — never enabled in production after T4)"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/orchestrate/claims",
+      "note": {
+        "ar": "المطالبة بملكية التنفيذ (V5.3)",
+        "en": "Claim execution ownership (V5.3)"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/orchestrate/heartbeats",
+      "note": {
+        "ar": "تجديد الـlease بالنبض (V5.3)",
+        "en": "Renew the lease via heartbeat (V5.3)"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/orchestrate/releases",
+      "note": {
+        "ar": "تسليم الملكية طوعًا (V5.3)",
+        "en": "Voluntarily release ownership (V5.3)"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/orchestrate/steps",
+      "note": {
+        "ar": "تنفيذ خطوة مجانية (V5.3)",
+        "en": "Execute one free step (V5.3)"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/orchestrate/batches",
+      "note": {
+        "ar": "دفعة تنفيذية مرتّبة (V5.3)",
+        "en": "Ordered execution batch (V5.3)"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/orchestrate/tasks/:id/status",
+      "note": {
+        "ar": "لقطة حالة المهمة للاستطلاع (V5.3)",
+        "en": "Task status snapshot for polling (V5.3)"
+      }
+    }
+  ],
+  "screens": {
+    "ar": [
+      "`/` لوحة القيادة · `/people` + `/people/[id]` · `/volunteers` + `/volunteers/[id]`",
+      "`/field/reports` + `/field/reports/new` + `/field/reports/[id]` · `/login`",
+      "`/admin` (الحملة/الدورات/المناطق/الفرق) · `/admin/users` — كلها خلف حدود المصادقة",
+      "`/kernel` — النواة الحيّة: الأركان، مَقابضها، وطابور الموافقات البشرية"
+    ],
+    "en": [
+      "`/` dashboard · `/people` + `/people/[id]` · `/volunteers` + `/volunteers/[id]`",
+      "`/field/reports` + `/field/reports/new` + `/field/reports/[id]` · `/login`",
+      "`/admin` (campaign/cycles/regions/teams) · `/admin/users` — all behind the auth boundary",
+      "`/kernel` — the live kernel: corners, their knobs, and the human approval queue"
+    ]
+  },
+  "accountsNote": {
+    "ar": "**لا كلمة مرور ثابتة في المستودع** (السابقة نُشرت علنًا واحتُرقت — شُلت بالكامل). كلمة مرور العرض لكل بيئة عبر `L27_DEMO_PASSWORD` (smoke/CI/معاينة تصرّحه)، وغيابها ⇒ عشوائية لكل عملية بذر. ⚠️ هذه الحسابات لا تُزرَع في الإنتاج إطلاقًا إلا بتصريح صريح `L27_SEED_DEMO_ACCOUNTS=1` — الإنتاج يبدأ بمالك `L27_BOOTSTRAP_OWNER_EMAIL/PASSWORD` أو فارغًا (`.env.example`).",
+    "en": "**No fixed password in the repo** (the previous one was published and burned — fully removed). Demo password is per-environment via `L27_DEMO_PASSWORD` (declared by smoke/CI/preview); absent ⇒ random per seed run. These accounts are never seeded in production unless explicitly enabled with `L27_SEED_DEMO_ACCOUNTS=1` — production starts with a `L27_BOOTSTRAP_OWNER_EMAIL/PASSWORD` owner or empty (`.env.example`)."
+  },
+  "sessionRules": {
+    "ar": [
+      "تغيير الدور يُسقط كل الجلسات السابقة فورًا (`session_epoch`) — تغيير الاسم/الفريق لا يطرد الجلسات.",
+      "البريد وكلمة المرور غير قابلين للتعديل في v1.",
+      "الجلسة = cookie موقّع HMAC-SHA256، وكلمات المرور scrypt (`node:crypto`) — صفر اعتماديات خارجية."
+    ],
+    "en": [
+      "Changing a role revokes every previous session immediately (`session_epoch`) — changing name/team does not.",
+      "Email and password are immutable in v1.",
+      "Sessions are HMAC-SHA256 signed cookies; passwords use scrypt (`node:crypto`) — zero extra dependencies."
+    ]
+  },
+  "structure": [
+    {
+      "path": "app/(app)/",
+      "note": {
+        "ar": "لوحة قيادة، أشخاص، متطوعون، تقارير، إدارة — خلف حدود المصادقة",
+        "en": "Dashboard, people, volunteers, reports, admin — behind the auth boundary"
+      }
+    },
+    {
+      "path": "app/login/",
+      "note": {
+        "ar": "الدخول",
+        "en": "Sign-in"
+      }
+    },
+    {
+      "path": "lib/kernel/",
+      "note": {
+        "ar": "النواة: العقود، الـmanifest، الناقل، الموافقات، النواة، جذر التركيب",
+        "en": "The kernel: contracts, manifest, bus, approvals, kernel, composition root"
+      }
+    },
+    {
+      "path": "lib/cells/",
+      "note": {
+        "ar": "الأنوية الذرية الثمانية — ركن لكل نواة، معزولة ومستقلة",
+        "en": "The eight atomic nuclei — one per corner, isolated and independent"
+      }
+    },
+    {
+      "path": "app/api/",
+      "note": {
+        "ar": "people / volunteers / field/reports / stats / auth / campaign / cycles / regions / teams / users / health",
+        "en": "people / volunteers / field/reports / stats / auth / campaign / cycles / regions / teams / users / health"
+      }
+    },
+    {
+      "path": "lib/domain/",
+      "note": {
+        "ar": "قواعد الكيانات + services — people/volunteers/field/stats/dashboard/settings/users",
+        "en": "Entity rules + services — people/volunteers/field/stats/dashboard/settings/users"
+      }
+    },
+    {
+      "path": "lib/repositories/",
+      "note": {
+        "ar": "واجهات المخزن (Domain → Repository Interface → Persistence Adapter)",
+        "en": "Store interfaces (Domain → Repository Interface → Persistence Adapter)"
+      }
+    },
+    {
+      "path": "lib/persistence/",
+      "note": {
+        "ar": "InMemory + FileJson + PostgreSQL (جسر spawnSync) — نفس الواجهة، دلالات واحدة",
+        "en": "InMemory + FileJson + PostgreSQL (spawnSync bridge) — one interface, one set of semantics"
+      }
+    },
+    {
+      "path": "lib/auth+authorization+audit+validation",
+      "note": {
+        "ar": "جلسات HMAC، مصفوفة 6 أدوار، تدقيق لكل mutation، رفض §5",
+        "en": "HMAC sessions, six-role matrix, audit per mutation, §5 rejection"
+      }
+    },
+    {
+      "path": "scripts/",
+      "note": {
+        "ar": "توليد الوثائق من `project.manifest.json` + فحص الانحراف",
+        "en": "Doc generation from `project.manifest.json` + drift check"
+      }
+    },
+    {
+      "path": "tests/",
+      "note": {
+        "ar": "unit + integration + smoke (يُشغَّل في CI ضد next start)",
+        "en": "unit + integration + smoke (run in CI against next start)"
+      }
+    },
+    {
+      "path": "project.manifest.json",
+      "note": {
+        "ar": "**مصدر الحقيقة الوحيد** — README مُولَّد منه",
+        "en": "**Single source of truth** — the README is generated from it"
+      }
+    },
+    {
+      "path": "lib/mcp/",
+      "note": {
+        "ar": "بوابة الوكلاء: منطق JSON-RPC 2.0 لسطح MCP (قراءة فقط في V5.1)",
+        "en": "Agent Gateway: JSON-RPC 2.0 logic for the MCP surface (read-only in V5.1)"
+      }
+    },
+    {
+      "path": "lib/tasks/",
+      "note": {
+        "ar": "محرك GEN-3: آلة الحالة، التجزئة، الاستئناف، المنح، GEN3_GATE — فوق Repos فقط",
+        "en": "GEN-3 engine: state machine, hashing, resume, grants, GEN3_GATE — on Repos only"
+      }
+    },
+    {
+      "path": "lib/workers/",
+      "note": {
+        "ar": "GEN-4: المنسّق الموزّع (إيجار/fencing/exactly-once)",
+        "en": "GEN-4: distributed coordinator (leases/fencing/exactly-once)"
+      }
+    },
+    {
+      "path": "lib/orchestrate/",
+      "note": {
+        "ar": "V5.3: خدمة المنسّق HTTP + البوابة",
+        "en": "V5.3: HTTP orchestrator service + gate"
+      }
+    }
+  ],
+  "env": [
+    {
+      "name": "L27_STORE",
+      "default": "file",
+      "values": "memory | file | postgres",
+      "note": {
+        "ar": "نوع المخزن — `postgres` للمحوّل الدائم (Neon/Supabase/Vercel)",
+        "en": "Store kind — `postgres` for the durable adapter (Neon/Supabase/Vercel)"
+      }
+    },
+    {
+      "name": "L27_DB_PATH",
+      "default": "var/data/db.json",
+      "values": "path",
+      "note": {
+        "ar": "مسار ملف البيانات (وضع file)",
+        "en": "Data file path (file mode)"
+      }
+    },
+    {
+      "name": "L27_SESSION_SECRET",
+      "default": "l27-dev-secret-change-me",
+      "values": "secret",
+      "note": {
+        "ar": "سرّ توقيع الجلسة — **بدّله في الإنتاج**",
+        "en": "Session signing secret — **change it in production**"
+      }
+    },
+    {
+      "name": "DATABASE_URL",
+      "default": "—",
+      "values": "postgres://…",
+      "note": {
+        "ar": "رابط PostgreSQL — **إلزامي مع L27_STORE=postgres** (VS5/T1)",
+        "en": "PostgreSQL connection string — **required with L27_STORE=postgres** (VS5/T1)"
+      }
+    },
+    {
+      "name": "L27_TEST_DATABASE_URL",
+      "default": "—",
+      "values": "postgres://…",
+      "note": {
+        "ar": "قاعدة الاختبارات العقدية الحيّة للمحوّل (CI/اختبارات فقط)",
+        "en": "Live adapter-contract test database (CI / tests only)"
+      }
+    },
+    {
+      "name": "L27_ALLOW_INSECURE_SECRET",
+      "default": "—",
+      "values": "1",
+      "note": {
+        "ar": "استثناء صريح للاختبارات الإنتاجية وحدها — الإنتاج يرفض السر الافتراضي (VS5/T2)",
+        "en": "Explicit escape hatch for production tests only — production rejects the default secret (VS5/T2)"
+      }
+    },
+    {
+      "name": "NODE_ENV",
+      "default": "—",
+      "values": "development | test | production",
+      "note": {
+        "ar": "متغير المنصّة — الإنتاج يرفض سر الجلسة الافتراضي (VS5/T2)",
+        "en": "Platform variable — production rejects the default session secret (VS5/T2)"
+      }
+    },
+    {
+      "name": "NEXT_PHASE",
+      "default": "—",
+      "values": "phase-production-build",
+      "note": {
+        "ar": "داخل Next.js — يُعفى أثناء دورة البناء (لا توقيع جلسات في build)",
+        "en": "Set by Next.js — exempt during the build phase (no session signing in build)"
+      }
+    },
+    {
+      "name": "L27_SEED_DEMO_ACCOUNTS",
+      "default": "— (التطوير/الاختبار: 1 · الإنتاج: 0)",
+      "values": "0 | 1",
+      "note": "يصرّح بذر حسابات العرض — ومعها L27_DEMO_PASSWORD لكل بيئة (لا قيمة ثابتة في المستودع).",
+      "noteEn": "Enables demo-account seeding — with per-environment L27_DEMO_PASSWORD (no fixed value in the repo)."
+    },
+    {
+      "name": "L27_BOOTSTRAP_OWNER_EMAIL",
+      "default": "—",
+      "values": "email",
+      "note": {
+        "ar": "بريد مالك البداية للإنتاج — يُنشأ مرة واحدة عند أول بذر",
+        "en": "Bootstrap owner email for production — created once at first seed"
+      }
+    },
+    {
+      "name": "L27_BOOTSTRAP_OWNER_PASSWORD",
+      "default": "—",
+      "values": "secret (≥8)",
+      "note": {
+        "ar": "كلمة مرور مالك البداية — تجاهلها = بذر فارغ (لا حسابات)",
+        "en": "Bootstrap owner password — omit it and the seed stays empty (no accounts)"
+      }
+    },
+    {
+      "name": "L27_ALLOWED_HOSTS",
+      "default": "—",
+      "values": "example.com,app.example.com",
+      "note": {
+        "ar": "قائمة مضيفين صارمة لفحص CSRF — عند ضبطها لا تُقرأ ترويسات البروكسي إطلاقًا (التعريض المباشر)",
+        "en": "Strict host allowlist for the CSRF check — when set, proxy headers are never trusted (direct exposure)"
+      }
+    },
+    {
+      "name": "L27_RATE_BACKEND",
+      "default": "— (تلقائي: postgres مع L27_STORE=postgres · وإلا الذاكرة)",
+      "values": "memory",
+      "note": {
+        "ar": "إلحاح صريح لخلفية المُخدد المحلي — يُحذَّر منه في الإنتاج (cold start يفرّغ العدّاد)",
+        "en": "Explicit opt-in for the in-memory limiter backend — warned against in production (cold starts reset counters)"
+      }
+    },
+    {
+      "name": "L27_CLIENT_IP_HEADER",
+      "default": "x-real-ip",
+      "values": "x-real-ip | cf-connecting-ip | …",
+      "note": "ترويسة هوية العميل للمُخدد — تُقرأ خلف L27_TRUST_EDGE=1 فقط؛ x-forwarded-for لا تُقرأ أبدًا. الافتراضي x-real-ip صحيح على Vercel (يُتحقق تجريبيًا أول خطوة في النشر).",
+      "noteEn": "Client-identity header for rate limiting — read only behind L27_TRUST_EDGE=1; x-forwarded-for is never read. Default x-real-ip is correct on Vercel (verified live in deploy)."
+    },
+    {
+      "name": "L27_TRUST_EDGE",
+      "default": "—",
+      "values": "1",
+      "note": "edge موثوق ينظّف الترويسات (Vercel / nginx REPLACE) — يمنح ثقة ترويسة الـIP ويعفي فحص الأصل. مستقل عن L27_ALLOWED_HOSTS (لا يمنح ثقة IP أبدًا). لا يُفعَّل على خادم مكشوف مباشرة. مطلوب في الإنتاج مع L27_ALLOWED_HOSTS (أحد الاثنين).",
+      "noteEn": "Trusted sanitizing edge (Vercel / nginx REPLACE) — grants IP-header trust and relies on edge origin policy. Independent from L27_ALLOWED_HOSTS (never grants IP trust). Never enable on a directly exposed server. Production needs one of the two."
+    },
+    {
+      "name": "L27_DEMO_PASSWORD",
+      "description": "كلمة مرور حسابات العرض لكل بيئة — تُصرَّح في smoke/CI/المعاينة؛ لا قيمة افتراضية (غيابها ⇒ عشوائية غير معلنة).",
+      "descriptionEn": "Per-environment demo-account password — declared in smoke/CI/preview; no default (absent ⇒ random, never logged).",
+      "default": "",
+      "required": false,
+      "note": "القيمة السابقة محروقة وشُلت — لا تُعِد استخدام كلمة مرور نُشرت علنًا.",
+      "noteEn": "The previous value is burned and removed — never reuse a published password."
+    },
+    {
+      "name": "L27_DEBUG_HEADERS",
+      "description": "يُفعّل route التشخيص /api/debug/headers — مُطفأ افتراضيًا (404)؛ مرحلة التحقق الحيّ فقط ويُلغى بعدها.",
+      "descriptionEn": "Enables the /api/debug/headers diagnostic route — off by default (404); live-verification phase only, removed afterwards.",
+      "default": "",
+      "required": false,
+      "note": "لا يُفعَّل في الإنتاج بعد T4 — بصمة بنية (يكشف Vercel).",
+      "noteEn": "Never enable in production after T4 — infrastructure fingerprint."
+    }
+  ],
+  "deploy": {
+    "ar": [
+      "جاهز لـ Vercel (Next.js قياسي + lockfile + CI أخضر). النشر يتطلب ربط حسابك على [vercel.com/new](https://vercel.com/new) واستيراد المستودع — أو `npx vercel`.",
+      "**تنويه مُثبَّت:** القرص ephemeral على Vercel serverless — محوّل PostgreSQL لاحقًا فوق نفس الواجهة (`Repository Interface`) بلا إعادة كتابة domain (TODO موثّق في `lib/persistence/file-json.ts`).",
+      "النشر = **DEPLOYED = VERIFIED** فقط بعد اختبار الـURL الحي فعليًا.",
+      "**المسار المجاني بدون بطاقة (Vercel Hobby + Neon/Supabase Free):** خطواته وفجواته المتبقية موثّقة في [`docs/deploy-free-roadmap.md`](docs/deploy-free-roadmap.md)."
+    ],
+    "en": [
+      "Vercel-ready (standard Next.js + lockfile + green CI). Deploying requires linking your account at [vercel.com/new](https://vercel.com/new) and importing the repo — or `npx vercel`.",
+      "**Known caveat:** serverless disk on Vercel is ephemeral — a PostgreSQL adapter lands later on the same `Repository Interface` with no domain rewrite (TODO documented in `lib/persistence/file-json.ts`).",
+      "Deployment counts as **DEPLOYED = VERIFIED** only after the live URL has actually been exercised.",
+      "**Free cardless path (Vercel Hobby + Neon/Supabase Free):** steps and remaining gaps are documented in [`docs/deploy-free-roadmap.md`](docs/deploy-free-roadmap.md)."
+    ]
+  },
+  "syncRules": {
+    "ar": [
+      "لا commit قبل تغيير مقصود + بوابات خضراء.",
+      "الدمج بإثبات `mergedAt ≠ null`.",
+      "الدورة المثبتة: `CHANGE → COMMIT → PUSH → VERIFY_REMOTE`."
+    ],
+    "en": [
+      "No commit before an intentional change plus green gates.",
+      "A merge is only proven by `mergedAt ≠ null`.",
+      "The proven loop: `CHANGE → COMMIT → PUSH → VERIFY_REMOTE`."
+    ]
+  },
+  "docs": [
+    {
+      "path": "docs/contract-vs3.md",
+      "label": {
+        "ar": "عقد VS3 (LOCKED)",
+        "en": "VS3 contract (LOCKED)"
+      }
+    },
+    {
+      "path": "docs/plan-vs2.md",
+      "label": {
+        "ar": "خطة VS2 كما نُفِّذت",
+        "en": "VS2 plan as implemented"
+      }
+    },
+    {
+      "path": "docs/plan-vs3.md",
+      "label": {
+        "ar": "خطة VS3 كما نُفِّذت",
+        "en": "VS3 plan as implemented"
+      }
+    },
+    {
+      "path": "docs/sync-verification.md",
+      "label": {
+        "ar": "توثيق التحقق من المزامنة",
+        "en": "Sync verification record"
+      }
+    },
+    {
+      "path": "docs/readme-generation.md",
+      "label": {
+        "ar": "كيف يُولَّد هذا الملف",
+        "en": "How this file is generated"
+      }
+    },
+    {
+      "path": "docs/kernel.md",
+      "label": {
+        "ar": "معمارية النواة الحيّة والأنوية الذرية",
+        "en": "Live kernel & atomic nuclei architecture"
+      }
+    },
+    {
+      "path": "docs/deploy-free-roadmap.md",
+      "label": {
+        "ar": "مخطط الإنجاز والمتبقي حتى النشر المجاني (بدون بطاقة)",
+        "en": "Done/remaining roadmap toward a free, cardless deploy"
+      }
+    },
+    {
+      "path": "docs/idea-trusted-agent-computer.md",
+      "label": {
+        "ar": "فكرة: الجهاز الوكيلي الموثوق — كيف نتفوق على Manus في الثقة لا الاستقلالية",
+        "en": "Idea: Trusted Agent Computer — beating Manus on trust, not autonomy"
+      }
+    },
+    {
+      "path": "docs/contract-vs5.md",
+      "label": {
+        "ar": "عقد VS5 (LOCKED) — بوابة الوكلاء · V5.1",
+        "en": "VS5 contract (LOCKED) — Agent Gateway · V5.1"
+      }
+    },
+    {
+      "path": "docs/contract-gen3.md",
+      "label": {
+        "ar": "عقد GEN-3 (LOCKED) — محرك المهام الدائم",
+        "en": "GEN-3 contract (LOCKED) — Durable Task Engine"
+      }
+    },
+    {
+      "path": "docs/contract-gen4.md",
+      "label": {
+        "ar": "عقد GEN-4 (LOCKED)",
+        "en": "GEN-4 contract (LOCKED)"
+      }
+    },
+    {
+      "path": "docs/celiaos-blueprint-2026.md",
+      "label": {
+        "ar": "مخطط CeliaOS النهائي 2026 (مسودة)",
+        "en": "CeliaOS 2026 final blueprint (draft)"
+      }
+    },
+    {
+      "path": "docs/contract-v53.md",
+      "label": {
+        "ar": "عقد V5.3 (LOCKED)",
+        "en": "V5.3 contract (LOCKED)"
+      }
+    },
+    {
+      "path": "docs/plan-p1-consolidation.md",
+      "label": {
+        "ar": "خطة P1: التوحيد والاستفادة (مسودة)",
+        "en": "P1 consolidation plan (draft)"
+      }
+    }
+  ],
+  "outOfScope": {
+    "ar": [
+      "تعديل بريد/كلمة مرور المستخدم (v2)",
+      "حذف الكيانات",
+      "`VoterRecord` وبقية بنود §13",
+      "أي UI لـ Assign Task (P3)",
+      "أي حقل تفضيل سياسي — محظور نهائيًا (§5)"
+    ],
+    "en": [
+      "Editing a user's email/password (v2)",
+      "Deleting entities",
+      "`VoterRecord` and the remaining §13 items",
+      "Any Assign Task UI (P3)",
+      "Any political-preference field — permanently forbidden (§5)"
+    ]
+  },
+  "kernel": {
+    "version": "1.0.0",
+    "ar": [
+      "**انعكاس الاعتماد (IoC):** النواة لا تعرف أي نواة ذرية، والخلايا لا تستورد بعضها إطلاقًا — التواصل عبر القدرات والناقل فقط.",
+      "**القدرات واجهةٌ لا أسماء:** كل قدرة مُعلَنة لها خدمة فعلية، و`require(capability)` هي الطريقة الوحيدة للوصول.",
+      "**عقد صارم قبل التشغيل:** أسماء مُقصَّرة، أدوات مطابقة للمُنفِّذات، وكل أداة كتابة/إدارة **يجب** أن تتطلب موافقة الوكيل.",
+      "**تفويض لا تصعيد:** العملية المُعتمدة بشريًا تُنفَّذ بسلطة المُعتمِد، ويُسجَّل الوكيلُ الطالب في أثر المساءلة.",
+      "**مَقابض معزولة:** أي مفتاح غير مُعلَن في نواة يُرفض — فيستحيل أن يغيّر إعدادُ ركنٍ سلوكَ ركنٍ آخر."
+    ],
+    "en": [
+      "**Inversion of Control:** the kernel knows no nucleus, and cells never import each other — they communicate through capabilities and the event bus only.",
+      "**Capabilities are interfaces, not names:** every declared capability has a real service, and `require(capability)` is the only way to reach it.",
+      "**A strict contract before anything runs:** namespaced ids, tools matching handlers 1:1, and every write/admin tool **must** require agent approval.",
+      "**Delegation, not escalation:** a human-approved action runs under the approver's authority, while the requesting agent stays in the accountability trail.",
+      "**Isolated knobs:** any key not declared by a nucleus is rejected — so one corner's settings can never change another corner's behavior."
+    ]
+  },
+  "cells": [
+    {
+      "id": "audit",
+      "corner": {
+        "ar": "سجل التدقيق",
+        "en": "Audit trail"
+      },
+      "provides": [
+        "audit.trail",
+        "audit.read"
+      ],
+      "note": {
+        "ar": "تُشبع `audit.trail` التي تحتاجها كل نواة تكتب، وتُدوِّن أحداث النواة نفسها.",
+        "en": "Provides the `audit.trail` every writing nucleus needs, and records kernel events too."
+      }
+    },
+    {
+      "id": "auth",
+      "corner": {
+        "ar": "الهوية والجلسات",
+        "en": "Identity & sessions"
+      },
+      "provides": [
+        "auth.session",
+        "auth.login"
+      ],
+      "note": {
+        "ar": "الدخول والجلسات، مع مَقبضي نطاق البريد ومنع دخول الوكلاء.",
+        "en": "Sign-in and sessions, with email-domain and agent-login knobs."
+      }
+    },
+    {
+      "id": "people",
+      "corner": {
+        "ar": "سجل الأشخاص",
+        "en": "People registry"
+      },
+      "provides": [
+        "people.read",
+        "people.write"
+      ],
+      "note": {
+        "ar": "وعي بالمصدر، ورفض §5 كما في مسار HTTP بالحرف.",
+        "en": "Source-aware, with §5 rejection identical to the HTTP path."
+      }
+    },
+    {
+      "id": "volunteers",
+      "corner": {
+        "ar": "دورة حياة المتطوع",
+        "en": "Volunteer lifecycle"
+      },
+      "provides": [
+        "volunteers.read",
+        "volunteers.write"
+      ],
+      "note": {
+        "ar": "تتحقق من الشخص عبر **قدرة** نواة الأشخاص — لا استيراد بين الأنوية.",
+        "en": "Resolves the person through the people nucleus's **capability** — no cross-nucleus import."
+      }
+    },
+    {
+      "id": "field",
+      "corner": {
+        "ar": "التقارير الميدانية",
+        "en": "Field reports"
+      },
+      "provides": [
+        "field.reports.read",
+        "field.reports.write"
+      ],
+      "note": {
+        "ar": "تنشر أحداث التقارير التي تستهلكها نواة المؤشرات.",
+        "en": "Publishes report events that the reporting nucleus consumes."
+      }
+    },
+    {
+      "id": "reporting",
+      "corner": {
+        "ar": "لوحة القيادة والمؤشرات",
+        "en": "Dashboard & KPIs"
+      },
+      "provides": [
+        "reporting.kpis"
+      ],
+      "note": {
+        "ar": "**النواة الحيّة**: ذاكرة مؤقتة تُبطَل بالأحداث وتُعاد حسابها تلقائيًا.",
+        "en": "**The live nucleus**: an event-invalidated cache that recomputes itself."
+      }
+    },
+    {
+      "id": "settings",
+      "corner": {
+        "ar": "إعدادات الحملة",
+        "en": "Campaign settings"
+      },
+      "provides": [
+        "settings.campaign",
+        "settings.structure"
+      ],
+      "note": {
+        "ar": "الحملة والدورات والمناطق والفرق تحت `settings:manage`.",
+        "en": "Campaign, cycles, regions, and teams under `settings:manage`."
+      }
+    },
+    {
+      "id": "ai",
+      "corner": {
+        "ar": "الوكلاء والموافقات البشرية",
+        "en": "Agents & human approvals"
+      },
+      "provides": [
+        "ai.catalogue",
+        "ai.approvals"
+      ],
+      "note": {
+        "ar": "كتالوج الأدوات للوكلاء + بوابة الموافقة البشرية.",
+        "en": "Tool catalogue for agents + the human approval gate."
+      }
+    }
+  ],
+  "productionChecklist": [
+    "T4-1 التحقق الحيّ من ترويسة Vercel: route تشخيصي مؤقت + curl — هل Vercel تضع x-real-ip مُنظَّفة فعلًا؟ (البديل x-vercel-forwarded-for) ثم احذف الـroute.",
+    "T4-2 إعادة اختبار المُخدد على الرابط الحيّ: 61 طلبًا بترويسات XFF مختلفة ⇒ 429 (اختبار serverless حقيقي).",
+    "T4-3 cold start: انتظر 5 دقائق بلا طلبات ثم 61 طلبًا ⇒ العدّ يستمر (ضمان ensure() للـl27_rate).",
+    "T4-4 L27_RATE_BACKEND=memory يجب أن يكون غائبًا على Vercel (الافتراضي postgres) — التحذير الصاخب قائم في الكود.",
+    "T4-5 Neon pooled DSN بـ -pooler — مع pool.max=5 و connectionTimeoutMillis=1500 وإلا timeouts متكررة.",
+    "T4-6 L27_SESSION_SECRET ≥ 32 حرفًا عشوائيًا — التحقق من الطول في بدء التشغيل قائم (session.ts).",
+    "T4-7 L27_SEED_DEMO_ACCOUNTS=0 (أو غائب) + L27_TRUST_EDGE=1 مقصود لا موروث + L27_ALLOWED_HOSTS=النطاق الحقيقي."
+  ],
+  "extras": {
+    "tasksGen4": {
+      "goal": "تنسيق التنفيذ الموزّع: عمّال متعددون على Store واحد بإيجار + fencing + exactly-once (مكتبة، بلا HTTP جديد)",
+      "components": [
+        "lib/workers (المنسق)",
+        "leases/heartbeats/attempts في Store",
+        "GEN4_GATE"
+      ],
+      "key_results": [
+        "R7–R10",
+        "fencing tokens",
+        "attemptToken exactly-once",
+        "batch prefix-durable",
+        "GEN4_GATE خضراء"
+      ],
+      "guarantees": [
+        "zero edits: lib/tasks + lib/authorization",
+        "smoke 52/52",
+        "exclusive claim",
+        "reclaim replay-safe"
+      ],
+      "out_of_scope": [
+        "scheduling",
+        "orchestrator HTTP (مؤجل V5.3)"
+      ]
+    },
+    "orchestratorV53": {
+      "goal": "تعريض تنسيق GEN-4 عبر HTTP لعملاء مخوَّلين (6 مسارات، طبقة نقل رفيعة)",
+      "components": [
+        "lib/orchestrate (الخدمة)",
+        "app/api/orchestrate (المسارات الستة)",
+        "V53_GATE"
+      ],
+      "key_results": [
+        "D1 الرفض قيمة (200)",
+        "D2 هوية من الجلسة",
+        "D3 المدفوع fail-closed",
+        "D4 صفر سياسة جديدة"
+      ],
+      "guarantees": [
+        "zero edits: lib/tasks + lib/workers + lib/authorization",
+        "smoke 58/58",
+        "denials never 500"
+      ],
+      "out_of_scope": [
+        "SSE (استطلاع)",
+        "paid wiring (P2)",
+        "scheduling"
+      ]
+    }
+  }
+}

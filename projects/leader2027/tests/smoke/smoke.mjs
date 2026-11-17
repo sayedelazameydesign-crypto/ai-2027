@@ -1,0 +1,862 @@
+/**
+ * Smoke — إثبات production على خادم next start حقيقي (AC12-17).
+ * صفر اعتمادات — fetch فقط. يعمل محلياً وفي CI.
+ * BASE_URL افتراضي: http://127.0.0.1:3000
+ * ⚠️ الخادم المُختبَر يعمل بحسابات العرض: شغّله بـ L27_SEED_DEMO_ACCOUNTS=1
+ * (+ L27_SESSION_SECRET وL27_ALLOWED_HOSTS=127.0.0.1,localhost في الإنتاج)
+ * — انظر .env.example.
+ */
+const BASE = process.env.BASE_URL ?? "http://127.0.0.1:3000";
+// لا كلمات مرور ثابتة في المستودع — الـsmoke يدخل بكلمة مرور بيئته المُصرَّح بها
+// (نفس قيمة L27_DEMO_PASSWORD التي أُشغِّل بها الخادم المُختبَر).
+const DEMO_PASSWORD = process.env.L27_DEMO_PASSWORD;
+if (!DEMO_PASSWORD) {
+  console.error("L27_DEMO_PASSWORD مطلوب — شغّل الخادم والـsmoke بنفس القيمة (لا قيمة ثابتة في المستودع).");
+  process.exit(1);
+}
+const results = [];
+
+function check(name, pass, detail = "") {
+  results.push({ name, pass, detail });
+}
+
+async function req(path, opts = {}, cookie) {
+  const res = await fetch(BASE + path, {
+    ...opts,
+    redirect: "manual",
+    headers: { "content-type": "application/json", ...(opts.headers ?? {}), ...(cookie ? { cookie } : {}) },
+  });
+  const text = await res.text();
+  return { res, text };
+}
+
+async function waitForServer() {
+  for (let i = 0; i < 60; i += 1) {
+    try {
+      const r = await fetch(BASE + "/api/health");
+      if (r.ok) return;
+    } catch {
+      /* not up yet */
+    }
+    await new Promise((s) => setTimeout(s, 1000));
+  }
+  throw new Error("الخادم لم يستجب على " + BASE);
+}
+
+async function login(email) {
+  const res = await fetch(BASE + "/api/auth/login", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ email, password: DEMO_PASSWORD }),
+  });
+  if (!res.ok) throw new Error(`login failed: ${email} → ${res.status}`);
+  const raw = res.headers.get("set-cookie") ?? "";
+  const match = raw.match(/l27_session=([^;]+)/);
+  if (!match) throw new Error("لا cookie جلسة");
+  return `l27_session=${match[1]}`;
+}
+
+async function main() {
+  await waitForServer();
+
+  // حدود المصادقة (AC9): بلا جلسة
+  {
+    const { res } = await req("/");
+    check("GET / بلا جلسة → تحويل لـ/login", res.status >= 300 && res.status < 400 && (res.headers.get("location") ?? "").includes("/login"), `status=${res.status}`);
+  }
+  {
+    const { res } = await req("/api/people");
+    check("GET /api/people بلا جلسة → 401", res.status === 401, `status=${res.status}`);
+  }
+
+  const coord = await login("coordinator@leader2027.test");
+  const worker = await login("worker@leader2027.test");
+  const viewer = await login("viewer@leader2027.test");
+
+  // AC1: شاشة الأشخاص
+  {
+    const { res, text } = await req("/people", {}, coord);
+    check("AC1: /people تعرض الدليل", res.status === 200 && text.includes("الأشخاص") && text.includes("أحمد محمود"), `status=${res.status}`);
+  }
+
+  // سيناريو §7: إنشاء شخص → Create Volunteer → تقرير ميداني
+  const unique = `شخص smoke ${Date.now()}`;
+  let personId;
+  {
+    const { res, text } = await req("/api/people", {
+      method: "POST",
+      body: JSON.stringify({ full_name: unique, source: "ميداني", region_id: "region-giza" }),
+    }, coord);
+    const data = JSON.parse(text);
+    personId = data.person?.id;
+    check("POST /api/people → 201 (إنشاء شخص)", res.status === 201 && !!personId, `status=${res.status}`);
+  }
+  {
+    const { res, text } = await req(`/people/${personId}`, {}, coord);
+    check("شاشة ملف الشخص تعرض الاسم", res.status === 200 && text.includes(unique), `status=${res.status}`);
+  }
+
+  let volId;
+  {
+    const { res, text } = await req("/api/volunteers", {
+      method: "POST",
+      body: JSON.stringify({ person_id: personId, team_id: "team-a" }),
+    }, coord);
+    const data = JSON.parse(text);
+    volId = data.volunteer?.id;
+    check("AC2: Create Volunteer → 201", res.status === 201 && !!volId, `status=${res.status}`);
+  }
+  {
+    // طلب HTTP منفصل = محاكاة refresh (AC3/AC4)
+    const { res, text } = await req(`/api/volunteers/${volId}`, {}, viewer);
+    const data = JSON.parse(text);
+    check("AC3/4: المتطوع يُسترجع بعد refresh (طلب منفصل)", res.status === 200 && data.volunteer?.person_id === personId, `status=${res.status}`);
+  }
+  {
+    const { res, text } = await req(`/volunteers/${volId}`, {}, coord);
+    check("شاشة /volunteers/[id] تحمّل", res.status === 200 && text.includes(unique), `status=${res.status}`);
+  }
+
+  // AC5/6: تقرير ميداني
+  let before;
+  {
+    const { res, text } = await req("/api/stats", {}, worker);
+    before = JSON.parse(text).kpis;
+    check("GET /api/stats قبل → 200 (demo=false)", res.status === 200 && before !== undefined, `status=${res.status}`);
+  }
+  {
+    const { res } = await req("/field/reports/new", {}, worker);
+    check("شاشة /field/reports/new تعرض النموذج", res.status === 200, `status=${res.status}`);
+  }
+  let repId;
+  {
+    const { res, text } = await req("/api/field/reports", {
+      method: "POST",
+      body: JSON.stringify({
+        region_id: "region-giza",
+        team_id: "team-a",
+        report_date: new Date().toISOString().slice(0, 10),
+        activity: "نشاط smoke",
+        people_contacted: 7,
+        volunteers_present: 2,
+      }),
+    }, worker);
+    const data = JSON.parse(text);
+    repId = data.report?.id;
+    check("AC5: Submit Report → 201", res.status === 201 && !!repId, `status=${res.status}`);
+  }
+  {
+    const { res, text } = await req(`/api/field/reports/${repId}`, {}, worker);
+    const data = JSON.parse(text);
+    check("AC6: التقرير يُسترجع بقيمته (7 مُتصل بهم)", res.status === 200 && data.report?.people_contacted === 7, `status=${res.status}`);
+  }
+  {
+    const { res, text } = await req(`/field/reports/${repId}`, {}, worker);
+    check("شاشة /field/reports/[id] تحمّل", res.status === 200 && text.includes("نشاط smoke"), `status=${res.status}`);
+  }
+
+  // AC11: الـdashboard تعكس النشاط
+  {
+    const { res, text } = await req("/api/stats", {}, viewer);
+    const after = JSON.parse(text).kpis;
+    check("AC11: stats بعد التقرير: reports+1 وpeopleContacted+7", after.reports === before.reports + 1 && after.peopleContacted === before.peopleContacted + 7, `before=${JSON.stringify(before)} after=${JSON.stringify(after)}`);
+    void res;
+  }
+  {
+    const { res } = await req("/", {}, coord);
+    check("AC11: لوحة القيادة تحمّل بعد النشاط", res.status === 200, `status=${res.status}`);
+  }
+
+  // AC7/8/9: رفض المرجعية الخاطئة والـpayload غير الصالح والعمليات غير المصرّح بها
+  {
+    const { res } = await req("/api/field/reports", {
+      method: "POST",
+      body: JSON.stringify({
+        region_id: "region-giza", team_id: "nope",
+        report_date: new Date().toISOString().slice(0, 10), activity: "نشاط",
+      }),
+    }, worker);
+    check("AC7: team_id مجهول → 400", res.status === 400, `status=${res.status}`);
+  }
+  {
+    const { res } = await req("/api/people", {
+      method: "POST",
+      body: JSON.stringify({ full_name: "", source: "" }),
+    }, coord);
+    check("AC8: payload غير صالح → 400", res.status === 400, `status=${res.status}`);
+  }
+  {
+    const { res } = await req("/api/field/reports", {
+      method: "POST",
+      body: JSON.stringify({
+        region_id: "region-giza", team_id: "team-a",
+        report_date: new Date().toISOString().slice(0, 10), activity: "نشاط",
+      }),
+    }, viewer);
+    check("AC9: Viewer يُمنع من إنشاء تقرير → 403", res.status === 403, `status=${res.status}`);
+  }
+  {
+    const { res } = await req(`/api/people/${personId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ full_name: "محاولة عامل" }),
+    }, worker);
+    check("AC9: Worker يُمنع من تعديل الأشخاص → 403", res.status === 403, `status=${res.status}`);
+  }
+
+  // ——— VS3: نواة الحملة الإدارية (12 فحصاً، production) ———
+  {
+    const ts = Date.now().toString().slice(-8);
+    const owner = await login("owner@leader2027.test");
+    const admin = await login("admin@leader2027.test");
+
+    // 1: اسم الحملة (AC1/AC2) — PATCH ثم الشاشة تعرضه
+    {
+      const newName = `حملة smoke ${ts}`;
+      const { res } = await req("/api/campaign", {
+        method: "PATCH",
+        body: JSON.stringify({ name: newName }),
+      }, owner);
+      const { res: pageRes, text } = await req("/admin", {}, owner);
+      check("VS3-1: PATCH اسم الحملة والشاشة تعرضه (settings:manage)",
+        res.status === 200 && pageRes.status === 200 && text.includes(newName),
+        `patch=${res.status} page=${pageRes.status}`);
+    }
+
+    // 2: دورة انتخابية (AC3)
+    {
+      const { res, text } = await req("/api/cycles", {
+        method: "POST",
+        body: JSON.stringify({ name: `دورة smoke ${ts}`, election_date: "2027-06-01", status: "planned" }),
+      }, owner);
+      check("VS3-2: POST دورة انتخابية → 201", res.status === 201, `status=${res.status} body=${text.slice(0, 80)}`);
+    }
+
+    // 3: منطقة (AC4)
+    {
+      const { res } = await req("/api/regions", {
+        method: "POST",
+        body: JSON.stringify({ name: `منطقة smoke ${ts}` }),
+      }, owner);
+      check("VS3-3: POST منطقة → 201", res.status === 201, `status=${res.status}`);
+    }
+
+    // 4: فريق (AC4)
+    {
+      const { res } = await req("/api/teams", {
+        method: "POST",
+        body: JSON.stringify({ name: `فريق smoke ${ts}` }),
+      }, owner);
+      check("VS3-4: POST فريق → 201", res.status === 201, `status=${res.status}`);
+    }
+
+    // 5: مستخدم جديد (AC5) + 6: يدخل بحسابه
+    const newUserEmail = `coord-${ts}@leader2027.test`;
+    let newUserCookie = null;
+    {
+      const { res, text } = await req("/api/users", {
+        method: "POST",
+        body: JSON.stringify({
+          name: `منسق smoke ${ts}`,
+          email: newUserEmail,
+          password: "Smoke!2345",
+          role: "FIELD_COORDINATOR",
+        }),
+      }, owner);
+      check("VS3-5: POST مستخدم جديد → 201 (بدون password_hash)",
+        res.status === 201 && !text.includes("password_hash"), `status=${res.status}`);
+    }
+    {
+      const loginRes = await fetch(BASE + "/api/auth/login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email: newUserEmail, password: "Smoke!2345" }),
+      });
+      const raw = loginRes.headers.get("set-cookie") ?? "";
+      const match = raw.match(/l27_session=([^;]+)/);
+      if (match) newUserCookie = `l27_session=${match[1]}`;
+      check("VS3-6: دخول المستخدم المُنشأ", loginRes.ok && !!newUserCookie, `status=${loginRes.status}`);
+    }
+
+    // 7: Coordinator → 403 على settings وusers (AC7)
+    {
+      const { res: r1 } = await req("/api/regions", {
+        method: "POST",
+        body: JSON.stringify({ name: `منطقة منبوذة ${ts}` }),
+      }, newUserCookie);
+      const { res: r2 } = await req("/api/users", {
+        method: "POST",
+        body: JSON.stringify({ name: "مس", email: `intruder-${ts}@leader2027.test`, password: DEMO_PASSWORD, role: "VIEWER" }),
+      }, newUserCookie);
+      check("VS3-7: Coordinator → 403 على settings وusers", r1.status === 403 && r2.status === 403, `settings=${r1.status} users=${r2.status}`);
+    }
+
+    // 8 (بند 21 «Admin دون إعدادات»): مستخدم دون settings/users:manage → 403 على campaign/users
+    // تفسير مطابق للعقد المُقفَّل §4: settings:manage = OWNER/CAMPAIGN_ADMIN/CAMPAIGN_MANAGER
+    // — «دون إعدادات» = بلا الإذنين (Viewer/Worker/Coordinator) → 403 على العائلتين.
+    {
+      const { res: c } = await req("/api/campaign", {
+        method: "PATCH",
+        body: JSON.stringify({ name: "منبوذ" }),
+      }, viewer);
+      const { res: u } = await req("/api/users", {
+        method: "POST",
+        body: JSON.stringify({ name: "مس", email: `intruder3-${ts}@leader2027.test`, password: DEMO_PASSWORD, role: "VIEWER" }),
+      }, viewer);
+      check("VS3-8: دون settings/users:manage → 403 على campaign/users (بند 21)",
+        c.status === 403 && u.status === 403, `campaign=${c.status} users=${u.status}`);
+    }
+
+    // 9: تغيير الاسم لا يطرد الجلسة (interpretation 4)
+    {
+      const { res: cr, text: ct } = await req("/api/users", {
+        method: "POST",
+        body: JSON.stringify({ name: `اسمي ${ts}`, email: `named-${ts}@leader2027.test`, password: "Smoke!2345", role: "FIELD_WORKER" }),
+      }, owner);
+      const uid = JSON.parse(ct).user.id;
+      const loginRes = await fetch(BASE + "/api/auth/login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email: `named-${ts}@leader2027.test`, password: "Smoke!2345" }),
+      });
+      const raw = loginRes.headers.get("set-cookie") ?? "";
+      const userCookie = raw.match(/l27_session=([^;]+)/)?.[0];
+      const { res: pr } = await req(`/api/users/${uid}`, {
+        method: "PATCH",
+        body: JSON.stringify({ name: `اسمي الجديد ${ts}` }),
+      }, owner);
+      const { res: me } = await req("/api/stats", {}, userCookie);
+      check("VS3-9: تغيير الاسم لا يطرد الجلسة", cr.status === 201 && pr.status === 200 && me.status === 200, `create=${cr.status} patch=${pr.status} stats=${me.status}`);
+    }
+
+    // 10: تغيير الدور يلغي الجلسات القديمة — session_epoch (AC6)
+    {
+      const { res: cr, text: ct } = await req("/api/users", {
+        method: "POST",
+        body: JSON.stringify({ name: `دوري ${ts}`, email: `roled-${ts}@leader2027.test`, password: "Smoke!2345", role: "FIELD_COORDINATOR" }),
+      }, owner);
+      const uid = JSON.parse(ct).user.id;
+      const loginRes = await fetch(BASE + "/api/auth/login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email: `roled-${ts}@leader2027.test`, password: "Smoke!2345" }),
+      });
+      const raw = loginRes.headers.get("set-cookie") ?? "";
+      const oldCookie = raw.match(/l27_session=([^;]+)/)?.[0];
+      const { res: pr } = await req(`/api/users/${uid}`, {
+        method: "PATCH",
+        body: JSON.stringify({ role: "FIELD_WORKER" }),
+      }, owner);
+      const { res: me } = await req("/api/stats", {}, oldCookie);
+      check("VS3-10: تغيير الدور يُسقط الجلسة القديمة (401)", cr.status === 201 && pr.status === 200 && me.status === 401, `create=${cr.status} patch=${pr.status} stats=${me.status}`);
+    }
+
+    // 11: تعديل البريد/كلمة المرور مرفوض v1 (interpretation 3)
+    {
+      const { res: cr, text: ct } = await req("/api/users", {
+        method: "POST",
+        body: JSON.stringify({ name: `ثابت ${ts}`, email: `fixed-${ts}@leader2027.test`, password: "Smoke!2345", role: "VIEWER" }),
+      }, owner);
+      const uid = JSON.parse(ct).user.id;
+      const { res: er } = await req(`/api/users/${uid}`, {
+        method: "PATCH",
+        body: JSON.stringify({ email: "hack@x.test" }),
+      }, owner);
+      const { res: wr } = await req(`/api/users/${uid}`, {
+        method: "PATCH",
+        body: JSON.stringify({ password: "Hack!2345" }),
+      }, owner);
+      check("VS3-11: email/password غير قابلين للتعديل → 400", cr.status === 201 && er.status === 400 && wr.status === 400, `create=${cr.status} email=${er.status} pwd=${wr.status}`);
+    }
+
+    // 12: تحميلات فاسدة (AC8) → 400 + بريد مكرر → 409
+    {
+      const { res: bad } = await req("/api/cycles", {
+        method: "POST",
+        body: JSON.stringify({ name: `دورة فاسدة ${ts}`, election_date: "15-01-2027", status: "planned" }),
+      }, owner);
+      const { res: dup } = await req("/api/users", {
+        method: "POST",
+        body: JSON.stringify({ name: "مكرر", email: newUserEmail, password: DEMO_PASSWORD, role: "VIEWER" }),
+      }, owner);
+      check("VS3-12: تاريخ فاسد → 400 + بريد مكرر → 409", bad.status === 400 && dup.status === 409, `bad=${bad.status} dup=${dup.status}`);
+    }
+  }
+
+  // ==========================================================================
+  // VS4 — النواة الحيّة والأنوية الذرية: إثبات production على خادم حقيقي
+  // ==========================================================================
+
+  const ts = Date.now().toString().slice(-8);
+  const owner = await login("owner@leader2027.test");
+
+  // K1: الصورة الحيّة — كل الأركان مُركَّبة ونشطة
+  let kernelSnapshot = null;
+  {
+    const { res, text } = await req("/api/kernel", {}, owner);
+    kernelSnapshot = res.ok ? JSON.parse(text) : null;
+    const ok =
+      res.status === 200 &&
+      kernelSnapshot?.stats?.total === 8 &&
+      kernelSnapshot?.stats?.active === 8 &&
+      kernelSnapshot?.stats?.blocked === 0;
+    check(
+      "K1: /api/kernel — 8 أنوية كلها نشطة",
+      ok,
+      `status=${res.status} total=${kernelSnapshot?.stats?.total} active=${kernelSnapshot?.stats?.active}`,
+    );
+  }
+
+  // K2: كل قدرة مُشبَعة لها جهة مُعلَنة
+  {
+    const caps = kernelSnapshot?.capabilities ?? [];
+    const ok = caps.length >= 15 && caps.every((c) => c.providedBy && c.id.includes("."));
+    check("K2: القدرات المُشبَعة (>=15) كلها مُنسوبة لجهة", ok, `capabilities=${caps.length}`);
+  }
+
+  // K3: تعديل مَقبض في ركن واحد — والركن الآخر لا يتأثر
+  {
+    const before = kernelSnapshot?.cells?.find((c) => c.id === "people")?.config?.list_limit;
+    const otherBefore = kernelSnapshot?.cells?.find((c) => c.id === "field")?.config?.max_people_contacted;
+    const { res } = await req("/api/kernel", {
+      method: "PATCH",
+      body: JSON.stringify({ cell: "people", patch: { list_limit: 42 } }),
+    }, owner);
+    const { text } = await req("/api/kernel", {}, owner);
+    const after = JSON.parse(text);
+    const peopleLimit = after.cells.find((c) => c.id === "people")?.config?.list_limit;
+    const fieldValue = after.cells.find((c) => c.id === "field")?.config?.max_people_contacted;
+    check(
+      "K3: مَقبض ركن واحد تغيّر وحده (people.list_limit=42)",
+      res.status === 200 && peopleLimit === 42 && fieldValue === otherBefore && before !== 42,
+      `people=${peopleLimit} field=${fieldValue}`,
+    );
+    // إعادة الضبط
+    await req("/api/kernel", { method: "PATCH", body: JSON.stringify({ cell: "people", patch: { list_limit: before } }) }, owner);
+  }
+
+  // K4: مَقبض غير مُعلَن يُرفض — لا تعديل من خارج العقد
+  {
+    const { res } = await req("/api/kernel", {
+      method: "PATCH",
+      body: JSON.stringify({ cell: "people", patch: { backdoor: true } }),
+    }, owner);
+    check("K4: مَقبض غير مُعلَن → 400 (عقد الأنوية محصَّن)", res.status === 400, `status=${res.status}`);
+  }
+
+  // K5: المتصفح بلا صلاحية لا يعدّل مَقابض الأنوية
+  {
+    const { res } = await req("/api/kernel", {
+      method: "PATCH",
+      body: JSON.stringify({ cell: "people", patch: { list_limit: 5 } }),
+    }, viewer);
+    check("K5: Viewer على PATCH /api/kernel → 403", res.status === 403, `status=${res.status}`);
+  }
+
+  // K6: كتالوج الوكلاء يصف الأدوات ومستوى خطورتها
+  {
+    const { res, text } = await req("/api/kernel/cells", {}, owner);
+    const data = res.ok ? JSON.parse(text) : null;
+    const createTool = data?.tools?.find((t) => t.name === "people.create");
+    const ok = data?.count >= 20 && createTool?.risk === "write" && createTool?.requiresApprovalForAgents === true;
+    check("K6: كتالوج الوكلاء — أدوات الكتابة تتطلب موافقة", ok, `tools=${data?.count} create=${createTool?.risk}`);
+  }
+
+  // K7: وكيل يطلب كتابة ⇒ معلَّق بلا تنفيذ (بوابة 2025/2027)
+  let kernelApprovalId = "";
+  {
+    const { res, text } = await req("/api/kernel/actions", {
+      method: "POST",
+      headers: { "x-l27-agent": "smoke-bot" },
+      body: JSON.stringify({
+        action: "tool",
+        tool: "people.create",
+        input: { full_name: `اسم وكيل ${ts}`, phone: "01099999999", region_id: "region-giza" },
+      }),
+    }, owner);
+    const data = JSON.parse(text);
+    kernelApprovalId = data.approvalId ?? "";
+    check(
+      "K7: وكيل + أداة كتابة ⇒ pending_approval (لا تنفيذ)",
+      res.status === 202 && data.status === "pending_approval" && kernelApprovalId.startsWith("apr-"),
+      `status=${res.status} approval=${kernelApprovalId}`,
+    );
+  }
+
+  // K8: الطلب المعلَّق يظهر في صورة النواة
+  {
+    const { text } = await req("/api/kernel", {}, owner);
+    const pending = JSON.parse(text)?.approvals?.pending ?? 0;
+    check("K8: الطلب المعلَّق ظاهر في /api/kernel", pending >= 1, `pending=${pending}`);
+  }
+
+  // K9: غير المُخوَّل لا يعتمد الموافقات
+  {
+    const { res } = await req("/api/kernel/actions", {
+      method: "POST",
+      body: JSON.stringify({ action: "grant", approval_id: kernelApprovalId }),
+    }, viewer);
+    check("K9: Viewer يعتمد موافقة → 403", res.status === 403, `status=${res.status}`);
+  }
+
+  // K10: الاعتماد البشري ثم التنفيذ بسلطة المُعتمِد (تفويض لا تصعيد)
+  {
+    const { res: grant, text: grantText } = await req("/api/kernel/actions", {
+      method: "POST",
+      body: JSON.stringify({ action: "grant", approval_id: kernelApprovalId, note: "اعتماد smoke" }),
+    }, owner);
+    const granted = JSON.parse(grantText)?.approval;
+    const { res: run, text: runText } = await req("/api/kernel/actions", {
+      method: "POST",
+      headers: { "x-l27-agent": "smoke-bot" },
+      body: JSON.stringify({
+        action: "tool",
+        tool: "people.create",
+        input: { full_name: `اسم وكيل مُعتمد ${ts}`, phone: "01099999998", region_id: "region-giza" },
+        approval_id: kernelApprovalId,
+      }),
+    }, owner);
+    const ran = JSON.parse(runText);
+    check(
+      "K10: اعتماد بشري ⇒ الوكيل ينفّذ بسلطة المُعتمِد",
+      grant.status === 200 && granted?.state === "granted" && grant.status === 200 && run.status === 200 && ran.status === "ok",
+      `grant=${granted?.state} run=${ran.status}`,
+    );
+  }
+
+  // K11: التصريح لاستخدام واحد فقط
+  {
+    const { text } = await req("/api/kernel/actions", {
+      method: "POST",
+      headers: { "x-l27-agent": "smoke-bot" },
+      body: JSON.stringify({
+        action: "tool",
+        tool: "people.create",
+        input: { full_name: `محاولة ثانية ${ts}`, phone: "01099999997" },
+        approval_id: kernelApprovalId,
+      }),
+    }, owner);
+    const data = JSON.parse(text);
+    check("K11: إعادة استخدام التصريح ⇒ مرفوض (single-use)", data.status === "denied", `status=${data.status}`);
+  }
+
+  // K12: سلسلة المساءلة مكتوبة في سجل التدقيق
+  {
+    const { text } = await req("/api/kernel/actions", {
+      method: "POST",
+      body: JSON.stringify({ action: "tool", tool: "audit.list", input: { limit: 50 } }),
+    }, owner);
+    const events = JSON.parse(text)?.value?.events ?? [];
+    const actions = events.map((e) => e.action);
+    const ok = actions.includes("ai.approval.granted") && actions.includes("person.create");
+    check(
+      "K12: التفويض والتغيير مُسجَّلان في التدقيق",
+      ok,
+      `granted=${actions.includes("ai.approval.granted")} created=${actions.includes("person.create")}`,
+    );
+  }
+
+  // K13: النواة الحيّة — المؤشرات تُبطَل بالحدث وتُعاد حسابها
+  {
+    await req("/api/kernel/actions", {
+      method: "POST",
+      body: JSON.stringify({ action: "tool", tool: "reporting.kpis", input: {} }),
+    }, owner);
+    const { text: cachedText } = await req("/api/kernel/actions", {
+      method: "POST",
+      body: JSON.stringify({ action: "tool", tool: "reporting.kpis", input: {} }),
+    }, owner);
+    const cached = JSON.parse(cachedText)?.value;
+
+    // تغيير في ركن آخر ⇒ حدث ⇒ إبطال
+    await req("/api/kernel/actions", {
+      method: "POST",
+      body: JSON.stringify({
+        action: "tool",
+        tool: "people.create",
+        input: { full_name: `مؤثر على المؤشرات ${ts}`, phone: "01099999996", region_id: "region-giza" },
+      }),
+    }, owner);
+    const { text: freshText } = await req("/api/kernel/actions", {
+      method: "POST",
+      body: JSON.stringify({ action: "tool", tool: "reporting.kpis", input: {} }),
+    }, owner);
+    const fresh = JSON.parse(freshText)?.value;
+
+    check(
+      "K13: حدث من ركن آخر يُبطل ذاكرة المؤشرات ⇒ رقم محدَّث",
+      cached?.cached === true && fresh?.cached === false && fresh?.people === cached?.people + 1,
+      `cached=${cached?.cached} people ${cached?.people}→${fresh?.people}`,
+    );
+  }
+
+  // K14: شاشة النواة الحيّة تُقدَّم
+  {
+    const { res, text } = await req("/kernel", {}, owner);
+    check(
+      "K14: شاشة /kernel تعرض الأنوية ومَقابضها",
+      res.status === 200 && text.includes("النواة") && text.includes("people"),
+      `status=${res.status}`,
+    );
+  }
+
+  // ── M: بوابة الوكلاء MCP (VS5/V5.1) ─────────────────────────────────────
+  // M1: initialize ⇒ serverInfo + ترويسة جلسة
+  {
+    const { res, text } = await req(
+      "/api/mcp",
+      {
+        method: "POST",
+        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: {} }),
+        headers: { "x-l27-agent": "smoke-agent" },
+      },
+      owner,
+    );
+    const body = JSON.parse(text);
+    check(
+      "M1: POST /api/mcp initialize ⇒ serverInfo + Mcp-Session-Id",
+      res.status === 200 &&
+        body.result?.serverInfo?.name === "leader2027-agent-gateway" &&
+        !!res.headers.get("mcp-session-id"),
+      `status=${res.status}`,
+    );
+  }
+
+  // M2: tools/list ⇒ كل الأدوات المُعلَنة مع وسم الكتابة
+  {
+    const { res, text } = await req(
+      "/api/mcp",
+      { method: "POST", body: JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/list" }) },
+      owner,
+    );
+    const tools = JSON.parse(text).result?.tools ?? [];
+    check(
+      "M2: tools/list ⇒ 27 أداة مع وسم «يتطلب موافقة» للكتابة",
+      res.status === 200 &&
+        tools.length === 27 &&
+        tools.some((t) => t.name === "people.create" && t.annotations?.requiresApproval),
+      `tools=${tools.length}`,
+    );
+  }
+
+  // M3: محاولة كتابة عبر MCP ⇒ مرفوضة قبل التنفيذ
+  const mcpSession = "mcp-smoke-1";
+  {
+    const { res, text } = await req(
+      "/api/mcp",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 3,
+          method: "tools/call",
+          params: { name: "people.create", arguments: { full_name: "محاولة smoke", source: "ميداني" } },
+        }),
+        headers: { "x-l27-agent": "smoke-agent", "mcp-session-id": mcpSession },
+      },
+      owner,
+    );
+    const body = JSON.parse(text);
+    check(
+      "M3: tools/call كتابة ⇒ مرفوضة (isError) قبل التنفيذ",
+      res.status === 200 && body.result?.isError === true && body.result?.structuredContent?.status === "denied",
+      `status=${res.status}`,
+    );
+  }
+
+  // M4: محاولة الكتابة موثّقة في التدقيق (Replay ممكن)
+  {
+    const { res, text } = await req(
+      "/api/kernel/actions",
+      {
+        method: "POST",
+        body: JSON.stringify({ action: "tool", tool: "audit.list", input: { limit: 50 } }),
+      },
+      owner,
+    );
+    const body = JSON.parse(text);
+    const events = body?.value?.events ?? [];
+    const denied = events.find(
+      (e) => e.action === "mcp.write.denied" && e.entity_id === mcpSession && e.meta?.tool === "people.create",
+    );
+    check(
+      "M4: mcp.write.denied مُسجَّل بمعرّف الجلسة (Replay)",
+      res.status === 200 && !!denied,
+      `found=${!!denied}`,
+    );
+  }
+
+  // ── T: المهام الدائمة GEN-3 ───────────────────────────────────────────────
+  const manager = await login("manager@leader2027.test");
+
+  // T1: إنشاء مهمة ⇒ 201 والتفاصيل ⇒ 200 مع سلسلة سليمة
+  let smokeTaskId = "";
+  {
+    const { res, text } = await req(
+      "/api/tasks",
+      { method: "POST", body: JSON.stringify({ goal: `مهمة smoke ${ts}` }) },
+      manager,
+    );
+    const body = JSON.parse(text);
+    smokeTaskId = body.task?.id ?? "";
+    const detail = await req(`/api/tasks/${smokeTaskId}`, {}, manager);
+    const detailBody = JSON.parse(detail.text);
+    check(
+      "T1: POST /api/tasks ⇒ 201 والتفاصيل بسلسلة سليمة",
+      res.status === 201 &&
+        body.task?.status === "CREATED" &&
+        detail.res.status === 200 &&
+        detailBody.chainValid === true &&
+        detailBody.checkpoints?.length === 1,
+      `create=${res.status} chainValid=${detailBody.chainValid}`,
+    );
+  }
+
+  // T2: الحدود — بلا جلسة 401 · مشاهد 403 على الإنشاء · منسق ينشئ
+  {
+    const anon = await req("/api/tasks");
+    const forbidden = await req(
+      "/api/tasks",
+      { method: "POST", body: JSON.stringify({ goal: "ممنوعة" }) },
+      viewer,
+    );
+    const coordCreate = await req(
+      "/api/tasks",
+      { method: "POST", body: JSON.stringify({ goal: `مهمة منسق ${ts}` }) },
+      coord,
+    );
+    check(
+      "T2: بلا جلسة ⇒ 401 · مشاهد ⇒ 403 · منسق ⇒ 201",
+      anon.res.status === 401 && forbidden.res.status === 403 && coordCreate.res.status === 201,
+      `anon=${anon.res.status} viewer=${forbidden.res.status} coord=${coordCreate.res.status}`,
+    );
+  }
+
+  // T3: الحارس البنيوي حيّ — طلب موافقة من CREATED ⇒ 409 (قبل التخطيط)
+  {
+    const { res, text } = await req(
+      `/api/tasks/${smokeTaskId}/approvals`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          stepId: "pay",
+          operation: "NEXA_A_PAID",
+          costCap: 5,
+          proposal: { operation: "NEXA_A_PAID", costCap: 5 },
+        }),
+      },
+      manager,
+    );
+    check(
+      "T3: طلب موافقة قبل التخطيط ⇒ 409 (transition.illegal)",
+      res.status === 409 && !!JSON.parse(text).errors?.["task.transition.illegal"],
+      `status=${res.status}`,
+    );
+  }
+
+  // ── T4: المنسّق HTTP V5.3 حيًّا ─────────────────────────────────────────────
+  // T4.1: مطالبة ⇒ claimed بهوية الجلسة
+  let smokeLeaseId = "";
+  {
+    const { res, text } = await req(
+      "/api/orchestrate/claims",
+      { method: "POST", body: JSON.stringify({ taskId: smokeTaskId }) },
+      coord,
+    );
+    const body = JSON.parse(text);
+    smokeLeaseId = body.lease?.id ?? "";
+    check(
+      "T4.1: POST /api/orchestrate/claims ⇒ 200 claimed",
+      res.status === 200 && body.status === "claimed" && (body.lease?.workerId ?? "").startsWith("u:"),
+      `status=${res.status} holder=${body.lease?.workerId}`,
+    );
+  }
+
+  // T4.2: منافس ⇒ denied داخل 200 (لا 409)
+  {
+    const { res, text } = await req(
+      "/api/orchestrate/claims",
+      { method: "POST", body: JSON.stringify({ taskId: smokeTaskId }) },
+      manager,
+    );
+    const body = JSON.parse(text);
+    check(
+      "T4.2: مطالبة منافسة ⇒ 200 denied (lease.held)",
+      res.status === 200 && body.status === "denied" && body.code === "lease.held",
+      `status=${res.status} code=${body.code}`,
+    );
+  }
+
+  // T4.3: نبضة المالك ⇒ ok
+  {
+    const { res, text } = await req(
+      "/api/orchestrate/heartbeats",
+      { method: "POST", body: JSON.stringify({ leaseId: smokeLeaseId }) },
+      coord,
+    );
+    check(
+      "T4.3: POST /api/orchestrate/heartbeats ⇒ 200 ok",
+      res.status === 200 && JSON.parse(text).status === "ok",
+      `status=${res.status}`,
+    );
+  }
+
+  // T4.4: الحالة للمشاهد ⇒ 200 مع الملكية والتقدم
+  {
+    const { res, text } = await req(`/api/orchestrate/tasks/${smokeTaskId}/status`, {}, viewer);
+    const body = JSON.parse(text);
+    check(
+      "T4.4: GET status ⇒ 200 مع lease وتقدم",
+      res.status === 200 &&
+        (body.lease?.workerId ?? "").startsWith("u:") &&
+        body.lease?.reclaimable === false &&
+        body.progress?.total === 0,
+      `status=${res.status} holder=${body.lease?.workerId}`,
+    );
+  }
+
+  // T4.5: تسليم ثم تسليم ⇒ claimed للثاني (حقبة أعلى)
+  {
+    const rel = await req(
+      "/api/orchestrate/releases",
+      { method: "POST", body: JSON.stringify({ taskId: smokeTaskId }) },
+      coord,
+    );
+    const retry = await req(
+      "/api/orchestrate/claims",
+      { method: "POST", body: JSON.stringify({ taskId: smokeTaskId }) },
+      manager,
+    );
+    const retryBody = JSON.parse(retry.text);
+    check(
+      "T4.5: تسليم ⇒ released ثم handoff بحقبة 2",
+      rel.res.status === 200 &&
+        JSON.parse(rel.text).status === "released" &&
+        retryBody.status === "claimed" &&
+        retryBody.lease?.fencingToken === 2,
+      `release=${rel.res.status} fencing=${retryBody.lease?.fencingToken}`,
+    );
+  }
+
+  // T4.6: بلا جلسة ⇒ 401
+  {
+    const anon = await req("/api/orchestrate/claims", {
+      method: "POST",
+      body: JSON.stringify({ taskId: smokeTaskId }),
+    });
+    check("T4.6: مطالبة بلا جلسة ⇒ 401", anon.res.status === 401, `status=${anon.res.status}`);
+  }
+
+  // ملخص
+  let failed = 0;
+  for (const r of results) {
+    if (!r.pass) failed += 1;
+    console.log(`${r.pass ? "PASS" : "FAIL"}  ${r.name}${r.detail ? `  [${r.detail}]` : ""}`);
+  }
+  console.log(`\nSMOKE RESULT: ${results.length - failed}/${results.length} passed`);
+  if (failed > 0) process.exit(1);
+}
+
+main().catch((e) => {
+  console.error("SMOKE CRASHED:", e.message);
+  process.exit(1);
+});

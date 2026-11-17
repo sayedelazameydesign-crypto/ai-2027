@@ -1,0 +1,372 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Non-sensitive configuration only (GitHub Variables). Secrets never live here.
+  APP_ENV: ${{ vars.APP_ENV || 'ci' }}
+  NODE_VERSION: ${{ vars.NODE_VERSION || '20' }}
+  LLM_PRIMARY: ${{ vars.LLM_PRIMARY || 'gemini' }}
+
+jobs:
+  quality:
+    name: lint · typecheck · test · build · audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      # Full history: the map staleness check asks whether meta.commit is an ancestor of
+      # HEAD, and a shallow clone cannot answer that (it would warn on every run).
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Workflow + secrets contract
+        run: node scripts/check-workflows.js
+
+      - name: Contract checker self-test
+        run: node scripts/check-workflows.js --self-test
+
+      - name: Setup checker tests
+        run: node scripts/test-setup-github.js
+
+      - name: WAAPI contact probe tests (offline only)
+        run: node scripts/test-waapi-contact-status.js
+
+      - name: Publish contract (what reaches the public site)
+        run: node scripts/test-publish-contract.js
+
+      - name: Silent-gate guard (a gate that cannot fail is not a gate)
+        run: node scripts/test-silent-gates.js
+
+      - name: Clinic data schema + release gate
+        run: |
+          node scripts/test-clinic-schema.js
+          node scripts/clinic-ready.js
+
+      - name: Rehearsal checklist is well formed and holds no secret
+        run: node scripts/check-rehearsal.js
+
+      # The pilot runbook and the growth playbook are acted on by the owner, so drift in
+      # them is a real defect: this keeps them tied to the rehearsal checklist, the
+      # printed sheet and the claims we are allowed to make.
+      - name: Pilot + growth documents agree with the rehearsal gate
+        run: node scripts/check-pilot-docs.js
+
+      # The ledger said 5 gaps were open, docs/map/ARCHITECTURE.md said 3, and the ledger's own
+      # note named a third set (all closed). A human plans against those pages, so drift there is
+      # a defect, not a typo. The gate derives the open set from the records, in both directions.
+      - name: Gap documents agree with the ledger (single source of truth)
+        run: |
+          node scripts/test-gap-docs.js
+          node scripts/check-gap-docs.js
+
+      # The protocol documents are the workflow every agent is held to; this proves they exist,
+      # keep their anchors, stay linked from AGENTS.md, and the error register keeps regression
+      # references — and that the gate itself can fail.
+      - name: Agent operating protocol (docs, wiring, error register)
+        run: |
+          node scripts/check-agent-protocol.js --self-test
+          node scripts/check-agent-protocol.js
+
+
+      - name: actionlint (pinned; the runner image does not ship it)
+        env:
+          ACTIONLINT_VERSION: 1.7.7
+        run: |
+          # The image has shellcheck but no actionlint, so this step used to warn and skip —
+          # a gate that never ran (gap G13). Fetch the pinned release and lint; a download
+          # that cannot be verified fails the job rather than passing silently.
+          set -uo pipefail
+          if ! command -v actionlint >/dev/null 2>&1; then
+            base="https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}"
+            asset="actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+            if curl -sSfL --retry 3 --retry-all-errors --max-time 120 -o /tmp/actionlint.tgz "${base}/${asset}" \
+               && tar -xzf /tmp/actionlint.tgz -C /tmp actionlint \
+               && /tmp/actionlint --version; then
+              install -m 0755 /tmp/actionlint /usr/local/bin/actionlint
+            else
+              echo "::error title=actionlint unavailable::Could not fetch actionlint ${ACTIONLINT_VERSION}. The workflow lint did not run; fix the download instead of accepting a green build without it."
+              exit 1
+            fi
+          fi
+          # The image already ships the shell linter that actionlint delegates to.
+          echo "::notice title=linters::actionlint=$(actionlint --version) shellcheck=$(shellcheck --version 2>/dev/null | sed -n 's/^version: //p')"
+          # Capture the report: the raw job log is not always reachable, and a gate whose
+          # reason is invisible is a gate people learn to ignore.
+          status=0
+          actionlint -color 2>&1 | tee /tmp/actionlint.txt || status=1
+          if [ "$status" != '0' ]; then
+            # Always attach the reason: an unreadable failure is an ignored failure.
+            reason=$(tr '\n' ' ' < /tmp/actionlint.txt | cut -c1-800)
+            echo "::error title=actionlint failed::${reason:-no output}"""
+          else
+            echo "::notice title=actionlint::clean"
+          fi
+          exit "$status"
+
+      - name: Syntax gate (JS)
+        run: |
+          node --check app.js
+          node -e "['Code.gs','Staff.gs','Llm.gs','Settings.gs'].forEach((f)=>new Function(require('fs').readFileSync(f,'utf8'))); console.log('Apps Script sources parse');"
+
+      - name: Python syntax gate
+        run: python3 -m py_compile scripts/build-gas-package.py scripts/preview.py
+
+      # Every script is parsed, not just the three the Apps Script gate knows about.
+      # scripts/env.js — the startup environment contract — sat unparsable for a while because
+      # nothing ever imported it. A missing comma is the cheapest defect there is; catching it
+      # late is the only unacceptable outcome.
+      - name: Syntax gate (every script under scripts/)
+        run: node scripts/check-script-syntax.js
+
+      # Shape, not behaviour: a pure function that starts reading Script Properties, a
+      # mutation that forgets the lock, or a model call creeping into the booking path will
+      # not fail any behavioural test — it fails in production, months later.
+      - name: Architecture boundaries hold
+        run: |
+          node scripts/check-architecture-boundaries.js --self-test
+          node scripts/check-architecture-boundaries.js
+
+      # A threat model whose references do not resolve is fiction with a table. This gate
+      # requires every file:line to exist and every "controlled" row to quote a real test.
+      - name: Threat-model citations resolve and are backed by tests
+        run: node scripts/check-audit-doc.js
+
+      # The provider probe decides whether to call a provider at all; its own suite proves the
+      # disabled/enabled switch and every answer shape, offline.
+      - name: Provider probe (switch, classification, diagnostics)
+        run: node scripts/test-llm-smoke-probe.js
+
+      # Automatic repair: detect → classify → analyse → propose → refuse when unsafe.
+      - name: CI error scanner (classification self-test)
+        run: node scripts/ci-error-scanner.js --self-test
+
+      - name: Root-cause analyser (audits model claims against the repo)
+        run: node scripts/ai-root-cause.js --self-test
+
+      - name: Patch guard (every unsafe patch shape is refused)
+        run: node scripts/ai-patch-guard.js --self-test
+
+      - name: Repair engine (fails safe on every unsafe input)
+        run: node scripts/ai-repair.js --self-test
+
+      - name: Repair pipeline seam + workflow privilege boundaries
+        run: node scripts/test-ai-repair.js
+
+      # The execution-logic page cites test assertions by name; a renamed assertion would
+      # otherwise turn the table into decoration.
+      - name: Execution-logic citations exist in the tests
+        run: node scripts/check-doc-evidence.js
+
+      - name: Settings parity (live catalog vs demo mirror)
+        run: node scripts/check-settings-parity.js
+
+      - name: Go-live readiness report (offline, must be self-consistent)
+        run: node scripts/test-go-live-check.js
+
+      # An older bundle may not ship WhatsApp.gs at all: the whole backend suite must still pass,
+      # which is what proves approval and cancellation never depend on the adapter.
+      - name: Backend simulation without the WhatsApp adapter
+        run: |
+          CELIA_OMIT_WHATSAPP_GS=1 node scripts/test-gas-simulated.js
+
+      - name: Rehearsal bundle contract (build, checklist, document agree)
+        run: node scripts/test-rehearsal-files.js
+
+      - name: Backend simulation tests
+        run: node scripts/test-gas-simulated.js
+
+      - name: Operational slot decision model (offline only)
+        run: node scripts/test-operational-slot-model.js
+
+      - name: Cairo slot decision model (local only)
+        run: node scripts/test-cairo-slot-model.js
+
+      - name: Operational slot fault specification (in-memory only)
+        run: node scripts/test-operational-slot-faults.js
+
+      - name: Trial ledger shape (synthetic only)
+        run: node scripts/test-trial-ledger-model.js
+
+      - name: Local path refinement prototype (not GAS)
+        run: node scripts/test-path-refinement-model.js
+
+      - name: Trial reconciliation evidence model (synthetic only)
+        run: node scripts/test-trial-reconciliation-model.js
+
+      - name: Tag safety workflow contract (static only)
+        run: node scripts/test-tag-safety-workflow.js
+
+      - name: Status path inventory self-test (not a readiness gate)
+        run: node scripts/test-path-parity-inventory.js
+
+      - name: LLM adapter + config tests
+        run: node scripts/test-llm-adapter.js
+
+      # WhatsApp is off by default: this suite proves off/dry-run perform no network call and
+      # that a notification failure can never reach the booking path.
+      - name: WhatsApp adapter (off / dry-run, no network)
+        run: node scripts/test-whatsapp-adapter.js
+
+      # Privacy erasure, retention and the health payload. Offline; it fails (never skips)
+      # when a piece it depends on disappears.
+      - name: Privacy, retention and health
+        run: node scripts/test-privacy-health.js
+
+      - name: PWA install contract
+        run: node scripts/test-pwa.js
+
+      - name: Google bridge (offline, local adapter)
+        run: |
+          node scripts/test-google-bridge.js
+          node scripts/google/selftest.js --local
+
+      - name: UI smoke test (jsdom)
+        timeout-minutes: 10
+        # The browser tests now fail (not skip) when jsdom is missing; this step makes the
+        # install itself a hard prerequisite so coverage cannot vanish silently.
+        run: |
+          set -euo pipefail
+          # Locked install, not a floating `npm i jsdom@25`: the gate must fail for a
+          # repository reason, never because a registry tag moved. package-lock.json is
+          # committed; node_modules/ stays ignored.
+          npm ci --no-audit --no-fund
+          node -e "require.resolve('jsdom'); console.log('jsdom present', require('jsdom/package.json').version)"
+          node scripts/test-ui-smoke.js
+          node scripts/test-published-clinic.js
+          node scripts/test-demo-availability.js
+
+      # Runs here, not earlier: the document must record the same measurement a developer
+      # sees, which means the browser gate has to be able to run. --require-jsdom turns a
+      # missing dependency into a failure instead of a quietly different table.
+      - name: Readiness document matches the ledger and a real run
+        run: |
+          export NODE_PATH="$PWD/node_modules"
+          node scripts/readiness-report.js --offline --require-jsdom
+
+      # The check above must not depend on whether the runner has network: a document written
+      # offline has to pass on a networked machine, and real drift must still fail.
+      - name: Readiness check ignores network wording, not real drift
+        run: node scripts/test-readiness-report.js
+
+      - name: Build Apps Script bundle
+        run: python3 scripts/build-gas-package.py
+
+      - name: Artifact leak guard
+        run: |
+          # Built bundles must not contain secret-shaped values. Header *names*
+          # such as x-goog-api-key are code, not credentials, so the scan looks
+          # for values (key formats and ASSIGNMENT=value shapes) instead.
+          node scripts/scan-secrets.js gas
+          echo "artifact leak guard OK"
+
+      - name: Bundle self-containment guard
+        run: |
+          test -f gas/Index.html && test -f gas/Fonts.html && test -f gas/Llm.gs && test -f gas/Settings.gs
+          if grep -rn "http://localhost\|127.0.0.1\|fonts.googleapis\|fonts.gstatic\|<script src=\"\./app\.js\"" gas/Index.html; then
+            echo "::error::GAS bundle must not reference local preview assets or external font CDNs."
+            exit 1
+          fi
+
+      - name: Config contract
+        run: node scripts/check-config.js
+
+      - name: Zero-Card ledger is valid JSON
+        run: node -e "const d=require('./docs/free-tiers.json'); if(!Array.isArray(d.services)||!d.services.length) throw new Error('services missing'); d.services.forEach(s=>{if(!('card_required' in s)) throw new Error('card_required missing for '+s.service)}); console.log('free-tiers.json OK:', d.services.length, 'services');"
+
+      # The rotation clock docs/secrets.md §6 describes but nothing ever checked. It reads
+      # names and dates only, never a value, and it can only fail after someone has recorded
+      # a rotation date: a secret that was never set is reported, not treated as overdue.
+      # No `|| echo ::warning` here — that would hide a real overdue rotation.
+      - name: Secret rotation window
+        run: |
+          node scripts/rotation-reminders.js --self-test
+          node scripts/rotation-reminders.js --warn-days 30 --max-days 45
+
+      - name: Secret scan (built-in, always on)
+        run: node scripts/scan-secrets.js
+
+      - name: Secret scan (gitleaks, pinned; fails if it cannot run)
+        env:
+          GITLEAKS_VERSION: 8.30.1
+        run: |
+          set -uo pipefail
+          base="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}"
+          asset="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          binary_ok=0
+          if curl -sSfL --retry 3 --retry-all-errors --max-time 120 -o /tmp/gitleaks.tgz "${base}/${asset}" \
+             && tar -xzf /tmp/gitleaks.tgz -C /tmp gitleaks \
+             && /tmp/gitleaks version; then
+            binary_ok=1
+          fi
+          if [ "$binary_ok" != '1' ]; then
+            # Same rule as actionlint: a gate that cannot run is reported, not passed.
+            echo "::error title=gitleaks unavailable::The second secret scanner did not run (release host unreachable). The built-in scanner passed, but coverage shrank silently."
+            exit 1
+          fi
+          # Exit 0 here: the decision is made from the JSON report below, so a finding
+          # becomes a visible annotation instead of a silent "exit code 1".
+          /tmp/gitleaks dir . --config .gitleaks.toml --no-banner --redact \
+            --report-format json --report-path /tmp/leaks.json --exit-code 0 || true
+          # A here-doc keeps the JavaScript readable and out of shell quoting entirely;
+          # the single-quoted variant tripped SC2016 (template literals in single quotes).
+          node --input-type=commonjs - <<'JS'
+          const fs = require("node:fs");
+          let findings = [];
+          try { findings = JSON.parse(fs.readFileSync("/tmp/leaks.json", "utf8")) || []; }
+          catch (error) { console.log(`::error::gitleaks produced no readable report: ${error.message}`); process.exit(1); }
+          for (const finding of findings.slice(0, 20)) {
+            const file = finding.File || "?";
+            const line = finding.StartLine || 0;
+            console.log(`::error file=${file},line=${line}::${finding.RuleID} — ${finding.Description || "secret detected"}`);
+          }
+          if (findings.length) {
+            console.log(`gitleaks: ${findings.length} finding(s) in the shipped tree.`);
+            process.exit(1);
+          }
+          console.log("gitleaks: 0 findings in the shipped tree.");
+          JS
+
+
+      - name: Dependency audit
+        run: |
+          if [ -f package-lock.json ]; then npm audit --audit-level=high; else echo "No npm manifest: zero runtime dependencies by design — skipping audit."; fi
+
+  live-llm-smoke:
+    # Never pass the provider credential to checked-out PR code, including same-repo PRs.
+    # Run only for main pushes or a dispatch on main, and only with explicit opt-in.
+    name: live LLM smoke (optional)
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main' && vars.LLM_SMOKE_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Probe the configured provider
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          LLM_MODEL: ${{ vars.LLM_PRIMARY == 'groq' && 'llama-3.3-70b-versatile' || 'gemini-2.5-flash' }}
+          LLM_SMOKE_ENABLED: ${{ vars.LLM_SMOKE_ENABLED || 'false' }}
+        run: node scripts/live-llm-smoke.js

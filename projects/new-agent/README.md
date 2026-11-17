@@ -1,0 +1,40 @@
+
+# Celia AI Agent v2.5 (Production Ready)
+
+Celia هو وكيل ذكاء اصطناعي (Autonomous Agent) متكامل لإدارة وتنفيذ المهام البرمجية والإبداعية والتحليلية بشكل آلي. يتميز بواجهة Neumorphism عصرية ودعم كامل للغة العربية.
+
+## 🚀 الميزات الرئيسية
+- **Agent Engine**: تنفيذ مهام برمجية وتحليلية باستخدام Gemini 3 Pro.
+- **Celia Live**: تواصل صوتي لحظي (Native Audio) وتفريغ نصي مباشر.
+- **Celia Video & Vision**: توليد فيديو (Veo 3.1) وصور (Gemini Image) بجودة عالية.
+- **Maps Grounding**: بحث جغرافي دقيق باستخدام Google Maps.
+- **Offline Simulation**: نمط المحاكاة المحلية عند تعذر الاتصال بـ API الخلفي.
+
+## 🛠 Tech Stack
+- **Frontend**: React 19, Tailwind CSS, Google GenAI SDK.
+- **Backend**: FastAPI (Python), SQLite, Google GenAI Python SDK.
+- **DevOps**: Docker & Docker Compose, Persistent Volumes.
+
+## 📦 التثبيت والتشغيل
+
+### المتطلبات
+- Docker & Docker Compose
+- مفتاح API من [Google AI Studio](https://aistudio.google.com/)
+
+### الخطوات
+1. قم بنسخ المستودع.
+2. أنشئ ملف `.env` وأضف مفتاحك: `API_KEY=your_key_here`.
+3. قم بتشغيل الحاويات:
+   ```bash
+   docker-compose up --build -d
+   ```
+4. افتح المتصفح على `http://localhost:3000`.
+
+## 📂 هيكل المشروع
+- `/api`: خدمات الـ FastAPI وقاعدة البيانات.
+- `/agent`: محرك الذكاء الاصطناعي (Worker & Client).
+- `/src`: واجهة المستخدم (React Components & Services).
+- `/jobs`: المجلد الذي يحتوي على مخرجات المهام (Artifacts).
+
+## 📄 الترخيص
+هذا المشروع مرخص بموجب رخصة MIT.

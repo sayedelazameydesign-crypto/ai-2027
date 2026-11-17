@@ -1,0 +1,35 @@
+# Ultimate BitNet - Required Dependencies
+# التبعيات المطلوبة لتشغيل النموذج
+
+# PyTorch (Core)
+torch>=2.0.0
+torchvision>=0.15.0
+
+# Model Utilities
+safetensors>=0.3.0
+
+# Training & Evaluation
+scikit-learn>=1.0.0
+numpy>=1.21.0
+
+# Progress & Logging
+tqdm>=4.60.0
+
+# Monitoring (Optional)
+wandb>=0.15.0
+
+# Additional Utilities
+Pillow>=9.0.0  # لمعالجة الصور
+matplotlib>=3.5.0  # للرسوم البيانية (اختياري)
+
+# Web Search & Scraping
+requests>=2.28.0  # للبحث في الويب
+beautifulsoup4>=4.11.0  # لتحليل HTML
+lxml>=4.9.0  # محلل HTML سريع
+
+# Web Interface
+gradio>=4.0.0  # للواجهة الويب التفاعلية
+
+# Development (Optional)
+jupyter>=1.0.0  # للتجربة في Notebooks
+ipywidgets>=7.6.0  # لـ Progress bars في Jupyter

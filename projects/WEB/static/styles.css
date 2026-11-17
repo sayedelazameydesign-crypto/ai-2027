@@ -1,0 +1,1736 @@
+/* AI Providers System 2026 - Neural Quantum Interface */
+/* © 2026 SAYED_ELAZAMEY - All Rights Reserved */
+
+/* CSS Custom Properties - 2026 Neural Theme */
+:root {
+    /* Neural Color Palette */
+    --neural-primary: #0066ff;
+    --neural-secondary: #00d4ff;
+    --neural-accent: #ff6b35;
+    --neural-success: #00ff88;
+    --neural-warning: #ffaa00;
+    --neural-error: #ff3366;
+    
+    /* Quantum Gradients */
+    --quantum-gradient-1: linear-gradient(135deg, #0066ff 0%, #00d4ff 50%, #8b5cf6 100%);
+    --quantum-gradient-2: linear-gradient(45deg, #ff6b35 0%, #f093fb 50%, #f5576c 100%);
+    --quantum-gradient-3: linear-gradient(225deg, #00ff88 0%, #00d4ff 50%, #0066ff 100%);
+    
+    /* Neural Surfaces */
+    --neural-bg-primary: #0a0a0f;
+    --neural-bg-secondary: #1a1a2e;
+    --neural-bg-tertiary: #16213e;
+    --neural-surface: rgba(255, 255, 255, 0.05);
+    --neural-surface-hover: rgba(255, 255, 255, 0.1);
+    --neural-glass: rgba(255, 255, 255, 0.03);
+    
+    /* Text Colors */
+    --neural-text-primary: #ffffff;
+    --neural-text-secondary: #b8c5d6;
+    --neural-text-muted: #7c8db5;
+    --neural-text-accent: #00d4ff;
+    
+    /* Shadows & Glows */
+    --neural-shadow-sm: 0 2px 8px rgba(0, 102, 255, 0.1);
+    --neural-shadow-md: 0 8px 32px rgba(0, 102, 255, 0.15);
+    --neural-shadow-lg: 0 16px 64px rgba(0, 102, 255, 0.2);
+    --neural-glow: 0 0 20px rgba(0, 212, 255, 0.3);
+    --quantum-glow: 0 0 40px rgba(139, 92, 246, 0.4);
+    
+    /* Animations */
+    --neural-transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    --quantum-transition: all 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    
+    /* Typography */
+    --font-neural: 'Inter', 'Cairo', -apple-system, BlinkMacSystemFont, sans-serif;
+    --font-arabic: 'Cairo', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    
+    /* Spacing */
+    --space-xs: 0.25rem;
+    --space-sm: 0.5rem;
+    --space-md: 1rem;
+    --space-lg: 1.5rem;
+    --space-xl: 2rem;
+    --space-2xl: 3rem;
+    
+    /* Border Radius */
+    --radius-sm: 8px;
+    --radius-md: 12px;
+    --radius-lg: 16px;
+    --radius-xl: 24px;
+    --radius-full: 9999px;
+}
+
+/* Dark Theme Variations */
+[data-theme="dark"] {
+    --neural-bg-primary: #000000;
+    --neural-bg-secondary: #111111;
+    --neural-bg-tertiary: #1a1a1a;
+}
+
+/* Light Theme Variations */
+[data-theme="light"] {
+    --neural-bg-primary: #f8fafc;
+    --neural-bg-secondary: #ffffff;
+    --neural-bg-tertiary: #f1f5f9;
+    --neural-text-primary: #1e293b;
+    --neural-text-secondary: #475569;
+    --neural-text-muted: #64748b;
+}
+
+/* Reset & Base Styles */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+*::before,
+*::after {
+    box-sizing: border-box;
+}
+
+html {
+    scroll-behavior: smooth;
+    font-size: 16px;
+}
+
+body {
+    font-family: var(--font-neural);
+    background: var(--neural-bg-primary);
+    color: var(--neural-text-primary);
+    line-height: 1.6;
+    overflow-x: hidden;
+    min-height: 100vh;
+    direction: rtl;
+}
+
+/* Neural Background */
+.neural-background {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: -2;
+    overflow: hidden;
+}
+
+#neuralCanvas {
+    width: 100%;
+    height: 100%;
+    opacity: 0.3;
+}
+
+.neural-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: radial-gradient(circle at 50% 50%, transparent 0%, var(--neural-bg-primary) 70%);
+    z-index: -1;
+}
+
+/* Container */
+.container {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 0 var(--space-lg);
+}
+
+/* Holographic Header */
+.holographic-header {
+    background: linear-gradient(135deg, 
+        rgba(0, 102, 255, 0.1) 0%, 
+        rgba(0, 212, 255, 0.05) 50%, 
+        rgba(139, 92, 246, 0.1) 100%);
+    backdrop-filter: blur(20px);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    padding: var(--space-lg) 0;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+}
+
+.header-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: var(--space-xl);
+}
+
+/* Neural Logo */
+.neural-logo {
+    display: flex;
+    align-items: center;
+    gap: var(--space-lg);
+}
+
+.logo-core {
+    position: relative;
+    width: 60px;
+    height: 60px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.neural-icon {
+    font-size: 2rem;
+    color: var(--neural-secondary);
+    z-index: 2;
+    position: relative;
+    animation: neuralPulse 2s ease-in-out infinite;
+}
+
+.pulse-rings {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+}
+
+.pulse-ring {
+    position: absolute;
+    width: 60px;
+    height: 60px;
+    border: 2px solid var(--neural-primary);
+    border-radius: 50%;
+    opacity: 0;
+    animation: pulseRing 2s ease-out infinite;
+}
+
+.pulse-ring:nth-child(2) {
+    animation-delay: 0.5s;
+}
+
+.pulse-ring:nth-child(3) {
+    animation-delay: 1s;
+}
+
+@keyframes neuralPulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.1); }
+}
+
+@keyframes pulseRing {
+    0% {
+        transform: scale(0.8);
+        opacity: 1;
+    }
+    100% {
+        transform: scale(2);
+        opacity: 0;
+    }
+}
+
+/* Glitch Text Effect */
+.glitch-text {
+    font-size: 1.8rem;
+    font-weight: 800;
+    color: var(--neural-text-primary);
+    position: relative;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+}
+
+.glitch-text::before,
+.glitch-text::after {
+    content: attr(data-text);
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+}
+
+.glitch-text::before {
+    animation: glitch-1 0.5s infinite;
+    color: var(--neural-primary);
+    z-index: -1;
+}
+
+.glitch-text::after {
+    animation: glitch-2 0.5s infinite;
+    color: var(--neural-accent);
+    z-index: -2;
+}
+
+@keyframes glitch-1 {
+    0%, 14%, 15%, 49%, 50%, 99%, 100% {
+        transform: translate(0);
+    }
+    15%, 49% {
+        transform: translate(-2px, -1px);
+    }
+}
+
+@keyframes glitch-2 {
+    0%, 20%, 21%, 62%, 63%, 99%, 100% {
+        transform: translate(0);
+    }
+    21%, 62% {
+        transform: translate(2px, 1px);
+    }
+}
+
+.version-badge {
+    background: var(--quantum-gradient-1);
+    color: white;
+    padding: var(--space-xs) var(--space-sm);
+    border-radius: var(--radius-full);
+    font-size: 0.75rem;
+    font-weight: 600;
+    margin-right: var(--space-sm);
+}
+
+/* Header Controls */
+.header-controls {
+    display: flex;
+    align-items: center;
+    gap: var(--space-lg);
+}
+
+.neural-status {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+}
+
+.status-indicator {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+}
+
+.quantum-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--neural-success);
+    box-shadow: 0 0 10px var(--neural-success);
+    animation: quantumPulse 1.5s ease-in-out infinite;
+}
+
+@keyframes quantumPulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.7; transform: scale(1.2); }
+}
+
+.status-text {
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: var(--neural-text-secondary);
+}
+
+.quantum-controls {
+    display: flex;
+    gap: var(--space-sm);
+}
+
+.quantum-btn {
+    background: var(--neural-surface);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: var(--radius-md);
+    padding: var(--space-sm) var(--space-md);
+    color: var(--neural-text-primary);
+    cursor: pointer;
+    transition: var(--neural-transition);
+    backdrop-filter: blur(10px);
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    font-size: 0.9rem;
+    font-weight: 500;
+}
+
+.quantum-btn:hover {
+    background: var(--neural-surface-hover);
+    border-color: var(--neural-primary);
+    box-shadow: var(--neural-glow);
+    transform: translateY(-2px);
+}
+
+.quantum-btn.primary {
+    background: var(--quantum-gradient-1);
+    border: none;
+    color: white;
+}
+
+.quantum-btn.secondary {
+    background: var(--neural-surface);
+    border-color: var(--neural-secondary);
+}
+
+.quantum-btn.accent {
+    background: var(--quantum-gradient-2);
+    border: none;
+    color: white;
+}
+
+/* Quantum Navigation */
+.quantum-nav {
+    background: rgba(0, 0, 0, 0.3);
+    backdrop-filter: blur(15px);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    padding: var(--space-md) 0;
+    position: sticky;
+    top: 88px;
+    z-index: 90;
+}
+
+.nav-container {
+    display: flex;
+    justify-content: center;
+}
+
+.nav-tabs {
+    display: flex;
+    gap: var(--space-sm);
+    background: var(--neural-glass);
+    padding: var(--space-xs);
+    border-radius: var(--radius-xl);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.nav-tab {
+    background: transparent;
+    border: none;
+    padding: var(--space-md) var(--space-lg);
+    border-radius: var(--radius-lg);
+    color: var(--neural-text-secondary);
+    cursor: pointer;
+    transition: var(--neural-transition);
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    position: relative;
+    overflow: hidden;
+    font-weight: 500;
+}
+
+.nav-tab:hover {
+    color: var(--neural-text-primary);
+    background: var(--neural-surface);
+}
+
+.nav-tab.active {
+    background: var(--quantum-gradient-1);
+    color: white;
+    box-shadow: var(--neural-shadow-md);
+}
+
+.tab-icon {
+    font-size: 1.1rem;
+}
+
+.tab-text {
+    font-size: 0.9rem;
+    white-space: nowrap;
+}
+
+.tab-glow {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: var(--quantum-gradient-1);
+    opacity: 0;
+    transition: var(--neural-transition);
+    border-radius: var(--radius-lg);
+}
+
+.nav-tab.active .tab-glow {
+    opacity: 0.2;
+}
+
+/* Main Content */
+.quantum-main {
+    padding: var(--space-2xl) 0;
+    min-height: calc(100vh - 200px);
+}
+
+.tab-content {
+    display: none;
+    animation: fadeInUp 0.5s ease-out;
+}
+
+.tab-content.active {
+    display: block;
+}
+
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Quantum Cards */
+.quantum-card {
+    background: var(--neural-surface);
+    backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    transition: var(--neural-transition);
+    position: relative;
+}
+
+.quantum-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 1px;
+    background: var(--quantum-gradient-1);
+    opacity: 0.5;
+}
+
+.quantum-card:hover {
+    border-color: rgba(0, 102, 255, 0.3);
+    box-shadow: var(--neural-shadow-lg);
+    transform: translateY(-4px);
+}
+
+.card-header {
+    padding: var(--space-lg);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.card-header h3 {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--neural-text-primary);
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+}
+
+.card-header i {
+    color: var(--neural-secondary);
+}
+
+.card-controls {
+    display: flex;
+    gap: var(--space-sm);
+}
+
+.card-body {
+    padding: var(--space-lg);
+}
+
+/* Dashboard Grid */
+.dashboard-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+    gap: var(--space-lg);
+}
+
+/* Vitals Card */
+.vitals-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: var(--space-md);
+}
+
+.vital-metric {
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: var(--radius-md);
+    padding: var(--space-lg);
+    text-align: center;
+    transition: var(--neural-transition);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.vital-metric:hover {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: var(--neural-primary);
+    transform: translateY(-2px);
+}
+
+.metric-icon {
+    font-size: 1.5rem;
+    color: var(--neural-secondary);
+    margin-bottom: var(--space-sm);
+}
+
+.metric-data {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
+}
+
+.metric-value {
+    font-size: 1.8rem;
+    font-weight: 700;
+    color: var(--neural-text-primary);
+    background: var(--quantum-gradient-1);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.metric-label {
+    font-size: 0.8rem;
+    color: var(--neural-text-muted);
+    font-weight: 500;
+}
+
+.metric-trend {
+    font-size: 0.75rem;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-xs);
+    color: var(--neural-success);
+}
+
+/* Network Visualization */
+.network-visualization {
+    position: relative;
+    height: 300px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+#networkCanvas {
+    border-radius: var(--radius-md);
+    background: rgba(0, 0, 0, 0.2);
+}
+
+.network-stats {
+    position: absolute;
+    bottom: var(--space-md);
+    right: var(--space-md);
+    background: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(10px);
+    border-radius: var(--radius-sm);
+    padding: var(--space-sm);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
+}
+
+.stat-item {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--space-sm);
+    font-size: 0.8rem;
+}
+
+.stat-label {
+    color: var(--neural-text-muted);
+}
+
+.stat-value {
+    color: var(--neural-secondary);
+    font-weight: 600;
+}
+
+/* Quantum Actions */
+.quantum-actions {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-md);
+}
+
+.quantum-action-btn {
+    background: var(--neural-surface);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: var(--radius-md);
+    padding: var(--space-lg);
+    cursor: pointer;
+    transition: var(--neural-transition);
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+    position: relative;
+    overflow: hidden;
+}
+
+.quantum-action-btn:hover {
+    border-color: var(--neural-primary);
+    box-shadow: var(--neural-shadow-md);
+    transform: translateY(-2px);
+}
+
+.quantum-action-btn.primary {
+    background: var(--quantum-gradient-1);
+    border: none;
+    color: white;
+}
+
+.quantum-action-btn.secondary {
+    background: var(--quantum-gradient-3);
+    border: none;
+    color: white;
+}
+
+.quantum-action-btn.accent {
+    background: var(--quantum-gradient-2);
+    border: none;
+    color: white;
+}
+
+.btn-icon {
+    font-size: 1.2rem;
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: var(--radius-sm);
+}
+
+.btn-content {
+    flex: 1;
+    text-align: right;
+}
+
+.btn-title {
+    display: block;
+    font-weight: 600;
+    font-size: 1rem;
+    margin-bottom: var(--space-xs);
+}
+
+.btn-subtitle {
+    display: block;
+    font-size: 0.8rem;
+    opacity: 0.8;
+}
+
+.btn-glow {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(45deg, transparent, rgba(255, 255, 255, 0.1), transparent);
+    transform: translateX(-100%);
+    transition: transform 0.6s;
+}
+
+.quantum-action-btn:hover .btn-glow {
+    transform: translateX(100%);
+}
+
+/* Health Monitors */
+.health-monitors {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-md);
+}
+
+.health-item {
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: var(--radius-md);
+    padding: var(--space-lg);
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    transition: var(--neural-transition);
+}
+
+.health-item:hover {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: var(--neural-primary);
+}
+
+.health-icon {
+    font-size: 1.2rem;
+    color: var(--neural-secondary);
+    width: 40px;
+    text-align: center;
+}
+
+.health-info {
+    flex: 1;
+}
+
+.health-label {
+    font-weight: 600;
+    color: var(--neural-text-primary);
+    margin-bottom: var(--space-xs);
+}
+
+.health-status {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    font-size: 0.9rem;
+    font-weight: 500;
+}
+
+.health-status.optimal {
+    color: var(--neural-success);
+}
+
+.health-status.warning {
+    color: var(--neural-warning);
+}
+
+.health-status.error {
+    color: var(--neural-error);
+}
+
+.status-indicator {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: currentColor;
+    box-shadow: 0 0 8px currentColor;
+}
+
+.health-metrics {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
+    text-align: left;
+}
+
+.metric {
+    font-size: 0.75rem;
+    color: var(--neural-text-muted);
+    background: rgba(0, 0, 0, 0.2);
+    padding: var(--space-xs) var(--space-sm);
+    border-radius: var(--radius-sm);
+}
+
+/* AI Forge */
+.forge-container {
+    max-width: 1000px;
+    margin: 0 auto;
+}
+
+.forge-card {
+    background: var(--neural-surface);
+}
+
+.forge-form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-lg);
+}
+
+.input-group {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-sm);
+}
+
+.quantum-label {
+    font-weight: 600;
+    color: var(--neural-text-primary);
+    font-size: 0.9rem;
+    margin-bottom: var(--space-sm);
+}
+
+.quantum-input-container {
+    position: relative;
+}
+
+.quantum-textarea,
+.quantum-input {
+    width: 100%;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: var(--radius-md);
+    padding: var(--space-md);
+    color: var(--neural-text-primary);
+    font-family: var(--font-neural);
+    font-size: 0.9rem;
+    transition: var(--neural-transition);
+    resize: vertical;
+}
+
+.quantum-textarea:focus,
+.quantum-input:focus {
+    outline: none;
+    border-color: var(--neural-primary);
+    box-shadow: 0 0 0 3px rgba(0, 102, 255, 0.1);
+}
+
+.quantum-textarea::placeholder,
+.quantum-input::placeholder {
+    color: var(--neural-text-muted);
+}
+
+.input-glow {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    border-radius: var(--radius-md);
+    background: var(--quantum-gradient-1);
+    opacity: 0;
+    transition: var(--neural-transition);
+    pointer-events: none;
+    z-index: -1;
+}
+
+.quantum-textarea:focus + .input-glow,
+.quantum-input:focus + .input-glow {
+    opacity: 0.1;
+}
+
+.forge-options {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-lg);
+}
+
+.option-group {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-sm);
+}
+
+.quantum-select {
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: var(--radius-md);
+    padding: var(--space-md);
+    color: var(--neural-text-primary);
+    font-family: var(--font-neural);
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: var(--neural-transition);
+}
+
+.quantum-select:focus {
+    outline: none;
+    border-color: var(--neural-primary);
+    box-shadow: 0 0 0 3px rgba(0, 102, 255, 0.1);
+}
+
+.forge-actions {
+    display: flex;
+    gap: var(--space-md);
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
+.forge-btn {
+    position: relative;
+    overflow: hidden;
+}
+
+.btn-particles {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+}
+
+/* Code Output */
+.code-output {
+    margin-top: var(--space-xl);
+    background: rgba(0, 0, 0, 0.4);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.output-header {
+    background: rgba(255, 255, 255, 0.05);
+    padding: var(--space-md) var(--space-lg);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.output-header h4 {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--neural-text-primary);
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+}
+
+.output-controls {
+    display: flex;
+    gap: var(--space-sm);
+}
+
+.micro-btn {
+    background: var(--neural-surface);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: var(--radius-sm);
+    padding: var(--space-sm);
+    color: var(--neural-text-secondary);
+    cursor: pointer;
+    transition: var(--neural-transition);
+    font-size: 0.8rem;
+}
+
+.micro-btn:hover {
+    background: var(--neural-surface-hover);
+    color: var(--neural-text-primary);
+    border-color: var(--neural-primary);
+}
+
+.code-container {
+    padding: var(--space-lg);
+    overflow-x: auto;
+}
+
+.code-container pre {
+    margin: 0;
+    font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+    font-size: 0.85rem;
+    line-height: 1.6;
+    color: var(--neural-text-primary);
+    background: transparent;
+}
+
+.code-metadata {
+    background: rgba(0, 0, 0, 0.3);
+    padding: var(--space-md) var(--space-lg);
+    display: flex;
+    gap: var(--space-lg);
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.metadata-item {
+    display: flex;
+    gap: var(--space-sm);
+    font-size: 0.8rem;
+}
+
+.metadata-item .label {
+    color: var(--neural-text-muted);
+}
+
+.metadata-item .value {
+    color: var(--neural-secondary);
+    font-weight: 600;
+}
+
+/* Providers Grid */
+.providers-container {
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+.providers-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: var(--space-lg);
+}
+
+.provider-card {
+    background: var(--neural-surface);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: var(--radius-lg);
+    padding: var(--space-lg);
+    transition: var(--neural-transition);
+    position: relative;
+    overflow: hidden;
+}
+
+.provider-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 2px;
+    background: var(--quantum-gradient-1);
+}
+
+.provider-card:hover {
+    border-color: var(--neural-primary);
+    box-shadow: var(--neural-shadow-lg);
+    transform: translateY(-4px);
+}
+
+.provider-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--space-md);
+}
+
+.provider-name {
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: var(--neural-text-primary);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.provider-status {
+    padding: var(--space-xs) var(--space-sm);
+    border-radius: var(--radius-full);
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.provider-status.active {
+    background: var(--neural-success);
+    color: white;
+    box-shadow: 0 0 10px rgba(0, 255, 136, 0.3);
+}
+
+.provider-status.inactive {
+    background: var(--neural-error);
+    color: white;
+    box-shadow: 0 0 10px rgba(255, 51, 102, 0.3);
+}
+
+.provider-info {
+    margin-bottom: var(--space-md);
+    color: var(--neural-text-secondary);
+    font-size: 0.9rem;
+    line-height: 1.5;
+}
+
+.provider-metrics {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-md);
+}
+
+.provider-metric {
+    text-align: center;
+    background: rgba(0, 0, 0, 0.2);
+    padding: var(--space-md);
+    border-radius: var(--radius-sm);
+}
+
+.provider-metric-value {
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: var(--neural-secondary);
+    margin-bottom: var(--space-xs);
+}
+
+.provider-metric-label {
+    font-size: 0.75rem;
+    color: var(--neural-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+/* Analytics */
+.analytics-grid {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: var(--space-lg);
+}
+
+.analytics-chart-card {
+    min-height: 400px;
+}
+
+#analyticsChart {
+    width: 100%;
+    height: 300px;
+    border-radius: var(--radius-md);
+}
+
+.cost-metrics {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-md);
+}
+
+.cost-metric {
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: var(--radius-md);
+    padding: var(--space-lg);
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    transition: var(--neural-transition);
+}
+
+.cost-metric:hover {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: var(--neural-primary);
+}
+
+.cost-metric .metric-icon {
+    font-size: 1.5rem;
+    color: var(--neural-secondary);
+    width: 50px;
+    text-align: center;
+}
+
+.cost-metric .metric-info {
+    flex: 1;
+}
+
+.cost-metric .metric-label {
+    font-size: 0.8rem;
+    color: var(--neural-text-muted);
+    margin-bottom: var(--space-xs);
+}
+
+.cost-metric .metric-value {
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: var(--neural-text-primary);
+    margin-bottom: var(--space-xs);
+}
+
+.metric-change {
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: var(--space-xs) var(--space-sm);
+    border-radius: var(--radius-sm);
+}
+
+.metric-change.positive {
+    background: rgba(0, 255, 136, 0.1);
+    color: var(--neural-success);
+}
+
+.metric-change.negative {
+    background: rgba(255, 51, 102, 0.1);
+    color: var(--neural-error);
+}
+
+.metric-change.neutral {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--neural-text-muted);
+}
+
+/* Settings */
+.settings-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-lg);
+}
+
+.api-keys-form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-lg);
+}
+
+.key-group {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-sm);
+}
+
+.input-btn {
+    position: absolute;
+    left: var(--space-md);
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    color: var(--neural-text-muted);
+    cursor: pointer;
+    transition: var(--neural-transition);
+}
+
+.input-btn:hover {
+    color: var(--neural-text-primary);
+}
+
+.settings-options {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-lg);
+}
+
+.setting-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: var(--space-lg);
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: var(--radius-md);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    transition: var(--neural-transition);
+}
+
+.setting-item:hover {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: var(--neural-primary);
+}
+
+.setting-info {
+    flex: 1;
+}
+
+.setting-label {
+    font-weight: 600;
+    color: var(--neural-text-primary);
+    margin-bottom: var(--space-xs);
+}
+
+.setting-description {
+    font-size: 0.8rem;
+    color: var(--neural-text-muted);
+}
+
+/* Quantum Switch */
+.quantum-switch {
+    position: relative;
+    display: inline-block;
+    width: 60px;
+    height: 30px;
+}
+
+.quantum-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.switch-slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(255, 255, 255, 0.1);
+    transition: var(--neural-transition);
+    border-radius: 30px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.switch-slider:before {
+    position: absolute;
+    content: "";
+    height: 22px;
+    width: 22px;
+    left: 3px;
+    bottom: 3px;
+    background: white;
+    transition: var(--neural-transition);
+    border-radius: 50%;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+input:checked + .switch-slider {
+    background: var(--quantum-gradient-1);
+    border-color: var(--neural-primary);
+    box-shadow: var(--neural-glow);
+}
+
+input:checked + .switch-slider:before {
+    transform: translateX(30px);
+    background: white;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+/* Quantum Footer */
+.quantum-footer {
+    background: linear-gradient(135deg, 
+        rgba(0, 0, 0, 0.8) 0%, 
+        rgba(26, 26, 46, 0.9) 50%, 
+        rgba(0, 0, 0, 0.8) 100%);
+    backdrop-filter: blur(20px);
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    padding: var(--space-2xl) 0 var(--space-lg);
+    margin-top: var(--space-2xl);
+}
+
+.footer-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: var(--space-xl);
+}
+
+.footer-info {
+    flex: 1;
+}
+
+.copyright p {
+    margin: var(--space-xs) 0;
+    font-size: 0.9rem;
+    color: var(--neural-text-secondary);
+}
+
+.contact-info {
+    display: flex;
+    gap: var(--space-lg);
+    margin-top: var(--space-md);
+}
+
+.contact-link {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    color: var(--neural-text-muted);
+    text-decoration: none;
+    font-size: 0.9rem;
+    transition: var(--neural-transition);
+}
+
+.contact-link:hover {
+    color: var(--neural-secondary);
+}
+
+.neural-signature {
+    text-align: center;
+}
+
+.signature-text {
+    font-size: 0.8rem;
+    color: var(--neural-text-muted);
+    margin-bottom: var(--space-sm);
+}
+
+.signature-animation {
+    display: flex;
+    justify-content: center;
+    gap: var(--space-sm);
+}
+
+.quantum-particle {
+    width: 8px;
+    height: 8px;
+    background: var(--neural-secondary);
+    border-radius: 50%;
+    animation: quantumFloat 2s ease-in-out infinite;
+}
+
+.quantum-particle:nth-child(2) {
+    animation-delay: 0.5s;
+}
+
+.quantum-particle:nth-child(3) {
+    animation-delay: 1s;
+}
+
+@keyframes quantumFloat {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-10px); }
+}
+
+/* Quantum Loading */
+.quantum-loading {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.8);
+    backdrop-filter: blur(10px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.loading-container {
+    text-align: center;
+}
+
+.quantum-spinner {
+    position: relative;
+    width: 80px;
+    height: 80px;
+    margin: 0 auto var(--space-lg);
+}
+
+.spinner-ring {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    border: 2px solid transparent;
+    border-top: 2px solid var(--neural-primary);
+    border-radius: 50%;
+    animation: quantumSpin 1s linear infinite;
+}
+
+.spinner-ring:nth-child(2) {
+    width: 60px;
+    height: 60px;
+    top: 10px;
+    left: 10px;
+    border-top-color: var(--neural-secondary);
+    animation-duration: 1.5s;
+    animation-direction: reverse;
+}
+
+.spinner-ring:nth-child(3) {
+    width: 40px;
+    height: 40px;
+    top: 20px;
+    left: 20px;
+    border-top-color: var(--neural-accent);
+    animation-duration: 2s;
+}
+
+@keyframes quantumSpin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.loading-text {
+    color: var(--neural-text-primary);
+}
+
+.loading-message {
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin-bottom: var(--space-md);
+    display: block;
+}
+
+.loading-progress {
+    width: 200px;
+    height: 4px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 2px;
+    overflow: hidden;
+    margin: 0 auto;
+}
+
+.progress-bar {
+    height: 100%;
+    background: var(--quantum-gradient-1);
+    border-radius: 2px;
+    animation: progressFlow 2s ease-in-out infinite;
+}
+
+@keyframes progressFlow {
+    0% { width: 0%; }
+    50% { width: 70%; }
+    100% { width: 100%; }
+}
+
+/* Quantum Notifications */
+.quantum-notification {
+    position: fixed;
+    top: 20px;
+    left: 20px;
+    z-index: 1001;
+    max-width: 400px;
+    animation: slideInLeft 0.5s ease-out;
+}
+
+.notification-container {
+    background: var(--neural-surface);
+    backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: var(--radius-lg);
+    padding: var(--space-lg);
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+    box-shadow: var(--neural-shadow-lg);
+}
+
+.notification-icon {
+    font-size: 1.2rem;
+    color: var(--neural-secondary);
+}
+
+.notification-content {
+    flex: 1;
+    color: var(--neural-text-primary);
+    font-size: 0.9rem;
+}
+
+.notification-close {
+    background: none;
+    border: none;
+    color: var(--neural-text-muted);
+    cursor: pointer;
+    font-size: 1rem;
+    transition: var(--neural-transition);
+}
+
+.notification-close:hover {
+    color: var(--neural-text-primary);
+}
+
+@keyframes slideInLeft {
+    from {
+        transform: translateX(-100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+/* Responsive Design */
+@media (max-width: 1200px) {
+    .dashboard-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .analytics-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .settings-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 768px) {
+    .container {
+        padding: 0 var(--space-md);
+    }
+    
+    .header-content {
+        flex-direction: column;
+        gap: var(--space-md);
+    }
+    
+    .nav-tabs {
+        flex-wrap: wrap;
+        justify-content: center;
+    }
+    
+    .nav-tab .tab-text {
+        display: none;
+    }
+    
+    .forge-options {
+        grid-template-columns: 1fr;
+    }
+    
+    .forge-actions {
+        flex-direction: column;
+    }
+    
+    .providers-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .footer-content {
+        flex-direction: column;
+        text-align: center;
+        gap: var(--space-lg);
+    }
+    
+    .contact-info {
+        flex-direction: column;
+        gap: var(--space-sm);
+    }
+}
+
+@media (max-width: 480px) {
+    .quantum-main {
+        padding: var(--space-lg) 0;
+    }
+    
+    .card-body {
+        padding: var(--space-md);
+    }
+    
+    .vitals-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .quantum-notification {
+        left: var(--space-sm);
+        right: var(--space-sm);
+        max-width: none;
+    }
+}
+
+/* Print Styles */
+@media print {
+    .holographic-header,
+    .quantum-nav,
+    .quantum-footer,
+    .quantum-loading,
+    .quantum-notification {
+        display: none !important;
+    }
+    
+    .quantum-main {
+        padding: 0;
+    }
+    
+    .quantum-card {
+        box-shadow: none;
+        border: 1px solid #ccc;
+        break-inside: avoid;
+    }
+}
+
+/* High Contrast Mode */
+@media (prefers-contrast: high) {
+    :root {
+        --neural-surface: rgba(255, 255, 255, 0.1);
+        --neural-text-secondary: #ffffff;
+        --neural-text-muted: #cccccc;
+    }
+}
+
+/* Reduced Motion */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+}
+
+/* Focus Styles for Accessibility */
+.quantum-btn:focus,
+.quantum-input:focus,
+.quantum-textarea:focus,
+.quantum-select:focus,
+.nav-tab:focus {
+    outline: 2px solid var(--neural-primary);
+    outline-offset: 2px;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--neural-bg-secondary);
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--neural-primary);
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--neural-secondary);
+}
+
+/* Selection */
+::selection {
+    background: var(--neural-primary);
+    color: white;
+}

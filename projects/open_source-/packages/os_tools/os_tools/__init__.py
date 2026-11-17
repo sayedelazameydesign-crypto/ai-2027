@@ -1,0 +1,116 @@
+"""os_tools — sandboxed execution engines exposed through an MCP-style surface."""
+
+from __future__ import annotations
+
+from os_tools.browser import (
+    BrowserTool,
+    FakeBrowser,
+    PageSnapshot,
+    PlaywrightBrowser,
+    RetryPolicy,
+    StaleElementError,
+    browser_tools,
+)
+from os_tools.code_exec import (
+    CodeExecBackend,
+    E2BBackend,
+    FirecrackerBackend,
+    InMemoryBackend,
+    LocalSubprocessBackend,
+    SandboxLimits,
+    code_exec_backend_from_env,
+    python_execute_tool,
+)
+from os_tools.egress import (
+    EgressPolicy,
+    EgressPolicyError,
+    EgressRule,
+    EgressVerdict,
+    parse_http_target,
+)
+from os_tools.embedding import (
+    EmbeddingBackend,
+    EmbeddingContractError,
+    EmbeddingInfo,
+    EmbeddingUnavailable,
+    HashEmbedding,
+    ProviderEmbedding,
+    SentenceTransformerEmbedding,
+    embedding_backend_from_env,
+    embedding_policy_from_env,
+    validate_vectors,
+)
+from os_tools.local_ai import (
+    LocalAIEngine,
+    detect_language,
+    local_ai_tools,
+    normalise_arabic,
+)
+from os_tools.mcp import LocalMCPServer, MCPServer, ToolFilter, build_default_registry
+from os_tools.mission import (
+    default_mission_url_policy,
+    generate_deployment_plan_report,
+    generate_deployment_plan_report_tool,
+    inspect_project_files,
+    inspect_project_files_tool,
+    inspect_public_url,
+    inspect_public_url_tool,
+    mission_tools,
+)
+from os_tools.registry import Tool, ToolRegistry
+from os_tools.ssrf import BlockedURLError, SSRFGuard, URLVerdict
+
+__all__ = [
+    "BlockedURLError",
+    "BrowserTool",
+    "CodeExecBackend",
+    "DisabledBackend",
+    "E2BBackend",
+    "EgressPolicy",
+    "EgressPolicyError",
+    "EgressRule",
+    "EgressVerdict",
+    "EmbeddingBackend",
+    "EmbeddingContractError",
+    "EmbeddingInfo",
+    "EmbeddingUnavailable",
+    "FakeBrowser",
+    "FirecrackerBackend",
+    "HashEmbedding",
+    "InMemoryBackend",
+    "LocalAIEngine",
+    "LocalMCPServer",
+    "LocalSubprocessBackend",
+    "MCPServer",
+    "PageSnapshot",
+    "PlaywrightBrowser",
+    "ProviderEmbedding",
+    "RetryPolicy",
+    "SSRFGuard",
+    "SandboxLimits",
+    "SentenceTransformerEmbedding",
+    "StaleElementError",
+    "Tool",
+    "ToolFilter",
+    "ToolRegistry",
+    "URLVerdict",
+    "browser_tools",
+    "build_default_registry",
+    "code_exec_backend_from_env",
+    "default_mission_url_policy",
+    "detect_language",
+    "embedding_backend_from_env",
+    "embedding_policy_from_env",
+    "generate_deployment_plan_report",
+    "generate_deployment_plan_report_tool",
+    "inspect_project_files",
+    "inspect_project_files_tool",
+    "inspect_public_url",
+    "inspect_public_url_tool",
+    "local_ai_tools",
+    "mission_tools",
+    "normalise_arabic",
+    "parse_http_target",
+    "python_execute_tool",
+    "validate_vectors",
+]

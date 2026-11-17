@@ -1,0 +1,30 @@
+{
+  "name": "platform",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev -H 0.0.0.0 -p 3000",
+    "build": "next build",
+    "start": "next start -H 0.0.0.0 -p 3000",
+    "e2e": "tsx e2e/mvp-loop.test.ts",
+    "test:unit": "tsx e2e/unit-templates.test.ts"
+  },
+  "dependencies": {
+    "@libsql/client": "^0.17.4",
+    "@vercel/functions": "^3.9.5",
+    "better-sqlite3": "^11.10.0",
+    "drizzle-orm": "^0.36.4",
+    "next": "14.2.21",
+    "playwright": "^1.49.1",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/node": "^20.17.0",
+    "@types/react": "^18.3.12",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}

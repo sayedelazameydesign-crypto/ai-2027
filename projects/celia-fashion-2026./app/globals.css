@@ -1,0 +1,308 @@
+@import "tailwindcss";
+
+
+:root {
+  /* Ultra-Minimalist Light Mode */
+  --background: 0 0% 100%;
+  --foreground: 240 10% 3.9%;
+  --card: 0 0% 100%;
+  --card-foreground: 240 10% 3.9%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 240 10% 3.9%;
+  --primary: 240 5.9% 10%;
+  --primary-foreground: 0 0% 98%;
+  --secondary: 240 4.8% 95.9%;
+  --secondary-foreground: 240 5.9% 10%;
+  --muted: 240 4.8% 95.9%;
+  --muted-foreground: 240 3.8% 46.1%;
+  /* OKLCH Neon Lime for High Dynamic Range Displays */
+  --accent: oklch(0.85 0.26 126.34);
+  /* Neon Lime HSL Fallback if needed, but using OKLCH primarily */
+  --accent-foreground: 240 5.9% 10%;
+  --destructive: 0 84.2% 60.2%;
+  --destructive-foreground: 0 0% 98%;
+  --border: 240 5.9% 90%;
+  --input: 240 5.9% 90%;
+  --ring: 240 5.9% 10%;
+  --radius: 0.5rem;
+
+  /* Custom Variables */
+  --metallic: #d4d4d8;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    /* Cyberpunk/Future Dark Mode */
+    --background: 240 10% 3.9%;
+    /* #0a0a0a */
+    --foreground: 0 0% 98%;
+    --card: 240 10% 3.9%;
+    --card-foreground: 0 0% 98%;
+    --popover: 240 10% 3.9%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 0 0% 98%;
+    --primary-foreground: 240 5.9% 10%;
+    --secondary: 240 3.7% 15.9%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 240 3.7% 15.9%;
+    --muted-foreground: 240 5% 64.9%;
+    --accent: oklch(0.85 0.26 126.34);
+    /* Neon Lime OKLCH */
+    --accent-foreground: 240 5.9% 10%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 240 3.7% 15.9%;
+    --input: 240 3.7% 15.9%;
+    --ring: 240 4.9% 83.9%;
+  }
+}
+
+@theme inline {
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+  --color-popover: hsl(var(--popover));
+  --color-popover-foreground: hsl(var(--popover-foreground));
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+  --color-accent: var(--accent);
+  --color-accent-foreground: hsl(var(--accent-foreground));
+  --color-destructive: hsl(var(--destructive));
+  --color-destructive-foreground: hsl(var(--destructive-foreground));
+  --color-border: hsl(var(--border));
+  --color-input: hsl(var(--input));
+  --color-ring: hsl(var(--ring));
+  --radius-sm: calc(var(--radius) - 2px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --font-inter: var(--font-inter);
+  /* User requested variables */
+  --color-neon-lime: #d4ff00;
+  --color-cyber-black: #050505;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Custom 2026 Utils */
+.glass-panel {
+  @apply bg-background/70 backdrop-blur-md border border-white/10;
+}
+
+/* Glitch Effect Keyframes */
+@keyframes glitch-skew {
+  0% {
+    transform: skew(0deg);
+  }
+
+  20% {
+    transform: skew(-2deg);
+  }
+
+  40% {
+    transform: skew(2deg);
+  }
+
+  60% {
+    transform: skew(-1deg);
+  }
+
+  80% {
+    transform: skew(1deg);
+  }
+
+  100% {
+    transform: skew(0deg);
+  }
+}
+
+@keyframes glitch-anim-1 {
+  0% {
+    clip-path: inset(20% 0 80% 0);
+  }
+
+  20% {
+    clip-path: inset(60% 0 1% 0);
+  }
+
+  40% {
+    clip-path: inset(42% 0 50% 0);
+  }
+
+  60% {
+    clip-path: inset(1% 0 99% 0);
+  }
+
+  80% {
+    clip-path: inset(80% 0 5% 0);
+  }
+
+  100% {
+    clip-path: inset(30% 0 30% 0);
+  }
+}
+
+.glitch-text {
+  position: relative;
+  display: inline-block;
+}
+
+.glitch-text::before,
+.glitch-text::after {
+  content: attr(data-text);
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: black;
+}
+
+.glitch-text::before {
+  left: 2px;
+  text-shadow: -1px 0 red;
+  clip-path: inset(0 0 0 0);
+  animation: glitch-anim-1 2s infinite linear alternate-reverse;
+}
+
+.glitch-text::after {
+  left: -2px;
+  text-shadow: -1px 0 blue;
+  clip-path: inset(0 0 0 0);
+  animation: glitch-anim-1 3s infinite linear alternate;
+}
+
+/* 2026 Modern Animations */
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-10px); }
+}
+
+@keyframes glow {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+@keyframes shimmer {
+  0% { background-position: -1000px 0; }
+  100% { background-position: 1000px 0; }
+}
+
+.animate-float {
+  animation: float 3s ease-in-out infinite;
+}
+
+.animate-glow {
+  animation: glow 2s ease-in-out infinite;
+}
+
+/* Neon Text Effect */
+.neon-text {
+  text-shadow: 
+    0 0 5px #15f4ee,
+    0 0 10px #15f4ee,
+    0 0 20px #15f4ee,
+    0 0 40px #15f4ee;
+}
+
+/* Glassmorphism */
+.glass-card {
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* 3D Effects */
+.perspective-container {
+  perspective: 1000px;
+  perspective-origin: center;
+}
+
+.card-3d {
+  transform-style: preserve-3d;
+  transition: transform 0.6s cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.card-3d:hover {
+  transform: translateZ(30px) rotateX(5deg) rotateY(5deg);
+}
+
+@keyframes float-3d {
+  0%, 100% {
+    transform: translateZ(0px) translateY(0px);
+  }
+  50% {
+    transform: translateZ(20px) translateY(-15px);
+  }
+}
+
+.float-3d {
+  animation: float-3d 4s ease-in-out infinite;
+}
+
+/* 3D Depth Shadows */
+.shadow-3d {
+  box-shadow: 
+    0 1px 3px rgba(0,0,0,0.12),
+    0 4px 8px rgba(0,0,0,0.16),
+    0 8px 16px rgba(0,0,0,0.20),
+    0 16px 32px rgba(0,0,0,0.24),
+    0 32px 64px rgba(21, 244, 238, 0.15);
+}
+
+.shadow-3d-hover:hover {
+  box-shadow: 
+    0 2px 6px rgba(0,0,0,0.15),
+    0 8px 16px rgba(0,0,0,0.20),
+    0 16px 32px rgba(0,0,0,0.25),
+    0 32px 64px rgba(0,0,0,0.30),
+    0 64px 128px rgba(21, 244, 238, 0.25);
+}
+
+/* Parallax Layers */
+.parallax-layer {
+  transform-style: preserve-3d;
+  will-change: transform;
+}
+
+.layer-front {
+  transform: translateZ(100px);
+}
+
+.layer-middle {
+  transform: translateZ(50px);
+}
+
+.layer-back {
+  transform: translateZ(0px);
+}
+
+/* 3D Text */
+.text-3d {
+  text-shadow: 
+    1px 1px 0 rgba(21, 244, 238, 0.5),
+    2px 2px 0 rgba(21, 244, 238, 0.4),
+    3px 3px 0 rgba(21, 244, 238, 0.3),
+    4px 4px 0 rgba(21, 244, 238, 0.2),
+    5px 5px 10px rgba(0, 0, 0, 0.5);
+}
+
+@keyframes scan-line {
+    0% { top: -10%; }
+    100% { top: 110%; }
+}
+
+.animate-scan-line {
+    animation: scan-line 3s linear infinite;
+}

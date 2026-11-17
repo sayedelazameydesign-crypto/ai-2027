@@ -1,0 +1,147 @@
+name: Deploy verification (live URL)
+
+# Provider-agnostic post-deploy gate.
+#
+# This workflow does NOT call a hosting provider's API and has no provider
+# domain baked in. The target comes from repository configuration, which only
+# administrators can change:
+#
+#   vars.CELA_DEPLOY_URL            e.g. https://celia.<provider-domain>
+#   vars.CELA_DEPLOY_ALLOWED_HOSTS  e.g. *.clawcloudrun.com,*.up.railway.app
+#
+# A dispatch input cannot steer the platform token at another host: the only
+# input is the expected execution kind, and the target is re-authorized by
+# scripts/authorize_deploy_target.py before any request is sent. The host
+# allowlist is a closed pattern set, and the probe checks it again in-process.
+#
+# Secrets: CELA_API_TOKEN, CELA_PRIVATE_API_TOKEN, CELA_RUN_STORE_URL.
+# The readiness Doctor is provider-neutral: CELA_DEPLOY_REQUIRE_PERSISTENT_STORE=1
+# requires a Postgres (or Redis+Postgres) run store instead of relying on a
+# provider-specific flag, so the same gate works on any container provider.
+#
+# Read-only on the repository: it checks the deployment and changes nothing.
+
+on:
+  workflow_dispatch:
+    inputs:
+      expect_kind:
+        description: "execution.kind the published service must report"
+        required: false
+        default: "scripted"
+        type: choice
+        options: [scripted, provider_adapter, any]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-verify-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # 'scripted' is honest for the preview deployment; flipping the input to
+    # 'provider_adapter' is only correct after the live adapter is complete and
+    # CELA_USE_LIVE_PROVIDER=1 is set on the service itself.
+    env:
+      EXPECT_KIND: ${{ inputs.expect_kind }}
+      DEPLOY_URL: ${{ vars.CELA_DEPLOY_URL }}
+      DEPLOY_ALLOWED_HOSTS: ${{ vars.CELA_DEPLOY_ALLOWED_HOSTS }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+
+      - name: Install
+        # `distributed` is not optional: the Doctor receives CELA_RUN_STORE_URL
+        # from the secret store and refuses a Postgres run store when psycopg
+        # is not importable (scripts/deploy_doctor.py -> postgres_driver_missing).
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev,server,distributed]"
+
+      - name: Resolve and authorize the target
+        # Two variables, one decision. A missing variable is a named preflight
+        # failure, not a probe exception; a URL outside the allowlist, an
+        # http:// URL, or a URL carrying credentials stops here with an
+        # annotation on the run.
+        run: |
+          set -euo pipefail
+          if [ -z "${DEPLOY_URL:-}" ]; then
+            echo "::error title=Preflight::CELA_DEPLOY_URL repository variable is empty or unset."
+            exit 1
+          fi
+          if [ -z "${DEPLOY_ALLOWED_HOSTS:-}" ]; then
+            echo "::error title=Preflight::CELA_DEPLOY_ALLOWED_HOSTS repository variable is empty or unset."
+            exit 1
+          fi
+          python scripts/authorize_deploy_target.py \
+            --url "${DEPLOY_URL}" \
+            --allowed-hosts "${DEPLOY_ALLOWED_HOSTS}" \
+            --format env >> "${GITHUB_ENV}"
+          echo "Authorized target: $(grep '^API_URL=' "${GITHUB_ENV}" | tail -1)"
+
+      - name: Doctor (strict, provider-neutral)
+        # CELA_BACKEND_URL is passed through the shell, not through an `env:`
+        # expression: values written to $GITHUB_ENV by the previous step are
+        # available to the shell but are not in the `env` expression context.
+        env:
+          CELA_DEPLOY_REQUIRE_PERSISTENT_STORE: "1"
+          CELA_CODE_EXEC_MODE: disabled
+          CELA_API_TOKEN: ${{ secrets.CELA_API_TOKEN }}
+          CELA_PRIVATE_API_TOKEN: ${{ secrets.CELA_PRIVATE_API_TOKEN }}
+          CELA_RUN_STORE_URL: ${{ secrets.CELA_RUN_STORE_URL }}
+          # Optional: only needed when CELA_RUN_STORE_URL is `distributed://`.
+          CELA_POSTGRES_URL: ${{ secrets.CELA_POSTGRES_URL }}
+          CELA_REDIS_URL: ${{ secrets.CELA_REDIS_URL }}
+        run: |
+          set -euo pipefail
+          CELA_BACKEND_URL="${API_URL}" python scripts/deploy_doctor.py --strict
+
+      - name: Verify deployment
+        # Health first without a token, then the public identity, the private
+        # surface, and the durable store. Every criterion is named; a failure
+        # says which promise broke.
+        env:
+          CELA_API_TOKEN: ${{ secrets.CELA_API_TOKEN }}
+          CELA_PRIVATE_API_TOKEN: ${{ secrets.CELA_PRIVATE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${CELA_API_TOKEN:-}" ]; then
+            echo "::error title=Preflight::CELA_API_TOKEN secret is empty or unset."
+            exit 1
+          fi
+          if [ -z "${CELA_PRIVATE_API_TOKEN:-}" ]; then
+            echo "::error title=Preflight::CELA_PRIVATE_API_TOKEN secret is empty or unset."
+            exit 1
+          fi
+          # The input is a closed choice, but the value still arrives through
+          # env rather than being interpolated into this shell line, and is
+          # re-checked: a hand-edited default must not reach the probe.
+          case "${EXPECT_KIND:-scripted}" in
+            scripted | provider_adapter | any) EXPECT="${EXPECT_KIND:-scripted}" ;;
+            *)
+              echo "::error title=Preflight::EXPECT_KIND must be scripted, provider_adapter or any."
+              exit 2
+              ;;
+          esac
+          ARGS=()
+          IFS=',' read -ra HOSTS <<< "${DEPLOY_ALLOWED_HOSTS}"
+          for host in "${HOSTS[@]}"; do
+            host="${host//[[:space:]]/}"
+            if [ -n "${host}" ]; then
+              ARGS+=(--allow-host "${host}")
+            fi
+          done
+          echo "Verifying ${API_URL} expects execution.kind == ${EXPECT}"
+          python scripts/verify_deployment.py \
+            --api "${API_URL}" \
+            --expect-kind "${EXPECT}" \
+            --private-token-env CELA_PRIVATE_API_TOKEN \
+            --require-private-token \
+            --require-durable-store \
+            "${ARGS[@]}"
