@@ -62,6 +62,12 @@ and one real task finishes in **22.9 ms** with evidence that can be re-checked.
   redirected, and the recorded pid is the service itself (so `--stop` is honest).
 - `run_task.py` crashed writing a bundle when `--evidence-dir` pointed outside the
   repository (`Path.relative_to` on a foreign path).
+- **The beat forgot its own history**: `ember/` is intentionally ignored in `main`,
+  so every workflow run started with an empty `history.jsonl`; the streak could
+  never grow and stage-3 escalation was unreachable. The workflow now restores
+  `history.jsonl` + `gate.jsonl` from the `heartbeat` branch before beating.
+  Found by reading a real issue body (`stage 2/3 · streak 1 · first beat on record`),
+  not by review.
 
 ### Documentation
 - `docs/T4-T6-EVIDENCE.md` — the measured evidence for these three tracks,
