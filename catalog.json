@@ -463,5 +463,6 @@
       "files": 1,
       "description_ar": "بذرة أولية"
     }
-  ]
+  ],
+  "post_merge_audit": "AUDIT.md — 2026-11-17: 48/48 byte-identical to upstream; 3 .log files force-added in 12pro; 1 secret redacted in ai-store2/env.local"
 }
