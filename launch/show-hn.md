@@ -73,12 +73,17 @@ pending, which is why the wheel is not on PyPI yet.
 
 | Gate | Status |
 |---|---|
-| Live demo URL that a stranger can actually open | ⏳ **auto-deploys on merge of the Pages fix** (4 previous deploys failed at "Build with Jekyll"; replaced with a static `website/` deploy) |
+| Live demo URL that a stranger can actually open | ✅ **VERIFIED LIVE 2026-11-17 11:25 UTC** — `pages/builds` → `status: "built"`, `error: null`; both `demo.html` (title *Try the Kernel — AI-2027 Evidence-First Loop*) and `kernel-demo.js` fetched successfully over HTTPS. Pages workflow run `44073888821` = success (previous Jekyll runs failed 4/4). |
 | Every number links to code / raw artifact | ✅ [docs/BENCHMARKS.md](../docs/BENCHMARKS.md) · `live-agent/bench.py` · CI artifact |
 | Every claim states its honest scope | ✅ port ≠ kernel ≠ LLM, jitter published, no SLA |
 | License honesty | ✅ mixed licenses stated; kernel UNLICENSED pending decision |
 | GitHub description / topics / Discussions | ⚠️ **manual, 403 re-verified today** — does not block HN, but nice to have |
 | Video / Product Hunt | ⏳ separate, not needed for HN |
 
-**Do not publish until the live URL returns HTTP 200.** Verify with:
-`curl -I https://sayedelazameydesign-crypto.github.io/ai-2027/demo.html`
+**✅ GATE OPEN.** The live URL was fetched successfully after the deploy; re-check
+anytime with `curl -I https://sayedelazameydesign-crypto.github.io/ai-2027/demo.html`.
+The remaining unchecked items (GitHub metadata, license decision) are nice-to-have,
+**not** blockers for HN — do not invent a reason to delay the launch.
+
+> Post from your own account, in your own voice. The draft above is a starting
+> point, not a script to be pasted by an agent.

@@ -1,7 +1,8 @@
 # Case Study (DRAFT — EN) — for DEV.to / Medium / HN
-> Gate: publish only after `https://sayedelazameydesign-crypto.github.io/ai-2027/demo.html`
-> returns 200 (auto-deploys from `website/` on the next push to `main`). Every number
-> below was measured this week and is reproducible from the repo (`live-agent/bench.py`).
+> ✅ **Gate open:** `https://sayedelazameydesign-crypto.github.io/ai-2027/demo.html`
+> deployed and fetched successfully on 2026-11-17 11:25 UTC (`pages/builds: built`).
+> Every number below was measured this week and is reproducible from the repo
+> (`live-agent/bench.py`) — with re-run variance published in `docs/BENCHMARKS.md`.
 
 ---
 
