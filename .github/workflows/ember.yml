@@ -23,6 +23,11 @@ on:
   schedule:
     - cron: "15 */6 * * *"      # 04 beats/day, offset from the hour to dodge load
   workflow_dispatch:
+    inputs:
+      force_degraded:
+        description: "Deliberately produce a degraded beat (proves the issue loop end-to-end)"
+        type: boolean
+        default: false
 
 permissions:
   contents: write      # heartbeat branch + status files
@@ -64,7 +69,12 @@ jobs:
         id: beat
         run: |
           set +e
-          python scripts/ember_beat.py --write --json \
+          EXTRA=""
+          if [ "${{ inputs.force_degraded }}" = "true" ]; then
+            echo "::warning::force_degraded=true — skipping the smoke on purpose"
+            EXTRA="--no-smoke"
+          fi
+          python scripts/ember_beat.py --write --json $EXTRA \
             --live-agent http://127.0.0.1:8090 \
             --hud http://127.0.0.1:8091 \
             --pages-url "https://sayedelazameydesign-crypto.github.io/ai-2027/demo.html" \
