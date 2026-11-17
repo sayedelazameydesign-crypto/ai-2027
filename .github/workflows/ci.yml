@@ -505,3 +505,31 @@ jobs:
             launch/evidence/latest.json
             launch/evidence/REPORT.md
           if-no-files-found: error
+
+  runtime:
+    name: Runtime smoke · real servers over HTTP
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+      - name: Boot the live agent and the HUD
+        run: |
+          set -euo pipefail
+          python live-agent/server.py --port 8090 --host 127.0.0.1 &
+          python command-hud/server.py --port 8091 --host 127.0.0.1 &
+          for i in $(seq 1 40); do
+            if curl -sf http://127.0.0.1:8090/api/health >/dev/null &&
+               curl -sf http://127.0.0.1:8091/api/health >/dev/null; then
+              echo "both servers answered after $i tries"
+              exit 0
+            fi
+            sleep 0.5
+          done
+          echo "servers did not start within 20s" >&2
+          exit 1
+      - name: End-to-end smoke against the running servers (10 checks)
+        run: python scripts/runtime_smoke.py
+      - name: Stop the servers
+        if: always()
+        run: |
+          pkill -f "live-agent/server.py" || true
+          pkill -f "command-hud/server.py" || true
