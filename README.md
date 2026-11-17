@@ -102,8 +102,11 @@ it misses synonyms. That number is published, not hidden: [`memory/README.md`](m
 
 | Control | Where | Proof |
 |---|---|---|
-| A version exists only with a Release + SBOM + checksums | `.github/workflows/release.yml` | tag `v1.0.0` assets |
-| Actions pinned to full SHAs (29 components) | every workflow | `python3 scripts/sbom.py --assert-pinned` |
+| A version exists only with a Release + SBOM + checksums | `.github/workflows/release.yml` | tags `v1.0.0`, `v1.0.1` assets |
+| Actions pinned to full SHAs (36 components) | every workflow | `python3 scripts/sbom.py --assert-pinned` |
+| A beat is judged against its own history, not against itself | `scripts/health_gate.py` | `python3 scripts/test_health_gate.py` (24) |
+| Recovery is one command, timed | `scripts/ember_up.sh` | `./scripts/ember_up.sh --check` → 2.46 s · 15/15 |
+| The 60 s task promise is falsifiable | `scripts/run_task.py` | `python3 scripts/test_run_task.py` (6) |
 | Static analysis on every PR | `.github/workflows/codeql.yml` | CodeQL badge |
 | Dependency proposals automated | `.github/dependabot.yml` | Dependabot tab |
 | Ownership + review expectations | `.github/CODEOWNERS` | file |
@@ -163,10 +166,23 @@ boots both servers, runs the 15 checks, recomputes a measured **Heat Index**, pu
 `ember/status.json` + `STATUS.md` to the `heartbeat` branch, opens one issue when
 degraded and closes it on recovery.
 
+**…and it refuses its own good news.** `scripts/health_gate.py` judges every beat
+against `ember/history.jsonl`: a beat that says `15/15` while having measured only 3
+checks is *degraded*. The ladder is one retry → one issue → `escalation/s3` with the
+code owner mentioned (see [ADR 0004](docs/adr/0004-health-gate-escalation.md)).
+
 ```bash
+./scripts/ember_up.sh --check             # boot everything, 15 checks, shut down (2.46 s)
+./scripts/ember_up.sh                     # leave it running: live agent :8090 · HUD :8091
+./scripts/ember_up.sh --stop              # stop what it started
 python3 scripts/ember_beat.py --write     # one beat, right now
-python3 scripts/ember_beat.py --json      # same, machine-readable
+python3 scripts/health_gate.py            # judge the last beat against its history
+python3 scripts/run_task.py --boot        # one real task, measured, with an evidence link
 ```
+
+Measured on 2026-11-17 (`docs/T4-T6-EVIDENCE.md`): cold boot **2.46 s** · smoke
+**15/15** · one real task **22.9 ms** with a locally recomputed SHA-256, published
+budget **60 s**.
 
 [![Ember beat](https://github.com/sayedelazameydesign-crypto/ai-2027/actions/workflows/ember.yml/badge.svg)](https://github.com/sayedelazameydesign-crypto/ai-2027/actions/workflows/ember.yml)
 · [Live status (heartbeat branch)](https://github.com/sayedelazameydesign-crypto/ai-2027/blob/heartbeat/STATUS.md)
@@ -211,6 +227,13 @@ python3 launch/test_launch_claims.py -v                # a claim without evidenc
 > No invented customers, savings or revenue.
 
 ## ⚡ Quick start (zero dependencies)
+
+```bash
+# The whole running system, one command (boots both services + 15 real HTTP checks)
+./scripts/ember_up.sh --check
+
+# One real task, measured, with an evidence link
+python3 scripts/run_task.py --boot
 
 ```bash
 # The canonical Python kernel
