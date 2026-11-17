@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI-2027 · Unified Command HUD — LIVE</title>
+<style>
+:root{--bg:#05080d;--bg2:#0a1019;--card:#0d1522;--line:#1b2a40;--txt:#e6edf7;--dim:#8fa1bd;--acc:#00e5a0;--acc2:#38bdf8;--warn:#fbbf24;--bad:#fb7185;--violet:#a78bfa}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--txt);font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;min-height:100vh}
+.bg{position:fixed;inset:0;z-index:-1;background:radial-gradient(60% 40% at 15% 0%,rgba(0,229,160,.09),transparent 60%),radial-gradient(50% 40% at 85% 10%,rgba(56,189,248,.08),transparent 60%),var(--bg)}
+nav{position:sticky;top:0;z-index:50;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:12px 24px;background:rgba(5,8,13,.85);backdrop-filter:blur(14px);border-bottom:1px solid var(--line);flex-wrap:wrap}
+.logo{font-weight:900;font-size:19px;letter-spacing:.4px;white-space:nowrap}.logo b{color:var(--acc)}
+.navlinks{display:flex;gap:16px;align-items:center;flex-wrap:wrap}
+.navlinks a{color:var(--dim);text-decoration:none;font-size:13px}.navlinks a:hover{color:var(--acc)}
+.pill{font-family:ui-monospace,monospace;font-size:11px;padding:5px 10px;border-radius:99px;border:1px solid var(--line);background:var(--card);color:var(--dim)}
+.pill.live{color:var(--acc);border-color:rgba(0,229,160,.45);background:rgba(0,229,160,.07)}
+.pill.frozen{color:var(--warn);border-color:rgba(251,191,36,.5);background:rgba(251,191,36,.08)}
+.btn{display:inline-block;padding:9px 14px;border-radius:9px;font-weight:700;font-size:12.5px;border:1px solid var(--line);color:var(--txt);background:var(--card);cursor:pointer;font-family:inherit;transition:.18s;text-align:center}
+.btn:hover{transform:translateY(-1px);border-color:var(--acc)}
+.btn.primary{background:linear-gradient(135deg,var(--acc),#00b8d4);color:#04121a;border:none}
+.btn.danger{border-color:rgba(251,113,133,.5);color:var(--bad)}
+.btn.warn{border-color:rgba(251,191,36,.5);color:var(--warn)}
+.btn:disabled{opacity:.45;cursor:not-allowed;transform:none}
+.wrap{max-width:1440px;margin:0 auto;padding:26px 22px 60px}
+.head{display:flex;justify-content:space-between;gap:20px;flex-wrap:wrap;align-items:flex-end;margin-bottom:22px}
+h1{font-size:clamp(26px,4vw,40px);font-weight:900;letter-spacing:-1px;line-height:1.1}
+h1 .grad{background:linear-gradient(120deg,var(--acc),var(--acc2),var(--violet));-webkit-background-clip:text;background-clip:text;color:transparent}
+.lede{color:var(--dim);font-size:14px;margin-top:8px;max-width:760px;line-height:1.7}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:20px}
+.kpi{background:var(--card);border:1px solid var(--line);border-radius:13px;padding:15px 18px;position:relative;overflow:hidden}
+.kpi::after{content:"";position:absolute;inset-inline-start:0;top:0;bottom:0;width:3px;background:var(--acc);opacity:.7}
+.kpi.den::after{background:var(--warn)}.kpi.fail::after{background:var(--bad)}.kpi.froze::after{background:var(--violet)}
+.kpi b{display:block;font-size:28px;font-family:ui-monospace,monospace;line-height:1.1}
+.kpi span{font-size:11px;color:var(--dim);letter-spacing:.5px;text-transform:uppercase}
+.kpi small{display:block;color:var(--dim);font-size:10.5px;margin-top:5px;font-family:ui-monospace,monospace}
+.grid{display:grid;grid-template-columns:minmax(320px,370px) 1fr;gap:16px;align-items:start}
+@media(max-width:1000px){.grid{grid-template-columns:1fr}}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:15px;padding:18px;margin-bottom:16px}
+.panel h2{font-size:14px;font-weight:800;letter-spacing:.3px;margin-bottom:4px;display:flex;justify-content:space-between;gap:10px;align-items:center}
+.panel .hint{color:var(--dim);font-size:11.5px;line-height:1.6;margin-bottom:15px}
+label{display:block;font-size:10.5px;color:var(--dim);margin:12px 0 5px;font-weight:700;letter-spacing:.7px;text-transform:uppercase}
+input,select,textarea{width:100%;background:var(--bg2);border:1px solid var(--line);border-radius:8px;color:var(--txt);padding:9px 11px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;outline:none}
+input:focus,select:focus,textarea:focus{border-color:var(--acc)}
+textarea{resize:vertical;min-height:60px}
+.btns{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:16px}
+.btns .btn{width:100%}
+.switch{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 13px;border:1px solid var(--line);border-radius:9px;background:var(--bg2);margin-top:10px;font-size:12px}
+.switch input{width:auto;accent-color:var(--acc)}
+.chart{background:var(--bg2);border:1px solid var(--line);border-radius:10px;padding:10px;height:150px}
+.chart svg{width:100%;height:100%;display:block}
+.legend{display:flex;gap:16px;flex-wrap:wrap;font-size:11px;color:var(--dim);margin-top:9px;font-family:ui-monospace,monospace}
+.legend b{color:var(--txt)}
+table{width:100%;border-collapse:collapse;font-size:11.5px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+th{text-align:left;color:var(--dim);font-size:10px;text-transform:uppercase;letter-spacing:.6px;padding:8px 9px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--card);z-index:1}
+td{padding:7px 9px;border-bottom:1px solid rgba(27,42,64,.6);vertical-align:top;word-break:break-word}
+tr:hover td{background:rgba(56,189,248,.04)}
+.scroll{max-height:330px;overflow:auto;border:1px solid var(--line);border-radius:9px}
+.tag{display:inline-block;padding:2px 7px;border-radius:6px;font-size:10px;font-weight:800;letter-spacing:.4px}
+.t-VERIFIED{color:var(--acc);background:rgba(0,229,160,.1);border:1px solid rgba(0,229,160,.35)}
+.t-DENIED{color:var(--warn);background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.35)}
+.t-FAILED,.t-ERROR{color:var(--bad);background:rgba(251,113,133,.1);border:1px solid rgba(251,113,133,.35)}
+.t-FROZEN,.t-CONTROL{color:var(--violet);background:rgba(167,139,250,.1);border:1px solid rgba(167,139,250,.35)}
+.t-PROVEN{color:var(--acc)}.t-DECLARED{color:var(--dim)}.t-SIMULATED{color:var(--acc2)}.t-NOTVER{color:var(--warn)}.t-FAILED2{color:var(--bad)}
+.mono{font-family:ui-monospace,monospace;font-size:11px;color:var(--dim)}
+.hash{color:var(--acc2);font-size:10.5px}
+.filters{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+.chip{padding:4px 9px;border-radius:7px;border:1px solid var(--line);background:var(--bg2);font-size:10.5px;cursor:pointer;color:var(--dim)}
+.chip.on{border-color:var(--acc);color:var(--acc)}
+.honesty{border:1px solid rgba(251,191,36,.35);border-left:3px solid var(--warn);border-radius:11px;background:rgba(251,191,36,.045);padding:15px 18px;font-size:12px;line-height:1.75;color:var(--txt)}
+.honesty b{color:var(--warn)}
+.honesty ul{margin:8px 0 0 18px}.honesty li{margin:4px 0}
+.honesty code{background:var(--bg2);padding:1px 5px;border-radius:4px;color:var(--acc2);font-size:11px}
+.rt-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:9px;margin-top:12px}
+.rt{background:var(--bg2);border:1px solid var(--line);border-radius:9px;padding:10px 12px}
+.rt b{display:block;font-size:19px;font-family:ui-monospace,monospace;color:var(--acc)}
+.rt span{font-size:10px;color:var(--dim)}
+footer{max-width:1440px;margin:0 auto;padding:22px;border-top:1px solid var(--line);color:var(--dim);font-size:11.5px;line-height:1.9}
+footer a{color:var(--acc2)}
+.warnbox{margin-top:12px;padding:11px 13px;border-radius:9px;border:1px solid rgba(251,191,36,.35);background:rgba(251,191,36,.06);color:var(--warn);font-size:11.5px;line-height:1.65}
+</style>
+</head>
+<body>
+<div class="bg"></div>
+<nav>
+  <div class="logo">AI<b>-2027</b> · <span style="font-size:13px;color:var(--dim);font-weight:600">COMMAND HUD</span></div>
+  <div class="navlinks">
+    <span class="pill live" id="livePill">● LIVE · REAL KERNEL</span>
+    <span class="pill" id="uptimePill">uptime —</span>
+    <span class="pill" id="freezePill">dispatch: ACTIVE</span>
+    <a href="https://github.com/sayedelazameydesign-crypto/ai-2027" data-en="GitHub" data-ar="جيتهب">GitHub</a>
+    <a href="https://sayedelazameydesign-crypto.github.io/ai-2027/demo.html" data-en="Public demo" data-ar="التجربة العامة">Public demo</a>
+    <button class="btn" id="langBtn" onclick="toggleLang()">العربية</button>
+  </div>
+</nav>
+
+<div class="wrap">
+  <div class="head">
+    <div>
+      <h1><span data-en="See the system move." data-ar="شاهد النظام يتحرك أمامك.">See the system move.</span><br><span class="grad" data-en="One screen. Full control. Real evidence." data-ar="شاشة واحدة. تحكم كامل. أدلة حقيقية.">One screen. Full control. Real evidence.</span></h1>
+      <p class="lede" data-en="Every run below goes through the REAL agi-system kernel (imported in place): deterministic planner → policy wall → executor → independent verifier → SHA-256 evidence. No LLM, no simulation, no third-party imports." data-ar="كل تشغيل هنا يمر عبر نواة agi-system الحقيقية (مستوردة في مكانها): مخطط حتمي ← جدار سياسات ← منفّذ ← مُتحقق مستقل ← دليل SHA-256. بلا نموذج لغوي، بلا محاكاة، بلا اعتماديات خارجية.">Every run below goes through the REAL agi-system kernel (imported in place): deterministic planner → policy wall → executor → independent verifier → SHA-256 evidence. No LLM, no simulation, no third-party imports.</p>
+    </div>
+  </div>
+
+  <div class="kpis">
+    <div class="kpi"><b id="kVerified">0</b><span data-en="VERIFIED" data-ar="مُتحقَّق">VERIFIED</span><small id="kVerifiedSub">independent verifier passed</small></div>
+    <div class="kpi den"><b id="kDenied">0</b><span data-en="DENIED" data-ar="مرفوض">DENIED</span><small id="kDeniedSub">policy wall fired first</small></div>
+    <div class="kpi fail"><b id="kFailed">0</b><span data-en="FAILED / ERROR" data-ar="فاشل / خطأ">FAILED / ERROR</span><small>honest terminal states</small></div>
+    <div class="kpi froze"><b id="kFrozen">0</b><span data-en="FROZEN" data-ar="مجمّد">FROZEN</span><small>dispatch blocked by kill switch</small></div>
+    <div class="kpi"><b id="kP50">—</b><span data-en="p50 latency" data-ar="زمن p50">p50 latency</span><small id="kP50Sub">n=0 · measured here</small></div>
+    <div class="kpi"><b id="kProjects">48</b><span data-en="projects audited" data-ar="مشروعًا مدققًا">projects audited</span><small id="kProjectsSub">read-only · PROVEN 1</small></div>
+  </div>
+
+  <div class="grid">
+    <div>
+      <div class="panel">
+        <h2>🎛️ <span data-en="Live command" data-ar="التحكم الحي">Live command</span> <span class="pill" id="kernelPill">REAL KERNEL</span></h2>
+        <div class="hint" data-en="Submit a goal to the real kernel. Watch the counters, the log and the latency chart update immediately." data-ar="أرسل هدفًا للنواة الحقيقية. شاهد العدادات والسجل والرسم البياني يتحدث فورًا.">Submit a goal to the real kernel. Watch the counters, the log and the latency chart update immediately.</div>
+
+        <label data-en="GOAL TYPE" data-ar="نوع الهدف">GOAL TYPE</label>
+        <select id="goal"></select>
+        <label data-en="PATH" data-ar="المسار">PATH</label>
+        <input id="path" value="notes/hello.txt" spellcheck="false">
+        <label data-en="CONTENT" data-ar="المحتوى">CONTENT</label>
+        <textarea id="content" spellcheck="false">evidence &gt; assertion</textarea>
+
+        <div class="btns">
+          <button class="btn primary" id="runBtn" data-en="▶ Run goal" data-ar="▶ شغّل الهدف">▶ Run goal</button>
+          <button class="btn warn" id="escapeBtn" data-en="⚠ Escape test" data-ar="⚠ اختبار الخروج">⚠ Escape test</button>
+          <button class="btn danger" id="rtBtn" data-en="🛡 Red-Team ×100" data-ar="🛡 هجمات ×100">🛡 Red-Team ×100</button>
+          <button class="btn" id="auditBtn" data-en="🔍 Refresh audit" data-ar="🔍 تحديث التدقيق">🔍 Refresh audit</button>
+        </div>
+
+        <div class="switch"><span data-en="⏸ Kill switch (freeze dispatch)" data-ar="⏸ مفتاح الإيقاف (تجميد الإرسال)">⏸ Kill switch (freeze dispatch)</span><input type="checkbox" id="killBox"></div>
+        <div class="switch"><span data-en="💓 Live pulse (real run / 1.2s)" data-ar="💓 نبض حي (تشغيل حقيقي/1.2ث)">💓 Live pulse (real run / 1.2s)</span><input type="checkbox" id="pulseBox"></div>
+        <div class="hint" style="margin:10px 0 0" data-en="Kill switch gates THIS HUD's dispatch only — it does not stop OS processes, and red-team/audit keep working so the wall stays provable." data-ar="مفتاح الإيقاف يجمّد إرسال هذه اللوحة فقط — لا يوقف عمليات النظام، وتبقى الهجمات والتدقيق تعمل لإبقاء الجدار قابلاً للإثبات.">Kill switch gates THIS HUD's dispatch only — it does not stop OS processes, and red-team/audit keep working so the wall stays provable.</div>
+      </div>
+
+      <div class="panel">
+        <h2>📈 <span data-en="Live latency (measured here)" data-ar="زمن الاستجابة الحي (مقاس هنا)">Live latency (measured here)</span></h2>
+        <div class="hint" data-en="Real perf_counter measurements around the kernel call. Jitter is shown — these are NOT the published bench.py reference numbers." data-ar="قياسات perf_counter حقيقية حول استدعاء النواة. الضوضاء ظاهرة — ليست أرقام bench.py المرجعية المنشورة.">Real perf_counter measurements around the kernel call. Jitter is shown — these are NOT the published bench.py reference numbers.</div>
+        <div class="chart"><svg id="spark" viewBox="0 0 600 120" preserveAspectRatio="none"></svg></div>
+        <div class="legend"><span>p50 <b id="lgP50">—</b></span><span>p95 <b id="lgP95">—</b></span><span>max <b id="lgMax">—</b></span><span>spread <b id="lgSpread">—</b></span><span>n <b id="lgN">0</b></span></div>
+      </div>
+    </div>
+
+    <div>
+      <div class="panel">
+        <h2>📜 <span data-en="Live audit log — real DecisionRecords" data-ar="سجل الأدلة الحي — سجلات قرارات حقيقية">Live audit log — real DecisionRecords</span> <span class="pill" id="logCount">0 events</span></h2>
+        <div class="hint" data-en="Newest first. Each row is a real kernel run with its status, reason, measured time and an independently recomputed SHA-256 of the produced file." data-ar="الأحدث أولًا. كل صف تشغيل حقيقي للنواة بحالته وسببه وزمنه المقاس وبصمة SHA-256 مُعاد حسابها باستقلالية للملف الناتج.">Newest first. Each row is a real kernel run with its status, reason, measured time and an independently recomputed SHA-256 of the produced file.</div>
+        <div class="scroll"><table><thead><tr>
+          <th data-en="time" data-ar="الوقت">time</th><th>status</th><th data-en="goal / path" data-ar="الهدف / المسار">goal / path</th>
+          <th>ms</th><th data-en="evidence / reason" data-ar="الدليل / السبب">evidence / reason</th>
+        </tr></thead><tbody id="logBody"><tr><td colspan="5" class="mono">No events yet — press “Run goal”.</td></tr></tbody></table></div>
+      </div>
+
+      <div class="panel">
+        <h2>🛡️ <span data-en="Adversarial red-team (real kernel)" data-ar="محاكي الهجمات (النواة الحقيقية)">Adversarial red-team (real kernel)</span> <span class="pill" id="rtPill">not run yet</span></h2>
+        <div class="hint" data-en="100 real adversarial inputs + 10 benign controls. Honest result: DENIED, CONTAINED-as-literal and breaches are reported separately — no fake 100/100 badge." data-ar="١٠٠ مدخل هجومي حقيقي + ١٠ ضوابط سليمة. النتيجة بصدق: المرفوض والمحتوى كاسم ملف والاختراقات تُعرض منفصلة — بلا شارة 100/100 مزيّفة.">100 real adversarial inputs + 10 benign controls. Honest result: DENIED, CONTAINED-as-literal and breaches are reported separately — no fake 100/100 badge.</div>
+        <div class="rt-grid" id="rtGrid"><div class="rt"><b>—</b><span data-en="press Red-Team ×100" data-ar="اضغط هجمات ×100">press Red-Team ×100</span></div></div>
+        <div class="warnbox" id="rtWarn" style="display:none"></div>
+      </div>
+
+      <div class="panel">
+        <h2>🗂️ <span data-en="48-project health (read-only audit)" data-ar="صحة المشاريع الـ48 (تدقيق قراءة فقط)">48-project health (read-only audit)</span> <span class="pill" id="auditPill">—</span></h2>
+        <div class="hint" data-en="PROVEN = a command actually ran here. DECLARED = documented but NOT executed. SIMULATED = README says simulation. Nothing under projects/ was modified." data-ar="مُثبت = أمر نفّذ فعليًا هنا. مُعلَن = موثّق لكن لم يُنفَّذ. محاكاة = README يذكر وضع محاكاة. لم يُعدّل أي ملف تحت projects/.">PROVEN = a command actually ran here. DECLARED = documented but NOT executed. SIMULATED = README says simulation. Nothing under projects/ was modified.</div>
+        <div class="filters" id="filters"></div>
+        <div class="scroll" style="max-height:300px"><table><thead><tr>
+          <th data-en="project" data-ar="المشروع">project</th><th>status</th><th data-en="files" data-ar="ملفات">files</th>
+          <th>license</th><th data-en="tests" data-ar="اختبارات">tests</th><th>CI</th>
+        </tr></thead><tbody id="auditBody"></tbody></table></div>
+        <div class="warnbox" id="criticalBox" style="display:none"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel honesty">
+    <b data-en="⚖️ Honest scope — read this before quoting anything" data-ar="⚖️ النطاق بصدق — اقرأ هذا قبل اقتباس أي رقم">⚖️ Honest scope — read this before quoting anything</b>
+    <ul>
+      <li data-en="The command pasted as `python -m live_agent.server --port 8090` does NOT exist in this repo. The real entrypoint is `python3 live-agent/server.py --port 8090`, and this HUD is `python3 command-hud/server.py --port 8090`." data-ar="الأمر المنقول `python -m live_agent.server --port 8090` غير موجود في هذا المستودع. نقطة التشغيل الحقيقية هي `python3 live-agent/server.py --port 8090`، وهذه اللوحة `python3 command-hud/server.py --port 8090`.">The command pasted as <code>python -m live_agent.server --port 8090</code> does NOT exist in this repo. The real entrypoint is <code>python3 live-agent/server.py --port 8090</code>, and this HUD is <code>python3 command-hud/server.py --port 8090</code>.</li>
+      <li data-en="`http://localhost:8090` points at YOUR machine, not this sandbox. In Arena use the live preview URL; relative API paths keep it working behind the proxy." data-ar="`http://localhost:8090` يشير إلى جهازك لا إلى هذا الصندوق. في Arena استخدم رابط المعاينة الحية؛ المسارات النسبية تبقيه يعمل خلف البروكسي."><code>http://localhost:8090</code> points at YOUR machine, not this sandbox. In Arena use the live preview URL; relative API paths keep it working behind the proxy.</li>
+      <li data-en="DENIED at ~3.1 ms is the reference p50 from docs/BENCHMARKS.md; re-runs on loaded containers reached 12.1 ms with 172% spread. Timings here are measured live and are NOT an SLA." data-ar="الرفض عند ~3.1ms هو p50 المرجعي من docs/BENCHMARKS.md؛ إعادة التشغيل على حاوية محمّلة وصلت 12.1ms بضوضاء 172%. الأزمنة هنا مقاسة لحظيًا وليست SLA.">DENIED at ~3.1 ms is the reference p50 from <code>docs/BENCHMARKS.md</code>; re-runs on loaded containers reached 12.1 ms with 172% spread. Timings here are measured live and are NOT an SLA.</li>
+      <li data-en="The deterministic planner is deliberate: NO LLM is called anywhere. Phase 2 (cloud / local / defer) is still your undecided decision." data-ar="المخطط الحتمي مقصود: لا يُستدعى أي نموذج لغوي. Phase 2 (سحابي/محلي/تأجيل) ما زال قرارك غير المحسوم.">The deterministic planner is deliberate: <b>NO LLM is called anywhere</b>. Phase 2 (cloud / local / defer) is still your undecided decision.</li>
+      <li data-en="25 Windows-separator/encoded paths became literal filenames INSIDE the sandbox on Linux (0 breaches, but cross-platform containment is NOT VERIFIED). This is reported, not hidden." data-ar="٢٥ مسارًا بفواصل Windows/مرمّزة تحوّلت إلى أسماء ملفات حرفية داخل الصندوق على Linux (صفر اختراق، لكن الاحتواء عبر المنصات غير مُثبت). هذا مُعلَن لا مُخفى.">25 Windows-separator/encoded paths became literal filenames INSIDE the sandbox on Linux (0 breaches, but cross-platform containment is NOT VERIFIED). This is reported, not hidden.</li>
+    </ul>
+  </div>
+</div>
+
+<footer>
+  <b>AI-2027</b> · <span data-en="No claims without evidence." data-ar="لا ادعاءات بلا أدلة.">No claims without evidence.</span><br>
+  <a href="https://github.com/sayedelazameydesign-crypto/ai-2027/blob/main/docs/REPOSITORY-AUDIT.md">Repository audit</a> ·
+  <a href="https://github.com/sayedelazameydesign-crypto/ai-2027/blob/main/docs/BENCHMARKS.md">BENCHMARKS.md</a> ·
+  <a href="https://github.com/sayedelazameydesign-crypto/ai-2027/tree/main/command-hud">command-hud source</a> ·
+  <a href="https://www.facebook.com/sayed.elazamy">Sayed El-Azamey</a><br>
+  <span data-en="Stdlib only · zero third-party imports · 48 projects untouched · read-only audit." data-ar="بايثون صرفة · صفر اعتماديات خارجية · المشاريع الـ48 دون تعديل · تدقيق قراءة فقط.">Stdlib only · zero third-party imports · 48 projects untouched · read-only audit.</span>
+</footer>
+
+<script src="app.js"></script>
+</body>
+</html>
