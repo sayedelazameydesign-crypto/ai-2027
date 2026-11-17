@@ -32,7 +32,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
-      - uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b  # v5
+      # NOTE: actions/configure-pages is deliberately NOT used: it is a composite
+      # action that resolves other actions by tag, which the SHA-pinning policy
+      # rejects. The site is plain static files with no base-path templating.
       - name: Validate the zero-dependency static bundle
         run: |
           set -euo pipefail
@@ -47,10 +49,24 @@ jobs:
             exit 1
           fi
           echo "Static bundle OK: $(find website -maxdepth 1 -type f | wc -l) files, zero external scripts."
+      # upload-pages-artifact is a COMPOSITE action that internally calls
+      # actions/upload-artifact@v4 by TAG, so a repo that requires every action
+      # to be pinned to a full-length SHA rejects it from the inside. We build
+      # the exact same artifact ourselves (tar of the site root, name
+      # "github-pages") and upload it with a pinned JS action instead.
+      - name: Package the site as artifact.tar
+        run: |
+          set -euo pipefail
+          tar --dereference --hard-dereference -cvf artifact.tar -C website .
+          echo "artifact.tar: $(stat -c%s artifact.tar) bytes"
+          tar -tf artifact.tar | head -20
+
       - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa  # v3
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
         with:
-          path: website/
+          name: github-pages
+          path: artifact.tar
+          retention-days: 1
 
   deploy:
     needs: build
