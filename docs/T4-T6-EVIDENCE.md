@@ -26,7 +26,21 @@ the script never commits a stale claim.
 | One-command local boot (this repo) | ✅ live | table above |
 | Hosted second mirror (Vercel) | ⛔ blocked by measured permission | `create_project` → *"Access denied. Your token may not have the required permissions."* |
 | Supabase `beats` table | ⛔ blocked by measured cost decision | 4 projects on the account, **all `INACTIVE`** (paused); restoring or creating one is an owner decision |
-| jsDelivr CDN mirror of `website/` | 🟡 wired, **not yet claimed live** | URL is passed to the beat; it is only counted once the beat measures `200` |
+| jsDelivr CDN mirror of `website/` | ✅ **live and measured** | beat run `44153401233`: `200` for `cdn.jsdelivr.net/gh/…/website/demo.html` → **3/3 paths live** |
+
+### The 2026-11-17 18:57 UTC beat (first one with the new pipeline)
+
+```
+beat 18:57:59Z · heat 0.802 BURNING · embers 3/3 · smoke 15/15 · memories 1
+path: 200  https://sayedelazameydesign-crypto.github.io/ai-2027/demo.html
+path: 200  https://cdn.jsdelivr.net/gh/sayedelazameydesign-crypto/ai-2027@main/website/demo.html
+gate: healthy · stage 0 · streak 0 · failures []
+```
+
+Its **first attempt exited 2** (a transient path failure while the CDN was cold),
+the workflow retried once, and the retry was healthy. No issue was opened, no human
+was paged — which is exactly what stage 1 is for. `ember/history.jsonl` gained
+**one** row for that run, not two: the retry-inflation guard works in production.
 
 The heat formula gives each of 3 paths `0.2/3 = 0.0667` — **≤ 0.07**, which is the
 T4 acceptance criterion ("losing any one path must not cost more than 0.07 heat").
@@ -62,11 +76,26 @@ checks **fails** (`test_02`); a retry is not infinite (`test_07`); three degrade
 runs escalate (`test_12`); an unconfigured webhook is reported as
 `not-configured`, never as delivered (`test_15`).
 
-### Live proof on GitHub
+### Live proof on GitHub — the whole ladder, executed
 
-The workflow input `force_degraded: true` produces a genuinely degraded beat. The
-dispatch → issue → recovery → close cycle is recorded in the Actions run list; the
-issue is closed by the next healthy beat, not by a human.
+Three `workflow_dispatch` runs with `force_degraded: true`, then one healthy run:
+
+| # | Run | Gate on the heartbeat branch | Effect |
+|---|---|---|---|
+| 1 | `44153564221` | `stage 2 · streak 1 · failures [smoke_complete]` | opened **issue #39** with the full 11-check table |
+| 2 | `44154466911` | `stage 2 · streak 2` | updated the same issue (never a second one) |
+| 3 | `44154576765` | `stage 3 · streak 3 · alert not-configured` | label **`escalation/s3`** + comment mentioning `@sayedelazameydesign-crypto` |
+| 4 | `44154837814` | healthy | **closed #39 automatically at 19:05:51Z** |
+
+Issue #39's body is the gate's own table — not a hand-written summary — including
+`attempts: 2` and the exact failing check. The stage-3 comment says
+`alert delivery: not-configured`, because no webhook secret exists: the gate
+refuses to claim a page it did not send.
+
+**Cost of the drill, stated:** three deliberately failed beats are in the 7-day
+history, so the measured Heat Index fell from **0.802 (burning)** to **0.5013**
+(success rate 2/5). The number is not massaged; it recovers as those beats age out
+of the window.
 
 ---
 
@@ -98,6 +127,22 @@ $ python3 scripts/run_task.py --boot --json
 $ python3 scripts/test_run_task.py -v
 Ran 6 tests in 2.62s — OK
 ```
+
+---
+
+## Release v1.0.1 (same pipeline, second time)
+
+```
+$ gh release view v1.0.1
+tag=v1.0.1 · published 2026-11-17T19:07:45Z
+  agi_kernel-0.1.0-py3-none-any.whl · 40604 B
+  sbom.cdx.json                     ·  3686 B
+  SHA256SUMS                        ·   184 B
+notes: the real CHANGELOG entry (extracted by .github/workflows/release.yml)
+```
+
+Release run `44155173127` **success**: tests + `sbom --assert-pinned` + wheel +
+SBOM + checksums + notes, with no manual step. `gh api …/releases/latest` → `v1.0.1`.
 
 ---
 
