@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI-2027 · Live Agent Experience — real execution, independent verification</title>
+<style>
+:root{--bg:#06090f;--bg2:#0b1120;--card:#0e1626;--line:#1c2942;--txt:#e6edf7;--dim:#8fa1bd;--acc:#00e5a0;--acc2:#38bdf8;--red:#f87171;--amber:#fbbf24}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--txt);font-family:ui-sans-serif,system-ui,"Segoe UI",Roboto,Arial,sans-serif;min-height:100vh}
+.wrap{max-width:1200px;margin:0 auto;padding:24px 20px 60px}
+header{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;padding:14px 0 22px;border-bottom:1px solid var(--line);margin-bottom:22px}
+.logo{font-weight:800;font-size:19px}.logo b{color:var(--acc)}
+.tag{font-size:12px;color:var(--dim)}
+.pill{display:inline-block;font-size:11px;padding:4px 12px;border-radius:99px;border:1px solid var(--line);background:var(--card);color:var(--acc);margin-inline-start:8px}
+button{font-family:inherit;cursor:pointer}
+.lang{background:var(--card);border:1px solid var(--line);color:var(--txt);padding:7px 14px;border-radius:9px;font-size:13px}
+.grid{display:grid;grid-template-columns:340px 1fr;gap:20px}
+@media(max-width:900px){.grid{grid-template-columns:1fr}}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px}
+.panel h3{font-size:14px;text-transform:uppercase;letter-spacing:1.2px;color:var(--dim);margin-bottom:14px}
+label{display:block;font-size:12px;color:var(--dim);margin:12px 0 5px}
+select,input,textarea{width:100%;background:var(--bg2);border:1px solid var(--line);color:var(--txt);border-radius:9px;padding:9px 11px;font-size:13px;font-family:inherit}
+textarea{min-height:74px;resize:vertical}
+.presets{display:flex;flex-direction:column;gap:8px;margin-top:16px}
+.preset{text-align:start;background:var(--bg2);border:1px solid var(--line);border-radius:9px;padding:9px 12px;color:var(--txt);font-size:12.5px;transition:.15s}
+.preset:hover{border-color:var(--acc)}
+.preset small{display:block;color:var(--dim);margin-top:2px}
+.preset.danger:hover{border-color:var(--red)}
+.run{width:100%;margin-top:16px;padding:12px;border:none;border-radius:10px;font-weight:700;font-size:14px;background:linear-gradient(135deg,var(--acc),#00b8d4);color:#04121a}
+.run:disabled{opacity:.5;cursor:wait}
+.pipe{display:flex;gap:4px;flex-wrap:wrap;margin:6px 0 18px}
+.st{flex:1;min-width:86px;text-align:center;padding:10px 4px;border-radius:10px;background:var(--bg2);border:1px solid var(--line);font-size:11.5px;color:var(--dim);transition:.3s}
+.st.on{border-color:var(--acc);color:var(--acc);box-shadow:0 0 18px -6px var(--acc)}
+.st.bad{border-color:var(--red);color:var(--red);box-shadow:0 0 18px -6px var(--red)}
+.st b{display:block;font-size:13px;margin-bottom:2px}
+.verdict{display:none;padding:14px 18px;border-radius:12px;font-weight:700;font-size:15px;margin-bottom:16px;text-align:center}
+.verdict.show{display:block}
+.verdict.VERIFIED{background:rgba(0,229,160,.12);color:var(--acc);border:1px solid rgba(0,229,160,.4)}
+.verdict.DENIED{background:rgba(248,113,113,.1);color:var(--red);border:1px solid rgba(248,113,113,.4)}
+.verdict.FAILED,.verdict.INCONCLUSIVE{background:rgba(251,191,36,.1);color:var(--amber);border:1px solid rgba(251,191,36,.4)}
+pre{background:var(--bg2);border:1px solid var(--line);border-radius:10px;padding:14px;font-size:11.5px;line-height:1.6;overflow:auto;max-height:330px;color:#b8c7de;direction:ltr;text-align:left}
+.files{display:flex;flex-direction:column;gap:8px}
+.file{display:flex;justify-content:space-between;align-items:center;background:var(--bg2);border:1px solid var(--line);border-radius:9px;padding:9px 12px;font-size:12.5px;gap:8px}
+.file a{color:var(--acc);text-decoration:none;font-weight:600;white-space:nowrap}
+.honest{margin-top:18px;font-size:11.5px;color:var(--dim);line-height:1.7;border-top:1px dashed var(--line);padding-top:12px}
+.honest b{color:var(--amber)}
+.section{margin-top:20px}
+.denial{background:rgba(248,113,113,.08);border:1px solid rgba(248,113,113,.3);border-radius:10px;padding:11px 14px;font-size:12.5px;color:var(--red);margin-top:10px;display:none}
+.denial.show{display:block}
+a.dl{color:var(--acc);font-size:12px;text-decoration:none}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+@media(max-width:900px){.row2{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <div>
+    <div class="logo">AI<b>-2027</b> · <span data-en="Live Agent Experience" data-ar="تجربة الوكيل الحية">Live Agent Experience</span><span class="pill" data-en="REAL execution · zero-dependency kernel" data-ar="تنفيذ حقيقي · نواة بلا اعتمادات">REAL execution · zero-dependency kernel</span></div>
+    <div class="tag" data-en="Phase 1 — agi-system kernel, imported in place, untouched" data-ar="المرحلة ١ — نواة agi-system مستوردة كما هي، دون تعديل">Phase 1 — agi-system kernel, imported in place, untouched</div>
+  </div>
+  <button class="lang" id="langBtn" onclick="toggleLang()">العربية</button>
+</header>
+
+<div class="grid">
+  <div class="panel">
+    <h3 data-en="① Submit a goal" data-ar="① أرسل هدفًا">① Submit a goal</h3>
+    <label data-en="Goal type (kernel capabilities)" data-ar="نوع الهدف (قدرات النواة)">Goal type (kernel capabilities)</label>
+    <select id="gtype">
+      <option value="create_file">create_file</option>
+      <option value="read_file">read_file</option>
+      <option value="append_file">append_file</option>
+      <option value="list_dir">list_dir</option>
+      <option value="ensure_dir">ensure_dir</option>
+      <option value="delete_file">delete_file</option>
+    </select>
+    <label data-en="path (relative to this run's sandbox)" data-ar="المسار (نسبةً إلى صندوق هذه الجولة)">path (relative to this run's sandbox)</label>
+    <input id="gpath" value="reports/hello.txt">
+    <label data-en="content (for create/append)" data-ar="المحتوى (للإنشاء/الإلحاق)">content (for create/append)</label>
+    <textarea id="gcontent">Hello from the evidence-first kernel.</textarea>
+    <button class="run" id="runBtn" onclick="run()" data-en="▶ Run the cognitive loop" data-ar="▶ شغّل الحلقة الإدراكية">▶ Run the cognitive loop</button>
+
+    <h3 style="margin-top:22px" data-en="② Or pick a scenario" data-ar="② أو اختر سيناريو">② Or pick a scenario</h3>
+    <div class="presets">
+      <button class="preset" onclick="preset('create_file','reports/plan.txt','Q1 roadmap: ship the verifier first.')"><b data-en="Create a report" data-ar="أنشئ تقريرًا">Create a report</b><small data-en="expect: VERIFIED with sha256 evidence" data-ar="المتوقع: تم التحقق مع بصمة sha256">expect: VERIFIED with sha256 evidence</small></button>
+      <button class="preset" onclick="preset('list_dir','.')"><b data-en="List the sandbox" data-ar="اعرض محتوى الصندوق">List the sandbox</b><small data-en="expect: VERIFIED, empty or listed entries" data-ar="المتوقع: تم التحقق مع قائمة المجلد">expect: VERIFIED, empty or listed entries</small></button>
+      <button class="preset danger" onclick="preset('create_file','../../escape.txt','pwned')"><b data-en="⚠ Try to escape the sandbox" data-ar="⚠️ حاول الخروج من الصندوق">⚠ Try to escape the sandbox</b><small data-en="expect: DENIED by policy — watch it refuse" data-ar="المتوقع: مرفوض من السياسة — شاهد الرفض">expect: DENIED by policy — watch it refuse</small></button>
+      <button class="preset danger" onclick="preset('read_file','no/such-file.txt')"><b data-en="⚠ Read a file that doesn't exist" data-ar="⚠️ اقرأ ملفًا غير موجود">⚠ Read a file that doesn't exist</b><small data-en="expect: FAILED — honestly reported, not faked" data-ar="المتوقع: فشل — يُبلَّغ بصدق ولا يُزوَّر">expect: FAILED — honestly reported, not faked</small></button>
+    </div>
+    <div class="honest" data-en="Honesty box: the planner is deterministic (rule-based), NOT an LLM. What is real here: policy enforcement, sandbox confinement, independent verification, sha256 evidence, and the denial you just saw. The LLM brain is Phase 2." data-ar="صندوق الصدق: المخطط حتمي (قواعد)، وليس نموذجًا لغويًا. ما هو حقيقي هنا: إنفاذ السياسة، حبس الصندوق، التحقق المستقل، أدلة sha256، والرفض الذي شاهدته للتو. العقل اللغوي يأتي في المرحلة ٢."><b>Honesty box:</b> the planner is deterministic (rule-based), NOT an LLM. What is real here: policy enforcement, sandbox confinement, independent verification, sha256 evidence. The LLM brain is Phase 2.</div>
+  </div>
+
+  <div>
+    <div class="panel">
+      <h3 data-en="③ The cognitive loop — replayed from the actual record" data-ar="③ الحلقة الإدراكية — تُعرض من السجل الفعلي">③ The cognitive loop — replayed from the actual record</h3>
+      <div class="pipe" id="pipe">
+        <div class="st" data-s="goal"><b>01</b><span data-en="Goal" data-ar="الهدف">Goal</span></div>
+        <div class="st" data-s="plan"><b>02</b><span data-en="Plan" data-ar="الخطة">Plan</span></div>
+        <div class="st" data-s="policy"><b>03</b><span data-en="Policy" data-ar="السياسة">Policy</span></div>
+        <div class="st" data-s="exec"><b>04</b><span data-en="Execute" data-ar="التنفيذ">Execute</span></div>
+        <div class="st" data-s="verify"><b>05</b><span data-en="Verify" data-ar="التحقق">Verify</span></div>
+        <div class="st" data-s="evid"><b>06</b><span data-en="Evidence" data-ar="الأدلة">Evidence</span></div>
+        <div class="st" data-s="report"><b>07</b><span data-en="Report" data-ar="التقرير">Report</span></div>
+      </div>
+      <div class="verdict" id="verdict"></div>
+      <div class="denial" id="denial"></div>
+      <div id="idle" data-en="No run yet. Submit a goal — the kernel will plan, check policy, execute inside a per-run sandbox, verify independently, and file the evidence." data-ar="لا جولة بعد. أرسل هدفًا — ستخطط النواة، وتفحص السياسة، وتنفذ داخل صندوق معزول للجولة، وتتحقق باستقلالية، وتودع الأدلة.">No run yet. Submit a goal — the kernel will plan, check policy, execute inside a per-run sandbox, verify independently, and file the evidence.</div>
+      <div class="section" id="filesBox" style="display:none">
+        <h3 data-en="④ Sandbox artifacts (download the evidence)" data-ar="④ ملفات الصندوق (حمّل الأدلة)">④ Sandbox files</h3>
+        <div class="files" id="files"></div>
+        <div style="margin-top:10px"><a class="dl" id="recDl" href="#" data-en="⬇ Download the full DecisionRecord (JSON)" data-ar="⬇ حمّل سجل القرار الكامل (JSON)">⬇ Download the full DecisionRecord (JSON)</a></div>
+      </div>
+      <div class="section" id="evBox" style="display:none">
+        <h3 data-en="⑤ Evidence & verification details" data-ar="⑤ الأدلة وتفاصيل التحقق">⑤ Evidence & verification details</h3>
+        <pre id="evJson"></pre>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+
+<script>
+let lang='en';
+function toggleLang(){lang=lang==='en'?'ar':'en';document.documentElement.lang=lang;document.documentElement.dir=lang==='ar'?'rtl':'ltr';document.getElementById('langBtn').textContent=lang==='ar'?'English':'العربية';document.querySelectorAll('[data-en]').forEach(el=>{el.textContent=lang==='ar'?el.dataset.ar:el.dataset.en});}
+function preset(t,p,c){document.getElementById('gtype').value=t;document.getElementById('gpath').value=p;document.getElementById('gcontent').value=c||'';run();}
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+function light(id,cls){const el=document.querySelector(`.st[data-s="${id}"]`);el.classList.remove('on','bad');if(cls)el.classList.add(cls);}
+async function run(){
+  const btn=document.getElementById('runBtn');btn.disabled=true;
+  document.getElementById('idle').style.display='none';
+  ['goal','plan','policy','exec','verify','evid','report'].forEach(s=>light(s,''));
+  const v=document.getElementById('verdict');v.className='verdict';
+  document.getElementById('denial').className='denial';
+  const t=document.getElementById('gtype').value;
+  const params={path:document.getElementById('gpath').value};
+  if(t==='create_file'||t==='append_file')params.content=document.getElementById('gcontent').value;
+  light('goal','on');
+  let rec;
+  try{
+    const r=await fetch('/api/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({goal_type:t,params})});
+    rec=await r.json();
+    if(rec.error){throw new Error(rec.error);}
+  }catch(e){
+    v.className='verdict show FAILED';v.textContent=(lang==='ar'?'خطأ في الغلاف: ':'Wrapper error: ')+e.message;btn.disabled=false;return;
+  }
+  // Cosmetic reveal of REAL data (the record was produced synchronously by the kernel).
+  await sleep(250);
+  light('plan',rec.plan?'on':'bad');await sleep(250);
+  const denied=rec.status==='DENIED';
+  light('policy',denied?'bad':'on');await sleep(250);
+  const evPassed=e=>{const c=Object.values(e.checks||{});return c.length>0&&c.every(Boolean);};
+  if(!denied){light('exec',rec.observations&&rec.observations.length&&rec.observations[0].ok?'on':(rec.status==='FAILED'?'bad':'on'));await sleep(250);}
+  light('verify',(rec.evidence&&rec.evidence.length)?(rec.evidence.every(evPassed)?'on':'bad'):(denied?'':'bad'));await sleep(250);
+  light('evid',(rec.evidence&&rec.evidence.length&&rec.evidence.every(evPassed))?'on':(denied?'':'bad'));await sleep(250);
+  light('report',rec.status==='VERIFIED'?'on':'bad');
+  v.className='verdict show '+rec.status;
+  const labels={VERIFIED:{en:'✅ VERIFIED — independently confirmed, evidence filed',ar:'✅ تم التحقق — تأكيد مستقل، والأدلة مودعة'},DENIED:{en:'🚫 DENIED — policy refused the action before execution',ar:'🚫 مرفوض — السياسة رفضت الإجراء قبل التنفيذ'},FAILED:{en:'❌ FAILED — reported honestly, nothing faked',ar:'❌ فشل — أُبلغ بصدق، دون تزوير'},INCONCLUSIVE:{en:'⚠ INCONCLUSIVE',ar:'⚠️ غير حاسم'},ABORTED:{en:'⛔ ABORTED',ar:'⛔ أُجهض'}};
+  const l=labels[rec.status]||{en:rec.status,ar:rec.status};
+  v.textContent=lang==='ar'?l.ar:l.en;
+  if(rec.denial_reasons&&rec.denial_reasons.length){const d=document.getElementById('denial');d.className='denial show';d.textContent='🛡 '+rec.denial_reasons.join(' · ');}
+  const fb=document.getElementById('filesBox');
+  if(rec.sandbox_files&&rec.sandbox_files.length){fb.style.display='block';const fl=document.getElementById('files');fl.innerHTML='';rec.sandbox_files.forEach(f=>{const div=document.createElement('div');div.className='file';div.innerHTML=`<span>📄 ${rec.sandbox}/${f}</span><a href="/api/file?run=${rec.run_id}&path=${encodeURIComponent(f)}">${lang==='ar'?'تنزيل':'download'}</a>`;fl.appendChild(div);});}
+  document.getElementById('recDl').href='/api/run/'+rec.run_id;
+  document.getElementById('evBox').style.display='block';
+  document.getElementById('evJson').textContent=JSON.stringify({status:rec.status,run_id:rec.run_id,duration_ms:rec.duration_ms,plan:rec.plan,policy:rec.policy,observations:rec.observations,evidence:rec.evidence},null,2);
+  btn.disabled=false;
+}
+fetch('/api/health').then(r=>r.json()).then(h=>{document.querySelector('.tag').textContent=(lang==='ar'?'النواة: agi-system · الاختبارات: ':'kernel: agi-system · tests: ')+h.kernel_tests;});
+</script>
+</body>
+</html>
