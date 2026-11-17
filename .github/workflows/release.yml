@@ -60,19 +60,23 @@ jobs:
           (cd release && sha256sum ./* > SHA256SUMS && cat SHA256SUMS)
 
       - name: Extract release notes from CHANGELOG
+        env:
+          TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
           python - <<'PY'
-          import re, pathlib
-          tag = "${GITHUB_REF_NAME}"
+          import os, re, pathlib
+          tag = os.environ["TAG"]          # env, not bash interpolation inside a quoted heredoc
           text = pathlib.Path("CHANGELOG.md").read_text(encoding="utf-8")
-          m = re.search(rf"^## \[{re.escape(tag)}\]\s*$(.*?)(?=^## \[|\Z)",
+          # The heading carries a date after the version, so match the rest of the line.
+          m = re.search(rf"^## \[{re.escape(tag)}\][^\n]*\n(.*?)(?=^## \[|\Z)",
                         text, re.M | re.S)
           body = (m.group(1).strip() if m else
                   "No CHANGELOG entry for this tag — refusing to invent release notes.")
           pathlib.Path("release-notes.md").write_text(
               body + f"\n\n---\n\n**Assets**: wheel · `sbom.cdx.json` · `SHA256SUMS`\n"
-              f"**Commit**: `{tag}`\n", encoding="utf-8")
+              f"**Tag**: `{tag}` · **Commit**: `{os.environ.get('GITHUB_SHA','')[:7]}`\n",
+              encoding="utf-8")
           print(body[:400])
           PY
 
