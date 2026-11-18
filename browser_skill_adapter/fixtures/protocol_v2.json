@@ -1,0 +1,203 @@
+{
+  "_meta": {
+    "upstream": "https://github.com/Tencent/BrowserSkill",
+    "upstream_license": "MIT",
+    "upstream_commit_inspected": "aeebd100e036863d224786a2e565b742bb88ad78",
+    "pinned_cli_tag": "cli-v0.5.0",
+    "pinned_ext_tag": "ext-v0.5.0",
+    "protocol_version": "2.0",
+    "honest_scope": "Offline fixtures derived from crates/bsk-protocol/schema/ (173 schemas). Live confirmation requires running browser_skill_adapter/probe.py on the owner machine."
+  },
+  "status_ready": {
+    "version": "0.5.0",
+    "protocol_version": "2.0",
+    "min_compatible_protocol": "2.0",
+    "ipc_envelope": true,
+    "mode": "local",
+    "pid": 42100,
+    "ws_port": 52800,
+    "local_auth": {
+      "mode": "optional",
+      "paired_devices": 1
+    },
+    "browsers": [
+      {
+        "instance_id": "a1b2c3d4",
+        "browser_name": "Chrome",
+        "browser_version": "131.0.6778.86",
+        "extension_version": "0.5.0",
+        "extension_protocol_version": "2.0",
+        "label": "Work profile",
+        "session_count": 0,
+        "connected_at_ms": 1795025700000,
+        "version_skew": false,
+        "unresponsive": false
+      }
+    ],
+    "sessions": []
+  },
+  "status_no_browser": {
+    "version": "0.5.0",
+    "protocol_version": "2.0",
+    "ipc_envelope": true,
+    "mode": "local",
+    "pid": 42100,
+    "ws_port": 52800,
+    "local_auth": {
+      "mode": "optional",
+      "paired_devices": 0
+    },
+    "browsers": [],
+    "sessions": []
+  },
+  "status_multi_browser": {
+    "version": "0.5.0",
+    "protocol_version": "2.0",
+    "ipc_envelope": true,
+    "mode": "local",
+    "pid": 42100,
+    "ws_port": 52800,
+    "browsers": [
+      {
+        "instance_id": "a1b2c3d4",
+        "browser_name": "Chrome",
+        "browser_version": "131.0.6778.86",
+        "extension_version": "0.5.0",
+        "extension_protocol_version": "2.0",
+        "label": "Work profile",
+        "session_count": 0,
+        "connected_at_ms": 1795025700000,
+        "version_skew": false,
+        "unresponsive": false
+      },
+      {
+        "instance_id": "e5f60718",
+        "browser_name": "Edge",
+        "browser_version": "131.0.2903.70",
+        "extension_version": "0.5.0",
+        "extension_protocol_version": "2.0",
+        "label": "Personal Edge",
+        "session_count": 0,
+        "connected_at_ms": 1795025710000,
+        "version_skew": false,
+        "unresponsive": false
+      }
+    ],
+    "sessions": []
+  },
+  "status_version_old": {
+    "version": "0.4.1",
+    "protocol_version": "1.8",
+    "ipc_envelope": false,
+    "mode": "local",
+    "pid": 42100,
+    "ws_port": 52800,
+    "browsers": [
+      {
+        "instance_id": "a1b2c3d4",
+        "browser_name": "Chrome",
+        "browser_version": "131.0.6778.86",
+        "extension_version": "0.4.1",
+        "extension_protocol_version": "1.8",
+        "label": "Old",
+        "session_count": 0,
+        "connected_at_ms": 1795025700000,
+        "version_skew": true,
+        "unresponsive": false
+      }
+    ],
+    "sessions": []
+  },
+  "session_start": {
+    "session_id": "ab12",
+    "browser_id": "a1b2c3d4",
+    "window_id": 9001,
+    "tab_id": 42,
+    "incognito": false
+  },
+  "session_stop": {
+    "session_id": "ab12",
+    "stopped": true,
+    "returned_tabs": [],
+    "return_failures": []
+  },
+  "navigate": {
+    "tab_id": 42,
+    "url": "https://example.com/",
+    "title": "Example Domain",
+    "effect_state": "committed"
+  },
+  "sync": {
+    "session_id": "ab12",
+    "tab_id": 42,
+    "control_policy": "target",
+    "context_id": "ctx_9f8e7d6c",
+    "observation_id": "obs_1a2b3c4d",
+    "url": "https://example.com/",
+    "title": "Example Domain",
+    "vom": "[@e1 heading \"Example Domain\"]\n[@e2 link \"More information...\"]"
+  },
+  "observe": {
+    "tab_id": 42,
+    "url": "https://example.com/",
+    "title": "Example Domain",
+    "text": "Example Domain. This domain is for use in illustrative examples in documents.",
+    "elements": [
+      {"ref": "@e1", "role": "heading", "name": "Example Domain"},
+      {"ref": "@e2", "role": "link", "name": "More information..."}
+    ]
+  },
+  "click_committed": {
+    "tab_id": 42,
+    "used_ref": "@e2",
+    "used_selector": null,
+    "x": 184.5,
+    "y": 212.0,
+    "effect_state": "committed",
+    "dialogs": []
+  },
+  "click_unknown": {
+    "tab_id": 42,
+    "used_ref": "@e2",
+    "effect_state": "unknown",
+    "phase": "post_dispatch",
+    "reason": "transport_timeout_after_input"
+  },
+  "rpc_error_dialog_pending": {
+    "error": {
+      "code": "dialog_pending",
+      "message": "A JavaScript confirm dialog is blocking tab 42",
+      "data": {
+        "reason": "dialog_pending",
+        "tab_id": 42,
+        "effect_state": "unknown"
+      }
+    }
+  },
+  "rpc_error_no_browser": {
+    "error": {
+      "code": "no_browser_connected",
+      "message": "No BrowserSkill extension is connected to the daemon"
+    }
+  },
+  "rpc_error_multiple_browsers": {
+    "error": {
+      "code": "multiple_browsers_online",
+      "message": "Multiple browsers connected; pass --browser",
+      "data": {
+        "browsers": ["a1b2c3d4", "e5f60718"]
+      }
+    }
+  },
+  "extract_table": {
+    "tab_id": 42,
+    "url": "https://example.com/pricing",
+    "coverage": "loaded_dom_only",
+    "tables": [
+      {
+        "columns": ["Plan", "Cost"],
+        "rows": [["Starter", "$0"], ["Team", "$19"]]
+      }
+    ]
+  }
+}

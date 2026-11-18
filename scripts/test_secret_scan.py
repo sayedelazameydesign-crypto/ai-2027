@@ -27,6 +27,9 @@ SLACK = "xoxb-" + "123456789012"
 STRIPE = "sk_live_" + "Q" * 20
 JWT = "eyJ" + "a" * 20 + ".eyJ" + "b" * 20 + "." + "c" * 10
 PEM = "-----BEGIN RSA PRIVATE KEY-----"  # allowlist-secret (fixture under test)
+BSK_LOCAL = "bsk-local.v1." + "K9mP4xQ2vR7nT8wL3jF6hD1s"
+BSK_REMOTE = "bsk-auth." + "V8nR3kM9pW2xQ7tL4jF6hD1sG5yB0cZ8aE2uN6iO3mP"
+BSK_URL = "wss://browser.example.com/extension#" + "R7nT8wL3jF6hD1sK9mP4xQ2vG5yB0cZ8aE2u"
 
 
 class DetectionTests(unittest.TestCase):
@@ -103,6 +106,27 @@ class DetectionTests(unittest.TestCase):
         self.assertFalse(ss.in_scope("live-agent/server.py", "archive"))
         self.assertTrue(ss.in_scope("projects/cela2027/app.py", "all"))
         self.assertFalse(ss.in_scope("node_modules/x/index.js", "all"))
+
+    def test_12_browserskill_pairing_credentials_are_blocked_and_masked(self):
+        cases = {
+            "bsk_local_pairing": f"link = 'ws://127.0.0.1:52800#{BSK_LOCAL}'\n",
+            "bsk_remote_auth": f"Sec-WebSocket-Protocol: {BSK_REMOTE}\n",
+            "bsk_pairing_url": f"pair = '{BSK_URL}'\n",
+        }
+        for rule, line in cases.items():
+            found = ss.scan_text(line, "notes.md")
+            self.assertTrue(any(f.rule == rule and f.severity == "high" for f in found),
+                            f"{rule} missed in {found}")
+            for f in found:
+                for raw_val in (BSK_LOCAL.split("v1.")[1], BSK_REMOTE.split(".")[1],
+                                BSK_URL.split("#")[1]):
+                    self.assertNotIn(raw_val, f.as_text())
+        # Documented placeholder URLs in prose must NOT false-positive.
+        doc_line = "Format: `wss://browser.example.com/extension#PAIRING_SECRET_PLACEHOLDER_000000`\n"
+        self.assertEqual(ss.scan_text(doc_line, "docs/BROWSERSKILL-PLAN.md"), [])
+        # local-pairings.json must never be committed regardless of content.
+        self.assertIsNotNone(ss.forbidden_path(".bsk/local-pairings.json"))
+        self.assertIsNotNone(ss.forbidden_path("local-pairings.json"))
 
 
 class GitIntegrationTests(unittest.TestCase):
