@@ -1,0 +1,22 @@
+{
+  "schema": 1,
+  "purpose": "Machine-readable register consulted by scripts/verify_archive_identity.py. Keep in sync with docs/DEVIATIONS.md.",
+  "rules": {
+    "deviations": "Files this repository changed on purpose. A diff limited to these is reported as a documented deviation, never as drift.",
+    "generated": "Files the UPSTREAM repository regenerates by itself (timestamps, run_id, manifests). Their blob may change within hours without anyone editing them, so a diff limited to these is reported as volatile, not drift.",
+    "drifted": "Anything not covered above. This is the only outcome that is a defect."
+  },
+  "deviations": {
+    "agi-system": [
+      "core/policy.py"
+    ],
+    "ai-store2": [
+      "env.local"
+    ]
+  },
+  "generated": {
+    "easy-ai": [
+      "data/manifest.json"
+    ]
+  }
+}

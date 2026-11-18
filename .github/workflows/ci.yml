@@ -72,7 +72,13 @@ jobs:
       - name: CI guard self-tests (keeps the gates honest)
         run: python scripts/test_ci_guard.py -v
 
-      - name: Ember beat tests — heat index + honest publishing (7)
+      - name: Network preflight tests — blindness is not death (10)
+        run: python scripts/test_network_preflight.py -v
+
+      - name: Archive identity tests — drift vs deviation vs generated (17)
+        run: python scripts/test_verify_identity.py -v
+
+      - name: Ember beat tests — heat index + honest publishing (12)
         run: python scripts/test_ember_beat.py -v
 
       - name: Health gate tests — the gate must be able to refuse (24)
@@ -232,10 +238,11 @@ jobs:
                   elif isinstance(n, ast.ImportFrom) and n.level == 0 and n.module:
                       names = [n.module.split(".")[0]]
                   for name in names:
-                      if name not in stdlib and name not in {"audit", "redteam", "kernel_bridge", "server", "store", "evaluate"}:
+                      if name not in stdlib and name not in {"audit", "redteam", "kernel_bridge", "server", "store", "evaluate", "network_preflight"}:
                           bad.setdefault(str(p), set()).add(name)
           print("scanned", len(list(Path("command-hud").glob("*.py"))), "HUD files",
-                "(local siblings: audit, redteam, kernel_bridge, server, store, evaluate)")
+                "(local siblings: audit, redteam, kernel_bridge, server, store, evaluate, "
+                "network_preflight from scripts/)")
           if bad:
               print("THIRD-PARTY:", bad, file=sys.stderr); sys.exit(1)
           print("PASS: stdlib only")
