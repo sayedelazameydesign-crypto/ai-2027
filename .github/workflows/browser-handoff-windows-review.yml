@@ -14,11 +14,48 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 6
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
-        with:
-          persist-credentials: false
-          # An unrelated tracked directory ending in a dot cannot be checked out on NTFS.
-          sparse-checkout: browser_skill_adapter
+      - name: Materialize the exact adapter tree without a Windows checkout
+        shell: pwsh
+        env:
+          GIT_TERMINAL_PROMPT: "0"
+        run: |
+          # Even sparse checkout rejects an unrelated tracked path ending in a dot.
+          # The repo is public. Fetch the commit without credentials or a worktree.
+          $store = Join-Path $env:RUNNER_TEMP 'browser-handoff-source.git'
+          $archive = Join-Path $env:RUNNER_TEMP 'browser-handoff-source.tar'
+          $url = "${env:GITHUB_SERVER_URL}/${env:GITHUB_REPOSITORY}.git"
+          git init --bare --quiet $store
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          git -C $store -c credential.helper= fetch --quiet --no-tags --depth=1 $url $env:GITHUB_SHA
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $revision = git -C $store rev-parse --verify 'FETCH_HEAD^{commit}'
+          if ($LASTEXITCODE -ne 0 -or $revision -cne $env:GITHUB_SHA) {
+            throw 'Fetched revision does not match this CI run.'
+          }
+
+          $entries = @(git -C $store ls-tree -r $revision -- browser_skill_adapter)
+          if ($LASTEXITCODE -ne 0 -or $entries.Count -eq 0) { throw 'Adapter tree unavailable.' }
+          $blobs = @{}
+          $segment = '[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*'
+          foreach ($entry in $entries) {
+            if ($entry -cmatch "^100(?:644|755) blob ([a-f0-9]{40})`t(browser_skill_adapter/$segment(?:/$segment)*)$") {
+              $blobs.Add($Matches[2], $Matches[1])
+            } else {
+              throw 'Unexpected adapter tree entry.'
+            }
+          }
+          git -C $store archive --format=tar "--output=$archive" $revision -- browser_skill_adapter
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          tar.exe -xf $archive -C $env:GITHUB_WORKSPACE
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          foreach ($path in $blobs.Keys) {
+            $file = Join-Path $env:GITHUB_WORKSPACE $path
+            $actual = git "--git-dir=$store" hash-object --no-filters -- $file
+            if ($LASTEXITCODE -ne 0 -or $actual -cne $blobs[$path]) {
+              throw "Archived bytes do not match $path in the fetched commit."
+            }
+          }
+          Write-Output "::notice title=Review source::Verified $($blobs.Count) adapter files match commit $revision"
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
         with:
           python-version: "3.11"
