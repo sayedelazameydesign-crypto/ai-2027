@@ -13,6 +13,29 @@ fail or when any GitHub Action is not pinned to a full-length SHA.
 
 ## [Unreleased]
 
+### Added — repository secrets, wired safely (2026-11-18)
+- **`docs/SECRETS.md`** — the register of every secret (`GEMINI_API_KEY`,
+  `RENDER_API_KEY`, `EMBER_ALERT_WEBHOOK`), who uses it, what the workflow does
+  when it is absent, and how to rotate it. An undocumented secret is one nobody
+  can rotate.
+- **`scripts/workflow_secret_audit.py`** (16 tests, static, names only) — fails
+  CI when a workflow interpolates `${{ secrets.X }}` into script text (it belongs
+  under `env:`, or it lands in the printed command line) or references a secret
+  that `docs/SECRETS.md` does not name.
+- **`scripts/gemini_live_check.py`** (15 tests) — one tiny real call
+  (`maxOutputTokens=24`, `temperature=0`) so "the credential works" becomes
+  measured. Key comes from `env` only, travels in the `x-goog-api-key` header
+  (**never** `?key=` in a URL), is reported only as `present (39 chars)`, and is scrubbed
+  out of provider error bodies that quote it back. No key ⇒ exit **2 (skipped)**;
+  no egress ⇒ exit **3 (blocked)** — neither is reported as a failure.
+  Wired as the opt-in `live-gemini` job (never on pull requests).
+- **`scripts/render_deploy.py`** (14 tests) + **`.github/workflows/deploy.yml`** —
+  manual-only deploy through `render_control_adapter`'s existing policy gate:
+  approval token required for the mutation, the service's exact name required as
+  confirmation (empty ⇒ dry run, nothing sent), `api.render.com` reachability
+  checked first (unreachable ⇒ exit **3 BLOCKED**, never "deploy failed"), and
+  `verified: true` only after a terminal deploy state **and** a liveness check.
+
 ### Added — two guards against false claims (2026-11-18)
 - **`scripts/network_preflight.py`** — measures whether the runner can reach the
   public internet *before* any URL is judged, and classifies egress as `OPEN` /

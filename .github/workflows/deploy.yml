@@ -1,0 +1,148 @@
+# 🚀 Deploy to Render — manual, gated, and never optimistic.
+#
+# Why manual: a workflow that deploys on every push turns a typo into an outage.
+# There is no `push:` trigger here on purpose. A deploy happens when a human
+# dispatches this workflow AND types the service name as confirmation.
+#
+# How the secret is handled:
+#   * `RENDER_API_KEY` comes from Repository Secrets and reaches the process
+#     through `env:` only — never interpolated into the shell script, so it never
+#     appears in the step's printed command line;
+#   * `set +x` is explicit: nothing is traced, even if a future step turns on -x;
+#   * the wrapper (`scripts/render_deploy.py`) never prints the key, and scrubs
+#     it out of provider error messages that quote it back.
+#
+# Why the result is trustworthy: `render_control_adapter` refuses mutations
+# without an approval token, and a 200 on the deploy request proves nothing —
+# only `wait_for_deploy()` reaching a terminal state plus `service_is_live()` may
+# set `verified: true`. This workflow publishes that verdict, including when it
+# is "no".
+#
+# Exit codes of scripts/render_deploy.py map to job outcomes:
+#   0 verified live / dry run   → success
+#   2 no RENDER_API_KEY         → skipped, with a notice (not a failure)
+#   3 api.render.com unreachable→ failure (BLOCKED is not "deployed")
+#   4 confirmation refused      → failure (nothing was sent)
+#   1 attempted and failed      → failure
+#
+# Owner setup, once:
+#   1. Settings → Secrets and variables → Actions → `RENDER_API_KEY` (+ optional
+#      `RENDER_SERVICE_ID`, or type it in the dispatch form);
+#   2. Settings → Environments → `production` → add required reviewers if you
+#      want a second human in the loop (recommended).
+name: Deploy to Render
+
+on:
+  workflow_dispatch:
+    inputs:
+      service_id:
+        description: "Render service id (srv-…). Empty = look up by service name."
+        required: false
+        default: ""
+      service_name:
+        description: "Exact service name (used to look it up and to confirm the deploy)"
+        required: true
+        default: "ai-2027-live-agent"
+      confirm:
+        description: "Type the service name again to actually deploy. Leave empty for a dry run."
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: render-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Gate → deploy → verify (one service)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production      # add required reviewers in Settings → Environments
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
+        with:
+          python-version: "3.11"
+
+      - name: Can this runner even see Render? (blocked ≠ failed)
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import sys
+          sys.path.insert(0, "scripts")
+          import network_preflight
+          p = network_preflight.probe("https://api.render.com/v1/owners", timeout=10)
+          print(f"api.render.com reachable={p.reachable} status={p.status} "
+                f"error={p.error}")
+          if not p.reachable:
+              print("::error::api.render.com is unreachable from this runner — "
+                    "a deploy cannot be attempted, and 'it failed' would be a lie.")
+              raise SystemExit(1)
+          PY
+
+      - name: Deploy through the policy gate
+        id: deploy
+        env:
+          # Secrets reach the process through the environment only. Never
+          # interpolate them into the script text: GitHub prints the command.
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_SERVICE_ID: ${{ inputs.service_id }}
+          TARGET_NAME: ${{ inputs.service_name }}
+          CONFIRM: ${{ inputs.confirm }}
+        run: |
+          set +x
+          set +e
+          args=(--json --report deploy-report.json --service-name "$TARGET_NAME")
+          if [ -n "${RENDER_SERVICE_ID:-}" ]; then args+=(--service-id "$RENDER_SERVICE_ID"); fi
+          if [ -n "${CONFIRM:-}" ]; then args+=(--confirm "$CONFIRM"); fi
+          python scripts/render_deploy.py "${args[@]}" > /tmp/deploy.json 2>/tmp/deploy.err
+          rc=$?
+          set -e
+          echo "rc=$rc" >> "$GITHUB_OUTPUT"
+          cat /tmp/deploy.json
+          python - <<'PY'
+          import json, pathlib
+          d = json.loads(pathlib.Path("/tmp/deploy.json").read_text() or "{}")
+          lines = ["### 🚀 Render deploy",
+                   "",
+                   f"- service: `{d.get('service', {}).get('name', d.get('service_name'))}` "
+                   f"(`{d.get('service', {}).get('id', 'unresolved')}`)",
+                   f"- status: **{d.get('status')}** · verified: **{d.get('verified')}**",
+                   f"- mutations sent: {d.get('mutations_sent')} · credential: `{d.get('credential')}`"]
+          if d.get("deploy_id"):
+              lines.append(f"- deploy `{d['deploy_id']}` → `{d.get('deploy', {}).get('status')}`")
+          if d.get("plan"):
+              lines += ["", "| Plan | Value |", "|---|---|"] + [
+                  f"| {k} | `{v}` |" for k, v in d["plan"].items()]
+          if d.get("error"):
+              lines.append(f"- reason: `{d['error']}`")
+          lines += ["", "*A 200 on the deploy request is not a successful deploy. "
+                       "Only a terminal state plus a liveness check sets `verified`.*"]
+          pathlib.Path("/tmp/deploy.md").write_text("\\n".join(lines) + "\\n")
+          PY
+          cat /tmp/deploy.md >> "$GITHUB_STEP_SUMMARY"
+          exit 0
+
+      - name: Publish the report (contains no secrets)
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        with:
+          name: render-deploy-${{ github.run_id }}
+          path: deploy-report.json
+          if-no-files-found: warn
+
+      - name: Judge the run by the measured verdict
+        if: always()
+        run: |
+          set -euo pipefail
+          rc="${{ steps.deploy.outputs.rc }}"
+          case "${rc:-1}" in
+            0) echo "deploy verified live, or a dry run that changed nothing" ;;
+            2) echo "::notice::RENDER_API_KEY is not configured — nothing was deployed (skipped, not failed)" ;;
+            3) echo "::error::api.render.com unreachable from the runner — BLOCKED, no deploy was attempted"; cat /tmp/deploy.err || true; exit 1 ;;
+            4) echo "::error::confirmation refused — type the exact service name in the confirm field"; exit 1 ;;
+            *) echo "::error::the deploy was attempted and did not verify — see the report and the job summary"; cat /tmp/deploy.err || true; exit 1 ;;
+          esac
