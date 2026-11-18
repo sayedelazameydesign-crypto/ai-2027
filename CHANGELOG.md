@@ -13,6 +13,36 @@ fail or when any GitHub Action is not pinned to a full-length SHA.
 
 ## [Unreleased]
 
+### Added — BrowserSkill Stage 1 of 3 (`local` mode: browser + machine, 2026-11-18)
+- **`docs/adr/0005-browserskill-adapter-boundary.md`** + **`docs/BROWSERSKILL-PLAN.md`** —
+  three-stage / three-mode rollout plan (`local` → `skill_mcp` → `remote_wss`)
+  for `Tencent/BrowserSkill` (MIT, pinned `cli-v0.5.0` / `ext-v0.5.0`, Protocol
+  `2.0`) as an external policy-gated adapter rather than a vendored clone,
+  preserving `projects/` archive identity and the zero-dependency kernel.
+- **`browser_skill_adapter/`** (stdlib-only Python 3.10+, AST-gated in CI, 34
+  offline tests): `DomainPolicy`, cross-platform sandbox confinement, single-use
+  HMAC+nonce `ApprovalEngine` (+ exact confirmation for `borrow_tab`, `upload`,
+  `download`, `evaluate`; `evaluate` off by default), `IntentGuard` refusing
+  blind replay after `effect_state == "unknown"` / `timeout` / `dialog_pending`,
+  subprocess credential stripping (`GEMINI_API_KEY`, `RENDER_API_KEY`,
+  `GITHUB_TOKEN`, …) with `BSK_AUTO_START=0`, `Redactor`, `untrusted_page_data`
+  envelope, mandatory `session stop` even under freeze, SHA-256 hash-chained
+  `AuditLedger`, independent 7-check `verify_and_record()` compatible with L1
+  `memory/store.py`, read-only `probe.py` (exit `0`/`1`/`2`/`3`, `0` mutations),
+  and falsifiable-budget `run_local_task.py`. Modes 2 (`skill_mcp`) and 3
+  (`remote_wss`) raise `ModeNotEnabledError` until their stages are enabled.
+- **`scripts/install_browserskill.sh`** + **`.ps1`** (10 offline tests) —
+  fail-closed installer for pinned `bsk v0.5.0` requiring a verified 64-hex
+  SHA-256 (closing upstream's warn-and-continue fallback), no `sudo`, no silent
+  shell-profile edits.
+- **`scripts/secret_scan.py`** + `.gitignore` — blocks `bsk-local.v1.*`,
+  `bsk-auth.*`, `ws(s)://…#<fragment>` pairing URLs, and `local-pairings.json`
+  before commit and in CI (18 tests).
+- **`command-hud/server.py`** (`GET /api/browser/status`, 16 HUD tests) +
+  **`scripts/ember_up.sh --with-browser`** — opt-in read-only local browser
+  status without touching the default 15/15 smoke contract; `ci.yml` also wires
+  `vars.GEMINI_MODEL` into the opt-in `live-gemini` job per `docs/SECRETS.md`.
+
 ### Added — repository secrets, wired safely (2026-11-18)
 - **`docs/SECRETS.md`** — the register of every secret (`GEMINI_API_KEY`,
   `RENDER_API_KEY`, `EMBER_ALERT_WEBHOOK`), who uses it, what the workflow does

@@ -45,5 +45,13 @@ memory/__pycache__/
 render_control_adapter/phase0-report.json
 render-control-audit*.json
 
+# BrowserSkill runtime state, pairing files, and local Phase 0 / task evidence.
+# Pairing grants and raw browser debug/video exports must never enter Git.
+.bsk/
+local-pairings.json
+browser_skill_adapter/phase0-report.json
+browser_skill_adapter/runtime/
+browser-skill-audit*.json
+
 # One-command boot state (pids, logs, measured boot time)
 .ember-up/

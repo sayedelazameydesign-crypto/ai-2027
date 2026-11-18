@@ -8,6 +8,7 @@
 #
 #   ./scripts/ember_up.sh                # boot both services, smoke them, keep them up
 #   ./scripts/ember_up.sh --check        # boot, smoke, shut down (CI / clean-machine test)
+#   ./scripts/ember_up.sh --with-browser # also run read-only BrowserSkill local probe
 #   ./scripts/ember_up.sh --stop         # stop what it started
 #   ./scripts/ember_up.sh --json         # machine-readable result on stdout
 #
@@ -28,12 +29,13 @@ HUD_PORT=8091
 CHECK=0
 STOP=0
 NO_BROWSER=0
+WITH_BROWSER_SKILL=0
 NO_SMOKE=0
 JSON=0
 STARTED_AT=$(date +%s)
 
 usage() {
-  sed -n '2,22p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+  sed -n '2,23p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
 }
 
 while [ $# -gt 0 ]; do
@@ -41,6 +43,7 @@ while [ $# -gt 0 ]; do
     --check) CHECK=1 ;;
     --stop) STOP=1 ;;
     --no-browser) NO_BROWSER=1 ;;
+    --with-browser) WITH_BROWSER_SKILL=1 ;;
     --no-smoke) NO_SMOKE=1 ;;
     --json) JSON=1 ;;
     --live-port) LIVE_PORT="$2"; shift ;;
@@ -169,6 +172,21 @@ if [ "$NO_SMOKE" -eq 0 ]; then
   SMOKE_LINE=$(grep -Eo '[0-9]+/[0-9]+ checks' "$SMOKE_LOG" | tail -1)
   [ -n "$SMOKE_LINE" ] || SMOKE_LINE="see ${STATE_DIR#$ROOT/}/smoke.log"
   say "  smoke : $SMOKE_LINE (exit $SMOKE_RC)"
+fi
+
+if [ "$WITH_BROWSER_SKILL" -eq 1 ] && [ -f "$ROOT/browser_skill_adapter/probe.py" ]; then
+  BSK_LOG="$STATE_DIR/browserskill-probe.json"
+  python3 "$ROOT/browser_skill_adapter/probe.py" --json > "$BSK_LOG" 2>/dev/null
+  BSK_RC=$?
+  BSK_VERDICT=$(python3 - "$BSK_LOG" <<'PY' 2>/dev/null || echo "UNKNOWN"
+import json, sys
+d = json.loads(open(sys.argv[1], encoding="utf-8").read())
+print(f"{d.get('verdict')} ({d.get('reason')})")
+PY
+)
+  # Exit 2 (SKIPPED) does not fail ember_up: browser integration is opt-in local.
+  # Exit 1 (FAILED: e.g. protocol mismatch) is surfaced prominently.
+  say "  bsk   : Stage 1 local probe -> $BSK_VERDICT (exit $BSK_RC)"
 fi
 
 ELAPSED_MS=$(( ($(date +%s) - STARTED_AT) * 1000 ))

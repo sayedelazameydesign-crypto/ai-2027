@@ -31,6 +31,7 @@ import hashlib
 import json
 import platform
 import statistics
+import subprocess
 import sys
 import threading
 import time
@@ -76,6 +77,9 @@ HONESTY = {
     "memory": ("L1 cumulative memory: sqlite3 + IDF concept coverage over a declared thesaurus (NOT neural, NOT sqlite-vec). "
                "Only VERIFIED runs with a passing independent hash check are admitted. Measured recall@3 on a "
                "paraphrase set is 11/16 = 0.688 with 0/7 near-miss false positives; still lexical, still declared; see memory/README.md."),
+    "browser_skill": ("L5 BrowserSkill adapter (Stage 1/3 · mode=local): read-only status via "
+                      "browser_skill_adapter/probe.py (BSK_AUTO_START=0, zero mutations). "
+                      "Reports SKIPPED when bsk/daemon/extension is absent — never simulated."),
 }
 
 
@@ -322,6 +326,21 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"error": "memory not initialised"}, 503)
             return self._json({"stats": MEM.stats(), "verify": MEM.verify(),
                                "recent": [dict(r) for r in reversed(MEM.rows()[-10:])]})
+        if p == "/api/browser/status":
+            probe_script = HERE.parent / "browser_skill_adapter" / "probe.py"
+            if not probe_script.is_file():
+                return self._json({"error": "browser_skill_adapter not present"}, 404)
+            proc = subprocess.run(
+                [sys.executable, str(probe_script), "--json"],
+                capture_output=True, text=True, timeout=15, shell=False,
+            )
+            try:
+                data = json.loads(proc.stdout)
+            except ValueError:
+                return self._json({"error": "probe returned invalid JSON",
+                                   "exit_code": proc.returncode}, 502)
+            data["hud_frozen"] = STATE["frozen"]
+            return self._json(data, 200)
         if p == "/api/audit":
             a = STATE["audit"]
             return self._json(a) if a else self._json({"error": "audit still computing"}, 503)
