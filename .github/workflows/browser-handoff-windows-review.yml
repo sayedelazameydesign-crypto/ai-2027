@@ -170,9 +170,120 @@ jobs:
           PROBE_REASONS = {
               "probe_no_message", "probe_timeout", "probe_invalid_report", "probe_unlisted_reason", "probe_failed",
           }
+          # Return/raise sites in the exact v2 adapter tree verified above.
+          PATH_FAILURES = {
+              141: ("invalid_local_path", "path"),
+              144: ("outside_profile", "path"),
+              147: ("not_fixed_ntfs_with_persistent_acls", "volume"),
+              154: ("not_directory", "entry"),
+          }
+          PATH_ERRORS = {
+              142: ("profile_unavailable", "runner_profile"),
+              145: ("windows_security_api_unavailable", "path"),
+              146: ("volume_unreadable", "volume"),
+              148: ("process_identity_unreadable", "runner_profile"),
+              153: ("attributes_unreadable", "entry"),
+              156: ("descriptor_unreadable", "entry"),
+              162: ("subtree_unreadable", "replay_state"),
+              163: ("subtree_unreadable", "replay_state"),
+              165: ("attributes_unreadable", "entry"),
+              166: ("descriptor_unreadable", "entry"),
+          }
+          DESCRIPTOR_FAILURES = {38: "invalid_descriptor_or_null_dacl", 46: "invalid_dacl_header", 57: "descriptor_parse_error"}
+          ACL_CHECKS = {
+              "not_reproduced", "unclassified_refusal", "diagnostic_error", "reparse_point", "attributes_unreadable",
+              "untrusted_owner", "owner_not_current_user", "unsupported_ace_type", "invalid_ace_bounds",
+              "invalid_ace_size", "untrusted_allow_ace",
+              *DESCRIPTOR_FAILURES.values(), *(name for name, _ in (*PATH_FAILURES.values(), *PATH_ERRORS.values())),
+          }
+          ACL_COMPONENTS = {
+              "path", "volume", "runner_profile", "above_profile", "under_profile", "lab_fixture", "replay_state", "state_descendant",
+          }
 
-          def record(case, reason=None, exitcode=None, sim_calls=None, starts=None):
-              return dict(case=case, exitcode=exitcode, reason=reason, sim_calls=sim_calls, starts=starts)
+          def record(case, reason=None, exitcode=None, sim_calls=None, starts=None, acl=None):
+              return dict(case=case, exitcode=exitcode, reason=reason, sim_calls=sim_calls, starts=starts, acl=acl)
+
+          def acl_detail(check, component, flags=None):
+              return dict(check=check, component=component,
+                          ace_origin=None if flags is None else ("inherited" if flags & 0x10 else "explicit"),
+                          inherit_only=None if flags is None else bool(flags & 0x08))
+
+          def diagnose_acl(state):
+              import windows_acl as acl
+
+              gate = acl.is_private_windows_dir.__code__
+              descriptor = acl._private_descriptor.__code__
+              attributes = acl._WindowsSecurity.attributes.__code__
+              first = None
+              path_error = None
+
+              def component(frame):
+                  entry = frame.f_locals.get("entry")
+                  profile = frame.f_locals.get("profile")
+                  if entry is None:
+                      return "path"
+                  if entry == profile:
+                      return "runner_profile"
+                  if entry == state:
+                      return "replay_state"
+                  if entry == state.parent:
+                      return "lab_fixture"
+                  if state in entry.parents:
+                      return "state_descendant"
+                  return "above_profile" if profile is not None and entry in profile.parents else "under_profile"
+
+              def observe(frame, event, value):
+                  nonlocal first, path_error
+                  code, line = frame.f_code, frame.f_lineno
+                  if code not in (gate, descriptor, attributes):
+                      return None
+                  if first is not None:
+                      return observe
+                  if code is descriptor and event == "return" and value is False:
+                      local = frame.f_locals
+                      check = DESCRIPTOR_FAILURES.get(line, "unclassified_refusal")
+                      flags = None
+                      if line == 41:
+                          check = "untrusted_owner" if local["owner_sid"] not in local["trusted"] else "owner_not_current_user"
+                      elif line == 51:
+                          check = "unsupported_ace_type" if local["kind"] not in (0, 1) else "invalid_ace_bounds"
+                      elif line == 54:
+                          check = "invalid_ace_size" if len(local["who"]) + 8 != local["length"] else "untrusted_allow_ace"
+                      if line in (51, 54):
+                          flags = local["data"][local["offset"] + 1]
+                      first = acl_detail(check, component(frame.f_back), flags)
+                  elif code is attributes and event == "exception" and line == 124:
+                      check = "attributes_unreadable" if frame.f_locals["attrs"] == 0xffffffff else "reparse_point"
+                      first = acl_detail(check, component(frame.f_back))
+                  elif code is gate:
+                      if event == "exception" and line in PATH_ERRORS:
+                          check, place = PATH_ERRORS[line]
+                          path_error = acl_detail(check, component(frame) if place == "entry" else place)
+                      elif event == "return" and value is False:
+                          check, place = PATH_FAILURES.get(line, ("unclassified_refusal", "replay_state"))
+                          first = path_error if line == 172 and path_error else acl_detail(check, component(frame) if place == "entry" else place)
+                  return observe
+
+              # Observe the production checker without patching its inputs,
+              # result, Win32 calls, or any permissions. No raw locals leave it.
+              previous = sys.gettrace()
+              try:
+                  sys.settrace(observe)
+                  allowed = acl.is_private_windows_dir(state)
+              except Exception:
+                  return acl_detail("diagnostic_error", "replay_state")
+              finally:
+                  sys.settrace(previous)
+              if allowed:
+                  return acl_detail("not_reproduced", "replay_state")
+              return first or acl_detail("unclassified_refusal", "replay_state")
+
+          def valid_acl(detail):
+              return (type(detail) is dict and detail.keys() == acl_detail("", "").keys()
+                      and type(detail["check"]) is str and detail["check"] in ACL_CHECKS
+                      and type(detail["component"]) is str and detail["component"] in ACL_COMPONENTS
+                      and (detail["ace_origin"] is None and detail["inherit_only"] is None
+                           or detail["ace_origin"] in ("inherited", "explicit") and type(detail["inherit_only"]) is bool))
 
           def valid_counts(calls, starts):
               return type(calls) is type(starts) is int and 0 <= starts <= calls <= 1024
@@ -222,7 +333,10 @@ jobs:
                   process, reader = fixture.start_attempt(
                       context, fixture.out, hold=hold, resume=resume, crash=case == CRASH,
                   )
-                  return collect(case, process, reader, hold, resume, _PROCESS_TIMEOUT, _CRASH_EXIT)
+                  result = collect(case, process, reader, hold, resume, _PROCESS_TIMEOUT, _CRASH_EXIT)
+                  if os.name == "nt" and result["reason"] == "private_replay_directory_required":
+                      result["acl"] = diagnose_acl(fixture.state)
+                  return result
               finally:
                   if resume is not None:
                       resume.set()
@@ -249,11 +363,13 @@ jobs:
                   return record(case, "probe_invalid_report")
               reason, exitcode = result["reason"], result["exitcode"]
               calls, starts = result["sim_calls"], result["starts"]
+              detail = result["acl"]
               if (reason is not None and (type(reason) is not str or reason not in WORKER_REASONS | PROBE_REASONS)
                       or exitcode is not None and type(exitcode) is not int
-                      or not (calls is None and starts is None or valid_counts(calls, starts))):
+                      or not (calls is None and starts is None or valid_counts(calls, starts))
+                      or detail is not None and (reason != "private_replay_directory_required" or not valid_acl(detail))):
                   return record(case, "probe_invalid_report")
-              return record(case, reason, exitcode, calls, starts)
+              return record(case, reason, exitcode, calls, starts, detail)
 
           if __name__ == "__main__":
               if len(sys.argv) == 4 and sys.argv[1] == "--probe-case" and sys.argv[2] in CASES:
@@ -263,4 +379,8 @@ jobs:
                   selected = os.environ.get("HANDOFF_PROBE_CASES", "").split(",")
                   for case in CASES:
                       if case in selected:
-                          print(f"::notice title=Windows worker probe::{json.dumps(report_for(case))}", flush=True)
+                          result = report_for(case)
+                          detail = result.pop("acl")
+                          print(f"::notice title=Windows worker probe::{json.dumps(result)}", flush=True)
+                          if detail is not None:
+                              print(f"::notice title=Windows ACL first failure::{json.dumps(dict(case=case, **detail))}", flush=True)
