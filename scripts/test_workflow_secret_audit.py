@@ -62,7 +62,7 @@ class AuditTests(unittest.TestCase):
     def test_10_a_documented_env_secret_passes(self):
         result = self._audit("        K: ${{ secrets.MY_KEY }}\n", "uses `MY_KEY`")
         self.assertTrue(result["ok"], result["findings"])
-        self.assertEqual(result["secrets_used"]["MY_KEY"], ["x.yml:1"])
+        self.assertEqual(result["references"]["MY_KEY"], ["x.yml:1"])
 
     def test_11_an_undocumented_secret_fails(self):
         result = self._audit("        K: ${{ secrets.MY_KEY }}\n", "nothing here")
@@ -103,8 +103,8 @@ class RealRepositoryTests(unittest.TestCase):
     def test_20_every_secret_in_the_real_workflows_is_documented_and_env_assigned(self):
         result = wsa.audit()
         self.assertTrue(result["ok"], json.dumps(result["findings"], indent=2))
-        self.assertIn("GEMINI_API_KEY", result["secrets_used"])
-        self.assertIn("RENDER_API_KEY", result["secrets_used"])
+        self.assertIn("GEMINI_API_KEY", result["references"])
+        self.assertIn("RENDER_API_KEY", result["references"])
 
     def test_21_the_audit_never_reads_a_secret_value(self):
         """It can only see names — proof: the source has no env-value reader."""
@@ -117,7 +117,7 @@ class RealRepositoryTests(unittest.TestCase):
     def test_22_assert_mode_exits_one_on_a_violation(self):
         original = wsa.audit
         wsa.audit = lambda *a, **k: {"ok": False, "workflows_scanned": 1,
-                                     "secrets_used": {},
+                                     "references": {},
                                      "findings": [{"file": "x.yml", "line": 1,
                                                    "rule": "inline_secret",
                                                    "detail": "…"}]}

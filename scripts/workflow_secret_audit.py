@@ -85,18 +85,18 @@ def audit(workflows_dir: Path = WORKFLOWS, secrets_doc: Path = SECRETS_DOC) -> d
             if not ref["safe"]:
                 findings.append({
                     "file": rel, "line": ref["line"], "rule": "inline_secret",
-                    "secret": ref["name"],
+                    "reference": ref["name"],
                     "detail": "interpolated into script text — assign it under `env:` instead",
                     "text": ref["text"]})
             if not documented(ref["name"], doc_text):
                 findings.append({
                     "file": rel, "line": ref["line"], "rule": "undocumented_secret",
-                    "secret": ref["name"],
+                    "reference": ref["name"],
                     "detail": "not named in docs/SECRETS.md — nobody can rotate what "
                               "nobody recorded"})
 
     return {"ok": not findings, "workflows_scanned": len(files),
-            "secrets_used": {k: sorted(v) for k, v in sorted(used.items())},
+            "references": {k: sorted(v) for k, v in sorted(used.items())},
             "findings": findings}
 
 
@@ -114,12 +114,13 @@ def main(argv: list[str] | None = None) -> int:
         print("WORKFLOW SECRET AUDIT — names only, never values")
         print("=" * 66)
         print(f"  workflows scanned : {result['workflows_scanned']}")
-        for name, where in result["secrets_used"].items():
+        for name, where in result["references"].items():
             print(f"  {name:<20}: {', '.join(where)}")
         if result["findings"]:
             print("-" * 66)
             for f in result["findings"]:
-                print(f"  ✗ {f['file']}:{f['line']}  {f['rule']}  {f.get('secret', '')}")
+                print(f"  ✗ {f['file']}:{f['line']}  {f['rule']}  "
+                      f"{f.get('reference', '')}")
                 print(f"      {f['detail']}")
             print("  => FAIL")
         else:
