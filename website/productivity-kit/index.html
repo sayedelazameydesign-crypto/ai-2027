@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="حزمة عربية لاختيار إضافات Chrome واختبارها محليًا واستخدام نتائجها بأمان مع Arena Agent.">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self'; connect-src 'none'; form-action 'none'; base-uri 'none'">
+  <title>Arena Productivity Kit 2027</title>
+  <link rel="icon" href="sample.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="kit.css">
+  <script type="module" src="kit.mjs"></script>
+</head>
+<body>
+  <svg class="icons" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
+    <symbol id="i-layers" viewBox="0 0 24 24"><path d="m12 3 9 5-9 5-9-5 9-5Z M3 12l9 5 9-5 M3 16l9 5 9-5"/></symbol>
+    <symbol id="i-browser" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M3 9h18M7 6.5h.01m3 0h.01"/></symbol>
+    <symbol id="i-terminal" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="m7 9 3 3-3 3m6 0h4"/></symbol>
+    <symbol id="i-diff" viewBox="0 0 24 24"><circle cx="6" cy="5" r="2"/><circle cx="6" cy="19" r="2"/><circle cx="18" cy="5" r="2"/><path d="M6 7v10m12-10a5 5 0 0 1-5 5H6"/></symbol>
+    <symbol id="i-tree" viewBox="0 0 24 24"><path d="M4 8V4h6l2 2h8v6H4V8Zm2 4v7h5m0-3h8v5h-8z"/></symbol>
+    <symbol id="i-bolt" viewBox="0 0 24 24"><path d="m13 2-8 12h6l-1 8 9-12h-6l1-8Z"/></symbol>
+    <symbol id="i-file" viewBox="0 0 24 24"><path d="M13 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V10Zm0 0v7h7M8 14h8m-8 3h5"/></symbol>
+    <symbol id="i-book" viewBox="0 0 24 24"><path d="M4 19V5a2 2 0 0 1 2-2h13v18H6a2 2 0 0 1-2-2Zm0 0a2 2 0 0 1 2-2h13m-10-9h6"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 22s7-3 7-10V5l-7-3-7 3v7c0 7 7 10 7 10Z"/><path d="m9 12 2 2 4-4"/></symbol>
+    <symbol id="i-key" viewBox="0 0 24 24"><circle cx="8" cy="10" r="5"/><path d="m12 13 7 7h2v-3l-2-2-2 2-2-2"/></symbol>
+    <symbol id="i-keyboard" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M6 9h.01m4 0h.01m4 0h.01m4 0h.01M6 13h.01m12 0h.01M9 15h6"/></symbol>
+    <symbol id="i-flask" viewBox="0 0 24 24"><path d="M9 3h6m-5 0v7l-5 8a2 2 0 0 0 2 3h10a2 2 0 0 0 2-3l-5-8V3M8 15h8"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="10" cy="10" r="6"/><path d="m15 15 4 4"/></symbol>
+    <symbol id="i-left" viewBox="0 0 24 24"><path d="M20 12H4m7-7-7 7 7 7"/></symbol>
+    <symbol id="i-external" viewBox="0 0 24 24"><path d="M13 5h6v6m0-6-9 9m8 0v5H5V6h5"/></symbol>
+    <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3v12m-5-5 5 5 5-5M4 16v4h16v-4"/></symbol>
+  </svg>
+
+  <a class="skip" href="#extensions">انتقل إلى الإضافات</a>
+  <header class="site-header">
+    <div class="shell header-inner">
+      <a class="brand" aria-label="Arena Productivity Kit 2027 — البداية" href="./">
+        <span class="brand-mark"><svg aria-hidden="true"><use href="#i-layers"/></svg></span>
+        <span class="brand-text" dir="ltr">ARENA<span> / </span>KIT</span>
+      </a>
+      <nav class="top-nav" aria-label="أقسام الحزمة">
+        <a href="#extensions">الإضافات</a>
+        <a href="lab.html">مختبر الاختبار</a>
+        <a href="#setup">الإعداد الآمن</a>
+      </nav>
+      <a class="project-link" href="../index.html" dir="ltr"><svg aria-hidden="true"><use href="#i-external"/></svg> AI-2027</a>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero shell" aria-labelledby="title">
+      <div class="hero-copy">
+        <div class="hero-kicker"><span class="signal" aria-hidden="true"></span> دليل عمل مستقل لمستخدمي <bdi dir="ltr">Agent Mode</bdi></div>
+        <h1 id="title" lang="en" dir="ltr">Arena Productivity<br><span>Kit 2027</span></h1>
+        <p>طوّر، راجع، وابحث بأدوات Chrome مختارة. اختبر كل إضافة على جهازك، وانقل إلى Arena نتائج يمكنك مراجعتها من دون مشاركة جلسة متصفحك.</p>
+        <div class="hero-actions">
+          <a class="button primary" href="#extensions">استكشف الإضافات <svg aria-hidden="true"><use href="#i-left"/></svg></a>
+          <a class="button secondary" href="lab.html"><svg aria-hidden="true"><use href="#i-flask"/></svg> افتح المختبر</a>
+        </div>
+        <dl class="hero-facts">
+          <div><dt>٨</dt><dd>إضافات أساسية واختيارية</dd></div>
+          <div><dt>٢</dt><dd>ملفا Chrome مقترحان</dd></div>
+          <div><dt>٠</dt><dd>اتصالات تلقائية بمتصفحك</dd></div>
+        </dl>
+      </div>
+
+      <div class="workflow" aria-label="مسار العمل: المتصفح المحلي منفصل عن Arena">
+        <div class="workflow-top">
+          <span class="window-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+          <span>خريطة العمل</span>
+          <span class="mono" dir="ltr">01 / 02</span>
+        </div>
+        <div class="workflow-body">
+          <div class="workflow-node node-local">
+            <span class="node-icon"><svg aria-hidden="true"><use href="#i-browser"/></svg></span>
+            <div><small class="mono" lang="en" dir="ltr">CHROME / LOCAL</small><strong>المتصفح على جهازك</strong><p>مراجعة، أبحاث، واختبارات إضافات</p></div>
+            <span class="node-id mono" aria-hidden="true">01</span>
+          </div>
+          <div class="workflow-transfer"><span></span><b>نقل يدوي لدليل منقّح</b><span></span></div>
+          <div class="workflow-node node-arena">
+            <span class="node-icon"><svg aria-hidden="true"><use href="#i-terminal"/></svg></span>
+            <div><small class="mono" lang="en" dir="ltr">ARENA / SANDBOX</small><strong>بيئة عمل الوكيل</strong><p>مستودع، أوامر، واختبارات مستقلة</p></div>
+            <span class="node-id mono" aria-hidden="true">02</span>
+          </div>
+        </div>
+        <div class="workflow-bottom"><svg aria-hidden="true"><use href="#i-shield"/></svg> لا وصول تلقائي إلى التبويبات أو الحسابات</div>
+      </div>
+    </section>
+
+    <div class="section-band">
+      <section class="shell extensions" id="extensions" aria-labelledby="extensions-title">
+        <div class="section-head">
+          <div>
+            <p class="section-index mono" lang="en" dir="ltr"><b>01</b> / CHROME EXTENSIONS</p>
+            <h2 id="extensions-title">الإضافات المقترحة</h2>
+            <p>ابدأ بالأدوات التي تحتاجها فقط. لكل إضافة مصدر رسمي وفحص قصير قابل للتكرار.</p>
+          </div>
+          <div id="progress-panel" class="progress-panel" hidden>
+            <div><span>سجلّ الاختبار اليدوي</span><strong id="passed-count" aria-live="polite"></strong></div>
+            <progress id="progress" value="0" max="9" aria-label="نسبة الاختبارات الناجحة يدويًا"></progress>
+            <small id="storage-note">تُحفظ الحالات في هذا المتصفح فقط.</small>
+          </div>
+        </div>
+        <div id="catalog-controls" class="catalog-controls" hidden>
+          <label class="searchbox">
+            <svg aria-hidden="true"><use href="#i-search"/></svg>
+            <span class="sr-only">ابحث عن إضافة</span>
+            <input type="search" id="search" dir="auto" placeholder="ابحث عن إضافة…" autocomplete="off" maxlength="80">
+          </label>
+          <div class="filters" id="filters" role="group" aria-label="تصفية الإضافات حسب الاستخدام"></div>
+        </div>
+        <div class="catalog-meta" id="catalog-meta" hidden>
+          <p id="visible-count" aria-live="polite"></p>
+          <button class="text-button" id="export-report" type="button"><svg aria-hidden="true"><use href="#i-download"/></svg> تنزيل سجلّ الاختبار</button>
+        </div>
+        <noscript><p class="notice">تحتاج قائمة الإضافات التفاعلية إلى JavaScript. ما زال بإمكانك فتح <a href="lab.html">صفحة المختبر</a> وقراءة إعداد المتصفح أدناه.</p></noscript>
+        <div class="cards" id="cards"></div>
+        <p class="notice" id="empty-results" hidden>لم نجد إضافة مطابقة. جرّب كلمة أخرى أو اختر «الكل».</p>
+      </section>
+    </div>
+
+    <section class="shell setup" id="setup" aria-labelledby="setup-title">
+      <p class="section-index mono" lang="en" dir="ltr"><b>02</b> / BROWSER SETUP</p>
+      <h2 id="setup-title">افصل العمل اليومي عن التجارب</h2>
+      <p class="section-intro">أنشئ ملفَي Chrome مستقلين وراجع صلاحية الوصول إلى المواقع قبل تفعيل كل إضافة.</p>
+      <div class="setup-grid">
+        <article class="setup-card accent-dev">
+          <span class="tool-icon"><svg aria-hidden="true"><use href="#i-diff"/></svg></span>
+          <div><h3>ملف التطوير اليومي</h3><p>ابدأ بـ <bdi dir="ltr">Refined GitHub</bdi>. أضف <bdi dir="ltr">Octotree</bdi> إذا احتجت شجرة للملفات، واقصر الوصول على GitHub حيث تسمح الإضافة. استخدم <a href="https://arena.ai/blog/coding-in-agent-mode" target="_blank" rel="noopener noreferrer">تكامل GitHub الرسمي</a> لعمل الوكيل على المستودع، لا مشاركة رموز الوصول.</p></div>
+        </article>
+        <article class="setup-card accent-lab">
+          <span class="tool-icon"><svg aria-hidden="true"><use href="#i-flask"/></svg></span>
+          <div><h3>ملف مختبر معزول</h3><p>ملف بلا مزامنة أو جلسات شخصية. جرّب <bdi dir="ltr">Ui.Vision</bdi> على صفحة الاختبار فقط ثم عطّله. <bdi dir="ltr">BrowserSkill</bdi> اختياري ومحلي؛ لا تفتح منافذ ولا توصل ملف استخدامك اليومي به.</p></div>
+        </article>
+      </div>
+      <div class="handoff">
+        <span class="tool-icon"><svg aria-hidden="true"><use href="#i-shield"/></svg></span>
+        <div><h3>إلى Arena: شارك النتيجة لا الجلسة</h3><p>راجع الملخص أو ملف المراجع قبل إرفاقه. لا تشارك خزائن كلمات المرور، ملفات جلسات، روابط اقتران، أو لقطات فيها بيانات حساب. سجلّ الاختبار الذي تنزّله هنا يحتوي على أسماء الاختبارات وحالاتها اليدوية فقط، مع وقت التصدير.</p></div>
+        <a class="button secondary" href="lab.html">جرّب المختبر <svg aria-hidden="true"><use href="#i-left"/></svg></a>
+      </div>
+      <p class="exclusion"><bdi dir="ltr">Arena Agent Auto</bdi> ليس جزءًا من الحزمة: الرابط المذكور لم يكن متاحًا عند مراجعة المصادر، ولا يوجد هنا تحقق من الإضافة أو من ملاءمتها لشروط الاستخدام.</p>
+    </section>
+  </main>
+
+  <footer class="site-footer"><div class="shell footer-inner"><span class="mono" dir="ltr">AI-2027 / PRODUCTIVITY KIT</span><span>حزمة مجتمعية مستقلة، وليست إضافة رسمية من Arena.</span></div></footer>
+
+  <template id="extension-template">
+    <article class="tool-card">
+      <div class="card-top"><span class="tool-icon"><svg aria-hidden="true"><use/></svg></span><span class="category"></span></div>
+      <h3 dir="ltr" lang="en"></h3>
+      <p class="description"></p>
+      <div class="kit-tags"><span class="license"></span><span class="scope"></span></div>
+      <div class="card-bottom">
+        <a class="source" target="_blank" rel="noopener noreferrer">المصدر الرسمي <svg aria-hidden="true"><use href="#i-external"/></svg></a>
+        <details>
+          <summary><span>الاختبار والتسجيل</span><span class="summary-tail"><span class="result-pill" hidden></span><svg aria-hidden="true"><use href="#i-chevron"/></svg></span></summary>
+          <div class="checks">
+            <p class="how"></p><p class="expected"></p>
+            <a class="target" target="_blank" rel="noopener noreferrer" hidden></a>
+            <label>نتيجة فحصك اليدوي<select class="result-select"></select></label>
+          </div>
+        </details>
+      </div>
+    </article>
+  </template>
+</body>
+</html>

@@ -234,6 +234,12 @@ python3 launch/test_launch_claims.py -v                # a claim without evidenc
 > measured production data exists — see [`launch/REAL-WORLD-CASE-STUDY.md`](launch/REAL-WORLD-CASE-STUDY.md).
 > No invented customers, savings or revenue.
 
+## Arena Productivity Kit 2027
+
+[Arabic setup and test guide](docs/ARENA-PRODUCTIVITY-KIT-2027.md) · [Interactive kit & lab source](website/productivity-kit/)
+
+A standalone kit for selecting Chrome extensions, testing them against public or synthetic data, and handing reviewed results to Arena. It does not install extensions or connect to your browser. Run the static site locally with `python3 -m http.server 8787 --bind 127.0.0.1 --directory website` and open <http://127.0.0.1:8787/productivity-kit/>.
+
 ## ⚡ Quick start (zero dependencies)
 
 ```bash
