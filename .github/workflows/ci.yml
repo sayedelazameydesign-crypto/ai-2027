@@ -43,6 +43,11 @@ jobs:
       - name: Live Agent wrapper tests (6)
         run: python live-agent/test_server.py -v
 
+      - name: CeliaOS verified file bridge and approval tests
+        run: |
+          python projects/celiaos-agent-framework/test_verified_executor.py -v
+          python projects/celiaos-agent-framework/test_approval_gate.py -v
+
       - name: Cross-platform containment regression (6)
         run: python scripts/test_policy_hardening.py -v
 
