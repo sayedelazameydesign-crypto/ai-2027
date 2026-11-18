@@ -50,14 +50,14 @@ class ReferenceTests(unittest.TestCase):
 
 
 class AuditTests(unittest.TestCase):
-    def _audit(self, workflow_text: str, doc_text: str):
+    def _audit(self, workflow_text: str, register_text: str):
         with tempfile.TemporaryDirectory() as tmp:
             wf = Path(tmp) / "workflows"
             wf.mkdir()
             (wf / "x.yml").write_text(workflow_text, encoding="utf-8")
             doc = Path(tmp) / "SECRETS.md"
-            doc.write_text(doc_text, encoding="utf-8")
-            return wsa.audit(workflows_dir=wf, secrets_doc=doc)
+            doc.write_text(register_text, encoding="utf-8")
+            return wsa.audit(workflows_dir=wf, register_path=doc)
 
     def test_10_a_documented_env_secret_passes(self):
         result = self._audit("        K: ${{ secrets.MY_KEY }}\n", "uses `MY_KEY`")
@@ -94,13 +94,13 @@ class AuditTests(unittest.TestCase):
             wf.mkdir()
             (wf / "x.yml").write_text("  K: ${{ secrets.MY_KEY }}\n", encoding="utf-8")
             result = wsa.audit(workflows_dir=wf,
-                               secrets_doc=Path(tmp) / "absent.md")
+                               register_path=Path(tmp) / "absent.md")
         self.assertFalse(result["ok"])
 
     def test_14_an_empty_workflow_directory_is_not_an_error(self):
         with tempfile.TemporaryDirectory() as tmp:
             result = wsa.audit(workflows_dir=Path(tmp) / "nope",
-                               secrets_doc=Path(tmp) / "nope.md")
+                               register_path=Path(tmp) / "nope.md")
         self.assertTrue(result["ok"])
         self.assertEqual(result["workflows_scanned"], 0)
 
