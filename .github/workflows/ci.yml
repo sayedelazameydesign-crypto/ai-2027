@@ -238,10 +238,11 @@ jobs:
                   elif isinstance(n, ast.ImportFrom) and n.level == 0 and n.module:
                       names = [n.module.split(".")[0]]
                   for name in names:
-                      if name not in stdlib and name not in {"audit", "redteam", "kernel_bridge", "server", "store", "evaluate"}:
+                      if name not in stdlib and name not in {"audit", "redteam", "kernel_bridge", "server", "store", "evaluate", "network_preflight"}:
                           bad.setdefault(str(p), set()).add(name)
           print("scanned", len(list(Path("command-hud").glob("*.py"))), "HUD files",
-                "(local siblings: audit, redteam, kernel_bridge, server, store, evaluate)")
+                "(local siblings: audit, redteam, kernel_bridge, server, store, evaluate, "
+                "network_preflight from scripts/)")
           if bad:
               print("THIRD-PARTY:", bad, file=sys.stderr); sys.exit(1)
           print("PASS: stdlib only")
