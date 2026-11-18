@@ -185,6 +185,8 @@ jobs:
           node-version: "20"
       - name: Browser port must keep VERIFIED / DENIED / FAILED honest
         run: node website/kernel-demo.test.js
+      - name: Productivity Kit — manual reports and isolated fixtures
+        run: node --test scripts/test_productivity_kit.mjs
       - name: Static site files present
         run: |
           test -f website/index.html
