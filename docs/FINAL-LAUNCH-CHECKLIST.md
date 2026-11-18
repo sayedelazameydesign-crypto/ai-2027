@@ -21,7 +21,8 @@
 |---|---|---|
 | دمج PR #47 | مدمج في `main` | commit `ddcfb9ac8471f9e0b1ba392df67912b86f6a200a`، 2026-11-18T16:00:21Z |
 | CI على main | ناجح على SHA الدمج | Evidence-First CI run `44342137587` |
-| CodeQL على main | نتيجة التشغيل `success`، لكن تغطية اللغات **غير مؤكدة**: سجّل Action أن الإدخال `language` غير معروف؛ لا نثبت من هذا التشغيل وحده أن قواعد بيانات Python وJavaScript فُحصت كما خُطط | CodeQL run `44342137647`; يجب تصحيح اسم الإدخال إلى `languages` والتحقق من تشغيل لاحق قبل اعتماد تغطية اللغات |
+| CodeQL على main | نتيجة التشغيل `success`، لكن تغطية اللغات في هذا التشغيل **غير مؤكدة**: سجّل Action أن الإدخال `language` غير معروف؛ لا نثبت من هذا التشغيل وحده أن قواعد بيانات Python وJavaScript فُحصت كما خُطط | CodeQL run `44342137647` على SHA `ddcfb9a` |
+| تحقق CodeQL اللاحق | بعد تصحيح الإدخال إلى `languages`، نجح تحليلا Python وJavaScript/TypeScript على فرع المتابعة، من دون تحذير الإدخال غير المعروف | CodeQL run `44345035167` على `d3d4666`; بقيت تحذيرات تقادم Node.js 20 وCodeQL Action v3 |
 | GitHub Pages | API: `built`، `build_type=workflow`، HTTPS مفروض؛ فحص HTTP عام أعاد 200 للموقع و`demo.html` | Pages API؛ Live egress run `44343468664` على SHA الدمج |
 | تفاعلية `demo.html` | **غير متحققة يدويًا في متصفح**؛ عقد JavaScript المحلي اجتاز 12/12 | `node website/kernel-demo.test.js`؛ لا يوجد متصفح/Playwright مثبت في بيئة الفحص. 200 يثبت استجابة HTTP فقط، لا التفاعل أو العرض المرئي |
 | الإصدار | `v1.0.1` هو الأحدث | `gh release list -L 1` |
