@@ -55,7 +55,89 @@ DEFAULT_REGISTER = {
     "generated": {
         "easy-ai": ["data/manifest.json"],  # regenerated upstream (timestamps)
     },
+    "generated_schema": {
+        "easy-ai": {"data/manifest.json": {
+            "required": ["schema", "generated_at", "run_id", "status", "counts"],
+            "types": {"schema": "int", "generated_at": "string", "run_id": "string",
+                      "status": "string", "counts": "object", "artifacts": "object"},
+        }},
+    },
 }
+
+JSON_TYPES = {"string": str, "int": int, "number": (int, float), "object": dict,
+              "array": list, "boolean": bool, "null": type(None)}
+
+
+def _type_ok(value, type_name: str) -> bool:
+    expected = JSON_TYPES.get(type_name)
+    if expected is None:
+        return True                     # unknown type name: do not invent a failure
+    if type_name == "int" and isinstance(value, bool):
+        return False                    # JSON true is not 1
+    return isinstance(value, expected)
+
+
+def validate_generated(name: str, path: str, spec: dict | None, raw: bytes) -> dict:
+    """A generated file may change freely — it may not become broken.
+
+    Returns {"checked": bool, "ok": bool, "reason": str}. `checked=False` means
+    the register declares no schema for this file: reported, not silently passed.
+    """
+    if not spec:
+        return {"checked": False, "ok": True, "reason": "no schema declared"}
+    if path.endswith(".json"):
+        try:
+            value = json.loads(raw.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            return {"checked": True, "ok": False, "reason": f"not valid JSON ({type(exc).__name__})"}
+        if not isinstance(value, dict):
+            return {"checked": True, "ok": False, "reason": "top level is not an object"}
+        missing = [k for k in spec.get("required", []) if k not in value]
+        if missing:
+            return {"checked": True, "ok": False, "reason": "missing key(s): " + ", ".join(missing)}
+        wrong = [f"{k} is {type(value[k]).__name__}, expected {t}"
+                 for k, t in (spec.get("types") or {}).items()
+                 if k in value and not _type_ok(value[k], t)]
+        if wrong:
+            return {"checked": True, "ok": False, "reason": "; ".join(wrong)}
+        return {"checked": True, "ok": True, "reason": "schema ok"}
+    return {"checked": True, "ok": True, "reason": "no schema rule for this file type"}
+
+
+def read_head_bytes(rel_path: str) -> bytes:
+    """The committed bytes, not the working tree — the check must describe the commit."""
+    proc = subprocess.run(["git", "show", f"HEAD:{rel_path}"], cwd=ROOT,
+                          capture_output=True)
+    if proc.returncode == 0:
+        return proc.stdout
+    try:
+        return (ROOT / rel_path).read_bytes()
+    except OSError:
+        return b""
+
+
+def enforce_schemas(results: list[dict], register: dict, reader=read_head_bytes) -> list[dict]:
+    """Turn a *broken* generated file into drift; keep a merely-changed one volatile."""
+    specs = register.get("generated_schema", {})
+    for result in results:
+        if result["status"] != GENERATED:
+            continue
+        checks = {}
+        for path in result.get("generated", []):
+            spec = (specs.get(result["project"]) or {}).get(path)
+            raw = reader(f"projects/{result['project']}/{path}")
+            checks[path] = validate_generated(result["project"], path, spec, raw)
+        result["generated_checks"] = checks
+        broken = {p: c for p, c in checks.items() if c["checked"] and not c["ok"]}
+        if broken:
+            result["status"] = DRIFTED
+            result["unexpected"] = sorted(broken)
+            result["schema_failures"] = {p: c["reason"] for p, c in broken.items()}
+        else:
+            unchecked = [p for p, c in checks.items() if not c["checked"]]
+            if unchecked:
+                result["schema_unchecked"] = unchecked
+    return results
 
 IDENTICAL, DEVIATION, GENERATED, DRIFTED, BLOCKED = (
     "identical", "deviation", "generated", "drifted", "blocked")
@@ -72,6 +154,10 @@ def load_register(path: Path = REGISTER) -> tuple[dict, str]:
     reg = {
         "deviations": {k: list(v) for k, v in (data.get("deviations") or {}).items()},
         "generated": {k: list(v) for k, v in (data.get("generated") or {}).items()},
+        "generated_schema": {
+            project: {file: dict(spec) for file, spec in (files or {}).items()}
+            for project, files in (data.get("generated_schema") or {}).items()
+        },
     }
     return reg, str(path.relative_to(ROOT)) if path.is_relative_to(ROOT) else str(path)
 
@@ -192,6 +278,8 @@ def main(argv: list[str] | None = None) -> int:
                        if k not in local and "__pycache__" not in k and not k.endswith(".pyc"))
         results.append(classify(name, diff, gone, extra, register))
 
+    results = enforce_schemas(results, register)
+
     counts = {k: 0 for k in (IDENTICAL, DEVIATION, GENERATED, DRIFTED, BLOCKED)}
     for r in results:
         counts[r["status"]] = counts.get(r["status"], 0) + 1
@@ -212,7 +300,13 @@ def main(argv: list[str] | None = None) -> int:
         dev = [r['project'] for r in results if r['status'] == DEVIATION]
         print(f"  documented deviation: {counts[DEVIATION]}"
               + (f"  ({', '.join(dev)})" if dev else ""))
-        gen = [f"{r['project']}: {', '.join(r['generated'])}" for r in generated]
+        gen = []
+        for r in generated:
+            for path, chk in (r.get("generated_checks") or {}).items():
+                state = "schema ok" if chk["ok"] else chk["reason"]
+                if not chk["checked"]:
+                    state = "schema NOT declared"
+                gen.append(f"{r['project']}: {path} — {state}")
         print(f"  generated (volatile): {counts[GENERATED]}"
               + (f"  ({'; '.join(gen)})" if gen else ""))
         print(f"  drifted             : {counts[DRIFTED]}")
@@ -221,6 +315,8 @@ def main(argv: list[str] | None = None) -> int:
         for r in drifted:
             print(f"\n  ! {r['project']}: {len(r['changed'])} changed, "
                   f"{len(r['gone'])} gone, {len(r['upstream_only'])} upstream-only")
+            for path, why in (r.get("schema_failures") or {}).items():
+                print(f"      schema: {path} — {why}")
             for label, items in (("changed", r["unexpected"]), ("gone", r["gone"]),
                                  ("upstream-only", r["upstream_only"])):
                 for k in items[:3]:

@@ -23,6 +23,7 @@ import verify_archive_identity as vi  # noqa: E402
 
 REG = {"deviations": {"agi-system": ["core/policy.py"]},
        "generated": {"easy-ai": ["data/manifest.json"]}}
+REG_GEN = {"deviations": {}, "generated": {"gen": ["m.json"]}}
 
 
 class RegisterTests(unittest.TestCase):
@@ -205,6 +206,94 @@ class StrictModeTests(unittest.TestCase):
         self.assertEqual(payload["counts"]["identical"], 1)
         self.assertEqual(payload["total"], 1)
         self.assertIn("register", payload)
+
+
+class GeneratedSchemaTests(unittest.TestCase):
+    """Volatility excuses a changed blob — never a broken one."""
+
+    SPEC = {"required": ["schema", "run_id", "counts"],
+            "types": {"schema": "int", "run_id": "string", "counts": "object"}}
+
+    def test_40_the_real_register_declares_a_schema_for_every_generated_file(self):
+        reg, _ = vi.load_register()
+        self.assertTrue(reg["generated_schema"], "no generated_schema in the register")
+        for project, files in reg["generated"].items():
+            for path in files:
+                self.assertIn(path, reg["generated_schema"].get(project, {}),
+                              f"{project}/{path} is generated but has no schema")
+
+    def test_41_the_real_manifest_passes_its_schema(self):
+        """The file that actually drifted upstream must still be structurally valid."""
+        reg, _ = vi.load_register()
+        spec = reg["generated_schema"]["easy-ai"]["data/manifest.json"]
+        raw = (vi.ROOT / "projects/easy-ai/data/manifest.json").read_bytes()
+        result = vi.validate_generated("easy-ai", "data/manifest.json", spec, raw)
+        self.assertTrue(result["checked"])
+        self.assertTrue(result["ok"], result["reason"])
+        self.assertEqual(result["reason"], "schema ok")
+
+    def test_42_a_missing_key_is_not_volatility(self):
+        raw = json.dumps({"schema": 1, "counts": {}}).encode()
+        res = vi.validate_generated("p", "m.json", self.SPEC, raw)
+        self.assertFalse(res["ok"])
+        self.assertIn("run_id", res["reason"])
+
+    def test_43_a_wrong_type_is_not_volatility(self):
+        raw = json.dumps({"schema": 1, "run_id": 123, "counts": {}}).encode()
+        res = vi.validate_generated("p", "m.json", self.SPEC, raw)
+        self.assertFalse(res["ok"])
+        self.assertIn("run_id", res["reason"])
+
+    def test_44_true_is_not_an_int(self):
+        raw = json.dumps({"schema": True, "run_id": "r", "counts": {}}).encode()
+        self.assertFalse(vi.validate_generated("p", "m.json", self.SPEC, raw)["ok"])
+
+    def test_45_truncated_json_is_reported_as_invalid(self):
+        res = vi.validate_generated("p", "m.json", self.SPEC, b'{"schema": 1, "run_')
+        self.assertFalse(res["ok"])
+        self.assertIn("not valid JSON", res["reason"])
+
+    def test_46_a_non_object_top_level_is_refused(self):
+        res = vi.validate_generated("p", "m.json", self.SPEC, b"[1, 2, 3]")
+        self.assertFalse(res["ok"])
+        self.assertIn("not an object", res["reason"])
+
+    def test_47_an_undeclared_schema_is_reported_not_silently_passed(self):
+        res = vi.validate_generated("p", "m.json", None, b"{}")
+        self.assertFalse(res["checked"])
+        self.assertTrue(res["ok"])
+        self.assertIn("no schema declared", res["reason"])
+
+    def test_48_enforce_turns_a_broken_generated_file_into_drift(self):
+        results = [vi.classify("gen", ["m.json"], [], [], REG_GEN)]
+        self.assertEqual(results[0]["status"], vi.GENERATED)
+        reg = dict(REG_GEN, generated_schema={"gen": {"m.json": self.SPEC}})
+        out = vi.enforce_schemas(results, reg,
+                                 reader=lambda path: b'{"schema": 1}')
+        self.assertEqual(out[0]["status"], vi.DRIFTED)
+        self.assertIn("run_id", out[0]["schema_failures"]["m.json"])
+
+    def test_49_enforce_keeps_a_valid_generated_file_volatile(self):
+        results = [vi.classify("gen", ["m.json"], [], [], REG_GEN)]
+        reg = dict(REG_GEN, generated_schema={"gen": {"m.json": self.SPEC}})
+        good = json.dumps({"schema": 1, "run_id": "r", "counts": {}}).encode()
+        out = vi.enforce_schemas(results, reg, reader=lambda path: good)
+        self.assertEqual(out[0]["status"], vi.GENERATED)
+        self.assertTrue(out[0]["generated_checks"]["m.json"]["ok"])
+
+    def test_50_enforce_flags_an_undeclared_schema_without_failing(self):
+        results = [vi.classify("gen", ["m.json"], [], [], REG_GEN)]
+        out = vi.enforce_schemas(results, dict(REG_GEN, generated_schema={}),
+                                 reader=lambda path: b"{}")
+        self.assertEqual(out[0]["status"], vi.GENERATED)
+        self.assertEqual(out[0]["schema_unchecked"], ["m.json"])
+
+    def test_51_a_real_drift_is_left_alone_by_the_schema_pass(self):
+        results = [vi.classify("other", ["x.py"], [], [], REG)]
+        out = vi.enforce_schemas(results, dict(REG, generated_schema={}),
+                                 reader=lambda path: b"{}")
+        self.assertEqual(out[0]["status"], vi.DRIFTED)
+        self.assertNotIn("generated_checks", out[0])
 
 
 if __name__ == "__main__":

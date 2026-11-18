@@ -72,8 +72,17 @@ jobs:
       - name: CI guard self-tests (keeps the gates honest)
         run: python scripts/test_ci_guard.py -v
 
+      - name: Secret gate tests — catch keys, spare fixtures (17)
+        run: python scripts/test_secret_scan.py -v
+
+      - name: Secret gate on every tracked file (no credentials in code paths)
+        run: python scripts/secret_scan.py --all --scope code
+
       - name: Network preflight tests — blindness is not death (10)
         run: python scripts/test_network_preflight.py -v
+
+      - name: Live egress audit tests — claims may fail, never be guessed (18)
+        run: python scripts/test_live_egress.py -v
 
       - name: Archive identity tests — drift vs deviation vs generated (17)
         run: python scripts/test_verify_identity.py -v
