@@ -1,4 +1,4 @@
-# Review-only copy of the Windows job in ci.yml. Do not merge this trigger.
+# Branch-only harness for the Windows tests in ci.yml. Do not merge this trigger.
 name: Browser Handoff · Windows Review
 
 on:
@@ -17,12 +17,36 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
         with:
           persist-credentials: false
+          # An unrelated tracked directory ending in a dot cannot be checked out on NTFS.
+          sparse-checkout: browser_skill_adapter
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
         with:
           python-version: "3.11"
       - name: Native NTFS ACLs, exclusive creation and process restart
-        run: >-
-          python browser_skill_adapter/test_verified_handoff.py WindowsAclTest
-          HandoffTest.test_exclusive_create_race_has_one_winner_across_processes
-          HandoffTest.test_spawned_attempts_and_fresh_process_replay
-          HandoffTest.test_abrupt_exit_retains_reservation_and_replay_is_still_blocked
+        shell: pwsh
+        run: |
+          $testArgs = @(
+            'WindowsAclTest'
+            'HandoffTest.test_exclusive_create_race_has_one_winner_across_processes'
+            'HandoffTest.test_spawned_attempts_and_fresh_process_replay'
+            'HandoffTest.test_abrupt_exit_retains_reservation_and_replay_is_still_blocked'
+          )
+          $output = @(python browser_skill_adapter/test_verified_handoff.py @testArgs 2>&1)
+          $rc = $LASTEXITCODE
+          $lines = @($output | ForEach-Object { $_.ToString() })
+          $lines | Write-Output
+
+          # Retain per-case results without depending on a raw-log download.
+          $passed = @()
+          foreach ($line in $lines) {
+            if ($line -cmatch '^(test_[A-Za-z0-9_]+ \(__main__\.(?:WindowsAclTest|HandoffTest)\.test_[A-Za-z0-9_]+\)) \.\.\. (ok|FAIL|ERROR|skipped)\b') {
+              $case = $Matches[1]
+              $result = $Matches[2]
+              Write-Output "::notice title=Windows review test::$case ... $result"
+              if ($result -ceq 'ok') { $passed += $case }
+            }
+          }
+          if ($rc -ne 0) { exit $rc }
+          if (@($passed | Sort-Object -Unique).Count -ne 6 -or $lines -cnotcontains 'OK') {
+            throw 'Expected six distinct Windows review cases to pass without skips.'
+          }
