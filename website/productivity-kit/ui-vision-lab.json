@@ -1,0 +1,10 @@
+{
+  "Name": "Arena Productivity Kit - local fixture",
+  "CreationDate": "2026-11-18",
+  "Commands": [
+    { "Command": "open", "Target": "http://127.0.0.1:8787/productivity-kit/lab.html", "Value": "" },
+    { "Command": "type", "Target": "id=lab-input", "Value": "ARENA-2027" },
+    { "Command": "click", "Target": "id=lab-run", "Value": "" },
+    { "Command": "assertText", "Target": "id=lab-result", "Value": "LAB_OK" }
+  ]
+}
