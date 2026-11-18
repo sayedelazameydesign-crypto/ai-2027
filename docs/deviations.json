@@ -4,7 +4,8 @@
   "rules": {
     "deviations": "Files this repository changed on purpose. A diff limited to these is reported as a documented deviation, never as drift.",
     "generated": "Files the UPSTREAM repository regenerates by itself (timestamps, run_id, manifests). Their blob may change within hours without anyone editing them, so a diff limited to these is reported as volatile, not drift.",
-    "drifted": "Anything not covered above. This is the only outcome that is a defect."
+    "drifted": "Anything not covered above. This is the only outcome that is a defect.",
+    "generated_schema": "For every generated file: required keys and JSON types that must hold. A generated file that drifts AND fails this check is drift, not volatility — a regenerated file is still supposed to be valid."
   },
   "deviations": {
     "agi-system": [
@@ -18,5 +19,29 @@
     "easy-ai": [
       "data/manifest.json"
     ]
+  },
+  "generated_schema": {
+    "easy-ai": {
+      "data/manifest.json": {
+        "required": [
+          "schema",
+          "generated_at",
+          "run_id",
+          "status",
+          "counts",
+          "artifacts"
+        ],
+        "types": {
+          "schema": "int",
+          "generated_at": "string",
+          "run_id": "string",
+          "status": "string",
+          "counts": "object",
+          "artifacts": "object",
+          "history": "array",
+          "missing": "array"
+        }
+      }
+    }
   }
 }

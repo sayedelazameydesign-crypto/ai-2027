@@ -58,6 +58,29 @@ fail or when any GitHub Action is not pinned to a full-length SHA.
   `test_network_preflight.py` (10), `test_verify_identity.py` (17), plus 5 in
   `test_ember_beat.py` (12 total). Wired into `.github/workflows/ci.yml`.
 
+### Added — proactive governance (2026-11-18, after #42 merged)
+- **`scripts/secret_scan.py`** + `.githooks/pre-commit` — refuses a commit whose
+  staged content contains a credential (Gemini / AWS / GitHub / OpenAI / Slack /
+  Stripe / JWT / PEM) or a file that must never be committed (`.env`,
+  `env.local`, `*.key`). `SECURITY.md` fixtures are allowed; a line can be marked
+  `# allowlist-secret`. The finding is always masked — a gate that echoes the key
+  into a CI log has published it twice. Install: `./scripts/install_hooks.sh`.
+  CI runs the same scan over every tracked code path.
+- **`generated_schema` in `docs/deviations.json`** — a generated file may change
+  freely, but it may not become *broken*: required keys + JSON types are checked
+  against the committed bytes (`git show HEAD:…`). A malformed generated file is
+  now `drifted`, not "volatile".
+- **`scripts/live_egress_audit.py`** + **`.github/workflows/live-egress-audit.yml`**
+  — the first environment that can actually judge public URLs (GitHub runners have
+  general egress). Every 6 hours it re-measures the 8 claims in
+  `docs/public-urls.json`, publishes `EGRESS.md` + `egress/status.json` to the
+  `live-egress` branch, and fails the job when a "live" claim stops answering 2xx.
+  It refuses to run a guessing pass: `network_preflight --require-open` first.
+  The claim register is **not** auto-edited — a bot that rewrites `expected` would
+  turn an outage into a green run.
+- 86 offline tests for these guards (secret 17 · live egress 18 · identity 29 ·
+  preflight 10 · ember 12), all with injected network calls.
+
 ### Planned (see `docs/ROADMAP-2027.md`)
 - T4 — a hosted second mirror (owner action: Vercel returned *access denied*, the
   Supabase projects are paused — both measured, see `docs/T4-T6-EVIDENCE.md`).

@@ -1,0 +1,67 @@
+{
+  "schema": 1,
+  "purpose": "Every public URL this repository makes a claim about, with the claim recorded and the date it was last measured. Re-measured by scripts/live_egress_audit.py (scheduled in .github/workflows/live-egress-audit.yml).",
+  "rule": "expected='live' means a reader today should see an answer in 2xx. expected='dead' means the URL is known gone and the docs must not present it as working. Anything that cannot be judged from the measuring environment is recorded as blocked — never as dead.",
+  "measured_from": "docs/GROUND-TRUTH-2026-11-17.md §3 (opened from a networked session) and docs/GROUND-TRUTH-2026-11-18.md §3 (not re-checkable from the sandbox)",
+  "urls": [
+    {
+      "url": "https://sayedelazameydesign-crypto.github.io/ai-2027/demo.html",
+      "what": "GitHub Pages demo — JS mirror of the kernel (says so on the page)",
+      "expected": "live",
+      "last_status": 200,
+      "last_checked": "2026-11-17"
+    },
+    {
+      "url": "https://sayedelazameydesign-crypto.github.io/ai-2027/",
+      "what": "GitHub Pages root — published by pages.yml (build_type=workflow since 2026-11-17)",
+      "expected": "live",
+      "last_status": 200,
+      "last_checked": "2026-11-17"
+    },
+    {
+      "url": "https://cela-umber.vercel.app/",
+      "what": "cela 2027 — Arabic 'واحة' learning app, Gemini/NVIDIA provider choice",
+      "expected": "live",
+      "last_status": 200,
+      "last_checked": "2026-11-17"
+    },
+    {
+      "url": "https://new-pro-kohl.vercel.app/",
+      "what": "'نواة AI' chat assistant (asks for a free key to activate)",
+      "expected": "live",
+      "last_status": 200,
+      "last_checked": "2026-11-17"
+    },
+    {
+      "url": "https://cerulean-boba-48f59a.netlify.app/",
+      "what": "celia.pro — login page; in-account features were never tested",
+      "expected": "live",
+      "last_status": 200,
+      "last_checked": "2026-11-17"
+    },
+    {
+      "url": "https://elazamet1.vercel.app/",
+      "what": "Dead link: referenced 8 times in the archive as if live (DEPLOYMENT_NOT_FOUND)",
+      "expected": "dead",
+      "last_status": 404,
+      "last_checked": "2026-11-17",
+      "upstream_fix": "scripts/upstream_fixes_2026-11-17.py (blocked: 403 — read-only token)"
+    },
+    {
+      "url": "https://celia-pro.onrender.com/",
+      "what": "Dead link: Render service 'celia-pro' (Not Found)",
+      "expected": "dead",
+      "last_status": 404,
+      "last_checked": "2026-11-17",
+      "upstream_fix": "scripts/upstream_fixes_2026-11-17.py (blocked: 403)"
+    },
+    {
+      "url": "https://nawah-agent.onrender.com/",
+      "what": "Dead link: Render service 'nawah-agent' (Not Found)",
+      "expected": "dead",
+      "last_status": 404,
+      "last_checked": "2026-11-17",
+      "upstream_fix": "scripts/upstream_fixes_2026-11-17.py (blocked: 403)"
+    }
+  ]
+}
