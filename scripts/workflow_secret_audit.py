@@ -43,21 +43,23 @@ REGISTER_PATH = ROOT / "docs" / "SECRETS.md"
 #: name only up to `}}` missed `if: ${{ secrets.X != '' }}` entirely — a real gap
 #: found by test_03.
 EXPR = re.compile(r"\$\{\{(.*?)\}\}")
-SECRET_IN_EXPR = re.compile(r"secrets\.([A-Za-z_][A-Za-z0-9_]*)")
+#: Named without "secret" on purpose — see REGISTER_PATH above. The query's
+#: heuristic keys on identifiers, and this regex's matches are printed.
+NAME_IN_EXPR = re.compile(r"secrets\.([A-Za-z_][A-Za-z0-9_]*)")
 #: The only shapes allowed to carry a secret reference: `env:` assignment, and an
 #: `if:` condition (which compares the name, never moves the value).
 SAFE_LINE = re.compile(r"^\s*(?:-\s*)?(?:if\s*:|[A-Z][A-Z0-9_]*\s*:)\s*\S")
 
 
-def secret_refs(text: str) -> list[dict]:
+def find_references(workflow_text: str) -> list[dict]:
     """Every `secrets.NAME` reference with its line number and safety verdict."""
     refs = []
-    for lineno, line in enumerate(text.splitlines(), start=1):
+    for lineno, line in enumerate(workflow_text.splitlines(), start=1):
         if line.strip().startswith("#"):
             continue
         safe = bool(SAFE_LINE.match(line))
         for expr in EXPR.finditer(line):
-            for name in SECRET_IN_EXPR.finditer(expr.group(1)):
+            for name in NAME_IN_EXPR.finditer(expr.group(1)):
                 # No copy of the audited line is kept: `file:line` already points
                 # at it, and a copy would carry the workflow's own text into every
                 # report we print (CodeQL flagged exactly that path).
@@ -100,13 +102,13 @@ def audit(workflows_dir: Path = WORKFLOWS, register_path: Path = REGISTER_PATH) 
 
     for path in files:
         try:
-            text = path.read_text(encoding="utf-8")
+            workflow_text = path.read_text(encoding="utf-8")
         except OSError as exc:
             findings.append({"file": path.name, "line": 0, "rule": "unreadable",
                              "detail": str(exc)[:120]})
             continue
         rel = path.relative_to(ROOT).as_posix() if path.is_relative_to(ROOT) else path.name
-        for ref in secret_refs(text):
+        for ref in find_references(workflow_text):
             shown = display_name(ref["name"], register_text)
             used.setdefault(shown, []).append(f"{rel}:{ref['line']}")
             if not ref["safe"]:

@@ -20,33 +20,33 @@ import workflow_secret_audit as wsa  # noqa: E402
 
 class ReferenceTests(unittest.TestCase):
     def test_01_an_env_assignment_is_the_safe_shape(self):
-        refs = wsa.secret_refs("        API_KEY: ${{ secrets.MY_KEY }}\n")
+        refs = wsa.find_references("        API_KEY: ${{ secrets.MY_KEY }}\n")
         self.assertEqual(len(refs), 1)
         self.assertTrue(refs[0]["safe"])
         self.assertEqual(refs[0]["name"], "MY_KEY")
 
     def test_02_interpolation_into_script_text_is_unsafe(self):
         line = '          run: curl -H "K: ${{ secrets.MY_KEY }}" https://x\n'
-        refs = wsa.secret_refs(line)
+        refs = wsa.find_references(line)
         self.assertFalse(refs[0]["safe"])
 
     def test_03_an_if_condition_is_allowed(self):
-        refs = wsa.secret_refs("    if: ${{ secrets.MY_KEY != '' }}\n")
+        refs = wsa.find_references("    if: ${{ secrets.MY_KEY != '' }}\n")
         self.assertTrue(refs[0]["safe"])
 
     def test_04_commented_references_are_ignored(self):
-        self.assertEqual(wsa.secret_refs("#   KEY: ${{ secrets.OLD }}\n"), [])
+        self.assertEqual(wsa.find_references("#   KEY: ${{ secrets.OLD }}\n"), [])
 
     def test_05_line_numbers_and_multiple_references(self):
         text = ("a\n"
                 "  A: ${{ secrets.ONE }}\n"
                 "  B: ${{ secrets.TWO }} ${{ secrets.THREE }}\n")
-        refs = wsa.secret_refs(text)
+        refs = wsa.find_references(text)
         self.assertEqual([r["line"] for r in refs], [2, 3, 3])
         self.assertEqual([r["name"] for r in refs], ["ONE", "TWO", "THREE"])
 
     def test_06_an_unrelated_expression_is_not_a_secret(self):
-        self.assertEqual(wsa.secret_refs("  X: ${{ github.sha }}\n"), [])
+        self.assertEqual(wsa.find_references("  X: ${{ github.sha }}\n"), [])
 
 
 class AuditTests(unittest.TestCase):
