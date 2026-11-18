@@ -8,6 +8,8 @@
 
 *Verified on 2026-11-17, not assumed:* **1 project PROVEN by execution · 40 declared only ·
 6 explicitly simulated · 1 with a concrete defect** → [`docs/GROUND-TRUTH-2026-11-17.md`](docs/GROUND-TRUTH-2026-11-17.md)
+<br>*Re-verified on 2026-11-18:* **216 tests green · 15/15 live-HTTP checks · 100/100 attacks, 0 breaches ·
+48 projects / 3,967 files exact** → [`docs/GROUND-TRUTH-2026-11-18.md`](docs/GROUND-TRUTH-2026-11-18.md)
 
 [![Projects](https://img.shields.io/badge/projects-48-00e5a0)](#the-ecosystem)
 [![Files](https://img.shields.io/badge/files-3%2C967-38bdf8)](catalog.json)
