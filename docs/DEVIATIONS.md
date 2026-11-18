@@ -86,6 +86,11 @@ python3 scripts/verify_archive_identity.py     # يجب أن يطبع 48/48
 **لماذا هذا مهم؟** لأن «48/48 مطابق» يجب أن تعني *شيئًا*: أن أي فرق غير مسجّل
 سيُفشل `--strict`. أما الملفات التي تتحرك وحدها فتُعلَن صراحةً بدل أن تُلوّث الرقم.
 
+**والملف المولَّد لا يُترك بلا فحص (2026-11-18):** كل مدخل في `generated` يجب أن يقابله
+`generated_schema` (مفاتيح مطلوبة + أنواع JSON). التقلّب يبقى `generated`، أما **الملف التالف**
+(JSON غير صالح · مفتاح ناقص · نوع خاطئ) فيصير `drifted` ويُفشل `--strict`.
+واليوم: `easy-ai/data/manifest.json — schema ok` (12 اختبارًا تغطي هذا الفصل).
+
 ```bash
 python3 scripts/verify_archive_identity.py            # جدول: 45 + 2 + 1 · 48/48 accounted
 python3 scripts/verify_archive_identity.py --strict   # يفشل على drifted فقط
