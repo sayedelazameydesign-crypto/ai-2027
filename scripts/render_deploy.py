@@ -44,6 +44,7 @@ Stdlib only.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import sys
@@ -62,11 +63,16 @@ OK, FAILED, NO_KEY, BLOCKED, REFUSED = 0, 1, 2, 3, 4
 
 
 def fingerprint(key: str) -> str:
-    """Identify the credential in a report without disclosing it."""
+    """A non-reversible identifier — never a prefix of the credential itself.
+
+    A `rnd_…(24 chars)` style fingerprint still carries key material into a log.
+    A truncated SHA-256 tells two keys apart (all rotation needs) and is useless
+    for authentication. Flagged by CodeQL on the first version of this file.
+    """
     if not key:
         return "(none)"
-    head = key[:4] if len(key) > 8 else "***"
-    return f"{head}…({len(key)} chars)"
+    digest = hashlib.sha256(key.encode("utf-8")).hexdigest()[:12]
+    return f"sha256:{digest} ({len(key)} chars)"
 
 
 def scrub(text, key: str = "") -> str:

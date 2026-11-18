@@ -34,6 +34,7 @@ Stdlib only.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import sys
@@ -72,11 +73,21 @@ def scrub(text, key: str = "") -> str:
 
 
 def fingerprint(key: str) -> str:
-    """Identify a key in a report without disclosing it: `AIza…(39 chars)`."""
+    """A non-reversible identifier for the credential, plus its length.
+
+    Deliberately **not** a prefix: `AIza` is the same for every Google key, so a
+    prefix identifies nothing while still being key material in a log. A truncated
+    SHA-256 does the only job that matters — telling one key from another when you
+    rotate it — and cannot be used to authenticate.
+
+    (CodeQL was right to ask: the first version printed `AIza…(39 chars)`. That is
+    a fragment of the secret, and "it is only four characters" is not a reason to
+    put it in a CI log.)
+    """
     if not key:
         return "(none)"
-    head = key[:4] if len(key) > 8 else "***"
-    return f"{head}…({len(key)} chars)"
+    digest = hashlib.sha256(key.encode("utf-8")).hexdigest()[:12]
+    return f"sha256:{digest} ({len(key)} chars)"
 
 
 def classify(status: int | None, error: str | None = None) -> str:

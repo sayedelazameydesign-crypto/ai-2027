@@ -73,7 +73,7 @@ class SecurityTests(unittest.TestCase):
             glc.main(["--no-preflight"], env={"GEMINI_API_KEY": KEY},
                      opener=opener_returning(200, GOOD))
         self.assertNotIn(KEY, buf.getvalue())
-        self.assertIn("AIza…", buf.getvalue())
+        self.assertIn("sha256:", buf.getvalue())
 
     def test_03_the_key_is_sent_as_a_header_never_in_the_url(self):
         """A key in a URL ends up in proxy logs, error pages and bug reports."""
@@ -93,13 +93,18 @@ class SecurityTests(unittest.TestCase):
         self.assertEqual(cfg["temperature"], 0)
         self.assertLessEqual(cfg["maxOutputTokens"], 32)
 
-    def test_05_the_fingerprint_identifies_without_disclosing(self):
+    def test_05_the_fingerprint_is_a_hash_never_a_prefix(self):
+        """`AIza` is the same for every Google key: a prefix identifies nothing and
+        is still key material in a log. CodeQL flagged the first version."""
         fp = glc.fingerprint(KEY)
-        self.assertTrue(fp.startswith("AIza"))
+        self.assertTrue(fp.startswith("sha256:"))
         self.assertIn(str(len(KEY)), fp)
+        self.assertNotIn(KEY[:4], fp)
         self.assertNotIn(KEY[4:], fp)
+        # deterministic (so rotation can compare) and different keys differ
+        self.assertEqual(fp, glc.fingerprint(KEY))
+        self.assertNotEqual(fp, glc.fingerprint(KEY + "x"))
         self.assertEqual(glc.fingerprint(""), "(none)")
-        self.assertTrue(glc.fingerprint("short").startswith("***"))
 
 
 class ClassificationTests(unittest.TestCase):
