@@ -26,6 +26,31 @@ Everything above uses only the Python/Node standard library. **No `pip install`,
 no `npm install`, no API key, no network.** If you need one, that's a signal to
 open an issue first.
 
+### Turn on the secret gate before your first commit
+
+```bash
+./scripts/install_hooks.sh      # sets core.hooksPath = .githooks
+./scripts/install_hooks.sh --check
+```
+
+The pre-commit hook runs `python3 scripts/secret_scan.py --staged` and **refuses
+the commit** if a staged file contains a credential-shaped string (Gemini, AWS,
+GitHub, OpenAI, Slack, Stripe, JWT, PEM private key) or a file that must never
+be committed (`.env`, `env.local`, `*.key`). Well-known test fixtures listed in
+[`SECURITY.md`](SECURITY.md) are allowed; anything you verify by hand can be
+marked with a trailing `# allowlist-secret` comment on that line.
+
+Run the same gate over the whole tree at any time:
+
+```bash
+python3 scripts/secret_scan.py --all              # code paths only (projects/ excluded)
+python3 scripts/secret_scan.py --all --scope all  # include the archive, informationally
+```
+
+Bypass is possible (`SKIP_SECRET_SCAN=1 git commit`), and it is honest about
+being a bypass: CI runs the same scan on every push, so the commit will still
+be refused there.
+
 ## Good first issues
 
 - [#5 — translate live-agent UI strings](https://github.com/sayedelazameydesign-crypto/ai-2027/issues/5)

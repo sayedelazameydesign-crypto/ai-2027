@@ -1,0 +1,122 @@
+# 🌐 Live egress audit — the one job that can judge public URLs.
+#
+# Why it exists: `docs/GROUND-TRUTH-2026-11-17.md` §3 claims four sites are live
+# and three are dead. On 2026-11-18 nobody could re-check that claim, because the
+# working sandbox could only reach github/pypi/npm — every URL "failed", and
+# reporting that as "dead" would have been a lie produced by the environment.
+# GitHub's runners DO have general egress. This workflow is where the claim is
+# measured, every 6 hours, and published with a timestamp.
+#
+# What it does (all executed, none simulated):
+#   1. proves this runner can see the internet at all (`network_preflight
+#      --require-open`). If it cannot, the job fails loudly instead of guessing;
+#   2. re-measures every URL in `docs/public-urls.json` and compares the result
+#      to the recorded claim: ok / regression / recovered;
+#   3. writes `EGRESS.md` + `egress/status.json` and publishes them to the
+#      `live-egress` branch (an orphan snapshot, like `heartbeat`);
+#   4. fails the job when a claim that says "live" no longer answers 2xx.
+#
+# Why it does NOT rewrite `docs/public-urls.json` automatically: that file is a
+# human claim backed by evidence. A bot that edits `expected` on every run could
+# turn a real outage into a green run — the exact failure mode this repository
+# exists to avoid. Recovery is reported and a human updates the claim.
+#
+# Honest limit: a scheduled job is not an uptime SLA. GitHub delays cron under
+# load and disables `schedule:` on public repos after ~60 days without repo
+# activity — the publish commit below is the fuel that keeps it alive.
+name: Live egress audit
+
+on:
+  schedule:
+    - cron: "25 */6 * * *"      # 4x/day, offset from the ember beat (xx:15)
+  workflow_dispatch:
+
+permissions:
+  contents: write      # publish the live-egress snapshot
+
+concurrency:
+  group: live-egress-audit
+  cancel-in-progress: false
+
+jobs:
+  measure:
+    name: Re-measure the public claims (real HTTP, real egress)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
+        with:
+          python-version: "3.11"
+
+      - name: Prove this runner can see the internet (otherwise nothing below is valid)
+        run: |
+          set -euo pipefail
+          python scripts/network_preflight.py --json --require-open | tee /tmp/preflight.json
+          echo "preflight: OPEN — public URLs can be judged here"
+
+      - name: Measure every claim in docs/public-urls.json
+        id: audit
+        run: |
+          set +e
+          python scripts/live_egress_audit.py \
+            --json \
+            --write-json "egress/status.json" \
+            --write-markdown "EGRESS.md" \
+            --strict-exit > /tmp/egress.json
+          rc=$?
+          echo "rc=$rc" >> "$GITHUB_OUTPUT"
+          python - <<'PY'
+          import json, pathlib
+          d = json.loads(pathlib.Path("/tmp/egress.json").read_text() or "{}")
+          c = d.get("counts", {})
+          lines = [
+              "### 🌐 Live egress audit",
+              "",
+              f"- egress: `{d.get('egress', {}).get('egress')}` · measured at {d.get('measured_at')}",
+              f"- ok **{c.get('ok', 0)}** · regression **{c.get('regression', 0)}** · "
+              f"recovered **{c.get('recovered', 0)}** · blocked **{c.get('blocked', 0)}**",
+          ]
+          for r in d.get("regressions", []):
+              lines.append(f"- 🔴 REGRESSION: <{r['url']}> → `{r['code']}` ({r['error']})")
+          for r in d.get("results", []):
+              if r["verdict"] == "recovered":
+                  lines.append(f"- 🟢 recovered: <{r['url']}> now `{r['code']}` — "
+                               "update `docs/public-urls.json`")
+          pathlib.Path("/tmp/summary.md").write_text("\n".join(lines) + "\n")
+          PY
+          cat /tmp/summary.md >> "$GITHUB_STEP_SUMMARY"
+          exit 0
+
+      - name: Publish the measurement (live-egress branch)
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ ! -f EGRESS.md ] || [ ! -f egress/status.json ]; then
+            echo "no measurement to publish (the audit did not produce files)"
+            exit 0
+          fi
+          git config user.name  "egress-bot"
+          git config user.email "egress-bot@users.noreply.github.com"
+          SUMMARY=$(python -c 'import json;d=json.load(open("egress/status.json"));c=d["counts"];print("ok=%s regression=%s recovered=%s blocked=%s" % (c["ok"], c["regression"], c["recovered"], c["blocked"]))')
+          # Orphan index => the branch holds only this snapshot, never the tree.
+          git checkout --orphan egress-build
+          git rm -r --cached . -q
+          git add -f egress EGRESS.md
+          git -c commit.gpgsign=false commit -q -m "egress: $(date -u +%Y-%m-%dT%H:%M:%SZ) · $SUMMARY" \
+            || echo "nothing changed this run"
+          git push --force origin HEAD:live-egress
+          echo "published: $SUMMARY"
+
+      - name: Refuse the run when a live claim regressed
+        if: always()
+        run: |
+          set -euo pipefail
+          rc="${{ steps.audit.outputs.rc }}"
+          echo "audit exit code: ${rc:-unknown}"
+          if [ "${rc:-0}" != "0" ]; then
+            echo "::error::A public URL claimed to be live no longer answers 2xx. Fix the deployment or fix the claim in docs/public-urls.json."
+            exit 1
+          fi
