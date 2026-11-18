@@ -13,6 +13,28 @@ fail or when any GitHub Action is not pinned to a full-length SHA.
 
 ## [Unreleased]
 
+### Added — two guards against false claims (2026-11-18)
+- **`scripts/network_preflight.py`** — measures whether the runner can reach the
+  public internet *before* any URL is judged, and classifies egress as `OPEN` /
+  `ALLOWLISTED_ONLY` / `CLOSED`. `urllib` raises the same `URLError` for "the site
+  is dead" and "this machine is blind"; the preflight makes the difference
+  explicit. An HTTP status (even 404) counts as reachable — the network answered.
+- **`ember_beat.public_paths()`** now emits `live` / `dead` / `blocked` instead of
+  flattening everything to `live: false`. Blocked paths are excluded from the
+  heat index and the weight is renormalised, so a network-isolated runner cannot
+  cool the repository down. `STATUS.md` prints `Public egress` and
+  `N BLOCKED — not counted`.
+- **`docs/deviations.json`** — machine-readable register read by
+  `scripts/verify_archive_identity.py`, which now separates `identical` /
+  `deviation` / `generated` / `drifted` / `blocked`. `easy-ai/data/manifest.json`
+  is declared `generated` (upstream re-ran it 9 hours after our sync).
+  New flags: `--strict` (drift only), `--strict-all` (+ blocked/failed), `--json`.
+- `command-hud/audit.py` reports `Public egress (measured)` and warns that a
+  public-site verdict from a blind runner is `BLOCKED`, not `dead`.
+- 27 new tests, all offline (network calls are injected):
+  `test_network_preflight.py` (10), `test_verify_identity.py` (17), plus 5 in
+  `test_ember_beat.py` (12 total). Wired into `.github/workflows/ci.yml`.
+
 ### Planned (see `docs/ROADMAP-2027.md`)
 - T4 — a hosted second mirror (owner action: Vercel returned *access denied*, the
   Supabase projects are paused — both measured, see `docs/T4-T6-EVIDENCE.md`).
