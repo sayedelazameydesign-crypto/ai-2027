@@ -41,6 +41,9 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import network_preflight  # noqa: E402  (same-directory helper, stdlib only)
+
 ROOT = Path(__file__).resolve().parent.parent
 EMBER_DIR = ROOT / "ember"
 STATUS_JSON = EMBER_DIR / "status.json"
@@ -87,18 +90,43 @@ def memory_counts(base: str, timeout: int = 10) -> tuple[int, int]:
         return -1, -1
 
 
-def public_paths(urls: list[str], timeout: int = 10) -> list[dict]:
-    """Check public URLs; a network failure is reported as 0, never assumed live."""
+def public_paths(urls: list[str], timeout: int = 10,
+                 report: "network_preflight.Report | None" = None,
+                 opener=None) -> list[dict]:
+    """Check public URLs, distinguishing "dead" from "I cannot see the internet".
+
+    A network failure used to be flattened to ``status: 0, live: False`` — which
+    published "the sites are down" from an environment that simply had no
+    egress (measured 2026-11-18). Each entry now carries a ``verdict``:
+
+        live     the server answered 200
+        dead     a server answered, with a non-200 status (that is evidence)
+        blocked  we could not reach it *and* preflight proved we cannot judge
+
+    ``blocked`` entries are excluded from the heat index by ``beat()`` so a blind
+    environment cannot cool the repository down.
+    """
+    report = report or network_preflight.cached_preflight()
+    open_fn = opener or urllib.request.urlopen
     out = []
     for u in urls:
         code = 0
-        try:
-            req = urllib.request.Request(u, method="GET")
-            with urllib.request.urlopen(req, timeout=timeout) as r:
-                code = r.status
-        except (urllib.error.URLError, OSError):
-            code = 0
-        out.append({"url": u, "status": code, "live": code == 200})
+        verdict = "blocked"
+        if report.allows(u):
+            try:
+                req = urllib.request.Request(u, method="GET")
+                with open_fn(req, timeout=timeout) as r:
+                    code = r.status
+                verdict = "live" if code == 200 else "dead"
+            except urllib.error.HTTPError as exc:      # an answer, not a silence
+                code = exc.code
+                verdict = "dead"
+            except (urllib.error.URLError, OSError):
+                # Egress exists but this host did not answer: a real failure.
+                code = 0
+                verdict = "dead"
+        out.append({"url": u, "status": code, "live": verdict == "live",
+                    "verdict": verdict})
     return out
 
 
@@ -121,7 +149,7 @@ def load_history() -> list[dict]:
 
 
 def heat_index(history: list[dict], memories: int, embers_live: int,
-               now: float | None = None) -> dict:
+               now: float | None = None, embers_measured: bool = True) -> dict:
     """Deterministic Heat Index over measured beats. See module docstring."""
     now = now or time.time()
     recent = [b for b in history if now - float(b.get("ts", 0)) <= WINDOW_S]
@@ -141,17 +169,22 @@ def heat_index(history: list[dict], memories: int, embers_live: int,
     recency = max(0.0, 1.0 - min(worst_gap_h, 24.0) / 24.0)
     fuel = min(max(memories, 0), 100) / 100
     embers = min(embers_live, 3) / 3
-    total = round(0.4 * success + 0.2 * recency + 0.2 * fuel + 0.2 * embers, 4)
+    # An unmeasurable component is DROPPED and the weights are renormalised —
+    # never scored as zero. A blind environment must not look like a cold repo.
+    weights = {"success": 0.4, "recency": 0.2, "fuel": 0.2,
+               "embers": 0.2 if embers_measured else 0.0}
+    scale = sum(weights.values())
+    components = {k: round(w * v, 4) for (k, w), v in zip(
+        weights.items(), (success, recency, fuel, embers))}
+    total = round(sum(components.values()) / scale, 4) if scale else 0.0
     verdict = ("burning" if total >= 0.8 else
                "hot-without-flame" if total >= 0.5 else "going-out")
     return {"heat": total, "verdict": verdict, "beats_7d": beats_7d,
             "success_rate_7d": round(success, 4), "longest_gap_h": longest_gap_h,
             "since_last_beat_h": since_last_h, "memories": memories,
-            "embers_live": embers_live,
-            "components": {"success": round(0.4 * success, 4),
-                           "recency": round(0.2 * recency, 4),
-                           "fuel": round(0.2 * fuel, 4),
-                           "embers": round(0.2 * embers, 4)}}
+            "embers_live": embers_live, "embers_measured": embers_measured,
+            "weights": {k: round(w / scale, 4) for k, w in weights.items()} if scale else {},
+            "components": components}
 
 
 # --------------------------------------------------------------------------- #
@@ -162,6 +195,21 @@ def write_status(status: dict) -> None:
     STATUS_JSON.write_text(json.dumps(status, ensure_ascii=False, indent=2) + "\n",
                            encoding="utf-8")
     checks = status["smoke"]["checks"]
+    egress = status.get("egress") or {}
+    blocked = int(status.get("public_paths_blocked", 0) or 0)
+    judged = [p for p in (status.get("public_paths") or []) if p.get("verdict") != "blocked"]
+    live_paths = sum(1 for p in judged if p.get("live"))
+    if blocked:
+        paths_row = (f"{live_paths}/{len(judged)} public "
+                     f"(**{blocked} BLOCKED** — not counted, see egress)")
+    elif judged:
+        paths_row = f"{live_paths}/{len(judged)} public"
+    else:
+        paths_row = (f"{status['heat']['embers_live']} ember(s), local agent only "
+                     "— no public URL configured")
+    egress_row = (egress.get("egress", "not measured") if egress else "not measured")
+    if egress and not egress.get("general_egress"):
+        egress_row += " — public sites CANNOT be judged from this runner"
     rows = "\n".join(
         f"| {'PASS' if c['ok'] else 'FAIL'} | {c['name']} | {c.get('note', '')} |"
         for c in checks
@@ -180,7 +228,8 @@ def write_status(status: dict) -> None:
 | Success rate (7d) | {status['heat']['success_rate_7d']} |
 | Longest silence (h) | {status['heat']['longest_gap_h']} |
 | Memories admitted | {status['memory']['memories']} (refused {status['memory']['refusals']}) |
-| Public paths live | {status['heat']['embers_live']}/3 |
+| Public egress | {egress_row} |
+| Public paths live | {paths_row} |
 
 ## This beat
 
@@ -194,6 +243,9 @@ def write_status(status: dict) -> None:
 - No beat for a week ⇒ `recency` = 0 ⇒ the index goes cold. Silence is never
   reported as warmth.
 - Heat is a scheduling signal, not a quality metric.
+- A public path that could not be reached **because this runner has no general
+  egress** is recorded as `blocked` and removed from the heat weight, not
+  counted as a dead site (`scripts/network_preflight.py`).
 """, encoding="utf-8")
 
 
@@ -218,13 +270,19 @@ def beat(base: str, hud: str | None, pages_urls: list[str], do_smoke: bool) -> d
         smoke = {"ok": False, "passed": 0, "total": 0, "checks": [],
                  "error": "smoke skipped by flag (--no-smoke)"}
     memories, refusals = memory_counts(base)
-    paths = public_paths(pages_urls) if pages_urls else []
-    embers_live = (1 if memories >= 0 else 0) + sum(1 for p in paths if p["live"])
+    egress = network_preflight.cached_preflight() if pages_urls else None
+    paths = public_paths(pages_urls, report=egress) if pages_urls else []
+    judged = [p for p in paths if p["verdict"] != "blocked"]
+    blocked = [p for p in paths if p["verdict"] == "blocked"]
+    embers_live = (1 if memories >= 0 else 0) + sum(1 for p in judged if p["live"])
+    # With no public URL configured there is nothing to measure ⇒ old semantics.
+    embers_measured = bool(judged) or not pages_urls
 
     history = load_history()
     now = time.time()
     provisional = {"ts": now, "ok": smoke.get("ok", False)}
-    heat = heat_index(history + [provisional], memories, embers_live, now=now)
+    heat = heat_index(history + [provisional], memories, embers_live, now=now,
+                      embers_measured=embers_measured)
 
     status = {
         "beat_ts": now,
@@ -236,6 +294,8 @@ def beat(base: str, hud: str | None, pages_urls: list[str], do_smoke: bool) -> d
                   "error": smoke.get("error")},
         "memory": {"memories": memories, "refusals": refusals},
         "public_paths": paths,
+        "public_paths_blocked": len(blocked),
+        "egress": egress.to_dict() if egress else None,
         "heat": heat,
         "degraded": not bool(smoke.get("ok")),
     }
@@ -276,7 +336,14 @@ def main() -> int:
               + ("" if status['smoke']['ok'] else f"  ({status['smoke'].get('error')})"))
         print(f"  memories  : {status['memory']['memories']}"
               f" (refused {status['memory']['refusals']})")
-        print(f"  embers    : {status['heat']['embers_live']}/3 live")
+        print(f"  embers    : {status['heat']['embers_live']} live"
+              + (f" · {status.get('public_paths_blocked', 0)} BLOCKED"
+                 if status.get("public_paths_blocked") else ""))
+        if status.get("egress"):
+            eg = status["egress"]
+            print(f"  egress    : {eg['egress']}"
+                  + ("" if eg["general_egress"]
+                     else "  (public sites cannot be judged here)"))
         print(f"  heat      : {status['heat']['heat']} ({status['heat']['verdict']})")
         if args.write:
             print(f"  wrote     : {STATUS_JSON.relative_to(ROOT)} · "

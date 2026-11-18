@@ -113,5 +113,96 @@ class StatusPublishingTests(unittest.TestCase):
             '"ok": true', "PASS"))
 
 
+class BlindedEgressTests(unittest.TestCase):
+    """Regression for the 2026-11-18 false claim: "the sites are down".
+
+    The session ran in a sandbox with no general egress. Every public URL
+    returned status 0 and was published as not-live — blindness reported as
+    death. These tests pin the distinction.
+    """
+
+    def test_20_blocked_paths_are_not_reported_as_dead(self):
+        import network_preflight as npf
+        rep = npf.Report(npf.ALLOWLISTED_ONLY, ())
+        paths = eb.public_paths(["https://a.vercel.app/", "https://b.netlify.app/"],
+                                report=rep)
+        self.assertEqual([p["verdict"] for p in paths], ["blocked", "blocked"])
+        self.assertFalse(any(p["live"] for p in paths))
+
+    def test_21_open_egress_with_no_answer_is_still_a_real_death(self):
+        import urllib.error
+
+        import network_preflight as npf
+
+        def boom(req, timeout=None):
+            raise urllib.error.URLError("connection refused")
+
+        rep = npf.Report(npf.OPEN, ())
+        paths = eb.public_paths(["https://gone.vercel.app/"], report=rep, opener=boom)
+        self.assertEqual(paths[0]["verdict"], "dead")
+
+    def test_22_open_egress_404_is_dead_but_reachable(self):
+        import urllib.error
+
+        import network_preflight as npf
+
+        def not_found(req, timeout=None):
+            raise urllib.error.HTTPError(req.full_url, 404, "nf", {}, None)
+
+        rep = npf.Report(npf.OPEN, ())
+        paths = eb.public_paths(["https://gone.vercel.app/"], report=rep,
+                                opener=not_found)
+        self.assertEqual(paths[0]["verdict"], "dead")
+        self.assertEqual(paths[0]["status"], 404)
+
+    def test_23_unmeasured_embers_are_dropped_not_scored_zero(self):
+        now = time.time()
+        measured = eb.heat_index([{"ts": now, "ok": True}], 10, 2, now=now)
+        blind = eb.heat_index([{"ts": now, "ok": True}], 10, 2, now=now,
+                              embers_measured=False)
+        self.assertFalse(blind["embers_measured"])
+        self.assertEqual(blind["weights"]["embers"], 0.0)
+        self.assertAlmostEqual(sum(blind["weights"].values()), 1.0, places=4)
+        # blindness must not lower the index: the same evidence, less preamble
+        self.assertGreaterEqual(blind["heat"], measured["heat"] - 0.13)
+
+    def test_24_a_blind_runner_does_not_publish_public_paths_as_down(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            old = (eb.EMBER_DIR, eb.STATUS_JSON, eb.STATUS_MD, eb.HISTORY)
+            eb.EMBER_DIR = tmp_path / "ember"
+            eb.STATUS_JSON = eb.EMBER_DIR / "status.json"
+            eb.STATUS_MD = tmp_path / "STATUS.md"
+            eb.HISTORY = eb.EMBER_DIR / "history.jsonl"
+            try:
+                now = time.time()
+                status = {
+                    "beat_ts": now,
+                    "beat_at_iso": time.strftime("%Y-%m-%dT%H:%M:%SZ",
+                                                 time.gmtime(now)),
+                    "duration_ms": 1.0,
+                    "smoke": {"ok": True, "passed": 15, "total": 15,
+                              "checks": [], "error": None},
+                    "memory": {"memories": 1, "refusals": 0},
+                    "public_paths": [{"url": "https://a.vercel.app/", "status": 0,
+                                      "live": False, "verdict": "blocked"}],
+                    "public_paths_blocked": 1,
+                    "egress": {"egress": "ALLOWLISTED_ONLY",
+                               "general_egress": False, "probes": []},
+                    "heat": eb.heat_index([{"ts": now, "ok": True}], 1, 1, now=now,
+                                          embers_measured=False),
+                    "degraded": False,
+                }
+                eb.write_status(status)
+                md = eb.STATUS_MD.read_text(encoding="utf-8")
+                js = json.loads(eb.STATUS_JSON.read_text(encoding="utf-8"))
+                self.assertIn("BLOCKED", md)
+                self.assertIn("CANNOT be judged", md)
+                self.assertEqual(js["public_paths_blocked"], 1)
+                self.assertNotIn("0/1", md.split("Public paths live")[1][:40])
+            finally:
+                (eb.EMBER_DIR, eb.STATUS_JSON, eb.STATUS_MD, eb.HISTORY) = old
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

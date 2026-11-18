@@ -28,6 +28,7 @@ ROOT = Path(__file__).resolve().parent.parent
 PROJECTS = ROOT / "projects"
 CATALOG = ROOT / "catalog.json"
 HUD = ROOT / "command-hud"
+sys.path.insert(0, str(ROOT / "scripts"))
 
 # Only these projects have an executable verification probe in THIS sandbox.
 # Everything else is explicitly NOT VERIFIED, however confident its README is.
@@ -209,7 +210,22 @@ def architecture_map(catalog: dict) -> dict:
             "empty_source_repos": len(catalog.get("empty_source_repos", []))}
 
 
-def build(fast: bool = False) -> dict:
+def measure_egress() -> dict:
+    """Measure whether this runner can judge public URLs at all.
+
+    Without this, an audit produced inside a network-isolated sandbox can only
+    say "unknown" about every public site — and must never say "dead".
+    """
+    try:
+        import network_preflight  # local helper, stdlib only
+        return network_preflight.preflight().to_dict()
+    except Exception as exc:  # a broken preflight must not break the audit
+        return {"egress": "UNMEASURED", "general_egress": False,
+                "can_judge_public_urls": False, "error": str(exc)[:120],
+                "probes": []}
+
+
+def build(fast: bool = False, egress: bool = True) -> dict:
     catalog = json.loads(CATALOG.read_text(encoding="utf-8"))
     probes = run_probes(fast)
     proven = {p["proves"] for p in probes if p["verdict"] == "PROVEN" and p.get("proves")}
@@ -321,6 +337,7 @@ def build(fast: bool = False) -> dict:
             "probes_passed": sum(1 for p in probes if p["verdict"] == "PROVEN"),
             "probes_failed": sum(1 for p in probes if p["verdict"] == "FAILED"),
         },
+        "egress": measure_egress() if egress else {"egress": "SKIPPED"},
         "probes": probes,
         "probe_failed": probe_failed,
         "repo_checks": {
@@ -353,7 +370,10 @@ def to_markdown(d: dict) -> str:
     L.append("")
     L.append("| Metric | Value |")
     L.append("|---|---:|")
-    for k, v in [("Projects", s["projects"]),
+    eg = d.get("egress") or {}
+    egress_verdict = eg.get("egress", "UNMEASURED")
+    for k, v in [("Public egress (measured)", egress_verdict),
+                 ("Projects", s["projects"]),
                  ("Actual files on disk", s["actual_files"]),
                  ("Declared files (catalog.json)", s["declared_files"]),
                  ("With test files", s["projects_with_tests"]),
@@ -363,6 +383,12 @@ def to_markdown(d: dict) -> str:
                  ("Probes passed / failed", f"{s['probes_passed']} / {s['probes_failed']}")]:
         L.append(f"| {k} | {v} |")
     L.append("")
+    if not eg.get("general_egress"):
+        L.append(f"> ⚠️ **Public egress = `{egress_verdict}`** — this runner could not "
+                 "reach the general internet. Any public-site claim from here "
+                 "is **BLOCKED (not judged)**, never \"dead\". "
+                 "Verify with `python3 scripts/network_preflight.py`.")
+        L.append("")
     L.append("| Classification | Count | Meaning |")
     L.append("|---|---:|---|")
     meanings = {
@@ -455,8 +481,10 @@ def main() -> int:
     ap.add_argument("--fast", action="store_true", help="skip subprocess probes")
     ap.add_argument("--assert-probes", action="store_true",
                     help="exit 1 if any executed probe failed")
+    ap.add_argument("--skip-egress", action="store_true",
+                    help="do not measure public egress (offline/fast runs)")
     args = ap.parse_args()
-    d = build(fast=args.fast)
+    d = build(fast=args.fast, egress=not args.skip_egress)
     if args.report:
         args.report.parent.mkdir(parents=True, exist_ok=True)
         args.report.write_text(to_markdown(d), encoding="utf-8")
