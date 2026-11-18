@@ -75,8 +75,11 @@ jobs:
                   raise
           print(f"::notice title=Review source::Verified {len(entries)} adapter files match commit {revision}")
       - name: Native NTFS ACLs, exclusive creation and process restart
+        id: native_tests
         shell: python
         run: |
+          import os
+          from pathlib import Path
           import re
           import subprocess
           import sys
@@ -98,5 +101,37 @@ jobs:
               print(f"::notice title=Windows review test::{name} ... {status}")
           if (result.returncode or len(cases) != 6 or len({name for name, _ in cases}) != 6
                   or any(status != "ok" for _, status in cases) or "OK" not in lines):
+              capture = Path(os.environ["RUNNER_TEMP"]) / "browser-handoff-unittest.log"
+              capture.write_text(result.stdout, encoding="utf-8")
               print("::error title=Windows review::Expected six distinct passing tests with no skips.")
               raise SystemExit(result.returncode or 1)
+      - name: Annotate the two Windows process test tracebacks
+        if: ${{ failure() && steps.native_tests.outcome == 'failure' }}
+        shell: python
+        run: |
+          import os
+          from pathlib import Path
+          import re
+
+          capture = Path(os.environ["RUNNER_TEMP"]) / "browser-handoff-unittest.log"
+          targets = (
+              "test_spawned_attempts_and_fresh_process_replay",
+              "test_abrupt_exit_retains_reservation_and_replay_is_still_blocked",
+          )
+          pattern = re.compile(
+              r"^={6,}\n(?:FAIL|ERROR): "
+              rf"(?P<test>{'|'.join(targets)}) \(__main__\.HandoffTest\.(?P=test)\)\n"
+              r"-{6,}\n(?P<trace>.*?)(?=^={6,}\n|^-{6,}\nRan \d+ tests?|\Z)",
+              re.MULTILINE | re.DOTALL,
+          )
+          text = capture.read_text(encoding="utf-8") if capture.is_file() else ""
+          for failure in pattern.finditer(text):
+              trace = failure["trace"].strip()
+              for key in ("GITHUB_WORKSPACE", "RUNNER_TEMP", "USERPROFILE"):
+                  path = os.environ.get(key)
+                  if path:
+                      for form in (path, path.replace("\\", "/"), path.replace("\\", "\\\\")):
+                          trace = re.sub(re.escape(form), f"<{key}>", trace, flags=re.IGNORECASE)
+              trace = re.sub(r"(?i)https?://\S+|\b(?:synthetic-[\w-]+-do-not-export|lab-device-not-for-export)\b", "<redacted>", trace)
+              escaped = trace.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+              print(f"::error title=Windows traceback {failure['test']}::{escaped}")
