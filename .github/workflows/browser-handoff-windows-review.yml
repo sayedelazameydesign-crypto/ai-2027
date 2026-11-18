@@ -141,6 +141,7 @@ jobs:
               names = dict.fromkeys(failure["test"] for failure in failures)
               output.write(f"probe_cases={','.join(names)}\n")
       - name: Probe the failed Windows workers through their existing Pipe
+        id: worker_probe
         if: ${{ failure() && steps.native_tests.outcome == 'failure' && steps.process_tracebacks.outputs.probe_cases != '' }}
         shell: python
         env:
@@ -377,6 +378,7 @@ jobs:
                       json.dump(probe(sys.argv[2]), output, ensure_ascii=True)
               else:
                   selected = os.environ.get("HANDOFF_PROBE_CASES", "").split(",")
+                  profile_refused = False
                   for case in CASES:
                       if case in selected:
                           result = report_for(case)
@@ -384,3 +386,111 @@ jobs:
                           print(f"::notice title=Windows worker probe::{json.dumps(result)}", flush=True)
                           if detail is not None:
                               print(f"::notice title=Windows ACL first failure::{json.dumps(dict(case=case, **detail))}", flush=True)
+                              profile_refused |= (detail["check"] == "untrusted_allow_ace"
+                                                  and detail["component"] == "runner_profile"
+                                                  and detail["ace_origin"] == "explicit")
+                  if profile_refused:
+                      with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as output:
+                          output.write("profile_explicit_allow=true\n")
+      - name: Read explicit allow ACEs on the Windows runner profile
+        if: ${{ failure() && steps.native_tests.outcome == 'failure' && steps.worker_probe.outputs.profile_explicit_allow == 'true' }}
+        shell: python
+        run: |
+          import json
+          import os
+          from pathlib import Path
+          import re
+          import subprocess
+
+          PUBLIC_SIDS = {
+              "S-1-1-0": "Everyone", "S-1-5-11": "Authenticated Users",
+              "S-1-5-18": "SYSTEM", "S-1-5-19": "LOCAL SERVICE", "S-1-5-20": "NETWORK SERVICE",
+              "S-1-5-32-544": "Administrators", "S-1-5-32-545": "Users", "S-1-5-32-546": "Guests",
+              "S-1-5-4": "INTERACTIVE", "S-1-5-6": "SERVICE",
+              "S-1-3-0": "CREATOR OWNER", "S-1-3-4": "OWNER RIGHTS",
+              "S-1-15-2-1": "ALL APPLICATION PACKAGES", "S-1-15-2-2": "ALL RESTRICTED APPLICATION PACKAGES",
+          }
+          RIGHTS = {
+              "AppendData", "ChangePermissions", "CreateDirectories", "CreateFiles", "Delete",
+              "DeleteSubdirectoriesAndFiles", "ExecuteFile", "FullControl", "ListDirectory", "Modify",
+              "Read", "ReadAndExecute", "ReadAttributes", "ReadData", "ReadExtendedAttributes", "ReadPermissions",
+              "Synchronize", "TakeOwnership", "Traverse", "Write", "WriteAttributes", "WriteData", "WriteExtendedAttributes",
+          }
+          QUERY = r"""
+          $ErrorActionPreference = 'Stop'
+          $acl = Get-Acl -LiteralPath $env:HANDOFF_ACL_PROFILE_PATH
+          $user = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+          $entries = @(
+            foreach ($rule in $acl.GetAccessRules($true, $false, [Security.Principal.SecurityIdentifier])) {
+              if ($rule.AccessControlType -eq 'Allow' -and -not $rule.IsInherited) {
+                $sid = $rule.IdentityReference.Value
+                [pscustomobject]@{
+                  sid = $sid
+                  current_user = ($sid -eq $user)
+                  rights = $rule.FileSystemRights.ToString()
+                  mask = [int]$rule.FileSystemRights
+                  inheritance = [int]$rule.InheritanceFlags
+                  propagation = [int]$rule.PropagationFlags
+                }
+              }
+            }
+          )
+          ConvertTo-Json -InputObject $entries -Compress
+          """
+
+          def sanitized_rules(entries):
+              if type(entries) is not list or len(entries) > 64:
+                  raise ValueError("Unexpected ACL inventory shape")
+              rows = []
+              for entry in entries:
+                  if type(entry) is not dict or entry.keys() != {"sid", "current_user", "rights", "mask", "inheritance", "propagation"}:
+                      raise ValueError("Unexpected rule shape")
+                  sid, current, rights = entry["sid"], entry["current_user"], entry["rights"]
+                  mask, inheritance, propagation = entry["mask"], entry["inheritance"], entry["propagation"]
+                  if (type(sid) is not str or len(sid) > 192 or not re.fullmatch(r"S-1-[0-9]+(?:-[0-9]+)+", sid)
+                          or type(current) is not bool or type(rights) is not str or len(rights) > 240
+                          or type(mask) is not int or not -(1 << 31) <= mask < (1 << 31)
+                          or type(inheritance) is not int or inheritance not in range(4)
+                          or type(propagation) is not int or propagation not in range(4)):
+                      raise ValueError("Unexpected ACL field")
+                  if sid in PUBLIC_SIDS:
+                      principal, public_sid = PUBLIC_SIDS[sid], sid
+                  else:
+                      public_sid = None
+                      if current:
+                          principal = "current_user"
+                      elif sid.startswith(("S-1-5-80-", "S-1-5-82-")):
+                          principal = "service_or_virtual_account"
+                      elif sid.startswith(("S-1-15-2-", "S-1-15-3-")):
+                          principal = "application_or_capability"
+                      elif sid.startswith("S-1-5-21-"):
+                          principal = "local_or_domain_principal"
+                      else:
+                          principal = "other_principal"
+                  names = [name.strip() for name in rights.split(",")]
+                  rows.append(dict(
+                      principal=principal, sid=public_sid,
+                      trusted=current or sid in ("S-1-5-18", "S-1-5-32-544"),
+                      rights=", ".join(names) if all(name in RIGHTS for name in names) else None,
+                      access_mask=f"0x{mask & 0xffffffff:08x}",
+                      inheritance=[name for bit, name in ((1, "ContainerInherit"), (2, "ObjectInherit")) if inheritance & bit],
+                      propagation=[name for bit, name in ((1, "NoPropagateInherit"), (2, "InheritOnly")) if propagation & bit],
+                  ))
+              return rows
+
+          if __name__ == "__main__":
+              try:
+                  exe = Path(os.environ["SystemRoot"]) / "System32/WindowsPowerShell/v1.0/powershell.exe"
+                  raw = subprocess.check_output(
+                      [str(exe), "-NoProfile", "-NonInteractive", "-Command", QUERY],
+                      env=os.environ | {"HANDOFF_ACL_PROFILE_PATH": str(Path.home())},
+                      stdin=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=20,
+                  )
+                  if len(raw) > 64 * 1024:
+                      raise ValueError("Unexpected ACL inventory size")
+                  rows = sanitized_rules(json.loads(raw.decode("ascii").strip()))
+              except (KeyError, OSError, ValueError, subprocess.SubprocessError):
+                  report = {"status": "unavailable"}
+              else:
+                  report = {"status": "ok", "explicit_allow": rows}
+              print(f"::notice title=Windows profile explicit allows::{json.dumps(report, ensure_ascii=True)}")
