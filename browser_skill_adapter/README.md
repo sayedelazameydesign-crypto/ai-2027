@@ -36,7 +36,19 @@ and [`docs/adr/0005-browserskill-adapter-boundary.md`](../docs/adr/0005-browsers
 | `upload`, `download` | `explicit` | single-use + exact filename | Cross-platform sandbox confinement (POSIX + Windows + `%2e`/`%2f` + symlink refusal) |
 | `evaluate` | `explicit` | single-use + exact origin | **Disabled by default** (`allow_evaluate=False`); requires `expect` or `observation_id` even when enabled |
 
+## Verified Browser Integration: one owner-approved task
+
+Use the [local handoff guide](../docs/VERIFIED-BROWSER-INTEGRATION.md) when Arena
+requests a test. `verified_handoff.py` accepts only one fixed loopback lab task.
+It needs a dedicated, paired Chrome profile and interactive local approval of a
+single expiring request. No account pages, user tabs, remote control, or automatic
+uploads. Only a reviewed receipt comes back to Arena; the verifier distinguishes
+receipt consistency, optional owner attestation, and actual live execution.
+
 ## Quick start on your machine (Stage 1 · Mode 1)
+
+These are the general adapter smoke commands, not the Arena handoff. For the
+handoff, follow the dedicated profile and **required** pairing instructions above.
 
 ```bash
 # 1. Install pinned bsk v0.5.0 (fail-closed SHA-256 verification, no sudo, outside Git)
@@ -76,9 +88,10 @@ python3 browser_skill_adapter/run_local_task.py \
     --allow-localhost
 ```
 
-## Run the offline test suite (no browser, no network, no API key)
+## Run the offline tests (no browser, internet, or API key)
 
 ```bash
 python3 browser_skill_adapter/test_adapter.py -v
+python3 browser_skill_adapter/test_verified_handoff.py -v  # simulated bsk + loopback HTTP
 python3 scripts/test_install_browserskill.py -v
 ```
