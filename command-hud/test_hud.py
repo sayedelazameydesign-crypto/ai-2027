@@ -234,6 +234,21 @@ class HudTests(unittest.TestCase):
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
 
+    def test_16_browser_status_is_honest_readonly_and_tracks_freeze(self):
+        """Stage 1 BrowserSkill surface: read-only, zero mutations, never fakes READY."""
+        code, _, raw = self.get("/api/browser/status")
+        self.assertEqual(code, 200)
+        d = json.loads(raw)
+        self.assertEqual(d["mode"], "local")
+        self.assertEqual(d["stage"], "1/3")
+        self.assertEqual(d["mutations_performed"], 0)
+        self.assertFalse(d["auto_start"])
+        self.assertIn(d["verdict"], ("READY", "SKIPPED", "BLOCKED", "FAILED"))
+        self.assertFalse(d["hud_frozen"])
+        self.post("/api/kill", {"enabled": True})
+        _, _, raw2 = self.get("/api/browser/status")
+        self.assertTrue(json.loads(raw2)["hud_frozen"])
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
