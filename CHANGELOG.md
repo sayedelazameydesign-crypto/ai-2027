@@ -25,7 +25,7 @@ fail or when any GitHub Action is not pinned to a full-length SHA.
 - **`scripts/gemini_live_check.py`** (15 tests) — one tiny real call
   (`maxOutputTokens=24`, `temperature=0`) so "the credential works" becomes
   measured. Key comes from `env` only, travels in the `x-goog-api-key` header
-  (**never** `?key=` in a URL), is printed as `sha256:…(39 chars)`, and is scrubbed
+  (**never** `?key=` in a URL), is reported only as `present (39 chars)`, and is scrubbed
   out of provider error bodies that quote it back. No key ⇒ exit **2 (skipped)**;
   no egress ⇒ exit **3 (blocked)** — neither is reported as a failure.
   Wired as the opt-in `live-gemini` job (never on pull requests).

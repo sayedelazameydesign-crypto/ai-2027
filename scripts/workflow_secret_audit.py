@@ -65,6 +65,26 @@ def documented(name: str, doc_text: str) -> bool:
     return name in doc_text
 
 
+def recorded_names(doc_text: str) -> list[str]:
+    """Every secret name the register actually records (in file order)."""
+    return re.findall(r"`([A-Z][A-Z0-9_]{2,})`", doc_text)
+
+
+def display_name(name: str, doc_text: str) -> str:
+    """The name to print — but only if the register already records it.
+
+    This is not politeness, it is the no-new-leak rule: a reference found in a
+    workflow that `docs/SECRETS.md` does not record is reported **by location**,
+    never echoed by name, because an unreviewed name may itself be sensitive
+    (a key passed as `secrets.<key-material>`). The value returned always comes
+    from the register, never from the file being audited.
+    """
+    for token in recorded_names(doc_text):
+        if token == name:
+            return token
+    return "<undocumented secret>"
+
+
 def audit(workflows_dir: Path = WORKFLOWS, secrets_doc: Path = SECRETS_DOC) -> dict:
     """Return findings; never raises because one file is odd."""
     doc_text = secrets_doc.read_text(encoding="utf-8") if secrets_doc.is_file() else ""
@@ -81,17 +101,18 @@ def audit(workflows_dir: Path = WORKFLOWS, secrets_doc: Path = SECRETS_DOC) -> d
             continue
         rel = path.relative_to(ROOT).as_posix() if path.is_relative_to(ROOT) else path.name
         for ref in secret_refs(text):
-            used.setdefault(ref["name"], []).append(f"{rel}:{ref['line']}")
+            shown = display_name(ref["name"], doc_text)
+            used.setdefault(shown, []).append(f"{rel}:{ref['line']}")
             if not ref["safe"]:
                 findings.append({
                     "file": rel, "line": ref["line"], "rule": "inline_secret",
-                    "reference": ref["name"],
+                    "reference": shown,
                     "detail": "interpolated into script text — assign it under `env:` instead",
                     "text": ref["text"]})
             if not documented(ref["name"], doc_text):
                 findings.append({
                     "file": rel, "line": ref["line"], "rule": "undocumented_secret",
-                    "reference": ref["name"],
+                    "reference": shown,
                     "detail": "not named in docs/SECRETS.md — nobody can rotate what "
                               "nobody recorded"})
 

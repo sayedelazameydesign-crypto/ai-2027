@@ -69,6 +69,18 @@ class AuditTests(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertEqual(result["findings"][0]["rule"], "undocumented_secret")
 
+    def test_11b_an_unrecorded_name_is_not_echoed(self):
+        """A name nobody recorded may itself be sensitive; report the location."""
+        result = self._audit("        K: ${{ secrets.actual-key-material }}\n",
+                             "the register says nothing")
+        self.assertNotIn("actual-key-material", json.dumps(result))
+        self.assertIn("<undocumented secret>", json.dumps(result))
+
+    def test_11c_a_recorded_name_is_echoed_so_it_can_be_rotated(self):
+        result = self._audit("        K: ${{ secrets.GEMINI_API_KEY }}\n",
+                             "| `GEMINI_API_KEY` | ci.yml |")
+        self.assertIn("GEMINI_API_KEY", result["references"])
+
     def test_12_an_inline_secret_fails_even_when_documented(self):
         text = '          run: echo "${{ secrets.MY_KEY }}"\n'
         result = self._audit(text, "`MY_KEY`")

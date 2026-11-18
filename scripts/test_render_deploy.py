@@ -179,7 +179,7 @@ class DisclosureTests(unittest.TestCase):
         self.assertEqual(code, rd.OK)
         self.assertNotIn(KEY, out)
         self.assertNotIn(KEY[:4], out)
-        self.assertIn("sha256:", out)
+        self.assertIn(f"present ({len(KEY)} chars)", out)
 
     def test_21_the_key_never_appears_in_the_json_report(self):
         transport = routing_transport(deploy_statuses=["live"])

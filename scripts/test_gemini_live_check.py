@@ -73,7 +73,7 @@ class SecurityTests(unittest.TestCase):
             glc.main(["--no-preflight"], env={"GEMINI_API_KEY": KEY},
                      opener=opener_returning(200, GOOD))
         self.assertNotIn(KEY, buf.getvalue())
-        self.assertIn("sha256:", buf.getvalue())
+        self.assertIn("credential", buf.getvalue())
 
     def test_03_the_key_is_sent_as_a_header_never_in_the_url(self):
         """A key in a URL ends up in proxy logs, error pages and bug reports."""
@@ -93,18 +93,16 @@ class SecurityTests(unittest.TestCase):
         self.assertEqual(cfg["temperature"], 0)
         self.assertLessEqual(cfg["maxOutputTokens"], 32)
 
-    def test_05_the_fingerprint_is_a_hash_never_a_prefix(self):
-        """`AIza` is the same for every Google key: a prefix identifies nothing and
-        is still key material in a log. CodeQL flagged the first version."""
-        fp = glc.fingerprint(KEY)
-        self.assertTrue(fp.startswith("sha256:"))
-        self.assertIn(str(len(KEY)), fp)
-        self.assertNotIn(KEY[:4], fp)
-        self.assertNotIn(KEY[4:], fp)
-        # deterministic (so rotation can compare) and different keys differ
-        self.assertEqual(fp, glc.fingerprint(KEY))
-        self.assertNotEqual(fp, glc.fingerprint(KEY + "x"))
-        self.assertEqual(glc.fingerprint(""), "(none)")
+    def test_05_the_label_says_present_and_nothing_else(self):
+        """Two rejected attempts: a key prefix (`AIza…`, key material, identifies
+        nothing) and a hash of the key (still a derivation of the secret). Present +
+        length carries no key material at all."""
+        label = glc.credential_label(KEY)
+        self.assertEqual(label, f"present ({len(KEY)} chars)")
+        for fragment in (KEY[:4], KEY[4:10], KEY[-6:]):
+            self.assertNotIn(fragment, label)
+        self.assertEqual(glc.credential_label(""), "(none)")
+        self.assertEqual(glc.credential_label(KEY), glc.credential_label(KEY))
 
 
 class ClassificationTests(unittest.TestCase):

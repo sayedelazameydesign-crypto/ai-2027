@@ -93,7 +93,7 @@ jobs:
       - name: Gated deploy tests — accepted is not verified (14)
         run: python scripts/test_render_deploy.py -v
 
-      - name: Secret-handling audit — env-assigned and documented (16)
+      - name: Secret-handling audit — env-assigned and documented (18)
         run: |
           python scripts/test_workflow_secret_audit.py -v
           python scripts/workflow_secret_audit.py --assert
@@ -667,7 +667,7 @@ jobs:
               raise SystemExit("the check produced no JSON — see the log above")
           lines = ["### 🧪 Live Gemini call",
                    "",
-                   f"- model: `{d.get('model')}` · key: `{d.get('key_fingerprint')}`",
+                   f"- model: `{d.get('model')}` · credential: `{d.get('credential')}`",
                    f"- result: **{d.get('error_kind') or 'ok'}** · status {d.get('status')} · "
                    f"{d.get('latency_ms')} ms",
                    f"- claim: {d.get('claim')}"]
