@@ -42,6 +42,7 @@ import textwrap
 import unittest
 from pathlib import Path
 from typing import Any
+from unittest import mock
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
@@ -771,7 +772,7 @@ class ProbeAndSubprocessTests(AdapterTestCase):
             sys.stderr.write(f"unexpected args: {{args}}\\n")
             raise SystemExit(1)
         """), encoding="utf-8")
-        script.chmod(0o755)
+        script.chmod(0o700)
         return script, bsk_home
 
     def test_60_probe_exits_2_when_bsk_is_not_installed(self):
@@ -840,9 +841,10 @@ class ProbeAndSubprocessTests(AdapterTestCase):
         runner.status_payload["local_auth"]["paired_devices"] = 0
         runner.status_payload["browsers"][0]["version_skew"] = True
         open_home = self.tmp / "open_bsk"
-        open_home.mkdir()
-        os.chmod(open_home, 0o755)
-        rep = bsp.run_probe(bsk_home=open_home, runner=runner)
+        open_home.mkdir(mode=0o700)
+        # Simulate non-private directory metadata without setting permissive bits on disk.
+        with mock.patch.object(stat, "S_IMODE", return_value=0o755):
+            rep = bsp.run_probe(bsk_home=open_home, runner=runner)
         self.assertEqual(rep["exit_code"], 0)
         joined = " | ".join(rep["warnings"])
         self.assertIn("chmod 700", joined)

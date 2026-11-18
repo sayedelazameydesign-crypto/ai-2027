@@ -158,7 +158,7 @@ class InstallerTests(unittest.TestCase):
         self.dest.mkdir(parents=True, exist_ok=True)
         drifted = self.dest / "bsk"
         drifted.write_text("#!/bin/sh\necho 'bsk 0.4.1'\n", encoding="utf-8")
-        drifted.chmod(0o755)
+        drifted.chmod(0o700)
         drift = self._run("--check")
         self.assertEqual(drift.returncode, 1)
         self.assertIn("DRIFT", drift.stderr)
