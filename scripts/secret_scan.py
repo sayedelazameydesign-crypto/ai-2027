@@ -67,6 +67,9 @@ PATTERNS: tuple[tuple[str, str], ...] = (
     ("private_key_block", r"-----BEGIN (?:RSA |EC |DSA |OPENSSH |PGP )?PRIVATE KEY-----"),
     ("vercel_token", r"vercel_[A-Za-z0-9]{24,}"),
     ("jwt", r"eyJ[A-Za-z0-9_\-]{16,}\.eyJ[A-Za-z0-9_\-]{16,}\."),
+    ("bsk_local_pairing", r"bsk-local\.v1\.[A-Za-z0-9_\-.]{16,}"),
+    ("bsk_remote_auth", r"bsk-auth\.[A-Za-z0-9_\-]{20,}"),
+    ("bsk_pairing_url", r"wss?://[^\s\"'<>#]+#[A-Za-z0-9_\-.]{32,256}"),
 )
 
 # A generic `key = "…"` is only suspicious when the value looks like a secret
@@ -84,7 +87,7 @@ COMPILED = tuple((name, re.compile(rx)) for name, rx in PATTERNS)
 
 # Files that must never exist in a commit. `*.env.example` is deliberately NOT
 # here: a template full of placeholders is the correct way to ship config.
-FORBIDDEN_NAMES = {".env", ".env.local", "env.local"}
+FORBIDDEN_NAMES = {".env", ".env.local", "env.local", "local-pairings.json"}
 FORBIDDEN_SUFFIXES = (".key", ".p12", ".pfx")
 SKIP_DIRS = {".git", "node_modules", "__pycache__", ".next", "dist", "build", ".venv"}
 
@@ -135,9 +138,12 @@ def scan_text(text: str, path: str = "<text>") -> list[Finding]:
         for rule, rx in COMPILED:
             for match in rx.finditer(raw):
                 value = match.group(0)
-                if is_allowed_value(value):
+                candidate = value.split("#", 1)[1] if rule == "bsk_pairing_url" else value
+                if is_allowed_value(candidate):
                     continue
-                findings.append(Finding(path, lineno, rule, mask(value)))
+                shown = (f"ws(s)://…#({len(candidate)} chars)"
+                         if rule == "bsk_pairing_url" else mask(value))
+                findings.append(Finding(path, lineno, rule, shown))
         for match in GENERIC_ASSIGNMENT.finditer(raw):
             value = match.group(1)
             if is_allowed_value(value) or entropy(value) < 3.2:

@@ -102,6 +102,12 @@ jobs:
       - name: Gated deploy tests — accepted is not verified (14)
         run: python scripts/test_render_deploy.py -v
 
+      - name: BrowserSkill installer tests — fail-closed SHA-256 + no sudo (10)
+        run: python scripts/test_install_browserskill.py -v
+
+      - name: BrowserSkill Stage 1 adapter tests — policy, no-replay, redaction, L1 memory (34)
+        run: python browser_skill_adapter/test_adapter.py -v
+
       - name: Secret-handling audit — env-assigned and documented (18)
         run: |
           python scripts/test_workflow_secret_audit.py -v
@@ -479,6 +485,55 @@ jobs:
                     file=sys.stderr); sys.exit(1)
           print("PASS: probe refuses to run without RENDER_API_KEY")
           PY
+      - name: BrowserSkill adapter is stdlib-only (AST gate)
+        run: |
+          python - <<'PY'
+          import ast, sys
+          from pathlib import Path
+          stdlib = set(sys.stdlib_module_names) | {"tomllib"}
+          files = sorted(Path("browser_skill_adapter").glob("*.py"))
+          siblings = {p.stem for p in files}
+          # ONE declared cross-package import: run_local_task.py offers finished
+          # DecisionRecords to the repo-local L1 memory gate (also stdlib-only).
+          ALLOWED_CROSS_PACKAGE = {
+              ("run_local_task.py", "memory"): "offers DecisionRecord to L1 memory/store.py",
+          }
+          bad = {}
+          for p in files:
+              tree = ast.parse(p.read_text(encoding="utf-8"))
+              for n in ast.walk(tree):
+                  names = []
+                  if isinstance(n, ast.Import):
+                      names = [a.name.split(".")[0] for a in n.names]
+                  elif isinstance(n, ast.ImportFrom) and n.level == 0 and n.module:
+                      names = [n.module.split(".")[0]]
+                  for name in names:
+                      if name in stdlib or name in siblings:
+                          continue
+                      if (p.name, name) in ALLOWED_CROSS_PACKAGE:
+                          print(f"  allowed cross-package import in {p.name}: "
+                                f"{name} ({ALLOWED_CROSS_PACKAGE[(p.name, name)]})")
+                          continue
+                      bad.setdefault(str(p), set()).add(name)
+          print("scanned", len(files), "browser_skill_adapter files; siblings:", sorted(siblings))
+          if bad:
+              print("THIRD-PARTY:", bad, file=sys.stderr); sys.exit(1)
+          print("PASS: browser_skill_adapter imports nothing outside the stdlib")
+          PY
+      - name: BrowserSkill probe must refuse to invent a live browser (exit 2 SKIPPED)
+        run: |
+          python - <<'PY'
+          import json, subprocess, sys
+          r = subprocess.run([sys.executable, "browser_skill_adapter/probe.py", "--json"],
+                             capture_output=True, text=True, timeout=30)
+          print(r.stdout[-800:])
+          if r.returncode != 2:
+              print(f"FAIL: expected exit 2 (SKIPPED on headless runner), got {r.returncode}",
+                    file=sys.stderr); sys.exit(1)
+          payload = json.loads(r.stdout)
+          assert payload["verdict"] == "SKIPPED" and payload["mutations_performed"] == 0
+          print("PASS: BrowserSkill probe reports SKIPPED honestly on headless CI")
+          PY
       - name: Local watchdog is stdlib-only (AST gate)
         run: |
           python - <<'PY'
@@ -660,6 +715,7 @@ jobs:
           # It is never interpolated into a shell command, so it cannot appear
           # in the step's own command line (which GitHub prints).
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_MODEL: ${{ vars.GEMINI_MODEL || 'gemini-2.0-flash' }}
         run: |
           set +x
           set +e
