@@ -87,6 +87,17 @@ jobs:
       - name: Task runner tests — the 60 s budget must be falsifiable (6)
         run: python scripts/test_run_task.py -v
 
+      - name: Secret-handling tests — the key must never reach the output (15)
+        run: python scripts/test_gemini_live_check.py -v
+
+      - name: Gated deploy tests — accepted is not verified (14)
+        run: python scripts/test_render_deploy.py -v
+
+      - name: Secret-handling audit — env-assigned and documented (16)
+        run: |
+          python scripts/test_workflow_secret_audit.py -v
+          python scripts/workflow_secret_audit.py --assert
+
       - name: Every GitHub Action must be pinned to a full SHA (SBOM verifier)
         run: python scripts/sbom.py --assert-pinned --out /tmp/sbom.json
 
@@ -619,3 +630,56 @@ jobs:
         run: |
           pkill -f "live-agent/server.py" || true
           pkill -f "command-hud/server.py" || true
+
+  live-gemini:
+    # Opt-in: runs only when a GEMINI_API_KEY secret exists AND this is not a
+    # pull request (a fork PR must never receive a secret, and this job must not
+    # spend the owner's quota on every push from a branch).
+    name: Live Gemini call · opt-in (needs GEMINI_API_KEY)
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
+        with:
+          python-version: "3.11"
+
+      - name: One real call — tiny prompt, header auth, masked key
+        env:
+          # The secret reaches the process through the environment only.
+          # It is never interpolated into a shell command, so it cannot appear
+          # in the step's own command line (which GitHub prints).
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          set +x
+          set +e
+          python scripts/gemini_live_check.py --json > /tmp/gemini.json 2>/tmp/gemini.err
+          rc=$?
+          set -e
+          cat /tmp/gemini.json
+          python - <<'PY'
+          import json, pathlib
+          raw = pathlib.Path("/tmp/gemini.json").read_text().strip()
+          try:
+              d = json.loads(raw)
+          except ValueError:
+              raise SystemExit("the check produced no JSON — see the log above")
+          lines = ["### 🧪 Live Gemini call",
+                   "",
+                   f"- model: `{d.get('model')}` · key: `{d.get('key_fingerprint')}`",
+                   f"- result: **{d.get('error_kind') or 'ok'}** · status {d.get('status')} · "
+                   f"{d.get('latency_ms')} ms",
+                   f"- claim: {d.get('claim')}"]
+          if d.get("ok"):
+              lines.append(f"- answer: `{d.get('text_preview')}` "
+                           f"({d.get('text_chars')} chars)")
+          pathlib.Path("/tmp/gemini.md").write_text("\n".join(lines) + "\n")
+          PY
+          cat /tmp/gemini.md >> "$GITHUB_STEP_SUMMARY"
+          case "$rc" in
+            0) echo "live Gemini call succeeded" ;;
+            2) echo "::notice::GEMINI_API_KEY is not configured — live call SKIPPED (this is not a failure)" ;;
+            3) echo "::error::no general egress from this runner — the call was BLOCKED, not failed" ; exit 1 ;;
+            *) echo "::error::the live call failed (key invalid, quota exhausted, or model unavailable) — see /tmp/gemini.json" ; cat /tmp/gemini.err || true ; exit 1 ;;
+          esac
