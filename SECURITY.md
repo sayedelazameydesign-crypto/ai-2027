@@ -29,6 +29,18 @@
 - الفحص الدوري: `python3 command-hud/audit.py` يفحص أنماط المفاتيح ويصنّف ما يجده.
 - أمثلة الاختبار مسموحة فقط إن كانت قيمًا وهمية معروفة (`ghp_thisIsAFakeToken1234`, `AKIAIOSFODNN7EXAMPLE`).
 
+#### الأسرار في GitHub Actions (2026-11-18)
+
+سجلّها وقواعدها في **[`docs/SECRETS.md`](docs/SECRETS.md)**، ويُفرَض آليًا:
+
+```bash
+python3 scripts/workflow_secret_audit.py --assert     # كل مرجع مسنَد إلى env: ومذكور في السجل
+```
+
+- `GEMINI_API_KEY` → وظيفة `live-gemini` (نداء واحد صغير، لا يعمل على PR).
+- `RENDER_API_KEY` → `deploy.yml` (تشغيل يدوي فقط + تأكيد باسم الخدمة).
+- عند غياب أي سرّ: `::notice::` و**SKIPPED** — لا فشل، ولا ادّعاء نجاح.
+
 ---
 
 ## حدود العزل في النواة (مقيسة، لا مُفترضة)
