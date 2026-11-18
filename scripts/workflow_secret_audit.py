@@ -55,8 +55,10 @@ def secret_refs(text: str) -> list[dict]:
         safe = bool(SAFE_LINE.match(line))
         for expr in EXPR.finditer(line):
             for name in SECRET_IN_EXPR.finditer(expr.group(1)):
-                refs.append({"line": lineno, "name": name.group(1), "safe": safe,
-                             "text": line.rstrip()[:160]})
+                # No copy of the audited line is kept: `file:line` already points
+                # at it, and a copy would carry the workflow's own text into every
+                # report we print (CodeQL flagged exactly that path).
+                refs.append({"line": lineno, "name": name.group(1), "safe": safe})
     return refs
 
 
@@ -107,8 +109,7 @@ def audit(workflows_dir: Path = WORKFLOWS, secrets_doc: Path = SECRETS_DOC) -> d
                 findings.append({
                     "file": rel, "line": ref["line"], "rule": "inline_secret",
                     "reference": shown,
-                    "detail": "interpolated into script text — assign it under `env:` instead",
-                    "text": ref["text"]})
+                    "detail": "interpolated into script text — assign it under `env:` instead"})
             if not documented(ref["name"], doc_text):
                 findings.append({
                     "file": rel, "line": ref["line"], "rule": "undocumented_secret",
