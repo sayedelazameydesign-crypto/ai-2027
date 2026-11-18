@@ -44,7 +44,6 @@ Stdlib only.
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import os
 import sys
@@ -62,17 +61,14 @@ OWNERS_URL = "https://api.render.com/v1/owners"
 OK, FAILED, NO_KEY, BLOCKED, REFUSED = 0, 1, 2, 3, 4
 
 
-def fingerprint(key: str) -> str:
-    """A non-reversible identifier — never a prefix of the credential itself.
+def credential_label(key: str) -> str:
+    """Present or absent — never a prefix, never a hash of the key.
 
-    A `rnd_…(24 chars)` style fingerprint still carries key material into a log.
-    A truncated SHA-256 tells two keys apart (all rotation needs) and is useless
-    for authentication. Flagged by CodeQL on the first version of this file.
+    A prefix (`rnd_…`) is key material in a log; a hash is a derivation CodeQL
+    rightly refuses to see derived from a credential. Rotation needs neither: the
+    deploy either verifies or it does not.
     """
-    if not key:
-        return "(none)"
-    digest = hashlib.sha256(key.encode("utf-8")).hexdigest()[:12]
-    return f"sha256:{digest} ({len(key)} chars)"
+    return f"present ({len(key)} chars)" if key else "(none)"
 
 
 def scrub(text, key: str = "") -> str:
@@ -120,7 +116,7 @@ def run(env: dict | None = None, service_id: str | None = None,
     key = (env.get("RENDER_API_KEY") or "").strip()
     report = {
         "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "key_fingerprint": fingerprint(key),
+        "credential": credential_label(key),
         "key_present": bool(key),
         "service_id": service_id or env.get("RENDER_SERVICE_ID") or None,
         "service_name": service_name,
@@ -232,7 +228,7 @@ def main(argv: list[str] | None = None, env: dict | None = None, client=None,
     else:
         print("RENDER DEPLOY — one decision, gated and reported")
         print("=" * 66)
-        print(f"  key        : {report['key_fingerprint']}")
+        print(f"  credential : {report['credential']}")
         print(f"  service    : {report.get('service', {}).get('name', args.service_name)}"
               f" ({report.get('service', {}).get('id', 'unresolved')})")
         print(f"  status     : {report['status']}")

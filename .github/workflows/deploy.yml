@@ -111,7 +111,7 @@ jobs:
                    f"- service: `{d.get('service', {}).get('name', d.get('service_name'))}` "
                    f"(`{d.get('service', {}).get('id', 'unresolved')}`)",
                    f"- status: **{d.get('status')}** · verified: **{d.get('verified')}**",
-                   f"- mutations sent: {d.get('mutations_sent')} · key: `{d.get('key_fingerprint')}`"]
+                   f"- mutations sent: {d.get('mutations_sent')} · credential: `{d.get('credential')}`"]
           if d.get("deploy_id"):
               lines.append(f"- deploy `{d['deploy_id']}` → `{d.get('deploy', {}).get('status')}`")
           if d.get("plan"):

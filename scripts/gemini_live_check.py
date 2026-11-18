@@ -14,8 +14,8 @@ Security rules, enforced here rather than documented:
    never lands in a process list or a shell history;
 2. the key travels in the ``x-goog-api-key`` **header**, never as ``?key=`` in
    the URL — URLs are copied into proxy logs, error pages and bug reports;
-3. the key is never printed, logged, or written to the JSON result; only a
-   non-reversible fingerprint (length + first four characters) identifies it;
+3. the key is never printed, logged, or written to the JSON result — the report
+   says only that a credential is present, and how long it is;
 4. the request is deliberately tiny (``maxOutputTokens=24``, ``temperature=0``)
    because a smoke test that costs money is a smoke test people disable.
 
@@ -34,7 +34,6 @@ Stdlib only.
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import re
 import sys
@@ -72,22 +71,22 @@ def scrub(text, key: str = "") -> str:
     return out
 
 
-def fingerprint(key: str) -> str:
-    """A non-reversible identifier for the credential, plus its length.
+def credential_label(key: str) -> str:
+    """Say that a credential is present — and nothing else about it.
 
-    Deliberately **not** a prefix: `AIza` is the same for every Google key, so a
-    prefix identifies nothing while still being key material in a log. A truncated
-    SHA-256 does the only job that matters — telling one key from another when you
-    rotate it — and cannot be used to authenticate.
+    Three iterations, each rejected by a reviewer (one of them CodeQL):
 
-    (CodeQL was right to ask: the first version printed `AIza…(39 chars)`. That is
-    a fragment of the secret, and "it is only four characters" is not a reason to
-    put it in a CI log.)
+    * `AIza…(39 chars)` — a prefix. `AIza` is identical for every Google key, so it
+      identified nothing while being key material in a log;
+    * `sha256:<12 hex>` — better, but still a derivation of the secret, and CodeQL
+      was right that deriving an identifier from a credential invites the next
+      mistake (the weak-hash alert it raised is the same family of problem);
+    * **present / absent + length** — derivable without exporting anything.
+
+    Rotation does not need a fingerprint: the live call either succeeds or it does
+    not, and that is the measurement this file exists to make.
     """
-    if not key:
-        return "(none)"
-    digest = hashlib.sha256(key.encode("utf-8")).hexdigest()[:12]
-    return f"sha256:{digest} ({len(key)} chars)"
+    return f"present ({len(key)} chars)" if key else "(none)"
 
 
 def classify(status: int | None, error: str | None = None) -> str:
@@ -161,7 +160,7 @@ def check(model: str = DEFAULT_MODEL, timeout: float = 20.0, opener=None,
     started = time.time()
     result = {
         "model": model,
-        "key_fingerprint": fingerprint(key),
+        "credential": credential_label(key),
         "key_present": bool(key),
         "ok": False,
         "status": None,
@@ -243,7 +242,7 @@ def main(argv: list[str] | None = None, env: dict | None = None,
         print("GEMINI LIVE CHECK — one real call, nothing simulated")
         print("=" * 66)
         print(f"  model      : {result['model']}")
-        print(f"  key        : {result['key_fingerprint']}")
+        print(f"  credential : {result['credential']}")
         if result["ok"]:
             print(f"  answer     : {result['text_preview']!r} "
                   f"({result['text_chars']} chars)")
