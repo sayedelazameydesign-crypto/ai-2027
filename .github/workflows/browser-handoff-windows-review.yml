@@ -1,0 +1,28 @@
+# Review-only copy of the Windows job in ci.yml. Do not merge this trigger.
+name: Browser Handoff · Windows Review
+
+on:
+  push:
+    branches: ["arena/678b3548-ai-2027"]
+
+permissions:
+  contents: read
+
+jobs:
+  browser-handoff-windows:
+    name: BrowserSkill local handoff · Windows ACL and process lock (simulated browser)
+    runs-on: windows-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
+        with:
+          python-version: "3.11"
+      - name: Native NTFS ACLs, exclusive creation and process restart
+        run: >-
+          python browser_skill_adapter/test_verified_handoff.py WindowsAclTest
+          HandoffTest.test_exclusive_create_race_has_one_winner_across_processes
+          HandoffTest.test_spawned_attempts_and_fresh_process_replay
+          HandoffTest.test_abrupt_exit_retains_reservation_and_replay_is_still_blocked
