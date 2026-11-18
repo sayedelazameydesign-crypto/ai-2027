@@ -1,0 +1,26 @@
+#!/bin/sh
+# Pre-commit gate: refuse a commit that contains a credential.
+#
+# Installed by `scripts/install_hooks.sh` (sets core.hooksPath = .githooks).
+# Bypass deliberately, and only for a fixture you just verified by hand:
+#     SKIP_SECRET_SCAN=1 git commit ...
+#
+# Why this exists: issue #21 — a live Gemini key reached an upstream repository
+# inside an env file. Revocation is the only real fix; this is the cheap one.
+set -eu
+
+if [ "${SKIP_SECRET_SCAN:-0}" = "1" ]; then
+  echo "pre-commit: secret scan skipped (SKIP_SECRET_SCAN=1)" >&2
+  exit 0
+fi
+
+repo_root=$(git rev-parse --show-toplevel)
+scanner="$repo_root/scripts/secret_scan.py"
+
+if [ ! -f "$scanner" ]; then
+  echo "pre-commit: scripts/secret_scan.py not found — refusing to skip silently." >&2
+  echo "pre-commit: install with scripts/install_hooks.sh or bypass with SKIP_SECRET_SCAN=1" >&2
+  exit 1
+fi
+
+exec python3 "$scanner" --staged

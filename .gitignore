@@ -14,6 +14,8 @@ live-agent/memory.db
 # Ember beat output — regenerated every beat; the live series lives on the
 # `heartbeat` branch, so a copy in main would only ever be a stale claim.
 ember/
+/egress/
+EGRESS.md
 STATUS.md
 packaging/agi-kernel/dist/
 packaging/agi-kernel/src/agi_kernel/
