@@ -15,18 +15,19 @@
 
 ## 1) لقطة الحالة المُتحقق منها
 
-**آخر تحديث:** 2026-11-18 · SHA المفحوص `0860caab868652d4698c7a6b2dee4ca5c520faf5`.
+**لقطة التشغيل:** main عند SHA `ddcfb9ac8471f9e0b1ba392df67912b86f6a200a`؛ آخر قياس روابط `2026-11-18T16:07:29Z`. هذه لقطة لذلك SHA/الوقت وليست ضمانًا للحالة الحالية.
 
 | العنصر | الحالة | الدليل |
 |---|---|---|
-| SHA الفحوص | `0860caab868652d4698c7a6b2dee4ca5c520faf5` (كان على `arena/5c3f2a4a-ai-2027` عند الفحص) | `git log -1`؛ نتائج CI وCodeQL مرتبطة بهذا SHA فقط |
-| PR #46 | مدمج في `main` | أُغلق بالدمج في 2026-11-18T15:44:23Z |
-| CI | ناجح على SHA المفحوص | Evidence-First CI run `44339102463` |
-| CodeQL | ناجح على SHA المفحوص | CodeQL run `44339102319` |
-| GitHub Pages | API: `built`، `build_type=workflow`، HTTPS مفروض؛ **استجابة الرابط العام غير متحققة** | Pages API؛ آخر تشغيل Pages ناجح `44129279960` على SHA أقدم `fc4fb3d` (2026-11-17) |
+| دمج PR #47 | مدمج في `main` | commit `ddcfb9ac8471f9e0b1ba392df67912b86f6a200a`، 2026-11-18T16:00:21Z |
+| CI على main | ناجح على SHA الدمج | Evidence-First CI run `44342137587` |
+| CodeQL على main | نتيجة التشغيل `success`، لكن تغطية اللغات في هذا التشغيل **غير مؤكدة**: سجّل Action أن الإدخال `language` غير معروف؛ لا نثبت من هذا التشغيل وحده أن قواعد بيانات Python وJavaScript فُحصت كما خُطط | CodeQL run `44342137647` على SHA `ddcfb9a` |
+| تحقق CodeQL اللاحق | بعد تصحيح الإدخال إلى `languages`، نجح تحليلا Python وJavaScript/TypeScript على فرع المتابعة، من دون تحذير الإدخال غير المعروف | CodeQL run `44345035167` على `d3d4666`; بقيت تحذيرات تقادم Node.js 20 وCodeQL Action v3 |
+| GitHub Pages | API: `built`، `build_type=workflow`، HTTPS مفروض؛ فحص HTTP عام أعاد 200 للموقع و`demo.html` | Pages API؛ Live egress run `44343468664` على SHA الدمج |
+| تفاعلية `demo.html` | **غير متحققة يدويًا في متصفح**؛ عقد JavaScript المحلي اجتاز 12/12 | `node website/kernel-demo.test.js`؛ لا يوجد متصفح/Playwright مثبت في بيئة الفحص. 200 يثبت استجابة HTTP فقط، لا التفاعل أو العرض المرئي |
 | الإصدار | `v1.0.1` هو الأحدث | `gh release list -L 1` |
-| تدقيق الروابط الحية | لا تشغيلات بعد | `gh run list --workflow live-egress-audit.yml` أعاد `[]` |
-| المفتاح المكشوف | Issue #21 ما زالت **OPEN**؛ لا وقت إبطال موثق فيها حتى آخر تحقق | `gh issue view 21`؛ لا يُعد إغلاق/تعليق التذكرة وحده دليلًا على الإبطال |
+| تدقيق الروابط الحية | ناجح: egress مفتوح، 8 نتائج مطابقة للتوقع، 0 تراجع/تعافٍ/محجوب | `EGRESS.md` و`egress/status.json` على `live-egress`؛ قيس في `2026-11-18T16:07:29Z`. النتائج تثبت أكواد HTTP فقط |
+| المفتاح المكشوف | Issue #21 ما زالت **OPEN**؛ لا وقت إبطال موثق فيها حتى آخر تحقق | `gh issue view 21`؛ إغلاق/تعليق التذكرة وحده ليس دليلًا على الإبطال |
 | `new-agent` | `LICENSE` تالف (4 بايت)، وقرار المالك ما زال معلقًا | `docs/LICENSE-DECISIONS.md`; مصنّف `FAILED` بالفحص لا بفشل تشغيل مثبت |
 
 ---
