@@ -72,7 +72,13 @@ jobs:
       - name: CI guard self-tests (keeps the gates honest)
         run: python scripts/test_ci_guard.py -v
 
-      - name: Ember beat tests — heat index + honest publishing (7)
+      - name: Network preflight tests — blindness is not death (10)
+        run: python scripts/test_network_preflight.py -v
+
+      - name: Archive identity tests — drift vs deviation vs generated (17)
+        run: python scripts/test_verify_identity.py -v
+
+      - name: Ember beat tests — heat index + honest publishing (12)
         run: python scripts/test_ember_beat.py -v
 
       - name: Health gate tests — the gate must be able to refuse (24)

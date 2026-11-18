@@ -63,7 +63,7 @@
 
 - ❌ **4 مواقع حيّة · 3 روابط ميتة** — لم تُعَد فحصًا اليوم. حكم الأمس **يبقى قائمًا بلا تأكيد جديد**.
 - ❌ **مفتاح Google** — لا يمكن اختباره أو إبطاله من هنا (خارج الأدوات، كما أمس).
-- ⚠️ **`projects/WEB`** — بيانات المستودع تُقرأ (`pushed_at = 2026-01-31`) لكن **contents API يرجّع `502 Bad Gateway`** في كل المحاولات ⇒ **محجوب**، لا «منحرف». لا يُحتسب ضد التطابق.
+- ⚠️ **`projects/WEB`** — بيانات المستودع تُقرأ (`pushed_at = 2026-01-31`) لكن **contents API رجّع `502 Bad Gateway`** في كل محاولات الصباح ⇒ سُجّل **محجوبًا** لا «منحرفًا». *(وفي إعادة التشغيل مساءً عاد الـAPI سليمًا: 45 مطابقًا — العطل كان مؤقتًا في GitHub، وهذا بالضبط سبب عدم احتسابه انحرافًا.)*
 - ⚠️ **Vercel connector** — القراءة فقط، `0` مشروع على الحساب المرتبط (كما أمس).
 
 **الأمانة تقتضي قولها:** أي ادعاء عن «حي على الإنترنت» في هذا المستودع **لا يمكن إعادة إثباته من داخل هذه الجلسة**، ويجب إعادة فحصه من بيئة تملك شبكة عامة.
@@ -126,11 +126,74 @@ python3 scripts/runtime_smoke.py                                                
 python3 command-hud/audit.py --report /tmp/audit.md                                # 48 · 3967
 python3 memory/evaluate.py                                                         # EASY 1.0 · HARD 0.688
 python3 live-agent/bench.py                                                        # p50 على جهازك
-python3 scripts/verify_archive_identity.py                                         # 44 + 2 انحراف + 1 مولَّد + 1 محجوب
+python3 scripts/verify_archive_identity.py                                         # 45 + 2 انحراف + 1 مولَّد
+python3 scripts/verify_archive_identity.py --strict-all                            # يفشل على drift/blocked
+python3 scripts/test_network_preflight.py                                          # 10
+python3 scripts/test_verify_identity.py                                            # 17
+python3 scripts/network_preflight.py --json                                        # هل أستطيع الحكم على رابط عام؟
 gh api repos/sayedelazameydesign-crypto/ai-2027/pages --jq .status,.build_type      # built · workflow
 gh api repos/sayedelazameydesign-crypto/ai-store2/contents/env.local                # P0: المفتاح ما زال هناك
 ```
 
 **القاعدة نفسها:** لا ادعاء بلا دليل — ولا دليل يُنقل من تقرير الأمس بلا إعادة تشغيل.
 
+---
+
+## 8️⃣ ما أُضيف بعد التحقق: حارسان يمنعان نوعين من الأكاذيب
+
+التحقق أعلاه كشف نوعين من «الادعاء الوهمي»؛ كلاهما صار **مانعًا في الكود**، لا نصيحة في وثيقة.
+
+### أ) `scripts/network_preflight.py` — العمى ليس موتًا
+
+**المشكلة المقيسة:** `urllib` يرفع نفس `URLError` لـ«الموقع ميت» ولـ«هذه البيئة لا ترى الإنترنت».
+فكانت `ember_beat.public_paths()` تُسطِّح الحالتين إلى `status: 0 · live: false` — أي **تنشر «المواقع متوقفة» من بيئة عمياء**. حدث هذا فعلًا في تحقق اليوم.
+
+**الحل:** قياس القدرة قبل الحكم على أي رابط — 3 مضيفات مرجعية + مضيف من قائمة السماح:
+
+| التصنيف | الشرط المقيس | ماذا يجوز أن تقول |
+|---|---|---|
+| `OPEN` | مضيفان مرجعيان على الأقل أجابا | يجوز الحكم: `live` / `dead` |
+| `ALLOWLISTED_ONLY` | شيء أجاب لكن لا خروج عام (بيئة اليوم) | يجوز الحكم على GitHub/PyPI/npm فقط |
+| `CLOSED` | لا شيء أجاب | **لا حكم**: كل رابط `blocked` |
+
+**ملاحظة دقيقة:** رمز `404` يُحتسب **وصولًا** لا فشلًا — خادمٌ أجاب، والشبكة سليمة، والموقع هو الميت. أما `URLError/timeout` فليس حكمًا أصلًا.
+
+**الأثر المقيس الآن** (`ember_beat` مع نفس رابطَي الإنتاج):
+```
+embers : 0 live · 2 BLOCKED
+egress : ALLOWLISTED_ONLY  (public sites cannot be judged here)
+```
+وفي `STATUS.md` صار السطر `Public paths live: 0/0 (2 BLOCKED — not counted, see egress)`،
+ووزن المسار العام **يُسقَط ويُعاد تطبيع الباقي** بدل أن يُحسب صفرًا — عمى البيئة لا يُبرّد المستودع.
+
+### ب) `docs/deviations.json` — «مطابق» رقم له معنى
+
+`scripts/verify_archive_identity.py` صار يقرأ سجلًا آليًا ويُصنّف **خمس حالات لا تُخلط**:
+`identical` · `deviation` (D-1/D-2) · `generated` (يعيد المصدر توليده) · `drifted` (**العيب الوحيد**) · `blocked` (عمى مثبت).
+`--strict` يفشل على `drifted` فقط، و`--strict-all` يفشل أيضًا على `blocked/failed`، و`--json` يخدم الـCI.
+
+```
+register            : docs/deviations.json
+byte-identical      : 45
+documented deviation: 2  (agi-system, ai-store2)
+generated (volatile): 1  (easy-ai: data/manifest.json)
+drifted             : 0
+blocked (no egress) : 0
+=> 48/48 accounted for · no unexpected drift
+```
+
+كذلك `command-hud/audit.py` صار يطبع **`Public egress (measured)`** في أول جدول، ويُحذّر صراحةً:
+«أي ادعاء عن موقع عام من هنا = BLOCKED، وليس dead».
+
+### ج) أين تُشغَّل؟ (ومُختبَرة بلا شبكة)
+
+| الاختبار | العدد | ما يثبته |
+|---|---:|---|
+| `scripts/test_network_preflight.py` | **10** | العمى لا يُنشر موتًا · الحالة الواحدة لا تكفي لـOPEN · `404` وصول · `502` عطل مصدر لا عمى |
+| `scripts/test_verify_identity.py` | **17** | `generated` ≠ `drifted` · ملف مولَّد ناقص = انحراف · `--strict`/`--strict-all`/`--json` |
+| `scripts/test_ember_beat.py` | **12** (كان 7) | مسار محجوب لا يظهر ميتًا · وزن غير مقيس يُسقَط لا يُصفَّر |
+
+**كل الاختبارات السبعة والعشرين تعمل بلا شبكة** (كل نداء يُحقن)، لذلك تصلح داخل بيئة مغلقة وداخل CI على السواء. أُضيفت إلى `ci.yml`.
+
+**الإجمالي بعد الإضافة: 236 اختبار بيثون + 12 عقد JS = 248 اختبارًا · 0 فشل · 1 مُتجاوز.**
 </div>
