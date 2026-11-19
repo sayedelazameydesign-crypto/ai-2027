@@ -42,6 +42,21 @@ def _evidence(**overrides: Any) -> dict[str, Any]:
     return evidence
 
 
+def _wrapper(tmp_path: Path) -> Path:
+    """Create ``.venv/bin/python`` as a shell wrapper around the current interpreter.
+
+    A wrapper, not a symlink: executing a symlink to a venv's python does not
+    reliably inherit that venv's site-packages, and this test is about the gate
+    resolving a *relative* path — not about interpreter plumbing.
+    """
+    venv = tmp_path / ".venv" / "bin"
+    venv.mkdir(parents=True, exist_ok=True)
+    wrapper = venv / "python"
+    wrapper.write_text(f'#!/bin/sh\nexec "{sys.executable}" "$@"\n', encoding="utf-8")
+    wrapper.chmod(0o755)
+    return wrapper
+
+
 def _worker(tmp_path: Path, report: dict[str, Any], *, rc: int = 0, name: str = "w") -> Path:
     """Write a fake worker that prints ``report`` (a JSON file) verbatim."""
     payload = tmp_path / f"{name}.json"
@@ -251,9 +266,7 @@ def test_non_object_worker_output_exits_2(tmp_path: Path) -> None:
 
 def test_a_relative_interpreter_resolves_against_the_caller_cwd(tmp_path: Path) -> None:
     """The exact failure that broke the first main run: `--python .venv/bin/python`."""
-    venv = tmp_path / ".venv" / "bin"
-    venv.mkdir(parents=True)
-    (venv / "python").symlink_to(sys.executable)
+    _wrapper(tmp_path)
 
     worker = _worker(
         tmp_path,

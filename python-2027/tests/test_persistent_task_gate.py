@@ -24,6 +24,21 @@ def _run(*args: str, cwd: Path | None = None) -> subprocess.CompletedProcess[str
     )
 
 
+def _wrapper(tmp_path: Path) -> Path:
+    """Create ``.venv/bin/python`` as a shell wrapper around the current interpreter.
+
+    A wrapper, not a symlink: executing a symlink to a venv's python does not
+    reliably inherit that venv's site-packages, and this test is about the gate
+    resolving a *relative* path — not about interpreter plumbing.
+    """
+    venv = tmp_path / ".venv" / "bin"
+    venv.mkdir(parents=True, exist_ok=True)
+    wrapper = venv / "python"
+    wrapper.write_text(f'#!/bin/sh\nexec "{sys.executable}" "$@"\n', encoding="utf-8")
+    wrapper.chmod(0o755)
+    return wrapper
+
+
 def test_gate_passes_and_writes_evidence(tmp_path: Path) -> None:
     report = tmp_path / "evidence.json"
     result = _run("--python", sys.executable, "--report", str(report), "--assert")
@@ -70,9 +85,7 @@ def test_gate_fails_closed_when_the_worker_never_crashes(tmp_path: Path) -> None
 
 
 def test_a_relative_interpreter_resolves_against_the_caller_cwd(tmp_path: Path) -> None:
-    venv = tmp_path / ".venv" / "bin"
-    venv.mkdir(parents=True)
-    (venv / "python").symlink_to(sys.executable)
+    _wrapper(tmp_path)
     report = tmp_path / "evidence.json"
 
     result = _run("--python", ".venv/bin/python", "--report", str(report), "--assert", cwd=tmp_path)
