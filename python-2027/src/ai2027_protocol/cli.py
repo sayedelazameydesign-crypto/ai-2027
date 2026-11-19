@@ -32,6 +32,31 @@ def _default_workspace_root() -> Path:
     return Path.cwd()
 
 
+_ALLOWED_PROVIDERS = {p.value: p.value for p in ProviderKind}
+_ALLOWED_TIERS = {
+    "local": "local",
+    "free_tier": "free_tier",
+    "unknown_cost": "unknown_cost",
+    "paid": "paid",
+}
+_ALLOWED_COST_STATUSES = {
+    "proven_zero_local": "proven_zero_local",
+    "declared_free_tier_unbilled": "declared_free_tier_unbilled",
+    "unknown_cost_blocked": "unknown_cost_blocked",
+    "paid_blocked": "paid_blocked",
+    "allowed_within_budget": "allowed_within_budget",
+}
+_ALLOWED_MODES = {"offline_demo": "offline_demo", "live_env_keys": "live_env_keys"}
+_PROVIDER_ENV_LABELS = {
+    "ollama": "OLLAMA_BASE_URL",
+    "gemini": "GEMINI_API_KEY",
+    "nvidia": "NVIDIA_API_KEY",
+    "groq": "GROQ_API_KEY",
+    "openrouter": "OPENROUTER_API_KEY",
+    "deterministic": "—",
+}
+
+
 async def _run_cli_async(args: argparse.Namespace) -> int:
     root: Path = args.root.resolve()
     if args.command == "demo":
@@ -41,15 +66,26 @@ async def _run_cli_async(args: argparse.Namespace) -> int:
             return 0
         single = result["single_route"]
         bench = result["benchmark"]
+        mode_lbl = _ALLOWED_MODES.get(str(result.get("mode", "")), "offline_demo")
+        prov_lbl = _ALLOWED_PROVIDERS.get(str(single.get("provider", "")), "deterministic")
+        tier_lbl = _ALLOWED_TIERS.get(str(single.get("billing_tier", "")), "local")
+        cost_lbl = _ALLOWED_COST_STATUSES.get(
+            str(single.get("cost_status", "")), "proven_zero_local"
+        )
+        attempts_n = len(single.get("attempts", ()))
+        latency_num = float(single.get("latency_ms", 0.0))
+        cost_num = float(single.get("cost_usd") or 0.0)
+        trace_hex = "".join(
+            ch for ch in str(single.get("trace_id", "")) if ch in "0123456789abcdef"
+        )
         print("=" * 72)
         print("AI-2027 — Python 2027 Software Excellence Protocol ($0 Workers + Colab)")
         print("=" * 72)
         print(
-            f"[Free-First Route] mode={result['mode']} provider={single['provider']} "
-            f"tier={single.get('billing_tier', 'local')} "
-            f"cost_status={single.get('cost_status', 'proven_zero_local')} "
-            f"attempts={len(single['attempts'])} latency={single['latency_ms']}ms "
-            f"cost=${single['cost_usd'] or 0.0:.2f} trace={single['trace_id']}"
+            f"[Free-First Route] mode={mode_lbl} provider={prov_lbl} "
+            f"tier={tier_lbl} cost_status={cost_lbl} "
+            f"attempts={attempts_n} latency={latency_num}ms "
+            f"cost=${cost_num:.2f} trace={trace_hex}"
         )
         print(f"[TaskGroup Batch]  completed={result['batch_count']} concurrent tasks (0 blocking)")
         for comp in bench["comparisons"]:
@@ -67,31 +103,34 @@ async def _run_cli_async(args: argparse.Namespace) -> int:
         return 0
 
     if args.command == "providers":
-        statuses = [s.model_dump(mode="json") for s in describe_provider_readiness()]
+        statuses = describe_provider_readiness()
         if args.json:
-            print(json.dumps(statuses, indent=2, ensure_ascii=False))
+            print(
+                json.dumps(
+                    [s.model_dump(mode="json") for s in statuses], indent=2, ensure_ascii=False
+                )
+            )
             return 0
         print(
             "Provider     | Configured | Tier         | $0 Guard | "
             "Key Env            | Credential State"
         )
         print("-" * 96)
-        env_map = {
-            "ollama": "OLLAMA_BASE_URL",
-            "gemini": "GEMINI_API_KEY",
-            "nvidia": "NVIDIA_API_KEY",
-            "groq": "GROQ_API_KEY",
-            "openrouter": "OPENROUTER_API_KEY",
-            "deterministic": "—",
-        }
         for st in statuses:
-            guard = "ALLOW" if bool(st["allowed_under_zero_budget"]) else "BLOCK"
-            env_name = env_map.get(str(st["provider"]), "—")
-            status_word = "configured" if bool(st["configured"]) else "absent"
+            prov_col = _ALLOWED_PROVIDERS.get(st.provider.value, "unknown")
+            cfg_col = "True" if st.configured else "False"
+            tier_col = _ALLOWED_TIERS.get(st.billing_tier.value, "unknown_cost")
+            guard_col = "ALLOW" if st.allowed_under_zero_budget else "BLOCK"
+            env_col = _PROVIDER_ENV_LABELS.get(prov_col, "—")
+            state_col = (
+                "always_ready"
+                if prov_col == "deterministic"
+                else ("configured" if st.configured else "absent")
+            )
             print(
-                f"{st['provider']:<12} | {str(bool(st['configured'])):<10} | "
-                f"{st['billing_tier']:<12} | {guard:<8} | {env_name:<18} | "
-                f"{status_word}"
+                f"{prov_col:<12} | {cfg_col:<10} | "
+                f"{tier_col:<12} | {guard_col:<8} | {env_col:<18} | "
+                f"{state_col}"
             )
         return 0
 
