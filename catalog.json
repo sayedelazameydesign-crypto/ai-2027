@@ -3,7 +3,7 @@
   "owner": "sayedelazameydesign-crypto",
   "merged_at": "2026-11-17",
   "total_projects": 48,
-  "total_files": 3967,
+  "total_files": 3978,
   "excluded": [
     {
       "name": "skills-introduction-to-github",
@@ -73,7 +73,7 @@
       "category": "agents",
       "category_ar": "أنظمة الوكلاء الذكية",
       "source": "https://github.com/sayedelazameydesign-crypto/open_source-",
-      "files": 609,
+      "files": 611,
       "description_ar": "cela_use_browser — منصة متصفح مستقلة: ReAct + Artifacts + تنفيذ معزول",
       "operational_status": "DECLARED",
       "operational_evidence": "موصوف في README فقط؛ لم يُنفَّذ أي أمر هنا (يحتاج Node/مفاتيح/خدمات)",
@@ -169,7 +169,7 @@
       "category": "agents",
       "category_ar": "أنظمة الوكلاء الذكية",
       "source": "https://github.com/sayedelazameydesign-crypto/celiaos-agent-framework",
-      "files": 57,
+      "files": 66,
       "description_ar": "إطار وكلاء Python: planner/executor/learner/reflector/reporter + memory/tools/verification",
       "operational_status": "DECLARED",
       "operational_evidence": "موصوف في README فقط؛ لم يُنفَّذ أي أمر هنا (يحتاج Node/مفاتيح/خدمات)",
