@@ -83,7 +83,47 @@ jobs:
 
       - name: Tests + Hypothesis property suite (>90% branch coverage)
         working-directory: python-2027
-        run: .venv/bin/pytest --cov-fail-under=90
+        run: |
+          .venv/bin/pytest --cov-fail-under=90 \
+            --junitxml="$RUNNER_TEMP/junit-${{ matrix.python-version }}.xml"
+
+      - name: Summarize test failures as annotations (readable without the log)
+        if: failure()
+        working-directory: python-2027
+        env:
+          JUNIT: ${{ runner.temp }}/junit-${{ matrix.python-version }}.xml
+        run: |
+          python - <<'PY'
+          import os
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
+
+          def esc(text: str) -> str:
+              return (
+                  " ".join(text.split())
+                  .replace("%", "%25")
+                  .replace("\r", "%0D")
+                  .replace("\n", "%0A")
+              )[:900]
+
+          path = Path(os.environ["JUNIT"])
+          if not path.is_file():
+              print("::error title=pytest::no junit report was written (the suite did not start)")
+          else:
+              tree = ET.parse(path)
+              failures = []
+              for case in tree.iter("testcase"):
+                  for tag in ("failure", "error"):
+                      node = case.find(tag)
+                      if node is not None:
+                          message = (node.get("message") or node.text or "").strip()
+                          failures.append(f"{case.get('classname')}::{case.get('name')} — {message}")
+              if not failures:
+                  print("::error title=pytest::junit shows no failing case (coverage or step-level failure)")
+              for item in failures[:20]:
+                  print(f"::error title=pytest::{esc(item)}")
+              print(f"::notice title=pytest::{len(failures)} failing case(s)")
+          PY
 
       - name: PAP persistent-task gate · real SIGKILL, resume from checkpoint (evidence artifact)
         working-directory: python-2027
