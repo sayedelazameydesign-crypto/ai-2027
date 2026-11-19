@@ -4,6 +4,7 @@ import json
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 import pytest
 
@@ -29,7 +30,7 @@ class _LiveStubTransport:
         json_body: Mapping[str, Any],
         timeout_s: float,
     ) -> HttpJsonResult:
-        if "googleapis.com" in url:
+        if urlparse(url).hostname == "generativelanguage.googleapis.com":
             assert headers["x-goog-api-key"] == _FAKE_GEMINI
             return HttpJsonResult(
                 200, {"candidates": [{"content": {"parts": [{"text": "pong-gemini"}]}}]}

@@ -4,6 +4,7 @@ import asyncio
 import json
 from collections.abc import Awaitable, Callable, Mapping
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 import pytest
@@ -77,10 +78,11 @@ async def test_providers_send_expected_headers_and_parse_responses() -> None:
     async def responder(
         url: str, headers: Mapping[str, str], body: Mapping[str, Any], timeout_s: float
     ) -> HttpJsonResult:
-        if "11434" in url:
+        parsed = urlparse(url)
+        if parsed.port == 11434:
             return HttpJsonResult(200, {"message": {"content": "ollama reply"}})
-        if "googleapis.com" in url:
-            assert "key=" not in url
+        if parsed.hostname == "generativelanguage.googleapis.com":
+            assert not parsed.query
             assert headers["x-goog-api-key"] == "AIza-test-fixture"
             return HttpJsonResult(
                 200, {"candidates": [{"content": {"parts": [{"text": "gemini reply"}]}}]}

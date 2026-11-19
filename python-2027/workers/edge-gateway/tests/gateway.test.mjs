@@ -134,10 +134,11 @@ test("POST /v1/route uses GEMINI_API_KEY and NVIDIA_API_KEY when UPSTREAM_URL is
     {
       fetchImpl: async (url, init) => {
         seen.push(String(url));
-        if (String(url).includes("googleapis.com")) {
+        if (new URL(String(url)).hostname === "generativelanguage.googleapis.com") {
           assert.equal(init.headers["x-goog-api-key"], "AIza-edge-fixture-key");
           return new Response("quota", { status: 429 });
         }
+        assert.equal(new URL(String(url)).hostname, "integrate.api.nvidia.com");
         assert.equal(init.headers.authorization, "Bearer nvapi-edge-fixture-key");
         return new Response(
           JSON.stringify({ choices: [{ message: { content: "nvidia edge ok" } }] }),
