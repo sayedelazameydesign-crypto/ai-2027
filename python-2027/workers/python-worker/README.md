@@ -1,23 +1,20 @@
-# AI-2027 Cloudflare Python Worker ($0 Tier)
+# AI-2027 Python Worker (`$0` Cloudflare Free Tier · Python 3.14 target)
 
-Edge Python Worker running on Cloudflare's Pyodide runtime (`python_workers` compatibility flag).
+Runs on Cloudflare Workers (`compatibility_date = "2026-09-08"`, `compatibility_flags = ["python_workers", "python_workers_314"]`) with `requires-python = ">=3.13"` and **zero** bundled third-party runtime packages (`budget guard + Free-First routing`).
 
-## Endpoints
+## Security & Budget Guarantees
 
-- `GET /health` — runtime readiness (`cost_usd: 0.0`)
-- `GET /v1/protocol` — 10-rule protocol summary
-- `POST /v1/route` — Free-First AI routing (`gemini` -> `groq` -> `openrouter` -> `deterministic`) with `asyncio.timeout`, retries on `429`/`5xx`, and `X-Trace-Id` tracing
+- **Fail-Closed Auth (Default):** `/v1/route` and `/v1/agent/plan` reject requests with HTTP `401` unless `WORKER_AUTH_TOKEN` is configured and matched via constant-time Bearer token, **or** the route is explicitly declared in `AI2027_PUBLIC_ROUTES` (only `/health` and `/v1/protocol` are public read-only by default).
+- **Bounded Request Reading:** `Default.fetch()` verifies authentication and checks `Content-Length` + streaming chunks (`<= 32 KiB`) **before** buffering the full request body in memory.
+- **Executable Zero-Spend (`AI2027_MAX_SPEND_USD=0`):** Models not explicitly allowlisted as `local` or `free_tier` (e.g., OpenRouter models missing `:free`) are classified `unknown_cost` and blocked pre-flight even when an API key is set.
+- **Distributed Trace IDs:** Propagates W3C `traceparent` and `X-Trace-Id`.
 
-## Optional Cloudflare Secrets (never committed)
+## Test & Dry-Run
 
 ```bash
-npx wrangler secret put GEMINI_API_KEY
-npx wrangler secret put GROQ_API_KEY
-npx wrangler secret put OPENROUTER_API_KEY
-npx wrangler secret put WORKER_AUTH_TOKEN   # optional Bearer protection for POST /v1/route
+cd python-2027
+.venv/bin/pytest tests/test_python_worker.py -v
+npx wrangler deploy --dry-run --config workers/python-worker/wrangler.toml
 ```
 
-## Verification status
-
-- Handler logic (`handle_worker_request`) is contract-tested locally in `python-2027/tests/test_python_worker.py` using simulated async `fetch` transports.
-- Live deployment (`npx wrangler deploy`) requires a Cloudflare account and has **not** been executed from this offline sandbox.
+> **Honest Scope:** Local `pytest` exercises `handle_worker_request` and bounded stream readers offline; live Cloudflare deployment (`wrangler deploy`) requires your Cloudflare account.

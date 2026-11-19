@@ -95,12 +95,13 @@ textarea{resize:none;min-height:66px;max-height:140px}
 <header class="topbar">
   <div class="brand">
     <span>AI<b>-2027</b> STUDIO</span>
-    <span class="pill ok" id="costPill">$0.00 · Evidence-First</span>
+    <span class="pill ok" id="costPill">MAX_SPEND $0.00 · Guarded</span>
     <span class="pill info" id="modePill">Ready</span>
   </div>
   <div class="top-right">
     <span class="pill" id="l0Pill">L0 Kernel: checking…</span>
     <span class="pill" id="memPill">L1 Memory: …</span>
+    <span class="pill" id="obsPill">OTel: checking…</span>
     <button class="btn danger sm" id="stopBtn" onclick="stopRun()" data-en="■ Stop" data-ar="■ إيقاف">■ Stop</button>
     <button class="btn sm" id="newBtn" onclick="createNewSession()" data-en="+ New Session" data-ar="+ جلسة جديدة">+ New Session</button>
     <button class="btn sm" id="langBtn" onclick="toggleLang()">العربية</button>
@@ -152,6 +153,14 @@ textarea{resize:none;min-height:66px;max-height:140px}
         <p class="muted" style="margin-top:6px" data-en="Every task runs through Free-First routing (Ollama → Gemini → NVIDIA NIM → Groq → OpenRouter → Honest Offline Planner), isolated Python/Workspace tools, L0 SHA-256 Policy+Verifier, and L1 Evidence Memory." data-ar="كل مهمة تمر عبر توجيه مجاني أولاً، وأدوات صندوق رمل معزول، وبوابة تحقق SHA-256 في الطبقة L0، وذاكرة أدلة L1، مع موافقة بشرية لأي إجراء خارجي.">Every task runs through Free-First routing (Ollama → Gemini → NVIDIA NIM → Groq → OpenRouter → Honest Offline Planner), isolated Python/Workspace tools, L0 SHA-256 Policy+Verifier, and L1 Evidence Memory.</p>
       </div>
       <div id="planBox" class="plan-box" style="display:none"></div>
+      <div id="evidencePanel" class="card" style="display:none">
+        <div class="sec-title">
+          <span data-en="Progress, Errors & Real Evidence" data-ar="الإنجاز والأخطاء والأدلة الحقيقية">Progress, Errors & Real Evidence</span>
+          <span class="pill ok" id="evidenceStatusPill">—</span>
+        </div>
+        <div id="evidenceDetails" class="muted" style="font-family:var(--mono)"></div>
+        <div id="errorsAttemptsBox" style="display:flex;flex-direction:column;gap:5px;margin-top:8px"></div>
+      </div>
       <div id="stepsBox" style="display:flex;flex-direction:column;gap:10px"></div>
       <div id="finalBox" class="final-box" style="display:none"></div>
     </div>
@@ -236,12 +245,14 @@ textarea{resize:none;min-height:66px;max-height:140px}
 
     <div class="scroll" id="tab-telemetry" style="display:none">
       <div class="comp-row">
-        <button class="btn sm primary" onclick="runAudit()" data-en="Run 10-Rule Audit" data-ar="تدقيق 10 قواعد">Run 10-Rule Audit</button>
+        <button class="btn sm primary" onclick="loadComplianceRegistry()" data-en="🏛️ 48-Project Registry" data-ar="🏛️ سجل 48 مشروعًا">🏛️ 48-Project Registry</button>
+        <button class="btn sm" onclick="runAudit()" data-en="Run 10-Rule Audit" data-ar="تدقيق 10 قواعد">Run 10-Rule Audit</button>
         <button class="btn sm" onclick="runBench()" data-en="Run Benchmark" data-ar="قياس الأداء">Run Benchmark</button>
-        <button class="btn sm" onclick="loadTraces()" data-en="OTel Traces" data-ar="تتبع OTel">OTel Traces</button>
+        <button class="btn sm" onclick="loadTraces(true)" data-en="OTel Persisted" data-ar="سجلات OTel الدائمة">OTel Persisted</button>
+        <button class="btn sm" onclick="loadBudgetAndObs()" data-en="🛡️ Budget Guard" data-ar="🛡️ حارس الميزانية">🛡️ Budget Guard</button>
         <button class="btn sm" onclick="loadAgentCard()" data-en="🪪 A2A Card" data-ar="🪪 بطاقة A2A">🪪 A2A Card</button>
       </div>
-      <pre class="code-view" id="telemetryOut">Click a button above to measure live repository audit scores, TaskGroup speedup, A2A agent card, or OpenTelemetry spans.</pre>
+      <pre class="code-view" id="telemetryOut">Click a button above to inspect the 3-tier 48-project compliance registry, MAX_SPEND=0 BudgetGuard, persisted OpenTelemetry spans, or TaskGroup speedup.</pre>
     </div>
   </aside>
 </main>
@@ -361,12 +372,31 @@ async function refreshStatus() {
       "L1 Memory: " + st.memory.total_memories + " verified";
     document.getElementById("approvalCount").textContent = String(st.pending_approvals);
 
+    if (st.budget) {
+      const b = st.budget;
+      const blocked = (b.unknown_cost_blocked || 0) + (b.paid_blocked || 0);
+      document.getElementById("costPill").textContent =
+        "MAX_SPEND $" + Number(b.max_spend_usd || 0).toFixed(2) +
+        " · local=" + (b.known_zero_local_calls || 0) +
+        " · free=" + (b.declared_free_tier_calls || 0) +
+        " · blocked=" + blocked;
+    }
+    if (st.observability) {
+      const o = st.observability;
+      document.getElementById("obsPill").textContent =
+        "OTel: " + (o.mode || "local") + " (" + (o.persisted_spans_count || 0) + " spans)";
+      document.getElementById("obsPill").className = "pill " + (o.persistent_enabled ? "ok" : "info");
+    }
+
     const strip = document.getElementById("providersStrip");
     strip.textContent = "";
     st.providers.forEach((p) => {
       const span = document.createElement("span");
-      span.className = "pill " + (p.configured ? "ok" : "");
-      span.textContent = p.provider + ": " + (p.configured ? "READY" : "absent");
+      const allowed = p.allowed_under_zero_budget !== false;
+      span.className = "pill " + (!allowed ? "warn" : p.configured ? "ok" : "");
+      span.title = p.budget_reason || "";
+      span.textContent = p.provider + ": " + (p.configured ? "READY" : "absent") +
+        " [" + (p.billing_tier || "local") + (allowed ? "" : " BLOCKED") + "]";
       strip.appendChild(span);
     });
 
@@ -462,6 +492,7 @@ function renderSessionState(state) {
   modeBadge.className = "pill " + (state.simulated_llm ? "warn" : "ok");
 
   renderPlan(state.plan || []);
+  renderEvidencePanel(state);
   const stepsBox = document.getElementById("stepsBox");
   stepsBox.textContent = "";
   (state.steps || []).forEach((st) => appendStepCard(st));
@@ -474,6 +505,48 @@ function renderSessionState(state) {
     fbox.style.display = "none";
   }
   renderArtifacts(state.artifacts || []);
+}
+
+function renderEvidencePanel(state) {
+  const panel = document.getElementById("evidencePanel");
+  const statusPill = document.getElementById("evidenceStatusPill");
+  const details = document.getElementById("evidenceDetails");
+  const errBox = document.getElementById("errorsAttemptsBox");
+  if (!state || (!state.steps?.length && !state.artifacts?.length && !state.router_attempts?.length)) {
+    panel.style.display = "none";
+    return;
+  }
+  panel.style.display = "block";
+  const arts = state.artifacts || [];
+  const verifiedCount = arts.filter((a) => a.verified).length;
+  const toolFailures = (state.steps || []).flatMap((s) =>
+    (s.outcomes || []).filter((o) => !o.ok).map((o) => ({
+      label: "Step " + s.step + " · " + o.tool,
+      status: "FAILED",
+      detail: o.error || o.summary
+    }))
+  );
+  const routerRows = (state.router_attempts || []).map((a) => ({
+    label: "LLM " + a.provider + " (" + a.model + ")",
+    status: a.ok ? "OK" : (a.error_code || "ERR"),
+    detail: (a.billing_tier || "") + " · " + (a.cost_status || "") + (a.detail ? (" · " + a.detail) : "")
+  }));
+
+  statusPill.textContent = state.status + " · " + verifiedCount + "/" + arts.length + " SHA-256";
+  statusPill.className = "pill " + (toolFailures.length > 0 ? "warn" : "ok");
+  details.textContent =
+    "tier=" + (state.billing_tier || "local") +
+    " | cost_status=" + (state.cost_status || "proven_zero_local") +
+    " | cost_known=" + String(state.cost_known !== false) +
+    " | trace=" + (state.trace_id || "—");
+
+  errBox.textContent = "";
+  [...toolFailures, ...routerRows].forEach((row) => {
+    const div = document.createElement("div");
+    div.className = "tool-box";
+    div.textContent = "[" + row.status + "] " + row.label + " — " + row.detail;
+    errBox.appendChild(div);
+  });
 }
 
 function renderPlan(plan) {
@@ -813,9 +886,50 @@ async function runBench() {
   document.getElementById("telemetryOut").textContent = JSON.stringify(data, null, 2);
 }
 
-async function loadTraces() {
-  const data = await apiJson("/v1/traces");
+async function loadTraces(persisted = true) {
+  const data = await apiJson("/v1/traces?persisted=" + (persisted ? "true" : "false"));
   document.getElementById("telemetryOut").textContent = JSON.stringify(data, null, 2);
+}
+
+async function loadComplianceRegistry() {
+  const out = document.getElementById("telemetryOut");
+  out.textContent = "Scanning 48 catalog projects & core tiers…";
+  const data = await apiJson("/v1/studio/compliance");
+  const lines = [
+    "=== 3-Tier Compliance Registry ===",
+    "Catalog Repos: " + data.catalog_total_projects + " | Audited Entries: " + data.entries_count + " | ADR-0002 Preserved: " + data.adr_0002_preserved,
+    "Tiers: " + JSON.stringify(data.tier_counts),
+    "Statuses: " + JSON.stringify(data.status_counts),
+    ""
+  ];
+  (data.entries || []).forEach((e) => {
+    const sc = e.score_pct !== null && e.score_pct !== undefined ? (e.score_pct + "%") : "n/a";
+    const ex = (e.exemptions || []).join("; ");
+    lines.push("[" + e.tier + "] " + e.project_path + " -> " + sc + " (" + e.status + ")" + (ex ? " | " + ex : ""));
+  });
+  out.textContent = lines.join("\n");
+}
+
+async function loadBudgetAndObs() {
+  const [budget, obs, status] = await Promise.all([
+    apiJson("/v1/budget"),
+    apiJson("/v1/traces/status"),
+    apiJson("/v1/studio/status")
+  ]);
+  document.getElementById("telemetryOut").textContent = JSON.stringify(
+    {
+      budget_guard: budget,
+      observability: obs,
+      honest_scope: [
+        "MAX_SPEND=0 blocks unknown_cost/paid providers even if an API key is set.",
+        "FREE_TIER calls record cost_known=false (policy-declared, no live invoice proof).",
+        "Cloudflare Python Worker & Edge Gateway are locally contract-tested; live deploy is unverified."
+      ],
+      providers: status.providers
+    },
+    null,
+    2
+  );
 }
 
 (async function boot() {

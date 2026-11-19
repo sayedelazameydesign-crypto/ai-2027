@@ -16,6 +16,7 @@ from .ai_providers import describe_provider_readiness
 from .auditor import ProtocolAuditor, format_audit_markdown
 from .benchmark import run_benchmark_suite
 from .bridges import ConnectorsBridge
+from .compliance import build_compliance_registry, format_compliance_markdown
 from .contracts import PromptRequest, ProviderKind
 from .demo import run_one_command_demo, verify_live_providers
 from .router import FreeFirstRouter
@@ -45,8 +46,10 @@ async def _run_cli_async(args: argparse.Namespace) -> int:
         print("=" * 72)
         print(
             f"[Free-First Route] mode={result['mode']} provider={single['provider']} "
+            f"tier={single.get('billing_tier', 'local')} "
+            f"cost_status={single.get('cost_status', 'proven_zero_local')} "
             f"attempts={len(single['attempts'])} latency={single['latency_ms']}ms "
-            f"cost=${single['cost_usd']:.2f} trace={single['trace_id']}"
+            f"cost=${single['cost_usd'] or 0.0:.2f} trace={single['trace_id']}"
         )
         print(f"[TaskGroup Batch]  completed={result['batch_count']} concurrent tasks (0 blocking)")
         for comp in bench["comparisons"]:
@@ -68,13 +71,37 @@ async def _run_cli_async(args: argparse.Namespace) -> int:
         if args.json:
             print(json.dumps(statuses, indent=2, ensure_ascii=False))
             return 0
-        print("Provider     | Configured | Env Var            | Credential State")
-        print("-" * 72)
+        print(
+            "Provider     | Configured | Tier         | $0 Guard | "
+            "Key Env            | Credential State"
+        )
+        print("-" * 96)
+        env_map = {
+            "ollama": "OLLAMA_BASE_URL",
+            "gemini": "GEMINI_API_KEY",
+            "nvidia": "NVIDIA_API_KEY",
+            "groq": "GROQ_API_KEY",
+            "openrouter": "OPENROUTER_API_KEY",
+            "deterministic": "—",
+        }
         for st in statuses:
+            guard = "ALLOW" if st["allowed_under_zero_budget"] else "BLOCK"
+            env_name = env_map.get(st["provider"], "—")
             print(
                 f"{st['provider']:<12} | {str(st['configured']):<10} | "
-                f"{st['env_var']:<18} | {st['credential_state']}"
+                f"{st['billing_tier']:<12} | {guard:<8} | {env_name:<18} | "
+                f"{st['credential_state']}"
             )
+        return 0
+
+    if args.command == "registry":
+        runtime = ObservabilityRuntime(json_logs=True)
+        reg = await build_compliance_registry(root, telemetry=runtime)
+        runtime.shutdown()
+        if args.json:
+            print(reg.model_dump_json(indent=2))
+        else:
+            print(format_compliance_markdown(reg))
         return 0
 
     if args.command == "live":
@@ -173,9 +200,11 @@ async def _run_cli_async(args: argparse.Namespace) -> int:
         if args.json:
             print(state.model_dump_json(indent=2))
             return 0
+        cost_val = f"${state.cost_usd:.2f}" if state.cost_usd is not None else "unknown"
         print(
             f"[AI-2027 Agent] session={state.session_id} mode={state.mode} "
-            f"provider={state.provider} cost=${state.cost_usd:.2f} trace={state.trace_id}"
+            f"provider={state.provider} tier={state.billing_tier.value} "
+            f"cost={cost_val} trace={state.trace_id}"
         )
         for step_trace in state.steps:
             print(f"  Step {step_trace.step}: {step_trace.thought}")
@@ -274,6 +303,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Relative workspace paths to audit.",
     )
     audit_p.add_argument("--json", action="store_true", help="Emit JSON report.")
+
+    reg_p = sub.add_parser(
+        "registry",
+        help="Audit the 48 catalog projects and core subsystems using 3-tier standards.",
+    )
+    reg_p.add_argument("--json", action="store_true", help="Emit JSON registry report.")
 
     bench_p = sub.add_parser("bench", help="Run reproducible latency and throughput benchmarks.")
     bench_p.add_argument("--iterations", type=int, default=20, help="Measurement iterations.")

@@ -1,4 +1,4 @@
-"""Free-First AI providers with replaceable HTTP transport and strict validation."""
+"""Free-First AI providers with replaceable HTTP transport and budget provenance."""
 
 from __future__ import annotations
 
@@ -12,7 +12,8 @@ from typing import Any, Protocol, runtime_checkable
 
 import httpx
 
-from .contracts import AIProvider, PromptRequest, ProviderKind, ProviderStatus
+from .budget import BudgetGuard, BudgetPolicy, classify_billing_tier
+from .contracts import AIProvider, BillingTier, PromptRequest, ProviderKind, ProviderStatus
 from .security import redact_secrets, validate_provider_url
 
 _MAX_RESPONSE_BYTES = 1024 * 1024
@@ -197,11 +198,19 @@ class OllamaLocalProvider:
         )
         self._enabled = bool(self._base_url) if enabled is None else enabled
         self._transport = transport or HttpxJsonTransport()
+        self._billing_tier, _ = classify_billing_tier(
+            kind=self.kind, model=self._model, is_remote=self.is_remote
+        )
 
     @property
     def model(self) -> str:
         """Return configured Ollama model identifier."""
         return self._model
+
+    @property
+    def billing_tier(self) -> BillingTier:
+        """Return proven LOCAL billing classification for loopback Ollama."""
+        return self._billing_tier
 
     @property
     def credential_state(self) -> str:
@@ -255,8 +264,9 @@ class GeminiFreeProvider:
         model: str | None = None,
         base_url: str = "https://generativelanguage.googleapis.com",
         transport: AsyncHttpTransport | None = None,
+        billing_tier: BillingTier | None = None,
     ) -> None:
-        """Configure Gemini free-tier provider without storing keys in URLs."""
+        """Configure Gemini free-tier provider without assuming keys prove $0 billing."""
         self._api_key = (
             api_key if api_key is not None else os.environ.get("GEMINI_API_KEY", "")
         ).strip()
@@ -270,11 +280,22 @@ class GeminiFreeProvider:
         self._model = chosen_model
         self._base_url = validate_provider_url(base_url, allow_local_http=False)
         self._transport = transport or HttpxJsonTransport()
+        self._billing_tier, _ = classify_billing_tier(
+            kind=self.kind,
+            model=self._model,
+            is_remote=self.is_remote,
+            explicit_tier=billing_tier,
+        )
 
     @property
     def model(self) -> str:
         """Return configured Gemini model identifier."""
         return self._model
+
+    @property
+    def billing_tier(self) -> BillingTier:
+        """Return explicit billing classification (FREE_TIER or UNKNOWN_COST)."""
+        return self._billing_tier
 
     @property
     def credential_state(self) -> str:
@@ -341,8 +362,9 @@ class OpenAICompatibleFreeProvider:
         model: str,
         env_var: str = "API_KEY",
         transport: AsyncHttpTransport | None = None,
+        billing_tier: BillingTier | None = None,
     ) -> None:
-        """Configure a validated HTTPS OpenAI-compatible chat provider."""
+        """Configure a validated HTTPS OpenAI-compatible provider with explicit billing tier."""
         if not _MODEL_PATTERN.fullmatch(model.strip()):
             raise ValueError(f"Invalid model identifier for {kind.value}")
         self._kind = kind
@@ -351,6 +373,12 @@ class OpenAICompatibleFreeProvider:
         self._model = model.strip()
         self.env_var = env_var
         self._transport = transport or HttpxJsonTransport()
+        self._billing_tier, _ = classify_billing_tier(
+            kind=self._kind,
+            model=self._model,
+            is_remote=self.is_remote,
+            explicit_tier=billing_tier,
+        )
 
     @property
     def kind(self) -> ProviderKind:
@@ -361,6 +389,11 @@ class OpenAICompatibleFreeProvider:
     def model(self) -> str:
         """Return the configured remote model ID."""
         return self._model
+
+    @property
+    def billing_tier(self) -> BillingTier:
+        """Return model-verified billing tier (never inferred from API key presence)."""
+        return self._billing_tier
 
     @property
     def credential_state(self) -> str:
@@ -402,6 +435,7 @@ def create_nvidia_nim_provider(
     api_key: str | None = None,
     model: str | None = None,
     transport: AsyncHttpTransport | None = None,
+    billing_tier: BillingTier | None = None,
 ) -> OpenAICompatibleFreeProvider:
     """Build an NVIDIA NIM provider reading NVIDIA_API_KEY and NVIDIA_MODEL from env."""
     chosen_model = (
@@ -416,6 +450,7 @@ def create_nvidia_nim_provider(
         model=chosen_model,
         env_var="NVIDIA_API_KEY",
         transport=transport,
+        billing_tier=billing_tier,
     )
 
 
@@ -424,6 +459,7 @@ def create_groq_free_provider(
     api_key: str | None = None,
     model: str | None = None,
     transport: AsyncHttpTransport | None = None,
+    billing_tier: BillingTier | None = None,
 ) -> OpenAICompatibleFreeProvider:
     """Build a Groq free-tier provider reading credentials from arguments or env."""
     chosen_model = (
@@ -438,6 +474,7 @@ def create_groq_free_provider(
         model=chosen_model,
         env_var="GROQ_API_KEY",
         transport=transport,
+        billing_tier=billing_tier,
     )
 
 
@@ -446,8 +483,9 @@ def create_openrouter_free_provider(
     api_key: str | None = None,
     model: str | None = None,
     transport: AsyncHttpTransport | None = None,
+    billing_tier: BillingTier | None = None,
 ) -> OpenAICompatibleFreeProvider:
-    """Build an OpenRouter :free model provider reading credentials from arguments or env."""
+    """Build an OpenRouter provider; only ':free' models pass MAX_SPEND=0 BudgetGuard."""
     chosen_model = (
         model.strip()
         if model and model.strip()
@@ -460,6 +498,7 @@ def create_openrouter_free_provider(
         model=chosen_model,
         env_var="OPENROUTER_API_KEY",
         transport=transport,
+        billing_tier=billing_tier,
     )
 
 
@@ -469,6 +508,7 @@ class DeterministicFallbackProvider:
     kind = ProviderKind.DETERMINISTIC
     is_remote = False
     env_var = "NONE"
+    billing_tier = BillingTier.LOCAL
 
     def __init__(self, *, model: str = "deterministic-echo-v1") -> None:
         """Initialize the offline deterministic fallback provider."""
@@ -525,15 +565,19 @@ def build_default_providers(
 
 def describe_provider_readiness(
     providers: Sequence[AIProvider] | None = None,
+    *,
+    budget_policy: BudgetPolicy | None = None,
 ) -> tuple[ProviderStatus, ...]:
-    """Return non-sensitive readiness metadata for every configured or fallback provider."""
+    """Return non-sensitive readiness and budget provenance for every provider."""
     items = providers if providers is not None else build_default_providers()
+    guard = BudgetGuard(budget_policy or BudgetPolicy.from_env())
     statuses: list[ProviderStatus] = []
     for item in items:
         env_var = str(getattr(item, "env_var", "CUSTOM"))
         cred_state = str(
             getattr(item, "credential_state", "configured" if item.is_configured() else "absent")
         )
+        decision = guard.evaluate_provider(item)
         statuses.append(
             ProviderStatus(
                 provider=item.kind,
@@ -542,6 +586,10 @@ def describe_provider_readiness(
                 is_remote=item.is_remote,
                 env_var=env_var,
                 credential_state=cred_state,
+                billing_tier=decision.billing_tier,
+                cost_status=decision.cost_status,
+                allowed_under_zero_budget=decision.allowed,
+                budget_reason=decision.reason,
             )
         )
     return tuple(statuses)

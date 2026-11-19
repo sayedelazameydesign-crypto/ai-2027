@@ -1,9 +1,11 @@
-.PHONY: setup lint typecheck test demo providers live bench audit gateway-test studio agent check
+.PHONY: setup lint typecheck test demo providers live bench audit registry gateway-test studio agent check
+
+UV_VERSION ?= 0.13.9
 
 setup:
 	python3 -m venv .venv
-	.venv/bin/pip install -q --upgrade pip uv
-	.venv/bin/uv pip install --python .venv/bin/python -e . --group dev
+	.venv/bin/pip install -q --upgrade pip "uv==$(UV_VERSION)"
+	.venv/bin/uv sync --locked --python .venv/bin/python --group dev
 
 lint:
 	.venv/bin/ruff check src tests workers/python-worker/src
@@ -39,4 +41,7 @@ bench:
 audit:
 	.venv/bin/ai2027-py27 audit python-2027 connectors-hub projects/agi-system projects/1pro projects/open_source-
 
-check: lint typecheck test gateway-test demo providers
+registry:
+	.venv/bin/ai2027-py27 registry
+
+check: lint typecheck test gateway-test demo providers registry

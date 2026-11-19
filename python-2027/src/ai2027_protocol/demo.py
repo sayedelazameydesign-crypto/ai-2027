@@ -16,7 +16,7 @@ from .ai_providers import (
 )
 from .auditor import ProtocolAuditor, format_audit_markdown
 from .benchmark import run_benchmark_suite
-from .contracts import AIProvider, PromptRequest, ProviderKind, TelemetrySink
+from .contracts import AIProvider, BillingTier, PromptRequest, ProviderKind, TelemetrySink
 from .router import FreeFirstRouter, RouterConfig
 from .security import redact_secrets
 from .telemetry import ObservabilityRuntime
@@ -28,8 +28,9 @@ class _FlakyPrimaryDemoProvider:
     """Demo provider simulating a 429 rate-limit to prove automatic failover."""
 
     kind = ProviderKind.GEMINI
-    model = "gemini-2.5-flash (demo-rate-limit)"
+    model = "gemini-2.5-flash"
     is_remote = True
+    billing_tier = BillingTier.FREE_TIER
 
     def is_configured(self) -> bool:
         return True
@@ -46,8 +47,9 @@ class _HealthyBackupDemoProvider:
     """Demo backup provider proving $0 fallback after primary retries exhaust."""
 
     kind = ProviderKind.GROQ
-    model = "llama-3.3-70b-versatile (demo-backup)"
+    model = "llama-3.3-70b-versatile"
     is_remote = True
+    billing_tier = BillingTier.FREE_TIER
 
     def is_configured(self) -> bool:
         return True
@@ -146,6 +148,7 @@ async def run_one_command_demo(
     return {
         "mode": "live_env_keys" if (use_live_keys and has_live_remote) else "offline_demo",
         "provider_readiness": readiness,
+        "budget": demo_router.budget_snapshot().model_dump(mode="json"),
         "single_route": single_response.model_dump(mode="json"),
         "batch_count": len(batch_responses),
         "benchmark": bench_report.model_dump(mode="json"),
@@ -190,6 +193,19 @@ async def verify_live_providers(
                 "ok": False,
                 "status": "skipped_no_key",
                 "latency_ms": 0.0,
+            }
+            return
+
+        if st is not None and not st.allowed_under_zero_budget:
+            probe_results[idx] = {
+                "provider": provider.kind.value,
+                "model": provider.model,
+                "credential_state": cred_state,
+                "configured": True,
+                "ok": False,
+                "status": "budget_blocked",
+                "latency_ms": 0.0,
+                "error": st.budget_reason,
             }
             return
 
@@ -279,11 +295,15 @@ async def verify_live_providers(
         "configured_count": configured_count,
         "live_succeeded": live_succeeded,
         "probes": completed_probes,
+        "budget": router.budget_snapshot().model_dump(mode="json"),
         "routed": {
             "provider": routed.provider.value,
             "model": routed.model,
             "simulated": routed.simulated,
             "cost_usd": routed.cost_usd,
+            "billing_tier": routed.billing_tier.value,
+            "cost_status": routed.cost_status.value,
+            "cost_known": routed.cost_known,
             "latency_ms": routed.latency_ms,
             "text_preview": redact_secrets(routed.text[:120]),
         },

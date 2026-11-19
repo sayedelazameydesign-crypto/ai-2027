@@ -1,4 +1,4 @@
-"""Async Free-First AI router with timeouts, jittered retries, and TaskGroup batching."""
+"""Async Free-First AI router with BudgetGuard, timeouts, retries, and TaskGroup batching."""
 
 from __future__ import annotations
 
@@ -11,8 +11,10 @@ from dataclasses import dataclass
 from pydantic import Field
 
 from .ai_providers import ProviderError, build_default_providers
+from .budget import BudgetGuard, BudgetPolicy
 from .contracts import (
     AIProvider,
+    BudgetSnapshot,
     CompletionResponse,
     PromptRequest,
     ProviderAttempt,
@@ -49,7 +51,7 @@ class _CircuitState:
 
 
 class FreeFirstRouter:
-    """Resilient async router enforcing Free-First priority, fallback, and TaskGroup concurrency."""
+    """Resilient async router enforcing MAX_SPEND=0 BudgetGuard, fallback, and TaskGroup."""
 
     def __init__(
         self,
@@ -57,15 +59,18 @@ class FreeFirstRouter:
         *,
         config: RouterConfig | None = None,
         telemetry: TelemetrySink | None = None,
+        budget_guard: BudgetGuard | None = None,
+        budget_policy: BudgetPolicy | None = None,
         clock: Callable[[], float] = time.monotonic,
         jitter: Callable[[float], float] | None = None,
     ) -> None:
-        """Initialize the router with replaceable providers, config, and telemetry sink."""
+        """Initialize the router with replaceable providers, BudgetGuard, and telemetry sink."""
         self._providers: tuple[AIProvider, ...] = (
             tuple(providers) if providers is not None else build_default_providers()
         )
         self._config = config or RouterConfig()
         self._telemetry: TelemetrySink = telemetry or ObservabilityRuntime()
+        self._budget_guard = budget_guard or BudgetGuard(budget_policy)
         self._clock = clock
         self._jitter = jitter or (lambda base: base * random.uniform(0.5, 1.0))  # noqa: S311
         self._circuits: dict[str, _CircuitState] = {}
@@ -74,6 +79,15 @@ class FreeFirstRouter:
     def providers(self) -> tuple[AIProvider, ...]:
         """Return ordered providers registered in this router."""
         return self._providers
+
+    @property
+    def budget_guard(self) -> BudgetGuard:
+        """Return the BudgetGuard enforcing spend and unknown-cost limits."""
+        return self._budget_guard
+
+    def budget_snapshot(self) -> BudgetSnapshot:
+        """Return current known-zero, free-tier, and blocked-call counts."""
+        return self._budget_guard.snapshot()
 
     def _ordered_candidates(self, request: PromptRequest) -> list[AIProvider]:
         if not request.preferred_providers:
@@ -101,7 +115,7 @@ class FreeFirstRouter:
             state.opened_until_monotonic = self._clock() + self._config.circuit_cooldown_s
 
     async def route(self, request: PromptRequest) -> CompletionResponse:
-        """Route one prompt across Free-First providers with timeout, retry, and fallback."""
+        """Route one prompt across Free-First providers guarded by BudgetGuard."""
         start_ns = time.perf_counter_ns()
         attempts: list[ProviderAttempt] = []
 
@@ -115,6 +129,35 @@ class FreeFirstRouter:
                     continue
                 if not provider.is_configured():
                     continue
+
+                decision = self._budget_guard.evaluate_provider(provider)
+                if not decision.allowed:
+                    self._budget_guard.record_blocked(decision)
+                    attempts.append(
+                        ProviderAttempt(
+                            provider=provider.kind,
+                            model=provider.model,
+                            attempt=1,
+                            ok=False,
+                            latency_ms=0.0,
+                            billing_tier=decision.billing_tier,
+                            cost_known=decision.cost_known,
+                            cost_status=decision.cost_status,
+                            estimated_cost_usd=decision.estimated_cost_usd,
+                            error_code="budget_blocked",
+                            detail=decision.reason,
+                        )
+                    )
+                    self._telemetry.log(
+                        "warning",
+                        "provider_blocked_by_budget",
+                        provider=provider.kind.value,
+                        model=provider.model,
+                        billing_tier=decision.billing_tier.value,
+                        cost_status=decision.cost_status.value,
+                    )
+                    continue
+
                 if self._is_circuit_open(provider):
                     attempts.append(
                         ProviderAttempt(
@@ -123,6 +166,10 @@ class FreeFirstRouter:
                             attempt=1,
                             ok=False,
                             latency_ms=0.0,
+                            billing_tier=decision.billing_tier,
+                            cost_known=decision.cost_known,
+                            cost_status=decision.cost_status,
+                            estimated_cost_usd=decision.estimated_cost_usd,
                             error_code="circuit_open",
                             detail="Skipped while circuit breaker cooldown is active",
                         )
@@ -138,6 +185,7 @@ class FreeFirstRouter:
                             "provider": provider.kind.value,
                             "model": provider.model,
                             "attempt": attempt_idx,
+                            "billing_tier": decision.billing_tier.value,
                         },
                     ):
                         try:
@@ -172,6 +220,10 @@ class FreeFirstRouter:
                                     attempt=attempt_idx,
                                     ok=False,
                                     latency_ms=elapsed_ms,
+                                    billing_tier=decision.billing_tier,
+                                    cost_known=decision.cost_known,
+                                    cost_status=decision.cost_status,
+                                    estimated_cost_usd=decision.estimated_cost_usd,
                                     error_code=err_code,
                                     detail=detail,
                                 )
@@ -197,6 +249,7 @@ class FreeFirstRouter:
 
                         elapsed_ms = round((time.perf_counter_ns() - attempt_start) / 1e6, 3)
                         self._record_success(provider)
+                        self._budget_guard.record_completed(decision)
                         attempts.append(
                             ProviderAttempt(
                                 provider=provider.kind,
@@ -204,6 +257,10 @@ class FreeFirstRouter:
                                 attempt=attempt_idx,
                                 ok=True,
                                 latency_ms=elapsed_ms,
+                                billing_tier=decision.billing_tier,
+                                cost_known=decision.cost_known,
+                                cost_status=decision.cost_status,
+                                estimated_cost_usd=decision.estimated_cost_usd,
                             )
                         )
                         total_ms = round((time.perf_counter_ns() - start_ns) / 1e6, 3)
@@ -212,6 +269,8 @@ class FreeFirstRouter:
                             "provider_route_succeeded",
                             provider=provider.kind.value,
                             model=provider.model,
+                            billing_tier=decision.billing_tier.value,
+                            cost_status=decision.cost_status.value,
                             attempt=attempt_idx,
                             latency_ms=total_ms,
                         )
@@ -220,7 +279,12 @@ class FreeFirstRouter:
                             model=provider.model,
                             text=text,
                             simulated=(provider.kind == ProviderKind.DETERMINISTIC),
-                            cost_usd=0.0,
+                            cost_usd=decision.estimated_cost_usd,
+                            billing_tier=decision.billing_tier,
+                            cost_status=decision.cost_status,
+                            cost_known=decision.cost_known,
+                            cost_verified_by_invoice=False,
+                            max_spend_usd=self._budget_guard.policy.max_spend_usd,
                             trace_id=trace_id,
                             attempts=tuple(attempts),
                             latency_ms=total_ms,
