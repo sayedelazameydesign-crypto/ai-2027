@@ -1,0 +1,10 @@
+{
+  "name": "ai2027-edge-gateway",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Zero-dependency $0 Cloudflare Worker edge gateway for Python 2027 / Colab backends.",
+  "scripts": {
+    "test": "node --test tests/gateway.test.mjs"
+  }
+}
