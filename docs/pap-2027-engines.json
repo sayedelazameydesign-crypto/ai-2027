@@ -102,11 +102,12 @@
         "fleet-2027/fleet2027/registry.py",
         "fleet-2027/fleet2027/verifier.py",
         "fleet-2027/fleet2027/examples.py",
+        "fleet-2027/fleet2027/llm.py",
         "fleet-2027/cli.py",
         "fleet-2027/crash_worker.py",
         "fleet-2027/gate.py",
+        "fleet-2027/scripts/multi_process_probe.py",
         "scripts/fleet_guard.py",
-        "fleet-2027/fleet2027/llm.py",
         "scripts/fleet_llm_bridge_check.py"
       ],
       "tests": [
@@ -141,9 +142,13 @@
         {
           "file": "fleet-2027/tests/test_llm.py",
           "marker": "def test_"
+        },
+        {
+          "file": "fleet-2027/tests/test_multi_process.py",
+          "marker": "def test_"
         }
       ],
-      "gap_ar": "الطبقة موجودة: تخطيط DAG، موجات متوازية، حالة دائمة في SQLite (WAL+synchronous=FULL)، استئناف مُثبت بقتل عملية حقيقية بـSIGKILL، DLQ، Idempotency، تحقق مستقل من البصمات على القرص، سلسلة تدقيق مُجزّأة، ووكيل LLM حقيقي (A1) عبر واجهة حقن بلا أي SDK داخل النواة — يعمل مع مزوّد python-2027 الفعلي (OllamaLocalProvider) بمسارات async حقيقية، وبوابة تُفشل أي نجاح منسوب لنموذج لم يُستدعَ. الفجوة المتبقية: التنفيذ threads داخل عملية واحدة لا موزّع عبر عُقد، والوكيل الحقيقي يحتاج نقطة Ollama محلية لتشغيله الحيّ (البوابة الحيّة اختيارية ولا تعمل بلا OLLAMA_BASE_URL).",
+      "gap_ar": "الطبقة موجودة: تخطيط DAG، موجات متوازية، حالة دائمة في SQLite (WAL+synchronous=FULL)، استئناف مُثبت بقتل عملية حقيقية بـSIGKILL، DLQ، Idempotency، تحقق مستقل من البصمات على القرص، سلسلة تدقيق مُجزّأة، ووكيل LLM حقيقي (A1) عبر واجهة حقن بلا أي SDK داخل النواة. A3 منفّذ: سجل عمال دائم (schema v3)، أمر `cli.py worker`، وعدة عمليات على ملف قاعدة واحد — موجة محسوبة بقدرة الـbulkhead (لا استهلاك محاولات زائد)، تحرير خطوات المالك الميّت فقط، وآثار write-ahead (intent → complete) تمنع تكرار الأثر الخارجي بعد SIGKILL. البوابة `multi-process` تُثبت ذلك بعمليتين حقيقيتين. الفجوة المتبقية: التوزيع عبر آلات (multi-node) غير منفّذ — SQLite على قرص محلي تنسّق عمليات فقط؛ والوكيل الحقيقي يحتاج نقطة Ollama محلية لتشغيله الحيّ.",
       "evidence_gate": "launch/evidence/fleet-2027-gate.json"
     },
     {

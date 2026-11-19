@@ -21,12 +21,14 @@ Usage
     python3 fleet-2027/cli.py export  --db /tmp/fleet.db --task demo-1 --out seed.json
     python3 fleet-2027/cli.py import  --db /tmp/fleet.db --seed seed.json
     python3 fleet-2027/cli.py cancel  --db /tmp/fleet.db --task demo-1 --reason "..."
+    python3 fleet-2027/cli.py worker  --db /tmp/fleet.db --id w1 --expect-complete
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -34,6 +36,7 @@ if __package__ in (None, ""):  # pragma: no cover - direct script execution
     sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from fleet2027 import (  # noqa: E402
+    TERMINAL_TASK_STATUSES,
     AgentRegistry,
     DurableTaskStore,
     EvidenceKind,
@@ -357,6 +360,61 @@ def cmd_llm(args: argparse.Namespace) -> int:
         return _exit_for(report.status)
 
 
+def cmd_worker(args: argparse.Namespace) -> int:
+    """Long-lived worker: consume whatever the shared database still owes.
+
+    Two of these in two OS processes on the same ``--db`` are the whole point:
+    each registers a distinct ``workers`` row, claims a wave atomically, and
+    exits quietly when there is nothing left. Nothing here fakes success — the
+    exit code is derived from the *persisted* status of the tasks it touched,
+    and a task another worker is still running reports as incomplete.
+    """
+    workspace = Path(args.workspace).resolve()
+    workspace.mkdir(parents=True, exist_ok=True)
+    task_ids = [t.strip() for t in args.task.split(",") if t.strip()] if args.task else None
+    with DurableTaskStore(args.db) as store:
+        runner = FleetRunner(
+            store,
+            _demo_registry(),
+            workspace_root=workspace,
+            reviewer=build_reviewer(_demo_registry(), reviewer_agent="reviewer"),
+            config=RunnerConfig(
+                worker_heartbeat_s=args.heartbeat_s,
+                worker_stale_after_s=args.stale_after_s,
+            ),
+            worker_id=args.id,
+        )
+        if not args.quiet:
+            print(f"worker {runner.worker_id} · pid={os.getpid()} · db={args.db}")
+        report = runner.serve(
+            task_ids=task_ids,
+            idle_exit_after_s=args.idle_exit_s,
+            max_steps=args.max_steps,
+        )
+        if not args.quiet:
+            print(
+                f"worker {report['worker_id']} finished: steps={report['steps_run']} "
+                f"kept={report['steps_kept']} waves={report['waves']} "
+                f"in {report['duration_ms']} ms"
+            )
+        statuses = {}
+        pool = task_ids or list(store.active_task_ids())
+        if not pool:
+            pool = [snapshot.task_id for snapshot in store.list_tasks()][-20:]
+        for task_id in pool:
+            statuses[task_id] = store.get_task(task_id).status
+        for task_id, status in sorted(statuses.items()):
+            if not args.quiet:
+                print(f"  {task_id:<24} {status.value}")
+        if any(status in {TaskStatus.FAILED, TaskStatus.DEAD_LETTER} for status in statuses.values()):
+            return EXIT_FAILED
+        if args.expect_complete and any(
+            status not in TERMINAL_TASK_STATUSES for status in statuses.values()
+        ):
+            return EXIT_INCOMPLETE
+        return EXIT_OK
+
+
 def build_parser() -> argparse.ArgumentParser:
     """Build the argument parser."""
     parser = argparse.ArgumentParser(
@@ -418,6 +476,21 @@ def build_parser() -> argparse.ArgumentParser:
     llm.add_argument("--agent", default="llm-writer")
     llm.add_argument("--task", default="llm-task")
     llm.set_defaults(func=cmd_llm)
+
+    worker = sub.add_parser(
+        "worker", parents=[common], help="consume work as one of N cooperating processes"
+    )
+    worker.add_argument("--id", default=None, help="stable worker id (default: derived)")
+    worker.add_argument("--task", default=None, help="comma-separated task ids (default: all active)")
+    worker.add_argument("--heartbeat-s", type=float, default=5.0)
+    worker.add_argument("--stale-after-s", type=float, default=60.0)
+    worker.add_argument(
+        "--idle-exit-s", type=float, default=3.0, help="exit quietly after this long with no work"
+    )
+    worker.add_argument("--max-steps", type=int, default=None)
+    worker.add_argument("--expect-complete", action="store_true")
+    worker.add_argument("--quiet", action="store_true")
+    worker.set_defaults(func=cmd_worker)
 
     cancel = sub.add_parser("cancel", parents=[common], help="cancel a live task")
     cancel.add_argument("--task", required=True)
