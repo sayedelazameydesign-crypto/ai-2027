@@ -39,7 +39,7 @@ class _LiveStubTransport:
         return HttpJsonResult(200, {"choices": [{"message": {"content": "pong-nvidia"}}]})
 
 
-def test_cli_demo_audit_bench_route(capsys: pytest.CaptureFixture[str]) -> None:
+def test_cli_demo_audit_bench_route(capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
     repo_root = Path(__file__).resolve().parents[2]
     assert main(["--root", str(repo_root), "demo"]) == 0
     out_demo = capsys.readouterr().out
@@ -91,6 +91,97 @@ def test_cli_demo_audit_bench_route(capsys: pytest.CaptureFixture[str]) -> None:
     assert main(["route", "Hello CLI", "--offline-only", "--provider", "deterministic"]) == 0
     route_json = json.loads(capsys.readouterr().out)
     assert route_json["provider"] == "deterministic"
+
+    assert (
+        main(
+            [
+                "--root",
+                str(repo_root),
+                "agent",
+                "Inspect python-2027 and propose a Gmail digest",
+                "--offline-only",
+                "--max-steps",
+                "4",
+                "--studio-dir",
+                str(tmp_path / "cli_studio"),
+                "--json",
+            ]
+        )
+        == 0
+    )
+    agent_json = json.loads(capsys.readouterr().out)
+    assert agent_json["status"] == "completed"
+    assert len(agent_json["approvals"]) == 1
+    aid = agent_json["approvals"][0]
+
+    assert (
+        main(
+            [
+                "--root",
+                str(repo_root),
+                "approvals",
+                "list",
+                "--studio-dir",
+                str(tmp_path / "cli_studio"),
+                "--json",
+            ]
+        )
+        == 0
+    )
+    ap_list = json.loads(capsys.readouterr().out)
+    assert any(item["action_id"] == aid for item in ap_list)
+
+    assert (
+        main(
+            [
+                "--root",
+                str(repo_root),
+                "approvals",
+                "approve",
+                aid,
+                "--studio-dir",
+                str(tmp_path / "cli_studio"),
+                "--note",
+                "CLI ok",
+            ]
+        )
+        == 0
+    )
+    approved_out = json.loads(capsys.readouterr().out)
+    assert approved_out["status"] == "approved"
+
+    assert (
+        main(
+            [
+                "--root",
+                str(repo_root),
+                "agent",
+                "Build verified HTML deliverable",
+                "--offline-only",
+                "--max-steps",
+                "3",
+                "--studio-dir",
+                str(tmp_path / "cli_studio_text"),
+            ]
+        )
+        == 0
+    )
+    assert "[AI-2027 Agent]" in capsys.readouterr().out
+
+    assert (
+        main(
+            [
+                "--root",
+                str(repo_root),
+                "approvals",
+                "list",
+                "--studio-dir",
+                str(tmp_path / "cli_studio_text"),
+            ]
+        )
+        == 0
+    )
+    assert "No queued approvals." in capsys.readouterr().out
 
 
 async def test_verify_live_providers_with_mocked_actions_keys(

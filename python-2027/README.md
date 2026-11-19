@@ -6,7 +6,13 @@
 
 </div>
 
-**One-command run (works from first run, $0, zero API keys required):**
+**One-command Agent Studio (Manus + Claude Workspace UI, L0/L1/L4/L5 unified, $0):**
+
+```bash
+./scripts/studio_up.sh          # boots http://0.0.0.0:8080/studio (use --check for HTTP smoke)
+```
+
+**One-command verification (works from first run, $0, zero API keys required):**
 
 ```bash
 bash python-2027/scripts/one_command_demo.sh --verify-all
@@ -16,6 +22,7 @@ Or inside `python-2027/`:
 
 ```bash
 uv run ai2027-py27 demo
+uv run ai2027-py27 agent "Audit python-2027 and generate a verified HTML + SVG report"
 ```
 
 ---
@@ -39,7 +46,10 @@ uv run ai2027-py27 demo
 
 ## 🌐 $0 Platform Targets & GitHub Actions Secrets
 
-1. **Local / CLI / FastAPI (`src/ai2027_protocol/`)**:
+1. **Local / Agent Studio / CLI / FastAPI (`src/ai2027_protocol/`)**:
+   - `ai2027-py27 studio --host 0.0.0.0 --port 8080` — unified bilingual **Manus + Claude Studio** web UI (`/studio` & `/`) featuring SSE streaming timeline, Free-First LLM planning (`Ollama -> Gemini -> NVIDIA NIM -> Groq -> OpenRouter -> Honest Offline Planner`), isolated `python3 -I` & workspace tools, live sandboxed HTML/SVG/Code Artifact preview, L0 SHA-256 verification, L1 Evidence Memory search & admission, and L5 Human-in-the-Loop approval gate.
+   - `ai2027-py27 agent "<task>"` — multi-step autonomous CLI coding agent with JSON & terminal trace output.
+   - `ai2027-py27 approvals list|approve|reject` — manage queued external L5 connector mutations safely from CLI.
    - `ai2027-py27 demo [--live]` — full Free-First failover + `TaskGroup` batch + benchmark + repo audit + OTel trace summary (`--live` activates existing env/Actions keys when present).
    - `ai2027-py27 providers` — sanitized key readiness (`present (N chars)` / `absent`, never values).
    - `ai2027-py27 live [--provider all|auto|gemini|nvidia|groq|openrouter|ollama]` — verifies configured Actions/env keys safely and exits cleanly.

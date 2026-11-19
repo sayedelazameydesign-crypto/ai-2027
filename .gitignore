@@ -55,3 +55,5 @@ browser-skill-audit*.json
 
 # One-command boot state (pids, logs, measured boot time)
 .ember-up/
+.ai2027_studio/
+.ai2027_work/
