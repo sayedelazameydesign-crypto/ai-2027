@@ -47,6 +47,7 @@ ai2027-py27 = "ai2027_protocol.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/ai2027_protocol"]
+artifacts = ["src/ai2027_protocol/static/*.html"]
 
 [tool.ruff]
 line-length = 100

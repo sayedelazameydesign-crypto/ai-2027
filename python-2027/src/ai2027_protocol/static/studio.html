@@ -1,0 +1,689 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI-2027 Agent Studio — Open Autonomous Workspace</title>
+<style>
+:root{
+  --bg:#050810;--bg2:#0a101d;--panel:#0e1626;--panel2:#121d32;--line:#1c2b46;
+  --txt:#e8eef8;--dim:#8ea2c0;--acc:#00e5a0;--acc2:#38bdf8;--warn:#fbbf24;--bad:#fb7185;--pur:#a78bfa;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:var(--bg);color:var(--txt);font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;overflow:hidden}
+[dir="rtl"] body{font-family:"Segoe UI",Tahoma,Arial,sans-serif}
+.topbar{
+  height:54px;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:0 16px;
+  background:rgba(10,16,29,.92);border-bottom:1px solid var(--line);backdrop-filter:blur(12px)
+}
+.brand{display:flex;align-items:center;gap:10px;font-weight:800;letter-spacing:.4px;font-size:15px}
+.brand b{color:var(--acc)}
+.pill{
+  font-size:11px;padding:3px 9px;border-radius:99px;border:1px solid var(--line);
+  background:var(--panel2);color:var(--dim);font-family:var(--mono);white-space:nowrap
+}
+.pill.ok{color:var(--acc);border-color:rgba(0,229,160,.4);background:rgba(0,229,160,.08)}
+.pill.warn{color:var(--warn);border-color:rgba(251,191,36,.4);background:rgba(251,191,36,.08)}
+.pill.info{color:var(--acc2);border-color:rgba(56,189,248,.4);background:rgba(56,189,248,.08)}
+.top-right{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.btn{
+  border:1px solid var(--line);background:var(--panel2);color:var(--txt);border-radius:8px;
+  padding:6px 11px;font-size:12px;font-weight:600;cursor:pointer;transition:.15s;font-family:inherit
+}
+.btn:hover{border-color:var(--acc);transform:translateY(-1px)}
+.btn.primary{background:linear-gradient(135deg,var(--acc),#00b8d4);color:#04121a;border:none;font-weight:800}
+.btn.danger{border-color:rgba(251,113,133,.5);color:var(--bad);background:rgba(251,113,133,.08)}
+.btn.sm{padding:4px 8px;font-size:11px}
+.shell{
+  height:calc(100vh - 54px);display:grid;grid-template-columns:270px minmax(360px,1.15fr) minmax(360px,1fr);
+  overflow:hidden
+}
+@media(max-width:1080px){
+  html,body{overflow:auto}
+  .shell{height:auto;grid-template-columns:1fr;overflow:visible}
+}
+.col{display:flex;flex-direction:column;border-inline-end:1px solid var(--line);overflow:hidden;min-height:0}
+.col:last-child{border-inline-end:none}
+.scroll{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:12px}
+.sec-title{font-size:11px;font-weight:800;letter-spacing:.9px;text-transform:uppercase;color:var(--dim);margin-bottom:4px;display:flex;justify-content:space-between;align-items:center}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px}
+.session-item{
+  padding:9px 10px;border-radius:9px;border:1px solid var(--line);background:var(--bg2);
+  cursor:pointer;font-size:12px;transition:.15s;display:flex;flex-direction:column;gap:3px
+}
+.session-item:hover,.session-item.active{border-color:var(--acc);background:rgba(0,229,160,.06)}
+.session-item .sub{font-size:10.5px;color:var(--dim);font-family:var(--mono)}
+.preset{
+  text-align:start;padding:8px 10px;border-radius:9px;border:1px solid var(--line);background:var(--bg2);
+  color:var(--txt);font-size:11.5px;cursor:pointer;line-height:1.45;transition:.15s
+}
+.preset:hover{border-color:var(--acc2)}
+.providers-strip{display:flex;gap:6px;flex-wrap:wrap;padding:10px 14px;border-bottom:1px solid var(--line);background:var(--bg2)}
+.plan-box{background:var(--bg2);border:1px solid var(--line);border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:6px}
+.plan-row{display:flex;align-items:center;gap:8px;font-size:12px}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--dim);flex-shrink:0}
+.dot.running{background:var(--acc2);box-shadow:0 0 8px var(--acc2)}
+.dot.completed{background:var(--acc)}
+.dot.failed{background:var(--bad)}
+.step-card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:8px}
+.step-head{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12px;font-weight:700}
+.thought{font-size:12.5px;color:#cfe0f7;line-height:1.55}
+.tool-box{background:#060b14;border:1px solid var(--line);border-radius:9px;padding:9px;font-size:11.5px}
+.tool-top{display:flex;justify-content:space-between;gap:8px;align-items:center;font-family:var(--mono);margin-bottom:5px}
+.tool-out{font-family:var(--mono);font-size:11px;color:#9eb5d4;white-space:pre-wrap;word-break:break-word;max-height:170px;overflow:auto}
+.final-box{background:linear-gradient(180deg,rgba(0,229,160,.07),rgba(14,22,38,.95));border:1px solid rgba(0,229,160,.4);border-radius:12px;padding:14px;font-size:13px;line-height:1.65;white-space:pre-wrap}
+.composer{padding:12px 14px;border-top:1px solid var(--line);background:var(--bg2);display:flex;flex-direction:column;gap:8px}
+textarea,input,select{
+  width:100%;background:var(--panel);border:1px solid var(--line);border-radius:9px;color:var(--txt);
+  padding:9px 11px;font-size:12.5px;font-family:inherit;outline:none
+}
+textarea:focus,input:focus,select:focus{border-color:var(--acc)}
+textarea{resize:none;min-height:66px;max-height:140px}
+.comp-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.tabs{display:flex;gap:4px;padding:8px 12px;border-bottom:1px solid var(--line);background:var(--bg2);flex-wrap:wrap}
+.tab{padding:6px 10px;border-radius:8px;font-size:11.5px;font-weight:700;cursor:pointer;color:var(--dim);border:1px solid transparent;background:none}
+.tab.active{color:var(--acc);border-color:rgba(0,229,160,.35);background:rgba(0,229,160,.08)}
+.preview-frame{width:100%;height:380px;border:1px solid var(--line);border-radius:10px;background:#fff}
+.code-view{background:#05080f;border:1px solid var(--line);border-radius:10px;padding:12px;font-family:var(--mono);font-size:11.5px;color:#b8cbe4;white-space:pre-wrap;word-break:break-word;max-height:420px;overflow:auto}
+.row-between{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.muted{color:var(--dim);font-size:11.5px;line-height:1.5}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+</style>
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <span>AI<b>-2027</b> STUDIO</span>
+    <span class="pill ok" id="costPill">$0.00 · Evidence-First</span>
+    <span class="pill info" id="modePill">Ready</span>
+  </div>
+  <div class="top-right">
+    <span class="pill" id="l0Pill">L0 Kernel: checking…</span>
+    <span class="pill" id="memPill">L1 Memory: …</span>
+    <button class="btn danger sm" id="stopBtn" onclick="stopRun()" data-en="■ Stop" data-ar="■ إيقاف">■ Stop</button>
+    <button class="btn sm" id="newBtn" onclick="createNewSession()" data-en="+ New Session" data-ar="+ جلسة جديدة">+ New Session</button>
+    <button class="btn sm" id="langBtn" onclick="toggleLang()">العربية</button>
+  </div>
+</header>
+
+<main class="shell">
+  <!-- LEFT RAIL: Sessions, Quick Showcase, Approvals & Memory -->
+  <aside class="col">
+    <div class="scroll">
+      <div>
+        <div class="sec-title"><span data-en="1-Click Showcase Tasks" data-ar="مهام عرض جاهزة">1-Click Showcase Tasks</span></div>
+        <div style="display:flex;flex-direction:column;gap:6px" id="presetsBox"></div>
+      </div>
+
+      <div>
+        <div class="sec-title">
+          <span data-en="Human Approval Gate (L5)" data-ar="بوابة الموافقة البشرية (L5)">Human Approval Gate (L5)</span>
+          <span class="pill warn" id="approvalCount">0</span>
+        </div>
+        <div id="approvalsBox" style="display:flex;flex-direction:column;gap:6px"></div>
+      </div>
+
+      <div>
+        <div class="sec-title"><span data-en="L1 Verified Memory" data-ar="ذاكرة الأدلة L1">L1 Verified Memory</span></div>
+        <div class="comp-row" style="margin-bottom:6px">
+          <input id="memQuery" placeholder="Search verified memory…" oninput="if(this.value.length>=2) searchMemory()">
+          <button class="btn sm" onclick="searchMemory()" data-en="Find" data-ar="بحث">Find</button>
+        </div>
+        <div id="memHitsBox" style="display:flex;flex-direction:column;gap:6px"></div>
+      </div>
+
+      <div>
+        <div class="sec-title"><span data-en="Recent Sessions" data-ar="الجلسات الأخيرة">Recent Sessions</span></div>
+        <div id="sessionsBox" style="display:flex;flex-direction:column;gap:6px"></div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- CENTER: Provider Bar + Plan + Live Agent Timeline + Composer -->
+  <section class="col">
+    <div class="providers-strip" id="providersStrip"></div>
+    <div class="scroll" id="timelineScroll">
+      <div class="card">
+        <div class="row-between">
+          <strong style="font-size:13px" data-en="Autonomous Manus + Claude Workspace" data-ar="مساحة عمل مستقلة (Manus + Claude)">Autonomous Manus + Claude Workspace</strong>
+          <span class="pill" id="sessionIdPill">session: —</span>
+        </div>
+        <p class="muted" style="margin-top:6px" data-en="Every task runs through Free-First routing (Ollama → Gemini → NVIDIA NIM → Groq → OpenRouter → Honest Offline Planner), isolated Python/Workspace tools, L0 SHA-256 Policy+Verifier, and L1 Evidence Memory." data-ar="كل مهمة تمر عبر توجيه مجاني أولاً، وأدوات صندوق رمل معزول، وبوابة تحقق SHA-256 في الطبقة L0، وذاكرة أدلة L1، مع موافقة بشرية لأي إجراء خارجي.">Every task runs through Free-First routing (Ollama → Gemini → NVIDIA NIM → Groq → OpenRouter → Honest Offline Planner), isolated Python/Workspace tools, L0 SHA-256 Policy+Verifier, and L1 Evidence Memory.</p>
+      </div>
+      <div id="planBox" class="plan-box" style="display:none"></div>
+      <div id="stepsBox" style="display:flex;flex-direction:column;gap:10px"></div>
+      <div id="finalBox" class="final-box" style="display:none"></div>
+    </div>
+
+    <div class="composer">
+      <textarea id="taskInput" placeholder="Describe a goal: e.g. Build an interactive HTML dashboard + SVG diagram of ai-2027, run a Python verification script, and verify SHA-256…"></textarea>
+      <div class="comp-row">
+        <select id="providerSelect" style="width:auto;min-width:155px">
+          <option value="">Auto (Free-First)</option>
+          <option value="gemini">Gemini Free</option>
+          <option value="nvidia">NVIDIA NIM</option>
+          <option value="ollama">Ollama Local</option>
+          <option value="groq">Groq Free</option>
+          <option value="openrouter">OpenRouter Free</option>
+          <option value="deterministic">Offline Deterministic</option>
+        </select>
+        <select id="stepsSelect" style="width:auto">
+          <option value="4">4 steps</option>
+          <option value="6" selected>6 steps</option>
+          <option value="8">8 steps</option>
+        </select>
+        <button class="btn primary" id="runBtn" style="flex:1" onclick="runTaskStream()" data-en="▶ Run Autonomous Task" data-ar="▶ تشغيل الوكيل المستقل">▶ Run Autonomous Task</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- RIGHT: Artifacts Live Preview, Sandbox Files, L0/L5 Governance & Audit -->
+  <aside class="col">
+    <div class="tabs">
+      <button class="tab active" onclick="switchTab('preview', this)" data-en="👁 Live Artifact" data-ar="👁 معاينة المخرجات">👁 Live Artifact</button>
+      <button class="tab" onclick="switchTab('files', this)" data-en="📁 Sandbox Files" data-ar="📁 ملفات الصندوق">📁 Sandbox Files</button>
+      <button class="tab" onclick="switchTab('governance', this)" data-en="🔐 L0 & Connectors" data-ar="🔐 الحوكمة والموصلات">🔐 L0 & Connectors</button>
+      <button class="tab" onclick="switchTab('telemetry', this)" data-en="📊 Audit & Bench" data-ar="📊 التدقيق والقياس">📊 Audit & Bench</button>
+    </div>
+
+    <div class="scroll" id="tab-preview">
+      <div class="card">
+        <div class="row-between">
+          <strong id="artTitle" style="font-size:12.5px">No artifact selected yet</strong>
+          <a id="artDownload" class="btn sm" href="#" target="_blank" rel="noopener" style="display:none">Open Raw</a>
+        </div>
+        <div class="muted" id="artMeta" style="margin-top:4px;font-family:var(--mono)">Run a task to produce SHA-256 verified HTML, SVG, Python, or Markdown deliverables.</div>
+      </div>
+      <iframe id="artIframe" class="preview-frame" sandbox="allow-scripts" style="display:none" title="Sandboxed Artifact Preview"></iframe>
+      <pre id="artCode" class="code-view" style="display:none"></pre>
+    </div>
+
+    <div class="scroll" id="tab-files" style="display:none">
+      <div id="filesList" style="display:flex;flex-direction:column;gap:8px"></div>
+    </div>
+
+    <div class="scroll" id="tab-governance" style="display:none">
+      <div class="card">
+        <div class="sec-title"><span>L0 Kernel & Ledger</span><span class="pill ok" id="ledgerPill">0 events</span></div>
+        <p class="muted" id="honestScopeNote">Every file write passes projects/agi-system PolicyEngine + Verifier before admission to L1 memory. Mode (live-llm vs offline-deterministic) is always declared explicitly.</p>
+      </div>
+      <div class="card">
+        <div class="sec-title"><span data-en="L5 Connectors Hub" data-ar="موصلات L5 الخارجية">L5 Connectors Hub</span></div>
+        <div id="connectorsGrid" style="display:flex;flex-direction:column;gap:6px;margin-top:6px"></div>
+      </div>
+    </div>
+
+    <div class="scroll" id="tab-telemetry" style="display:none">
+      <div class="comp-row">
+        <button class="btn sm primary" onclick="runAudit()">Run 10-Rule Audit</button>
+        <button class="btn sm" onclick="runBench()">Run Benchmark</button>
+        <button class="btn sm" onclick="loadTraces()">Refresh OTel Traces</button>
+      </div>
+      <pre class="code-view" id="telemetryOut">Click a button above to measure live repository audit scores, TaskGroup speedup, or OpenTelemetry spans.</pre>
+    </div>
+  </aside>
+</main>
+
+<script>
+let currentSessionId = null;
+let currentLang = "en";
+let activeAbort = null;
+let currentArtifacts = [];
+
+const PRESETS = [
+  {
+    en: "Build an interactive HTML dashboard + SVG diagram of ai-2027, run a Python verification script, and verify SHA-256.",
+    ar: "أنشئ لوحة HTML تفاعلية ومخطط SVG لمنظومة ai-2027 وشغّل سكربت بايثون للتحقق من بصمة SHA-256."
+  },
+  {
+    en: "Audit python-2027 protocol compliance and inspect repository files in parallel.",
+    ar: "دقّق امتثال python-2027 لقواعد البروتوكول العشر وافحص ملفات المستودع بالتوازي."
+  },
+  {
+    en: "Inspect L5 connectors and propose a guarded Gmail/Notion digest awaiting my human approval.",
+    ar: "افحص موصلات L5 واقترح مسودة ملخص Gmail/Notion بانتظار موافقتي البشرية."
+  },
+  {
+    en: "Write and run an isolated Python benchmark analyzer inside the sandbox.",
+    ar: "اكتب وشغّل محلل قياسات بايثون معزول داخل صندوق الرمل."
+  }
+];
+
+function toggleLang() {
+  currentLang = currentLang === "en" ? "ar" : "en";
+  document.documentElement.lang = currentLang;
+  document.documentElement.dir = currentLang === "ar" ? "rtl" : "ltr";
+  document.getElementById("langBtn").textContent = currentLang === "ar" ? "English" : "العربية";
+  document.querySelectorAll("[data-en]").forEach((el) => {
+    el.textContent = el.getAttribute("data-" + currentLang) || el.textContent;
+  });
+  renderPresets();
+}
+
+function renderPresets() {
+  const box = document.getElementById("presetsBox");
+  box.textContent = "";
+  PRESETS.forEach((p) => {
+    const b = document.createElement("button");
+    b.className = "preset";
+    b.textContent = p[currentLang];
+    b.onclick = () => { document.getElementById("taskInput").value = p[currentLang]; };
+    box.appendChild(b);
+  });
+}
+
+function switchTab(name, btn) {
+  ["preview", "files", "governance", "telemetry"].forEach((t) => {
+    document.getElementById("tab-" + t).style.display = t === name ? "flex" : "none";
+  });
+  document.querySelectorAll(".tab").forEach((el) => el.classList.remove("active"));
+  if (btn) btn.classList.add("active");
+}
+
+async function apiJson(url, opts = {}) {
+  const res = await fetch(url, {
+    headers: { "Content-Type": "application/json", ...(opts.headers || {}) },
+    ...opts
+  });
+  if (!res.ok) {
+    const txt = await res.text();
+    throw new Error(txt || ("HTTP " + res.status));
+  }
+  return res.json();
+}
+
+async function refreshStatus() {
+  try {
+    const st = await apiJson("/v1/studio/status");
+    document.getElementById("l0Pill").textContent = "L0 Kernel: " + (st.kernel_available ? "READY" : "N/A");
+    document.getElementById("l0Pill").className = "pill " + (st.kernel_available ? "ok" : "warn");
+    document.getElementById("memPill").textContent =
+      "L1 Memory: " + st.memory.total_memories + " verified";
+    document.getElementById("approvalCount").textContent = String(st.pending_approvals);
+
+    const strip = document.getElementById("providersStrip");
+    strip.textContent = "";
+    st.providers.forEach((p) => {
+      const span = document.createElement("span");
+      span.className = "pill " + (p.configured ? "ok" : "");
+      span.textContent = p.provider + ": " + (p.configured ? "READY" : "absent");
+      strip.appendChild(span);
+    });
+
+    const cgrid = document.getElementById("connectorsGrid");
+    cgrid.textContent = "";
+    st.connectors.forEach((c) => {
+      const row = document.createElement("div");
+      row.className = "row-between";
+      const left = document.createElement("span");
+      left.style.fontSize = "12px";
+      left.textContent = c.name + " (" + c.credential_env_hint + ")";
+      const right = document.createElement("span");
+      right.className = "pill " + (c.configured ? "ok" : "");
+      right.textContent = c.configured ? "configured" : "needs token";
+      row.append(left, right);
+      cgrid.appendChild(row);
+    });
+  } catch (err) {
+    document.getElementById("modePill").textContent = "Status error: " + err.message;
+  }
+}
+
+async function loadSessions() {
+  const list = await apiJson("/v1/studio/sessions");
+  const box = document.getElementById("sessionsBox");
+  box.textContent = "";
+  list.forEach((s) => {
+    const div = document.createElement("div");
+    div.className = "session-item" + (s.session_id === currentSessionId ? " active" : "");
+    const title = document.createElement("strong");
+    title.textContent = s.title || s.session_id;
+    const sub = document.createElement("span");
+    sub.className = "sub";
+    sub.textContent = s.session_id + " · " + s.status + " · " + s.artifacts.length + " file(s)";
+    div.append(title, sub);
+    div.onclick = () => selectSession(s.session_id);
+    box.appendChild(div);
+  });
+  if (!currentSessionId && list.length > 0) {
+    await selectSession(list[0].session_id);
+  }
+}
+
+async function createNewSession() {
+  const s = await apiJson("/v1/studio/sessions", {
+    method: "POST",
+    body: JSON.stringify({ title: "Studio Session" })
+  });
+  await selectSession(s.session_id);
+  await loadSessions();
+}
+
+async function selectSession(sessionId) {
+  currentSessionId = sessionId;
+  document.getElementById("sessionIdPill").textContent = sessionId;
+  const state = await apiJson("/v1/studio/sessions/" + encodeURIComponent(sessionId));
+  renderSessionState(state);
+  await loadApprovals();
+}
+
+function renderSessionState(state) {
+  const modeBadge = document.getElementById("modePill");
+  modeBadge.textContent = state.mode + " (" + state.provider + ")";
+  modeBadge.className = "pill " + (state.simulated_llm ? "warn" : "ok");
+
+  renderPlan(state.plan || []);
+  const stepsBox = document.getElementById("stepsBox");
+  stepsBox.textContent = "";
+  (state.steps || []).forEach((st) => appendStepCard(st));
+
+  const fbox = document.getElementById("finalBox");
+  if (state.final_answer) {
+    fbox.style.display = "block";
+    fbox.textContent = state.final_answer;
+  } else {
+    fbox.style.display = "none";
+  }
+  renderArtifacts(state.artifacts || []);
+}
+
+function renderPlan(plan) {
+  const box = document.getElementById("planBox");
+  box.textContent = "";
+  if (!plan || plan.length === 0) {
+    box.style.display = "none";
+    return;
+  }
+  box.style.display = "flex";
+  plan.forEach((p) => {
+    const row = document.createElement("div");
+    row.className = "plan-row";
+    const dot = document.createElement("span");
+    dot.className = "dot " + p.status;
+    const txt = document.createElement("span");
+    txt.textContent = p.step_id + ". " + p.title + " [" + p.status + "]";
+    row.append(dot, txt);
+    box.appendChild(row);
+  });
+}
+
+function appendStepCard(st) {
+  const box = document.getElementById("stepsBox");
+  const card = document.createElement("div");
+  card.className = "step-card";
+  const head = document.createElement("div");
+  head.className = "step-head";
+  const left = document.createElement("span");
+  left.textContent = "Step " + st.step + " · " + st.provider;
+  const right = document.createElement("span");
+  right.className = "pill";
+  right.textContent = (st.latency_ms || 0) + " ms";
+  head.append(left, right);
+
+  const thought = document.createElement("div");
+  thought.className = "thought";
+  thought.textContent = st.thought;
+  card.append(head, thought);
+
+  (st.outcomes || []).forEach((o) => {
+    const tb = document.createElement("div");
+    tb.className = "tool-box";
+    const top = document.createElement("div");
+    top.className = "tool-top";
+    const name = document.createElement("span");
+    name.textContent = o.tool + " — " + o.summary;
+    const badge = document.createElement("span");
+    badge.className = "pill " + (o.ok ? "ok" : "warn");
+    badge.textContent = o.verified_sha256 ? ("SHA256 " + o.verified_sha256.slice(0, 10)) : (o.ok ? "OK" : "DENIED");
+    top.append(name, badge);
+    const out = document.createElement("div");
+    out.className = "tool-out";
+    out.textContent = o.error ? ("ERROR: " + o.error) : (o.output || "");
+    tb.append(top, out);
+    card.appendChild(tb);
+  });
+
+  box.appendChild(card);
+}
+
+function renderArtifacts(artifacts) {
+  currentArtifacts = artifacts || [];
+  const flist = document.getElementById("filesList");
+  flist.textContent = "";
+  currentArtifacts.forEach((a) => {
+    const card = document.createElement("div");
+    card.className = "session-item";
+    const row = document.createElement("div");
+    row.className = "row-between";
+    const name = document.createElement("strong");
+    name.textContent = a.path;
+    const pill = document.createElement("span");
+    pill.className = "pill " + (a.verified ? "ok" : "warn");
+    pill.textContent = a.verified ? "VERIFIED" : "UNVERIFIED";
+    row.append(name, pill);
+    const meta = document.createElement("span");
+    meta.className = "sub";
+    meta.textContent = a.kind + " · " + a.byte_size + " B · sha256=" + (a.sha256 || "none").slice(0, 14);
+    card.append(row, meta);
+    card.onclick = () => previewArtifact(a);
+    flist.appendChild(card);
+  });
+  if (currentArtifacts.length > 0) {
+    const preferred = currentArtifacts.find((x) => x.kind === "html" || x.kind === "svg") || currentArtifacts[currentArtifacts.length - 1];
+    previewArtifact(preferred);
+  }
+}
+
+async function previewArtifact(art) {
+  document.getElementById("artTitle").textContent = art.path;
+  document.getElementById("artMeta").textContent =
+    "kind=" + art.kind + " · bytes=" + art.byte_size + " · sha256=" + (art.sha256 || "none");
+  const dl = document.getElementById("artDownload");
+  dl.style.display = "inline-block";
+  dl.href = art.preview_url;
+
+  const iframe = document.getElementById("artIframe");
+  const code = document.getElementById("artCode");
+  if (art.kind === "html" || art.kind === "svg") {
+    iframe.style.display = "block";
+    code.style.display = "none";
+    iframe.src = art.preview_url;
+  } else {
+    iframe.style.display = "none";
+    code.style.display = "block";
+    const resp = await fetch(art.preview_url);
+    code.textContent = await resp.text();
+  }
+}
+
+async function runTaskStream() {
+  const rawTask = document.getElementById("taskInput").value.trim();
+  if (!rawTask) return;
+  if (!currentSessionId) {
+    await createNewSession();
+  }
+  const providerVal = document.getElementById("providerSelect").value || null;
+  const maxSteps = Number(document.getElementById("stepsSelect").value || 6);
+
+  document.getElementById("stepsBox").textContent = "";
+  document.getElementById("finalBox").style.display = "none";
+  document.getElementById("planBox").style.display = "none";
+  document.getElementById("modePill").textContent = "Running…";
+
+  if (activeAbort) activeAbort.abort();
+  activeAbort = new AbortController();
+
+  let currentLiveCard = null;
+  const resp = await fetch("/v1/studio/sessions/" + encodeURIComponent(currentSessionId) + "/stream", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ task: rawTask, max_steps: maxSteps, preferred_provider: providerVal }),
+    signal: activeAbort.signal
+  });
+  if (!resp.ok || !resp.body) {
+    document.getElementById("modePill").textContent = "Error HTTP " + resp.status;
+    return;
+  }
+  const reader = resp.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    const parts = buf.split("\n\n");
+    buf = parts.pop() || "";
+    for (const chunk of parts) {
+      const lines = chunk.split("\n");
+      let evName = "message";
+      let dataLine = "";
+      for (const ln of lines) {
+        if (ln.startsWith("event:")) evName = ln.slice(6).trim();
+        else if (ln.startsWith("data:")) dataLine += ln.slice(5).trim();
+      }
+      if (!dataLine) continue;
+      const evt = JSON.parse(dataLine);
+      if (evName === "plan") {
+        renderPlan(evt.data.plan || []);
+      } else if (evName === "step_start") {
+        currentLiveCard = { step: evt.step, provider: evt.data.provider || "agent", latency_ms: 0, thought: evt.message, outcomes: [] };
+        appendStepCard(currentLiveCard);
+      } else if (evName === "tool_result" && currentLiveCard) {
+        currentLiveCard.outcomes.push(evt.data);
+        const last = document.getElementById("stepsBox").lastElementChild;
+        if (last) last.remove();
+        appendStepCard(currentLiveCard);
+      } else if (evName === "artifact") {
+        currentArtifacts.push(evt.data);
+        renderArtifacts(currentArtifacts);
+      } else if (evName === "approval_required") {
+        await loadApprovals();
+      } else if (evName === "final") {
+        renderSessionState(evt.data);
+      } else if (evName === "aborted") {
+        document.getElementById("modePill").textContent = "Aborted by user";
+      }
+    }
+  }
+  await Promise.all([refreshStatus(), loadSessions(), loadApprovals()]);
+}
+
+async function stopRun() {
+  if (!currentSessionId) return;
+  await apiJson("/v1/studio/sessions/" + encodeURIComponent(currentSessionId) + "/stop", { method: "POST" });
+  if (activeAbort) activeAbort.abort();
+  document.getElementById("modePill").textContent = "Stopped";
+}
+
+async function loadApprovals() {
+  const items = await apiJson("/v1/studio/approvals");
+  const box = document.getElementById("approvalsBox");
+  box.textContent = "";
+  const pending = items.filter((x) => x.status === "pending");
+  document.getElementById("approvalCount").textContent = String(pending.length);
+  if (items.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "muted";
+    empty.textContent = "No queued connector mutations.";
+    box.appendChild(empty);
+    return;
+  }
+  items.slice(0, 6).forEach((item) => {
+    const card = document.createElement("div");
+    card.className = "card";
+    const row = document.createElement("div");
+    row.className = "row-between";
+    const title = document.createElement("strong");
+    title.style.fontSize = "12px";
+    title.textContent = item.connector + " " + item.method + " " + item.path;
+    const st = document.createElement("span");
+    st.className = "pill " + (item.status === "approved" ? "ok" : item.status === "pending" ? "warn" : "");
+    st.textContent = item.status;
+    row.append(title, st);
+    const sum = document.createElement("div");
+    sum.className = "muted";
+    sum.style.marginTop = "4px";
+    sum.textContent = item.summary;
+    card.append(row, sum);
+
+    if (item.status === "pending") {
+      const actions = document.createElement("div");
+      actions.className = "comp-row";
+      actions.style.marginTop = "6px";
+      const okBtn = document.createElement("button");
+      okBtn.className = "btn sm primary";
+      okBtn.textContent = "Approve";
+      okBtn.onclick = async () => {
+        await apiJson("/v1/studio/approvals/" + item.action_id + "/approve", { method: "POST", body: "{}" });
+        await Promise.all([loadApprovals(), refreshStatus()]);
+      };
+      const rejBtn = document.createElement("button");
+      rejBtn.className = "btn sm danger";
+      rejBtn.textContent = "Reject";
+      rejBtn.onclick = async () => {
+        await apiJson("/v1/studio/approvals/" + item.action_id + "/reject", { method: "POST", body: "{}" });
+        await Promise.all([loadApprovals(), refreshStatus()]);
+      };
+      actions.append(okBtn, rejBtn);
+      card.appendChild(actions);
+    }
+    box.appendChild(card);
+  });
+}
+
+async function searchMemory() {
+  const q = document.getElementById("memQuery").value.trim();
+  if (!q) return;
+  const hits = await apiJson("/v1/studio/memory/search?q=" + encodeURIComponent(q) + "&k=4");
+  const box = document.getElementById("memHitsBox");
+  box.textContent = "";
+  if (hits.length === 0) {
+    const m = document.createElement("div");
+    m.className = "muted";
+    m.textContent = "No verified memories matched.";
+    box.appendChild(m);
+    return;
+  }
+  hits.forEach((h) => {
+    const card = document.createElement("div");
+    card.className = "session-item";
+    const top = document.createElement("div");
+    top.className = "row-between";
+    const rid = document.createElement("strong");
+    rid.textContent = h.run_id;
+    const sc = document.createElement("span");
+    sc.className = "pill " + (h.above_noise ? "ok" : "");
+    sc.textContent = h.score.toFixed(3);
+    top.append(rid, sc);
+    const txt = document.createElement("span");
+    txt.className = "sub";
+    txt.textContent = h.text.slice(0, 120);
+    card.append(top, txt);
+    box.appendChild(card);
+  });
+}
+
+async function runAudit() {
+  const data = await apiJson("/v1/audit", { method: "POST", body: JSON.stringify({ target_path: "python-2027" }) });
+  document.getElementById("telemetryOut").textContent = JSON.stringify(data, null, 2);
+}
+
+async function runBench() {
+  const data = await apiJson("/v1/bench");
+  document.getElementById("telemetryOut").textContent = JSON.stringify(data, null, 2);
+}
+
+async function loadTraces() {
+  const data = await apiJson("/v1/traces");
+  document.getElementById("telemetryOut").textContent = JSON.stringify(data, null, 2);
+}
+
+(async function boot() {
+  renderPresets();
+  await Promise.all([refreshStatus(), loadSessions(), loadApprovals()]);
+})();
+</script>
+</body>
+</html>

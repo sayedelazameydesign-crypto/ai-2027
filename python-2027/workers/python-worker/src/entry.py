@@ -303,7 +303,39 @@ async def handle_worker_request(
                 "protocol": "Python 2027 Software Excellence Protocol",
                 "tier": "$0 Free-First Edge Worker",
                 "fallback_order": ["gemini", "nvidia", "groq", "openrouter", "deterministic"],
+                "agent_endpoints": ["/v1/route", "/v1/agent/plan"],
                 "trace_id": trace_id,
+            },
+        )
+
+    if path == "/v1/agent/plan":
+        if upper_method != "POST":
+            return WorkerHttpResult(405, resp_headers, {"error": "Method not allowed"})
+        if not _check_bearer(req_headers, _env_get(env, "WORKER_AUTH_TOKEN")):
+            return WorkerHttpResult(401, resp_headers, {"error": "Unauthorized"})
+        try:
+            body = json.loads(raw_body or "{}")
+        except ValueError:
+            return WorkerHttpResult(400, resp_headers, {"error": "Invalid JSON body"})
+        task = body.get("task") or body.get("prompt") if isinstance(body, dict) else None
+        if not isinstance(task, str) or not task.strip() or "\x00" in task:
+            return WorkerHttpResult(400, resp_headers, {"error": "task must be non-empty string"})
+        clean_task = task.strip()[:2000]
+        return WorkerHttpResult(
+            200,
+            resp_headers,
+            {
+                "task": clean_task,
+                "mode": "edge-plan",
+                "cost_usd": 0.0,
+                "trace_id": trace_id,
+                "steps": [
+                    {"step": 1, "tool": "workspace.list_files", "purpose": "Inspect repo tree"},
+                    {"step": 2, "tool": "memory.search", "purpose": "Recall L1 verified hits"},
+                    {"step": 3, "tool": "sandbox.run_python", "purpose": "Run isolated compute"},
+                    {"step": 4, "tool": "sandbox.write_artifact", "purpose": "Verify SHA-256"},
+                ],
+                "studio_hint": "Execute full multi-step sandbox locally via ai2027-py27 studio",
             },
         )
 

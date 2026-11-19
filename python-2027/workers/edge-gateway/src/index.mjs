@@ -120,8 +120,52 @@ export async function handleGatewayFetch(
         protocol: "Python 2027 Software Excellence Protocol",
         gateway: "cloudflare-edge-gateway",
         providers: ["upstream", "gemini", "nvidia", "deterministic"],
+        agent_endpoints: ["/v1/route", "/v1/agent/plan"],
         cost_usd: 0.0,
         trace_id: traceId,
+      },
+      200,
+      headers,
+    );
+  }
+
+  if (url.pathname === "/v1/agent/plan") {
+    if (method !== "POST") {
+      return jsonResponse({ error: "Method not allowed" }, 405, headers);
+    }
+    const expectedToken = String(env.GATEWAY_TOKEN || "").trim();
+    if (expectedToken) {
+      const auth = request.headers.get("authorization") || "";
+      const supplied = auth.toLowerCase().startsWith("bearer ")
+        ? auth.slice(7).trim()
+        : "";
+      if (!supplied || !constantTimeEqual(supplied, expectedToken)) {
+        return jsonResponse({ error: "Unauthorized" }, 401, headers);
+      }
+    }
+    const rawBody = await request.text();
+    let payload;
+    try {
+      payload = JSON.parse(rawBody || "{}");
+    } catch {
+      return jsonResponse({ error: "Invalid JSON body" }, 400, headers);
+    }
+    const rawTask = payload && typeof payload === "object" ? (payload.task || payload.prompt) : null;
+    if (typeof rawTask !== "string" || !rawTask.trim()) {
+      return jsonResponse({ error: "task must be a non-empty string" }, 400, headers);
+    }
+    return jsonResponse(
+      {
+        task: rawTask.trim().slice(0, 2000),
+        gateway: "cloudflare-edge-gateway",
+        cost_usd: 0.0,
+        trace_id: traceId,
+        steps: [
+          { step: 1, tool: "workspace.list_files", purpose: "Discover project context" },
+          { step: 2, tool: "memory.search", purpose: "Recall verified L1 knowledge" },
+          { step: 3, tool: "sandbox.run_python", purpose: "Execute bounded computation" },
+          { step: 4, tool: "sandbox.write_artifact", purpose: "Deliver L0 SHA-256 artifact" },
+        ],
       },
       200,
       headers,
