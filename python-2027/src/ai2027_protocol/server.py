@@ -9,10 +9,18 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Query, Request, Response
+from pydantic import Field
 
 from .ai_providers import describe_provider_readiness
 from .auditor import ProtocolAuditor
 from .benchmark import run_benchmark_suite
+from .celia_memory import (
+    CeliaIndexSummary,
+    CeliaMemoryHit,
+    CeliaMemoryStats,
+    CeliaMemoryStore,
+    OllamaEmbeddingBackend,
+)
 from .contracts import (
     AuditRequest,
     BatchPromptRequest,
@@ -23,8 +31,11 @@ from .contracts import (
     ProtocolAuditReport,
     ProviderStatus,
     SpanRecord,
+    StrictModel,
     TelemetrySink,
 )
+from .ollama_layer import OllamaRuntimeClient
+from .ollama_readiness import OllamaVerificationReport, verify_ollama_capabilities
 from .router import AllProvidersFailedError, FreeFirstRouter
 from .security import SecurityValidationError
 from .studio import build_studio_router
@@ -49,6 +60,20 @@ PROTOCOL_RULES: tuple[dict[str, str | int], ...] = (
     {"id": 9, "title": "Delivery", "spec": "Automated CI + $0 Workers & Google Colab targets"},
     {"id": 10, "title": "Excellence", "spec": "First-run ready, 1-command demo, 1-line docstrings"},
 )
+
+
+class RagIndexRequest(StrictModel):
+    """Validated request indexing workspace docs into persistent Celia Memory RAG."""
+
+    paths: tuple[str, ...] = Field(default=("docs", "README.md"), min_length=1, max_length=16)
+    max_files: int = Field(default=40, ge=1, le=200)
+
+
+class RagSearchRequest(StrictModel):
+    """Validated semantic/lexical RAG query over persistent Celia Memory."""
+
+    query: str = Field(min_length=1, max_length=512)
+    k: int = Field(default=5, ge=1, le=20)
 
 
 def create_app(
@@ -224,5 +249,43 @@ def create_app(
         report = await run_benchmark_suite(iterations=8, telemetry=runtime)
         response.headers["X-Trace-Id"] = report.trace_id
         return report
+
+    def _build_celia_store() -> CeliaMemoryStore:
+        client = OllamaRuntimeClient()
+        backend = OllamaEmbeddingBackend(client) if client.is_configured() else None
+        db_file = (resolved_studio_dir / "celia_memory.sqlite3").resolve()
+        return CeliaMemoryStore(db_file, backend=backend, allow_lexical_fallback=True)
+
+    @app.get("/v1/ollama/status", response_model=OllamaVerificationReport)
+    async def ollama_status(live: bool = Query(default=False)) -> OllamaVerificationReport:
+        """Report Phase-0 host hardware readiness and optional live Ollama verification."""
+        return await verify_ollama_capabilities(workspace_root=root, run_live_inference=live)
+
+    @app.get("/v1/memory/rag/stats", response_model=CeliaMemoryStats)
+    async def celia_rag_stats() -> CeliaMemoryStats:
+        """Return persistent Celia Memory SQLite chunk and backend metrics."""
+        return await _build_celia_store().stats()
+
+    @app.post("/v1/memory/rag/index", response_model=CeliaIndexSummary)
+    async def celia_rag_index(request: RagIndexRequest) -> CeliaIndexSummary:
+        """Index validated workspace documentation paths into Celia Memory SQLite."""
+        if is_read_only:
+            raise HTTPException(
+                status_code=403, detail="Service is running in AI2027_READ_ONLY mode."
+            )
+        try:
+            return await _build_celia_store().index_paths(
+                root, request.paths, max_files=request.max_files
+            )
+        except SecurityValidationError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/v1/memory/rag/search", response_model=list[CeliaMemoryHit])
+    async def celia_rag_search(request: RagSearchRequest) -> list[CeliaMemoryHit]:
+        """Search persistent Celia Memory SQLite RAG without hitting unverified claims."""
+        try:
+            return await _build_celia_store().search(request.query, k=request.k)
+        except SecurityValidationError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     return app

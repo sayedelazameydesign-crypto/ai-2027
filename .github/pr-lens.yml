@@ -1,0 +1,29 @@
+schemaVersion: "0.3.1"
+lenses:
+  - architecture
+  - data-flow
+branding: true
+map:
+  exclude:
+    - "python-2027/uv.lock"
+  rename:
+    - match: python-2027/src/ai2027_protocol/budget.py
+      to: BudgetGuard ($0 Policy)
+    - match: python-2027/src/ai2027_protocol/compliance.py
+      to: 48-Project Registry
+    - match: python-2027/workers/edge-gateway/src/index.mjs
+      to: Edge Gateway Worker
+    - match: python-2027/workers/python-worker/src/worker_guard.py
+      to: Worker Security Guard
+  lane:
+    - match: python-2027/src/ai2027_protocol/**
+      lane: python-protocol
+    - match: python-2027/workers/**
+      lane: cloudflare-edge
+    - match: .github/**
+      lane: ci-pipeline
+  group:
+    - match: python-2027/workers/edge-gateway/**
+      group: edge-gateway
+    - match: python-2027/workers/python-worker/**
+      group: python-worker

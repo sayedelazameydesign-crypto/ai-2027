@@ -17,11 +17,20 @@ from .auditor import ProtocolAuditor, format_audit_markdown
 from .auditor_ast import SKIP_DIRS
 from .bridges import ConnectorsBridge, KernelSandboxBridge, MemoryBridge
 from .connector_hub_bridge import LiveConnectorClient
-from .contracts import StrictModel
+from .contracts import (
+    StrictModel as StrictModel,
+)
+from .contracts import (
+    ToolInvocation as ToolInvocation,
+)
+from .contracts import (
+    ToolSpec as ToolSpec,
+)
 from .security import SecurityValidationError, redact_secrets, resolve_safe_path
 from .tools_advanced import (
     connector_read_tool,
     connector_search_tool,
+    memory_rag_search_tool,
     run_sandbox_tests,
     verify_sandbox_artifact,
     workspace_git_diff,
@@ -31,22 +40,6 @@ from .tools_advanced import (
 _MAX_READ_BYTES = 48_000
 _MAX_PROCESS_OUTPUT_BYTES = 24_000
 _SECRET_FILENAMES = frozenset({".env", ".env.local", "env.local", "local-pairings.json"})
-
-
-class ToolSpec(StrictModel):
-    """Metadata descriptor advertised to the planner and Studio UI."""
-
-    name: str
-    description: str
-    read_only: bool
-    parameters_hint: str
-
-
-class ToolInvocation(StrictModel):
-    """Validated tool call issued by an autonomous planning step."""
-
-    tool: str = Field(min_length=2, max_length=64)
-    args: dict[str, Any] = Field(default_factory=dict)
 
 
 class ToolOutcome(StrictModel):
@@ -182,6 +175,12 @@ _TOOL_SPECS: tuple[ToolSpec, ...] = (
         parameters_hint='{"query": "agi-system verification", "k": 5}',
     ),
     ToolSpec(
+        name="memory.rag_search",
+        description="Search Celia Memory persistent SQLite RAG across docs and notes.",
+        read_only=True,
+        parameters_hint='{"query": "Ollama 4GB profile", "k": 5, "paths": ["docs", "README.md"]}',
+    ),
+    ToolSpec(
         name="repo.audit",
         description="Audit a relative repository module against the 10 Python 2027 rules.",
         read_only=True,
@@ -290,6 +289,8 @@ class SandboxToolRuntime:
             return await workspace_git_diff(args, ctx)
         if tool == "memory.search":
             return await self._memory_search(args, ctx)
+        if tool == "memory.rag_search":
+            return await memory_rag_search_tool(args, ctx)
         if tool == "repo.audit":
             return await self._repo_audit(args, ctx)
         if tool == "connector.inspect":

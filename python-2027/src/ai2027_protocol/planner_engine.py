@@ -8,10 +8,23 @@ from collections.abc import Sequence
 from html import escape as html_escape
 from typing import Any, Protocol, runtime_checkable
 
+from pydantic import BaseModel, Field
+
+from .ai_providers import ProviderError
 from .contracts import BillingTier, PromptRequest, ProviderAttempt, ProviderKind, StrictModel
+from .ollama_layer import OllamaRuntimeClient
 from .router import AllProvidersFailedError, FreeFirstRouter
 from .security import redact_secrets
 from .tools import ToolExecutor, ToolInvocation, ToolOutcome
+
+
+class _PlannerWireSchema(BaseModel):
+    """JSON Schema sent to Ollama Structured Outputs (avoids tuple/StrictModel limits)."""
+
+    thought: str = "Executing next step."
+    plan: list[str] = Field(default_factory=list)
+    actions: list[ToolInvocation] = Field(default_factory=list)
+    final_answer: str | None = None
 
 
 class PlannerDecision(StrictModel):
@@ -314,9 +327,15 @@ def offline_decision(
 class FreeFirstAgentPlanner:
     """Chooses between live Free-First LLM planning and offline deterministic execution."""
 
-    def __init__(self, router: FreeFirstRouter) -> None:
-        """Bind a FreeFirstRouter instance for remote/local LLM step inference."""
+    def __init__(
+        self,
+        router: FreeFirstRouter,
+        *,
+        ollama_client: OllamaRuntimeClient | None = None,
+    ) -> None:
+        """Bind a FreeFirstRouter and optional OllamaRuntimeClient for JSON Schema planning."""
         self._router = router
+        self._ollama_client = ollama_client
 
     def _has_live_llm(
         self,
@@ -387,6 +406,35 @@ class FreeFirstAgentPlanner:
             if preferred_provider is not None
             else None
         )
+        if (
+            preferred_provider == ProviderKind.OLLAMA
+            and self._ollama_client is not None
+            and self._ollama_client.is_configured()
+        ):
+            try:
+                wire = await self._ollama_client.chat_structured(
+                    user_prompt,
+                    _PlannerWireSchema,
+                    system_prompt=system_prompt,
+                    temperature=0.0,
+                )
+                decision = PlannerDecision(
+                    thought=wire.thought,
+                    plan=tuple(wire.plan),
+                    actions=tuple(wire.actions),
+                    final_answer=wire.final_answer,
+                    billing_tier=BillingTier.LOCAL,
+                    cost_known=True,
+                    cost_usd=0.0,
+                )
+                return (
+                    decision,
+                    ProviderKind.OLLAMA.value,
+                    self._ollama_client.profile.chat_model,
+                    False,
+                )
+            except (ProviderError, ValueError):
+                pass
         try:
             resp = await self._router.route(
                 PromptRequest(

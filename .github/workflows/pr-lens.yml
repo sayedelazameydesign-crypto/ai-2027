@@ -1,0 +1,108 @@
+# PR Lens visual architecture & data-flow mapping workflow (main-only dispatch).
+# Security note: complies with docs/SECRETS.md and scripts/workflow_secret_audit.py --assert:
+# - Never runs on untrusted pull_request events or passes secrets under `with:`.
+# - Passes GEMINI_API_KEY solely via step `env: PR_LENS_API_KEY`.
+# - Note: maps changes via @coldtea/pr-lens-cli without the step-1 GitHub App code review.
+name: PR Lens Architecture Map
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: "Optional PR number to record in provenance"
+        required: false
+        type: string
+        default: ""
+      base_ref:
+        description: "Base commit/ref for diff measurement"
+        required: false
+        type: string
+        default: "HEAD~1"
+      head_ref:
+        description: "Head commit/ref for diff measurement"
+        required: false
+        type: string
+        default: "HEAD"
+      provider:
+        description: "Model provider (gemini | openai | openai-compatible)"
+        required: false
+        type: choice
+        default: "gemini"
+        options: ["gemini", "openai", "openai-compatible"]
+      model:
+        description: "Model identifier used by pr-lens analyze"
+        required: false
+        type: string
+        default: "gemini-2.5-flash"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-lens-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  map-change:
+    name: Validate & Render PR Lens Architecture Map (main only)
+    if: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4
+        with:
+          node-version: "22"
+
+      - name: Validate .github/pr-lens.yml overlay
+        run: npx --yes @coldtea/pr-lens-cli@0.15.2 validate .github/pr-lens.yml
+
+      - name: Analyze, validate, and render PR Lens graph safely
+        env:
+          PR_LENS_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          PR_LENS_BASE_REF: ${{ inputs.base_ref || 'HEAD~1' }}
+          PR_LENS_HEAD_REF: ${{ inputs.head_ref || 'HEAD' }}
+          PR_LENS_PR_NUMBER: ${{ inputs.pr_number || '' }}
+          PR_LENS_PROVIDER: ${{ inputs.provider || 'gemini' }}
+          PR_LENS_MODEL: ${{ inputs.model || 'gemini-2.5-flash' }}
+        run: |
+          set +x
+          set -euo pipefail
+          if [ -z "${PR_LENS_API_KEY:-}" ]; then
+            echo "GEMINI_API_KEY absent — skipping live pr-lens analyze; validating stored map if present."
+            if [ -f .github/pr-lens.map.json ]; then
+              npx --yes @coldtea/pr-lens-cli@0.15.2 validate .github/pr-lens.map.json
+            fi
+            exit 0
+          fi
+          mkdir -p .pr-lens
+          args=(
+            analyze
+            --base "$PR_LENS_BASE_REF"
+            --head "$PR_LENS_HEAD_REF"
+            --provider "$PR_LENS_PROVIDER"
+            --model "$PR_LENS_MODEL"
+            --api-key-env PR_LENS_API_KEY
+            -o .pr-lens/graph.json
+          )
+          if [ -n "$PR_LENS_PR_NUMBER" ]; then
+            args+=(--pr "$PR_LENS_PR_NUMBER")
+          fi
+          npx --yes @coldtea/pr-lens-cli@0.15.2 "${args[@]}"
+          npx --yes @coldtea/pr-lens-cli@0.15.2 validate .pr-lens/graph.json
+          npx --yes @coldtea/pr-lens-cli@0.15.2 render .pr-lens/graph.json
+          echo "### PR Lens Map Generated" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Base: \`$PR_LENS_BASE_REF\` · Head: \`$PR_LENS_HEAD_REF\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Note: CLI workflow renders visual maps without step-1 GitHub App line review." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload rendered PR Lens SVG & manifest artifacts
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        with:
+          name: pr-lens-diagrams-${{ github.sha }}
+          path: .pr-lens/
+          if-no-files-found: ignore
