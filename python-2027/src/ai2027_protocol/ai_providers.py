@@ -26,11 +26,11 @@ def _env_or_default(name: str, default: str) -> str:
 
 
 def credential_label(secret: str) -> str:
-    """Return a non-sensitive presence and length label without leaking key material."""
+    """Return a static, non-sensitive presence label without exposing key or length."""
     cleaned = secret.strip()
     if not cleaned or "placeholder" in cleaned.lower():
         return "absent"
-    return f"present ({len(cleaned)} chars)"
+    return "configured"
 
 
 class ProviderError(RuntimeError):
@@ -574,8 +574,11 @@ def describe_provider_readiness(
     statuses: list[ProviderStatus] = []
     for item in items:
         env_var = str(getattr(item, "env_var", "CUSTOM"))
-        cred_state = str(
-            getattr(item, "credential_state", "configured" if item.is_configured() else "absent")
+        is_ready = bool(item.is_configured())
+        cred_state = (
+            "always_ready"
+            if item.kind == ProviderKind.DETERMINISTIC
+            else ("configured" if is_ready else "absent")
         )
         decision = guard.evaluate_provider(item)
         statuses.append(

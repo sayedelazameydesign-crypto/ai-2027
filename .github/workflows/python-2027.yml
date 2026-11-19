@@ -114,19 +114,22 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4
         with:
-          node-version: "20"
+          node-version: "22"
       - name: Edge Gateway unit + fail-closed + budget + failover tests
         run: node --test python-2027/workers/edge-gateway/tests/gateway.test.mjs
-      - name: Wrangler dry-run + local edge-gateway smoke (NOT live Cloudflare deploy)
+      - name: Install Wrangler and verify dry-run bundles (NOT live Cloudflare deploy)
         run: |
           npm --prefix /tmp/wrangler-ci install --no-save wrangler@4.165.0
           /tmp/wrangler-ci/node_modules/.bin/wrangler deploy --dry-run --config python-2027/workers/edge-gateway/wrangler.jsonc
           /tmp/wrangler-ci/node_modules/.bin/wrangler deploy --dry-run --config python-2027/workers/python-worker/wrangler.toml
-          /tmp/wrangler-ci/node_modules/.bin/wrangler dev --local --port 8799 --config python-2027/workers/edge-gateway/wrangler.jsonc > /tmp/gw-dev.log 2>&1 &
+      - name: Edge Gateway local wrangler dev smoke (NOT live Cloudflare deploy)
+        run: |
+          /tmp/wrangler-ci/node_modules/.bin/wrangler dev --local --ip 127.0.0.1 --port 8799 --config python-2027/workers/edge-gateway/wrangler.jsonc > /tmp/gw-dev.log 2>&1 &
           GW_PID=$!
           trap 'kill "$GW_PID" >/dev/null 2>&1 || true' EXIT
           node -e '
-            const deadline = Date.now() + 20000;
+            const fs = require("node:fs");
+            const deadline = Date.now() + 30000;
             async function poll() {
               while (Date.now() < deadline) {
                 try {
@@ -138,6 +141,9 @@ jobs:
                   }
                 } catch {}
                 await new Promise((r) => setTimeout(r, 300));
+              }
+              if (fs.existsSync("/tmp/gw-dev.log")) {
+                console.error(fs.readFileSync("/tmp/gw-dev.log", "utf8"));
               }
               console.error("edge-gateway wrangler dev did not respond");
               process.exit(1);
