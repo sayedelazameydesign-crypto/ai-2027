@@ -13,6 +13,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from .auditor_ast import SKIP_DIRS
+from .celia_memory import CeliaMemoryStore, OllamaEmbeddingBackend
+from .ollama_layer import OllamaRuntimeClient
 from .security import SecurityValidationError, redact_secrets, resolve_safe_path
 
 if TYPE_CHECKING:
@@ -422,9 +424,45 @@ async def workspace_grep_tool(args: Mapping[str, Any], ctx: ToolContext) -> Tool
     )
 
 
+async def memory_rag_search_tool(args: Mapping[str, Any], ctx: ToolContext) -> ToolOutcome:
+    """Query persistent Celia Memory SQLite RAG, indexing requested workspace docs if empty."""
+    query = str(args.get("query", "")).strip()
+    if not query:
+        raise SecurityValidationError("memory.rag_search requires a non-empty query.")
+    k = max(1, min(int(args.get("k", 5)), 12))
+    raw_paths = args.get("paths")
+    index_paths = (
+        [str(p).strip() for p in raw_paths if str(p).strip()]
+        if isinstance(raw_paths, list | tuple) and raw_paths
+        else ["docs", "README.md"]
+    )
+    db_path = (ctx.sessions_root.parent / "celia_memory.sqlite3").resolve()
+    ollama_client = OllamaRuntimeClient()
+    backend = OllamaEmbeddingBackend(ollama_client) if ollama_client.is_configured() else None
+    store = CeliaMemoryStore(db_path, backend=backend, allow_lexical_fallback=True)
+    stats = await store.stats()
+    if stats.total_chunks == 0:
+        valid_targets = [p for p in index_paths if (ctx.workspace_root / p).exists()] or [
+            "README.md"
+        ]
+        await store.index_paths(ctx.workspace_root, valid_targets, max_files=30)
+    hits = await store.search(query, k=k)
+    lines = [
+        f"[{h.score:.3f} | {h.retrieval_mode} | {h.source_path} § {h.heading}] {h.snippet}"
+        for h in hits
+    ]
+    return _outcome(
+        "memory.rag_search",
+        ok=True,
+        summary=f"Celia RAG returned {len(hits)} hit(s)",
+        output="\n".join(lines) if lines else "No matching Celia RAG chunks found.",
+    )
+
+
 __all__ = [
     "connector_read_tool",
     "connector_search_tool",
+    "memory_rag_search_tool",
     "run_sandbox_tests",
     "verify_sandbox_artifact",
     "workspace_git_diff",

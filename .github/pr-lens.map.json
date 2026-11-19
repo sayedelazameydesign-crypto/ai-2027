@@ -1,0 +1,631 @@
+{
+  "schemaVersion": "0.3.1",
+  "kind": "graph",
+  "id": "sayedelazameydesign-crypto/ai-2027",
+  "generatedAt": "2026-11-19T10:26:37.880Z",
+  "title": "Python 2027 Protocol — Production Hardening (PR #64)",
+  "summary": "Enforces $0 spending guardrails across FreeFirstRouter and Cloudflare Workers, adds persistent OpenTelemetry spans and a 48-project ADR-0002 compliance registry, pins uv.lock, and hardens Studio UI and CI workflows across 35 files.",
+  "lenses": [
+    "architecture",
+    "data-flow"
+  ],
+  "provenance": {
+    "repo": {
+      "owner": "sayedelazameydesign-crypto",
+      "name": "ai-2027",
+      "host": "github.com"
+    },
+    "base": {
+      "sha": "cbabaa45f12cb1213b80ef1f3b9d62a5982691f4",
+      "ref": "arena/115d4087-ai-2027"
+    },
+    "head": {
+      "sha": "cbabaa45f12cb1213b80ef1f3b9d62a5982691f4",
+      "ref": "arena/115d4087-ai-2027"
+    },
+    "pullRequest": {
+      "number": 64,
+      "title": "Python 2027 Protocol — Production Hardening",
+      "url": "https://github.com/sayedelazameydesign-crypto/ai-2027/pull/64"
+    },
+    "generator": {
+      "name": "pr-lens-skill",
+      "version": "0.15.2"
+    }
+  },
+  "lanes": [
+    {
+      "id": "studio-client",
+      "label": "Studio UI & CLI",
+      "subtitle": "Operator Surface",
+      "order": 0
+    },
+    {
+      "id": "python-protocol",
+      "label": "Python 2027 Core",
+      "subtitle": "FastAPI + Router + Guards",
+      "order": 1
+    },
+    {
+      "id": "cloudflare-edge",
+      "label": "Cloudflare Edge ($0)",
+      "subtitle": "Workers + Dry-Run",
+      "order": 2
+    },
+    {
+      "id": "ci-pipeline",
+      "label": "CI & Dependencies",
+      "subtitle": "GitHub Actions + uv.lock",
+      "order": 3
+    }
+  ],
+  "nodes": [
+    {
+      "id": "studio-ui",
+      "label": "Studio Web UI",
+      "kind": "ui",
+      "delta": "unchanged",
+      "lane": "python-protocol",
+      "subtitle": "EN/AR Budget & Compliance Tab",
+      "summary": "Displays live MAX_SPEND=0 blocks, SHA-256 artifact proofs, and 48-project compliance cards.",
+      "files": [
+        {
+          "path": "python-2027/src/ai2027_protocol/static/studio.html",
+          "startLine": 1,
+          "endLine": 941,
+          "revision": "head"
+        }
+      ],
+      "badges": [
+        "EN/AR"
+      ]
+    },
+    {
+      "id": "protocol-cli",
+      "label": "ai2027-py27 CLI",
+      "kind": "app",
+      "delta": "unchanged",
+      "lane": "python-protocol",
+      "subtitle": "registry & live commands",
+      "summary": "Adds registry compliance output and credential_state telemetry reporting.",
+      "files": [
+        {
+          "path": "python-2027/src/ai2027_protocol/cli.py",
+          "startLine": 1,
+          "endLine": 470,
+          "revision": "head"
+        }
+      ],
+      "badges": []
+    },
+    {
+      "id": "fastapi-server",
+      "label": "FastAPI Studio API",
+      "kind": "route",
+      "delta": "unchanged",
+      "lane": "python-protocol",
+      "subtitle": "/v1/studio/compliance",
+      "summary": "Serves compliance registry, budget summary, and sanitized telemetry traces.",
+      "files": [
+        {
+          "path": "python-2027/src/ai2027_protocol/server.py",
+          "startLine": 1,
+          "endLine": 291,
+          "revision": "head"
+        },
+        {
+          "path": "python-2027/src/ai2027_protocol/studio.py",
+          "startLine": 1,
+          "endLine": 459,
+          "revision": "head"
+        }
+      ],
+      "badges": []
+    },
+    {
+      "id": "free-first-router",
+      "label": "FreeFirstRouter",
+      "kind": "service",
+      "delta": "unchanged",
+      "lane": "python-protocol",
+      "subtitle": "LOCAL -> FREE_TIER -> FALLBACK",
+      "summary": "Queries BudgetGuard before calling any provider and records per-attempt cost_status.",
+      "files": [
+        {
+          "path": "python-2027/src/ai2027_protocol/router.py",
+          "startLine": 1,
+          "endLine": 319,
+          "revision": "head"
+        }
+      ],
+      "badges": []
+    },
+    {
+      "id": "budget-guard",
+      "label": "BudgetGuard ($0 Policy)",
+      "kind": "module",
+      "delta": "unchanged",
+      "lane": "python-protocol",
+      "subtitle": "AI2027_MAX_SPEND_USD=0",
+      "summary": "Classifies LOCAL, FREE_TIER, UNKNOWN_COST, and PAID providers; blocks paid/unknown calls at $0.",
+      "files": [
+        {
+          "path": "python-2027/src/ai2027_protocol/budget.py",
+          "startLine": 1,
+          "endLine": 274,
+          "revision": "head"
+        }
+      ],
+      "badges": [
+        "$0 enforce"
+      ]
+    },
+    {
+      "id": "compliance-registry",
+      "label": "48-Project Registry",
+      "kind": "module",
+      "delta": "unchanged",
+      "lane": "python-protocol",
+      "subtitle": "48-Project ADR-0002 Scan",
+      "summary": "Maps catalog.json against kernel exemptions, dependency locks, and protocol compliance scores.",
+      "files": [
+        {
+          "path": "python-2027/src/ai2027_protocol/compliance.py",
+          "startLine": 1,
+          "endLine": 419,
+          "revision": "head"
+        }
+      ],
+      "badges": [
+        "48 projects"
+      ]
+    },
+    {
+      "id": "otel-telemetry",
+      "label": "OTel Telemetry Sink",
+      "kind": "module",
+      "delta": "unchanged",
+      "lane": "python-protocol",
+      "subtitle": "JSONL Persistent Spans",
+      "summary": "Persists sanitized OpenTelemetry spans and redacts credential strings before disk writes.",
+      "files": [
+        {
+          "path": "python-2027/src/ai2027_protocol/telemetry.py",
+          "startLine": 1,
+          "endLine": 413,
+          "revision": "head"
+        }
+      ],
+      "badges": []
+    },
+    {
+      "id": "ai-providers",
+      "label": "Provider Adapters",
+      "kind": "module",
+      "delta": "unchanged",
+      "lane": "python-protocol",
+      "subtitle": "BillingTier Provenance",
+      "summary": "Exposes env var provenance and BillingTier classification without leaking secrets.",
+      "files": [
+        {
+          "path": "python-2027/src/ai2027_protocol/ai_providers.py",
+          "startLine": 1,
+          "endLine": 611,
+          "revision": "head"
+        }
+      ],
+      "badges": []
+    },
+    {
+      "id": "core-contracts",
+      "label": "Pydantic V2 Contracts",
+      "kind": "module",
+      "delta": "unchanged",
+      "lane": "python-protocol",
+      "subtitle": "StrictModel + Schemas",
+      "summary": "Shared immutable models carrying CostStatus, BillingTier, and attempt telemetry.",
+      "files": [
+        {
+          "path": "python-2027/src/ai2027_protocol/contracts.py",
+          "startLine": 1,
+          "endLine": 308,
+          "revision": "head"
+        }
+      ],
+      "badges": []
+    },
+    {
+      "id": "edge-gateway",
+      "label": "Edge Gateway Worker",
+      "kind": "service",
+      "delta": "unchanged",
+      "lane": "cloudflare-edge",
+      "group": "edge-gateway",
+      "subtitle": "Cloudflare JS Worker",
+      "summary": "Adds fail-closed budget headers, rate guard, and deterministic failover routing.",
+      "files": [
+        {
+          "path": "python-2027/workers/edge-gateway/src/index.mjs",
+          "startLine": 1,
+          "endLine": 493,
+          "revision": "head"
+        }
+      ],
+      "badges": []
+    },
+    {
+      "id": "python-worker",
+      "label": "Python Edge Worker",
+      "kind": "service",
+      "delta": "unchanged",
+      "lane": "cloudflare-edge",
+      "group": "python-worker",
+      "subtitle": "Pyodide Worker Entry",
+      "summary": "Delegates SSRF, path containment, and header sanitization to worker_guard.",
+      "files": [
+        {
+          "path": "python-2027/workers/python-worker/src/entry.py",
+          "startLine": 1,
+          "endLine": 603,
+          "revision": "head"
+        }
+      ],
+      "badges": []
+    },
+    {
+      "id": "worker-guard",
+      "label": "Worker Security Guard",
+      "kind": "module",
+      "delta": "unchanged",
+      "lane": "cloudflare-edge",
+      "group": "python-worker",
+      "subtitle": "SSRF + Path + Token Redact",
+      "summary": "Zero-dependency Pyodide-safe security guard shared with python-worker tests.",
+      "files": [
+        {
+          "path": "python-2027/workers/python-worker/src/worker_guard.py",
+          "startLine": 1,
+          "endLine": 231,
+          "revision": "head"
+        }
+      ],
+      "badges": [
+        "fail-closed"
+      ]
+    },
+    {
+      "id": "ci-workflow",
+      "label": "Python 2027 CI",
+      "kind": "job",
+      "delta": "unchanged",
+      "lane": "ci-pipeline",
+      "subtitle": "Py 3.13/3.14 + Edge + Live",
+      "summary": "Enforces uv.lock sync, >90% coverage, Wrangler dry-run, and main-only key checks.",
+      "files": [
+        {
+          "path": ".github/workflows/python-2027.yml",
+          "startLine": 1,
+          "endLine": 229,
+          "revision": "head"
+        }
+      ],
+      "badges": []
+    }
+  ],
+  "edges": [
+    {
+      "id": "studio-to-server",
+      "from": "studio-ui",
+      "to": "fastapi-server",
+      "kind": "http",
+      "delta": "unchanged",
+      "label": "GET /v1/studio/compliance",
+      "emphasis": "normal",
+      "animated": true,
+      "files": []
+    },
+    {
+      "id": "cli-to-compliance",
+      "from": "protocol-cli",
+      "to": "compliance-registry",
+      "kind": "call",
+      "delta": "unchanged",
+      "label": "ai2027-py27 registry",
+      "emphasis": "normal",
+      "animated": false,
+      "files": []
+    },
+    {
+      "id": "server-to-compliance",
+      "from": "fastapi-server",
+      "to": "compliance-registry",
+      "kind": "call",
+      "delta": "unchanged",
+      "label": "build_compliance_registry()",
+      "emphasis": "normal",
+      "animated": false,
+      "files": []
+    },
+    {
+      "id": "server-to-router",
+      "from": "fastapi-server",
+      "to": "free-first-router",
+      "kind": "call",
+      "delta": "unchanged",
+      "label": "route()",
+      "emphasis": "normal",
+      "animated": false,
+      "files": []
+    },
+    {
+      "id": "router-to-budget",
+      "from": "free-first-router",
+      "to": "budget-guard",
+      "kind": "call",
+      "delta": "unchanged",
+      "label": "evaluate_provider() ($0)",
+      "emphasis": "hero",
+      "animated": true,
+      "summary": "Every outbound LLM call passes BudgetGuard before network dispatch; paid/unknown tiers block at $0.",
+      "files": []
+    },
+    {
+      "id": "router-to-providers",
+      "from": "free-first-router",
+      "to": "ai-providers",
+      "kind": "call",
+      "delta": "unchanged",
+      "label": "complete() when allowed",
+      "emphasis": "normal",
+      "animated": true,
+      "files": []
+    },
+    {
+      "id": "router-to-telemetry",
+      "from": "free-first-router",
+      "to": "otel-telemetry",
+      "kind": "data",
+      "delta": "unchanged",
+      "label": "persist OTel spans",
+      "emphasis": "normal",
+      "animated": false,
+      "files": []
+    },
+    {
+      "id": "router-to-contracts",
+      "from": "free-first-router",
+      "to": "core-contracts",
+      "kind": "dependency",
+      "delta": "unchanged",
+      "emphasis": "muted",
+      "animated": false,
+      "files": []
+    },
+    {
+      "id": "edge-to-pyworker",
+      "from": "edge-gateway",
+      "to": "python-worker",
+      "kind": "http",
+      "delta": "unchanged",
+      "label": "service binding",
+      "emphasis": "normal",
+      "animated": true,
+      "files": []
+    },
+    {
+      "id": "pyworker-to-guard",
+      "from": "python-worker",
+      "to": "worker-guard",
+      "kind": "call",
+      "delta": "unchanged",
+      "label": "validate SSRF & headers",
+      "emphasis": "hero",
+      "animated": true,
+      "summary": "Worker security checks live in standalone worker_guard.py so Pyodide and pytest test identical fail-closed rules.",
+      "files": []
+    },
+    {
+      "id": "ci-to-edge",
+      "from": "ci-workflow",
+      "to": "edge-gateway",
+      "kind": "call",
+      "delta": "unchanged",
+      "label": "wrangler deploy --dry-run",
+      "emphasis": "normal",
+      "animated": false,
+      "files": []
+    }
+  ],
+  "flows": [
+    {
+      "id": "zero-budget-routing",
+      "title": "$0 Free-First routing and compliance trace",
+      "summary": "How an operator prompt or Studio request passes BudgetGuard, routes to free/local inference, and writes persistent OTel evidence.",
+      "delta": "unchanged",
+      "participants": [
+        {
+          "node": "studio-ui",
+          "label": "Studio UI"
+        },
+        {
+          "node": "fastapi-server",
+          "label": "FastAPI"
+        },
+        {
+          "node": "free-first-router",
+          "label": "Router"
+        },
+        {
+          "node": "budget-guard",
+          "label": "BudgetGuard"
+        },
+        {
+          "node": "ai-providers",
+          "label": "Provider"
+        },
+        {
+          "node": "otel-telemetry",
+          "label": "OTel Sink"
+        }
+      ],
+      "messages": [
+        {
+          "id": "ui-request",
+          "from": "studio-ui",
+          "to": "fastapi-server",
+          "label": "POST /v1/route (or /compliance)",
+          "kind": "sync",
+          "delta": "unchanged",
+          "animated": true,
+          "files": []
+        },
+        {
+          "id": "dispatch-router",
+          "from": "fastapi-server",
+          "to": "free-first-router",
+          "label": "route(PromptRequest)",
+          "kind": "sync",
+          "delta": "unchanged",
+          "animated": true,
+          "files": []
+        },
+        {
+          "id": "check-budget",
+          "from": "free-first-router",
+          "to": "budget-guard",
+          "label": "evaluate_provider() at $0",
+          "kind": "sync",
+          "delta": "unchanged",
+          "animated": true,
+          "files": []
+        },
+        {
+          "id": "budget-verdict",
+          "from": "budget-guard",
+          "to": "free-first-router",
+          "label": "ALLOW free/local | BLOCK paid/unknown",
+          "kind": "return",
+          "delta": "unchanged",
+          "animated": true,
+          "files": []
+        },
+        {
+          "id": "call-provider",
+          "from": "free-first-router",
+          "to": "ai-providers",
+          "label": "complete() on allowed free tier",
+          "kind": "sync",
+          "delta": "unchanged",
+          "animated": true,
+          "files": []
+        },
+        {
+          "id": "write-span",
+          "from": "free-first-router",
+          "to": "otel-telemetry",
+          "label": "flush redacted OTel span JSONL",
+          "kind": "async",
+          "delta": "unchanged",
+          "animated": true,
+          "files": []
+        }
+      ]
+    }
+  ],
+  "views": [
+    {
+      "id": "overview",
+      "title": "Architecture — Production Hardening blast radius",
+      "lens": "architecture",
+      "summary": "Core Python 2027 routing/guards, Cloudflare edge workers, Studio UI, and reproducible CI.",
+      "scope": {
+        "kind": "all"
+      },
+      "defaultOpen": true,
+      "children": [
+        {
+          "id": "budget-and-compliance",
+          "title": "BudgetGuard & 48-project compliance layer",
+          "lens": "architecture",
+          "summary": "Zero-spend policy enforcement, OTel persistence, and ADR-0002 compliance scanning.",
+          "scope": {
+            "kind": "selection",
+            "lanes": [],
+            "nodes": [
+              "studio-ui",
+              "fastapi-server",
+              "free-first-router",
+              "budget-guard",
+              "compliance-registry",
+              "otel-telemetry",
+              "ai-providers"
+            ],
+            "edges": [
+              "studio-to-server",
+              "server-to-compliance",
+              "server-to-router",
+              "router-to-budget",
+              "router-to-providers",
+              "router-to-telemetry"
+            ],
+            "flows": [],
+            "tables": []
+          },
+          "defaultOpen": false,
+          "children": []
+        },
+        {
+          "id": "edge-security",
+          "title": "Cloudflare Workers & worker_guard isolation",
+          "lens": "architecture",
+          "summary": "JS Edge Gateway fail-closed routing and Python Worker SSRF/path containment.",
+          "scope": {
+            "kind": "selection",
+            "lanes": [],
+            "nodes": [
+              "edge-gateway",
+              "python-worker",
+              "worker-guard",
+              "ci-workflow"
+            ],
+            "edges": [
+              "edge-to-pyworker",
+              "pyworker-to-guard",
+              "ci-to-edge"
+            ],
+            "flows": [],
+            "tables": []
+          },
+          "defaultOpen": false,
+          "children": []
+        }
+      ]
+    },
+    {
+      "id": "zero-budget-flow-view",
+      "title": "Data flow — $0 Free-First routing and telemetry",
+      "lens": "data-flow",
+      "scope": {
+        "kind": "selection",
+        "lanes": [],
+        "nodes": [],
+        "edges": [],
+        "flows": [
+          "zero-budget-routing"
+        ],
+        "tables": []
+      },
+      "defaultOpen": false,
+      "children": []
+    }
+  ],
+  "layout": {
+    "direction": "right",
+    "laneOrder": [
+      "studio-client",
+      "python-protocol",
+      "cloudflare-edge",
+      "ci-pipeline"
+    ]
+  }
+}
