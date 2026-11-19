@@ -119,22 +119,34 @@ def measure_import_and_footprint() -> dict:
 def measure_http() -> dict:
     import server as srv
 
-    srv._fresh_state()  # ensure runs/ + sandboxes/ exist (main() does this normally)
-    httpd = srv.ThreadingHTTPServer(("127.0.0.1", 0), srv.Handler)
-    port = httpd.server_address[1]
-    threading.Thread(target=httpd.serve_forever, daemon=True).start()
-    lat = []
-    body = json.dumps({"goal_type": "create_file",
-                       "params": {"path": "b.txt", "content": "x"}}).encode()
-    for _ in range(N_HTTP):
-        req = urllib.request.Request(
-            f"http://127.0.0.1:{port}/api/run", data=body,
-            headers={"Content-Type": "application/json"})
-        t0 = time.perf_counter()
-        with urllib.request.urlopen(req) as r:
-            r.read()
-        lat.append(time.perf_counter() - t0)
-    httpd.shutdown()
+    # Benchmark in an isolated disposable runtime; never reset a developer's
+    # Live Agent evidence or memory while measuring latency.
+    with tempfile.TemporaryDirectory(prefix="ai2027-live-bench-") as runtime:
+        runtime = Path(runtime)
+        srv.RUNS_DIR = runtime / "runs"
+        srv.SANDBOXES_DIR = runtime / "sandboxes"
+        srv.MEMORY_DB = runtime / "state" / "memory.db"
+        srv._prepare_state(fresh=True)
+        httpd = srv.ThreadingHTTPServer(("127.0.0.1", 0), srv.Handler)
+        port = httpd.server_address[1]
+        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+        thread.start()
+        lat = []
+        body = json.dumps({"goal_type": "create_file",
+                           "params": {"path": "b.txt", "content": "x"}}).encode()
+        try:
+            for _ in range(N_HTTP):
+                req = urllib.request.Request(
+                    f"http://127.0.0.1:{port}/api/run", data=body,
+                    headers={"Content-Type": "application/json"})
+                t0 = time.perf_counter()
+                with urllib.request.urlopen(req) as r:
+                    r.read()
+                lat.append(time.perf_counter() - t0)
+        finally:
+            httpd.shutdown()
+            httpd.server_close()
+            thread.join(timeout=5)
     return {"run_goal_end_to_end": _stats(lat)}
 
 

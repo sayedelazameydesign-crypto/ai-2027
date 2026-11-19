@@ -1,5 +1,5 @@
 # Evidence-First CI — Phase 2 / Week 1 of the 2027 roadmap.
-# Gates: 86 kernel tests + 6 wrapper tests + CLI contract, AST zero-deps proof,
+# Gates: 86 kernel tests + 7 wrapper tests + CLI contract, AST zero-deps proof,
 # reproducible benchmarks with a published jitter-aware regression ceiling,
 # 12 demo contract tests, 44 watchdog tests + 9 Phase 2B alerting tests, and
 # an installable-wheel smoke test.
@@ -57,7 +57,7 @@ jobs:
       - name: Kernel unit tests (86)
         run: python -m unittest discover -s projects/agi-system/tests -t projects/agi-system -v
 
-      - name: Live Agent wrapper tests (6)
+      - name: Live Agent wrapper tests (7)
         run: python live-agent/test_server.py -v
 
       - name: CeliaOS verified file bridge and approval tests
@@ -516,7 +516,7 @@ jobs:
               print("THIRD-PARTY:", bad, file=sys.stderr); sys.exit(1)
           print("PASS: stdlib only")
           PY
-      - name: End-to-end HUD tests (14, real HTTP + real kernel)
+      - name: End-to-end HUD tests (17, real HTTP + real kernel)
         run: python command-hud/test_hud.py -v
       - name: Red-team gate — 100 attacks, 0 breaches, 10/10 controls
         run: python command-hud/redteam.py --markdown --assert
@@ -683,7 +683,7 @@ jobs:
               sys.exit(1)
           print("PASS: zero declared dependencies")
           PY
-      - name: Deployment configs + live launcher (16 tests, real HTTP)
+      - name: Deployment configs + live launcher (18 tests, real HTTP)
         run: python deployment/test_deployment.py -v
       - name: Render adapter is stdlib-only (AST gate)
         run: |
@@ -932,6 +932,8 @@ jobs:
           exit 1
       - name: End-to-end smoke against the running servers (15 checks)
         run: python scripts/runtime_smoke.py
+      - name: Process restart persistence (Live Agent + Command HUD)
+        run: python scripts/test_runtime_restart.py -v
       - name: Stop the servers
         if: always()
         run: |

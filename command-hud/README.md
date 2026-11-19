@@ -41,7 +41,7 @@ your own machine, `http://localhost:8090` works.
 |---|---|---|
 | GET | `/` · `/app.js` | Static HUD (no CDN, no external scripts) |
 | GET | `/api/health` | Liveness + honest scope flags |
-| GET | `/api/state` | Counters, p50/p95, last 30 events, audit summary, red-team result |
+| GET | `/api/state` | Counters, p50/p95, last 30 restored/live events, audit summary, red-team result |
 | POST | `/api/run` | `{goal_type, params}` → real kernel `DecisionRecord` |
 | POST | `/api/escape` | Convenience `../../escape.txt` attack |
 | POST | `/api/pulse` | One benign real run (the live-pulse toggle uses this) |
@@ -51,10 +51,25 @@ your own machine, `http://localhost:8090` works.
 | POST | `/api/audit/refresh` | Re-run the 5 real verification probes in the background |
 | GET | `/api/record/<run_id>` | Download the persisted DecisionRecord |
 
+## Runtime and topology
+
+Normal starts preserve the gitignored `command-hud/runtime/` evidence, isolated
+memory, and append-only `state/hud-history.jsonl`; the HUD restores its latest
+400 events and backfills a run from its persisted DecisionRecord if shutdown
+interrupts the HUD-history append. Use `--fresh` only for an intentional,
+destructive reset of this HUD's local runtime.
+
+The HUD and Live Agent are separate HTTP surfaces, but **the HUD does not call
+the Live Agent service over HTTP**. `kernel_bridge.py` imports the Live Agent
+wrapper in-process and gives it a separate runtime directory. The runtime smoke
+tests exercise both services over HTTP independently; they do not claim a
+HUD-to-Live-Agent network hop. A network hop should only be added if a product
+boundary actually requires it.
+
 ## Verification (reproducible)
 
 ```bash
-python3 command-hud/test_hud.py -v          # 13 end-to-end tests, real HTTP + real kernel
+python3 command-hud/test_hud.py -v          # 17 end-to-end tests, real HTTP + real kernel
 python3 command-hud/redteam.py --markdown --assert
 python3 command-hud/audit.py --report docs/REPOSITORY-AUDIT.md --assert-probes
 python3 scripts/ci_guard.py imports         # HUD itself is stdlib-only too
@@ -84,8 +99,8 @@ fake "100/100 DENIED" badge and publishes the 9.
 | `audit.py` | **Read-only** 48-project inspection + 5 executed probes → classified JSON/Markdown |
 | `redteam.py` | 100 adversarial inputs + 10 controls against the real policy wall |
 | `static/` | Dark bilingual HUD, zero external requests |
-| `test_hud.py` | 13 end-to-end tests (real HTTP, real kernel) |
-| `runtime/` | Generated evidence trail — **gitignored**, never committed |
+| `test_hud.py` | 17 end-to-end tests (real HTTP, real kernel, restore + artifact hash) |
+| `runtime/` | Generated evidence, isolated memory, and HUD history — **gitignored**, preserved across normal restarts; `--fresh` is destructive opt-in |
 
 ## Scope discipline
 

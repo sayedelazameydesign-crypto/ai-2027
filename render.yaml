@@ -9,6 +9,9 @@
 # there is no `live_agent` package (measured: ModuleNotFoundError). The server is
 # `live-agent/server.py`, which is not importable as a module path, so the
 # launcher in deployment/ loads it explicitly.
+# No persistent disk is configured by this free blueprint: non-destructive startup
+# preserves files across process restarts only while the same instance filesystem remains.
+# Replacements/redeploys are NOT a durability guarantee; no paid/external storage is provisioned.
 services:
   - type: web
     name: ai-2027-live-agent
