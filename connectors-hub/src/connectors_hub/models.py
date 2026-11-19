@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from enum import Enum
 from typing import Any, Literal
 
@@ -112,6 +113,50 @@ class ReadResponse(BaseModel):
     resource_type: str
     resource_id: str
     data: Any
+
+
+class ReasoningRequest(BaseModel):
+    """One bounded model inference call; remote processing is never implicit."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    provider: Literal["local", "nvidia"] = "local"
+    mode: Literal["general", "gaming_case_study", "life_lessons", "tech_as_tool"] = (
+        "general"
+    )
+    prompt: str = Field(min_length=1, max_length=60_000)
+    system_prompt: str | None = Field(default=None, max_length=4_000)
+    model: str | None = Field(default=None, min_length=1, max_length=120)
+    temperature: float = Field(default=0.2, ge=0.0, le=1.5)
+    max_tokens: int = Field(default=512, ge=1, le=2_048)
+    allow_remote_processing: bool = False
+
+    @field_validator("prompt")
+    @classmethod
+    def prompt_must_not_be_blank(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("prompt must contain non-whitespace characters")
+        return value
+
+    @field_validator("model")
+    @classmethod
+    def model_name_must_be_simple(cls, value: str | None) -> str | None:
+        if value is not None and not re.fullmatch(
+            r"[A-Za-z0-9][A-Za-z0-9._/-]{0,119}", value
+        ):
+            raise ValueError("model must be a simple provider model identifier")
+        return value
+
+
+class ReasoningResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    provider: Literal["local", "nvidia"]
+    mode: Literal["general", "gaming_case_study", "life_lessons", "tech_as_tool"]
+    model: str
+    text: str
+    usage: dict[str, int] | None = None
 
 
 class SearchFailure(BaseModel):

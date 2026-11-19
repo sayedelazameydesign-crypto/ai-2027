@@ -12,7 +12,12 @@ import httpx
 
 from connectors_hub.app import create_app
 from connectors_hub.approvals import ActionError, ApprovalStore, _validate_path
-from connectors_hub.config import ConfigurationError, Settings, validate_supabase_url
+from connectors_hub.config import (
+    ConfigurationError,
+    Settings,
+    validate_lm_studio_url,
+    validate_supabase_url,
+)
 from connectors_hub.credentials import CredentialRejected, CredentialVault, VaultError
 from connectors_hub.crypto import PayloadCipher
 from connectors_hub.http_api import ProviderError, _assert_trusted_base
@@ -63,6 +68,49 @@ class ConfigAndCredentialTests(unittest.TestCase):
             settings = Settings.from_env()
         self.assertEqual(settings.supabase_search_columns, ())
         self.assertEqual(settings.supabase_search_tables, frozenset())
+
+    def test_lm_studio_url_is_restricted_to_loopback_v1_endpoint(self) -> None:
+        self.assertEqual(
+            validate_lm_studio_url("http://localhost:1234/v1/"),
+            "http://localhost:1234/v1",
+        )
+        for unsafe in (
+            "https://inference.example/v1",
+            "http://127.0.0.1:1234/other",
+            "http://user@127.0.0.1:1234/v1",
+            "http://127.0.0.1:1234/v1?key=value",
+            "http://127.0.0.1:0/v1",
+        ):
+            with self.subTest(unsafe=unsafe), self.assertRaises(ConfigurationError):
+                validate_lm_studio_url(unsafe)
+
+    def test_context_and_output_limits_are_validated_from_environment(self) -> None:
+        with patch.dict(
+            "os.environ",
+            {
+                "CONNECTORS_HUB_DATA_DIR": tempfile.gettempdir(),
+                "CONNECTORS_HUB_REASONING_CONTEXT_TOKENS": "4096",
+                "CONNECTORS_HUB_REASONING_MAX_OUTPUT_TOKENS": "512",
+            },
+            clear=True,
+        ):
+            settings = Settings.from_env()
+        self.assertEqual(settings.reasoning_context_tokens, 4096)
+        self.assertEqual(settings.reasoning_max_output_tokens, 512)
+
+        with (
+            patch.dict(
+                "os.environ",
+                {
+                    "CONNECTORS_HUB_DATA_DIR": tempfile.gettempdir(),
+                    "CONNECTORS_HUB_REASONING_CONTEXT_TOKENS": "1024",
+                    "CONNECTORS_HUB_REASONING_MAX_OUTPUT_TOKENS": "2048",
+                },
+                clear=True,
+            ),
+            self.assertRaises(ConfigurationError),
+        ):
+            Settings.from_env()
 
     def test_supabase_url_is_limited_to_project_host_or_loopback(self) -> None:
         self.assertEqual(
