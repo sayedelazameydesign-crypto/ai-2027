@@ -29,12 +29,15 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import platform
+import re
 import statistics
 import subprocess
 import sys
 import threading
 import time
+from collections import deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse
@@ -50,6 +53,7 @@ import store as memory_store      # noqa: E402  (L1 memory, stdlib sqlite3)
 
 STATIC = HERE / "static"
 MAX_BODY = 64 * 1024
+MAX_HISTORY = 400
 
 BOOT = time.time()
 LOCK = threading.RLock()
@@ -148,11 +152,175 @@ def _counters() -> dict:
     return c
 
 
-def _record(entry: dict) -> None:
+def _history_path() -> Path:
+    """HUD-owned durable event log, kept beside its isolated memory DB."""
+    if SRV is None:
+        raise RuntimeError("kernel runtime is not initialized")
+    return Path(SRV.MEMORY_DB).parent / "hud-history.jsonl"
+
+
+def _append_history_entries(entries: list[dict]) -> None:
+    """Append one batch to the local JSONL log; the caller holds ``LOCK``."""
+    if not entries:
+        return
+    path = _history_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lines = []
+    for entry in entries:
+        saved = {k: v for k, v in entry.items()
+                 if k not in ("history_persisted", "persistence_error")}
+        lines.append(json.dumps(saved, ensure_ascii=False, default=str,
+                                separators=(",", ":")) + "\n")
+    with path.open("ab") as stream:
+        stream.write("".join(lines).encode("utf-8"))
+        stream.flush()
+        os.fsync(stream.fileno())
+
+
+def _history_entry_from_run(rec: dict) -> dict | None:
+    """Rebuild a HUD summary when a kernel record survived but its last HUD
+    append was interrupted. The kernel record remains the evidence source.
+    """
+    run_id = rec.get("run_id")
+    if not isinstance(run_id, str) or not re.fullmatch(r"run_\d+_[0-9a-f]{8}", run_id):
+        return None
+    if (rec.get("sandbox") or run_id) != run_id:
+        return None
+    goal = rec.get("goal") if isinstance(rec.get("goal"), dict) else {}
+    params = goal.get("params") if isinstance(goal.get("params"), dict) else {}
+    try:
+        started = float(rec.get("started_at") or time.time())
+        finished = float(rec.get("finished_at") or started)
+    except (TypeError, ValueError):
+        started, finished = time.time(), time.time()
+    evidence = rec.get("evidence") if isinstance(rec.get("evidence"), list) else []
+    checks = evidence[0].get("checks", {}) if evidence and isinstance(evidence[0], dict) else {}
+    if not isinstance(checks, dict):
+        checks = {}
+    files = rec.get("sandbox_files") if isinstance(rec.get("sandbox_files"), list) else []
+    plan = rec.get("plan") if isinstance(rec.get("plan"), dict) else {}
+    actions = plan.get("actions") or plan.get("steps") or []
+    reasons = rec.get("denial_reasons") if isinstance(rec.get("denial_reasons"), list) else []
+    return {
+        "run_id": run_id,
+        "status": rec.get("status", "UNKNOWN"),
+        "goal_type": goal.get("goal_type", "unknown"),
+        "params": params,
+        "source": "recovered",
+        "reason": (reasons or [rec.get("error") or ""])[0],
+        "elapsed_ms": round(max(0.0, (finished - started) * 1000), 3),
+        "sha256": _sha256_of_run(rec, params),
+        "evidence_checks": checks,
+        "sandbox_files": [f for f in files
+                          if isinstance(f, str) and Path(f).name not in INTERNAL_FILES],
+        "policy": rec.get("policy"),
+        "plan_steps": len(actions) if isinstance(actions, list) else 0,
+        "memory": rec.get("memory"),
+        "ts": started,
+        "history_persisted": False,
+    }
+
+
+def restore_history() -> list[dict]:
+    """Restore recent HUD events and recover any run omitted by a crash.
+
+    The JSONL contains HUD metadata/control events; durable kernel run files
+    backfill a run if the process stopped between kernel persistence and the
+    HUD append. Invalid lines are reported, never silently rewritten/deleted.
+    """
+    if SRV is None:
+        return []
+    errors: list[str] = []
+    saved: deque[dict] = deque(maxlen=MAX_HISTORY)
+    try:
+        history_file = _history_path()
+        if history_file.is_file():
+            with history_file.open("r", encoding="utf-8") as stream:
+                for line_no, line in enumerate(stream, 1):
+                    if not line.strip():
+                        continue
+                    try:
+                        entry = json.loads(line)
+                        if not isinstance(entry, dict) or not isinstance(entry.get("run_id"), str):
+                            raise ValueError("event must be an object with a run_id")
+                        entry["history_persisted"] = True
+                        saved.append(entry)
+                    except (json.JSONDecodeError, ValueError) as exc:
+                        if len(errors) < 20:
+                            errors.append(f"{history_file.name}:{line_no}: {type(exc).__name__}")
+    except (OSError, UnicodeError) as exc:
+        errors.append(f"hud-history.jsonl: {type(exc).__name__}")
+
+    entries = list(saved)
+    recovered_events: list[dict] = []
+    logged_run_ids = {e["run_id"] for e in entries
+                      if re.fullmatch(r"run_\d+_[0-9a-f]{8}", e["run_id"])}
+    try:
+        run_files = sorted(Path(SRV.RUNS_DIR).glob("run_*.json"))[-MAX_HISTORY:]
+    except OSError as exc:
+        run_files = []
+        errors.append(f"run index: {type(exc).__name__}")
+    for path in run_files:
+        if path.is_symlink() or not re.fullmatch(r"run_\d+_[0-9a-f]{8}\.json", path.name):
+            continue
+        if path.stem in logged_run_ids:
+            continue
+        try:
+            rec = json.loads(path.read_text(encoding="utf-8"))
+            if not isinstance(rec, dict) or rec.get("run_id") != path.stem:
+                raise ValueError("record id does not match its filename")
+            recovered = _history_entry_from_run(rec)
+            if recovered:
+                entries.append(recovered)
+                recovered_events.append(recovered)
+        except (OSError, UnicodeError, ValueError, TypeError, AttributeError) as exc:
+            if len(errors) < 20:
+                errors.append(f"{path.name}: {type(exc).__name__}")
+
+    if recovered_events:
+        try:
+            with LOCK:
+                _append_history_entries(recovered_events)
+            for entry in recovered_events:
+                entry["history_persisted"] = True
+        except (OSError, RuntimeError, TypeError, ValueError) as exc:
+            if len(errors) < 20:
+                errors.append(f"history backfill: {type(exc).__name__}")
+
+    def event_order(entry: dict) -> tuple[float, str]:
+        try:
+            stamp = float(entry.get("ts") or 0)
+        except (TypeError, ValueError):
+            stamp = 0.0
+        return stamp, str(entry.get("run_id", ""))
+
+    entries.sort(key=event_order)
+    if errors:
+        with LOCK:
+            STATE["boot_errors"].extend(f"history restore warning: {e}" for e in errors)
+            del STATE["boot_errors"][:-50]
+    return entries[-MAX_HISTORY:]
+
+
+def _record(entry: dict) -> bool:
+    """Append a HUD event durably, then publish it in the bounded live view."""
+    persisted = False
+    error = None
     with LOCK:
+        try:
+            _append_history_entries([entry])
+            persisted = True
+        except (OSError, RuntimeError, TypeError, ValueError) as exc:
+            error = f"{type(exc).__name__}: {exc}"
+
+        entry["history_persisted"] = persisted
+        if error:
+            STATE["boot_errors"].append(f"HUD history persistence failed: {error}")
+            del STATE["boot_errors"][:-50]
         STATE["history"].append(entry)
-        if len(STATE["history"]) > 400:
-            del STATE["history"][:-400]
+        if len(STATE["history"]) > MAX_HISTORY:
+            del STATE["history"][:-MAX_HISTORY]
+    return persisted
 
 
 def dispatch(goal_type: str, params: dict, source: str = "manual") -> dict:
@@ -172,10 +340,13 @@ def dispatch(goal_type: str, params: dict, source: str = "manual") -> dict:
         return out
 
     t0 = time.perf_counter()
+    rec = None
     try:
         rec = SRV.run_goal(goal_type, params)
         elapsed = round((time.perf_counter() - t0) * 1000, 3)
         ev = (rec.get("evidence") or [{}])[0].get("checks", {}) if rec.get("evidence") else {}
+        plan = rec.get("plan") or {}
+        plan_steps = plan.get("actions") or plan.get("steps") or []
         out = {
             "run_id": rec.get("run_id"), "status": rec.get("status"),
             "goal_type": goal_type, "params": params, "source": source,
@@ -186,7 +357,7 @@ def dispatch(goal_type: str, params: dict, source: str = "manual") -> dict:
             "sandbox_files": [f for f in rec.get("sandbox_files", [])
                               if Path(f).name not in INTERNAL_FILES],
             "policy": rec.get("policy"),
-            "plan_steps": len((rec.get("plan") or {}).get("steps", []) or []),
+            "plan_steps": len(plan_steps) if isinstance(plan_steps, list) else 0,
         }
     except Exception as exc:
         elapsed = round((time.perf_counter() - t0) * 1000, 3)
@@ -203,7 +374,7 @@ def dispatch(goal_type: str, params: dict, source: str = "manual") -> dict:
     # here silently emptied admission_log — caught by the live smoke test
     # (refused_events stayed 0 while a DENIED run happened) and fixed so the
     # "refused and logged" claim is actually true.
-    if MEM is not None:
+    if MEM is not None and isinstance(rec, dict):
         try:
             v = MEM.ingest(rec)
             out["memory"] = {"admitted": v.admitted, "duplicate": v.duplicate,
@@ -374,12 +545,13 @@ class Handler(BaseHTTPRequestHandler):
             enabled = bool(body.get("enabled", not STATE["frozen"]))
             with LOCK:
                 STATE["frozen"] = enabled
-            _record({"run_id": f"kill_{int(time.time())}", "status": "CONTROL",
-                     "goal_type": "kill-switch", "params": {"enabled": enabled},
-                     "source": "control", "ts": time.time(), "elapsed_ms": 0.0,
-                     "reason": "HUD dispatch freeze " + ("ENGAGED" if enabled else "RELEASED"),
-                     "sha256": None, "evidence_checks": {}, "sandbox_files": []})
+            history_persisted = _record({"run_id": f"kill_{int(time.time())}", "status": "CONTROL",
+                                         "goal_type": "kill-switch", "params": {"enabled": enabled},
+                                         "source": "control", "ts": time.time(), "elapsed_ms": 0.0,
+                                         "reason": "HUD dispatch freeze " + ("ENGAGED" if enabled else "RELEASED"),
+                                         "sha256": None, "evidence_checks": {}, "sandbox_files": []})
             return self._json({"ok": True, "frozen": STATE["frozen"],
+                               "history_persisted": history_persisted,
                                "scope": HONESTY["kill_switch"]})
         if p == "/api/redteam":
             # Verification endpoint: deliberately NOT gated by the freeze.
@@ -405,10 +577,17 @@ def main() -> None:
     ap.add_argument("--host", default="0.0.0.0")
     ap.add_argument("--fast-audit", action="store_true",
                     help="skip the 5 subprocess probes at boot")
+    ap.add_argument("--fresh", action="store_true",
+                    help="DESTRUCTIVE: delete this HUD runtime's evidence, history, and memory before starting")
     args = ap.parse_args()
 
     global MEM
-    SRV = kernel_bridge.load()
+    SRV = kernel_bridge.load(fresh=args.fresh)
+    STATE["history"] = restore_history()
+    if args.fresh:
+        hud_memory_db = HERE / "runtime" / "memory.sqlite"
+        for suffix in ("", "-wal", "-shm"):
+            (Path(str(hud_memory_db) + suffix)).unlink(missing_ok=True)
     MEM = memory_store.EvidenceMemoryStore(
         HERE / "runtime" / "memory.sqlite",
         sandbox_root=kernel_bridge.RUNTIME / "sandboxes")
@@ -420,6 +599,7 @@ def main() -> None:
     print(f"kernel      : {kernel_bridge.ROOT / 'projects/agi-system'} (REAL, imported in place)")
     print(f"goals       : {', '.join(SRV.SUPPORTED_GOALS)}")
     print(f"runtime     : {kernel_bridge.RUNTIME} (isolated evidence trail, gitignored)")
+    print(f"runtime mode: {'fresh (explicit reset)' if args.fresh else 'preserving existing evidence/history'}")
     print("honest scope: deterministic planner, NO LLM. Kill switch gates HUD dispatch only.")
     ThreadingHTTPServer((args.host, args.port), Handler).serve_forever()
 

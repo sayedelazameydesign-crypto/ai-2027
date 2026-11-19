@@ -9,6 +9,7 @@ Stdlib only.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import shutil
 import sys
@@ -248,6 +249,81 @@ class HudTests(unittest.TestCase):
         self.post("/api/kill", {"enabled": True})
         _, _, raw2 = self.get("/api/browser/status")
         self.assertTrue(json.loads(raw2)["hud_frozen"])
+
+    def test_17_http_evidence_and_history_survive_runtime_reload(self):
+        """A real HUD HTTP run remains readable after reloading the runtime bridge."""
+        rel = "proof/restart.txt"
+        content = "hud-persistence-evidence:v1"
+        expected_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
+        code, result = self.post("/api/run", {
+            "goal_type": "create_file",
+            "params": {"path": rel, "content": content},
+        })
+        self.assertEqual(code, 200)
+        self.assertEqual(result["status"], "VERIFIED")
+        self.assertGreaterEqual(result["plan_steps"], 1)
+        self.assertTrue(result["evidence_checks"].get("hash_matches"))
+        self.assertEqual(result["sha256"], {
+            "file": rel, "bytes": len(content.encode("utf-8")), "sha256": expected_hash,
+        })
+        self.assertTrue(result["history_persisted"])
+        run_id = result["run_id"]
+
+        history_file = Path(hud.SRV.MEMORY_DB).parent / "hud-history.jsonl"
+        self.assertTrue(history_file.is_file())
+        self.assertIn(run_id, history_file.read_text(encoding="utf-8"))
+
+        # Simulate a crash in the narrow gap after the kernel wrote its record
+        # but before the HUD could append its summary event.
+        interrupted = hud.SRV.run_goal("create_file", {
+            "path": "proof/recovered-after-crash.txt", "content": "kernel-record-survives"})
+        interrupted_id = interrupted["run_id"]
+        self.assertNotIn(interrupted_id, history_file.read_text(encoding="utf-8"))
+
+        # This is the same non-destructive loader used by a normal HUD boot.
+        # It imports a fresh Live Agent module and reconstructs its run index.
+        hud.SRV = kernel_bridge.load(runtime=self.tmp, fresh=False)
+        hud.STATE["history"] = hud.restore_history()
+
+        code, _, state_raw = self.get("/api/state")
+        self.assertEqual(code, 200)
+        state = json.loads(state_raw)
+        restored_entry = next((h for h in state["history"] if h["run_id"] == run_id), None)
+        self.assertIsNotNone(restored_entry)
+        self.assertEqual(restored_entry["status"], "VERIFIED")
+        self.assertTrue(restored_entry["history_persisted"])
+        recovered_entry = next((h for h in state["history"]
+                                if h["run_id"] == interrupted_id), None)
+        self.assertIsNotNone(recovered_entry)
+        self.assertEqual(recovered_entry["source"], "recovered")
+        self.assertTrue(recovered_entry["history_persisted"])
+        self.assertIn(interrupted_id, history_file.read_text(encoding="utf-8"))
+        self.assertTrue(recovered_entry["evidence_checks"].get("hash_matches"))
+
+        code, _, recovered_record_raw = self.get("/api/record/" + interrupted_id)
+        self.assertEqual(code, 200)
+        recovered_record = json.loads(recovered_record_raw)
+        self.assertEqual(recovered_record["status"], "VERIFIED")
+        recovered_artifact = (Path(hud.SRV.SANDBOXES_DIR) / interrupted_id /
+                              "proof/recovered-after-crash.txt")
+        self.assertEqual(recovered_artifact.read_bytes(), b"kernel-record-survives")
+
+        code, _, record_raw = self.get("/api/record/" + run_id)
+        self.assertEqual(code, 200)
+        record = json.loads(record_raw)
+        self.assertEqual(record["run_id"], run_id)
+        self.assertEqual(record["status"], "VERIFIED")
+        self.assertEqual(record["goal"]["params"], {"path": rel, "content": content})
+        self.assertTrue(all(record["evidence"][0]["checks"].get(k) is True for k in (
+            "claimed_ok", "file_exists", "correct_path", "correct_content", "hash_matches")))
+
+        sandbox = Path(hud.SRV.SANDBOXES_DIR) / run_id
+        artifact = (sandbox / rel).resolve()
+        self.assertIn(sandbox.resolve(), artifact.parents)
+        artifact_bytes = artifact.read_bytes()
+        self.assertEqual(artifact_bytes, content.encode("utf-8"))
+        self.assertEqual(hashlib.sha256(artifact_bytes).hexdigest(), expected_hash)
+        self.assertEqual(restored_entry["sha256"]["sha256"], expected_hash)
 
 
 if __name__ == "__main__":
