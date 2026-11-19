@@ -1,5 +1,6 @@
-# Automated CI for python-2027 — enforces Python 3.13+, uv, ruff, mypy --strict,
-# pytest + hypothesis (>90% branch coverage), 1-command demo, Edge Gateway tests,
+# Automated CI for python-2027 — enforces Python 3.13 & 3.14, pinned uv==0.13.9
+# with uv.lock, ruff, mypy --strict, pytest + hypothesis (>90% branch coverage),
+# 48-project compliance registry, local Cloudflare Worker dry-run/dev checks,
 # and gated main-branch Free-First routing through existing GitHub Actions secrets.
 name: Python 2027 Protocol CI
 
@@ -47,13 +48,13 @@ concurrency:
 
 jobs:
   python-protocol:
-    name: Python ${{ matrix.python-version }} · uv · ruff · mypy · pytest >90%
+    name: Python ${{ matrix.python-version }} · uv.lock · ruff · mypy · pytest >90%
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 12
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.13", "3.12"]
+        python-version: ["3.13", "3.14"]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
         with:
@@ -63,12 +64,12 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      - name: Install dependencies with uv
+      - name: Install dependencies strictly from uv.lock (pinned uv==0.13.9)
         working-directory: python-2027
         run: |
-          python -m pip install --upgrade pip uv
-          uv venv .venv
-          uv pip install --python .venv/bin/python -e . --group dev
+          python -m venv .venv
+          .venv/bin/pip install --upgrade pip "uv==0.13.9"
+          .venv/bin/uv sync --locked --python .venv/bin/python --group dev
 
       - name: Lint and docstring enforcement (ruff)
         working-directory: python-2027
@@ -78,33 +79,35 @@ jobs:
 
       - name: Strict static type checking (mypy + pydantic.mypy)
         working-directory: python-2027
-        run: .venv/bin/mypy --python-version 3.13 src tests
+        run: .venv/bin/mypy src tests
 
       - name: Tests + Hypothesis property suite (>90% branch coverage)
         working-directory: python-2027
         run: .venv/bin/pytest --cov-fail-under=90
 
-      - name: One-command demo + repo protocol audit + measured benchmarks
+      - name: Demo, persistent traces, 48-project compliance registry & benchmarks
         working-directory: python-2027
         run: |
           .venv/bin/ai2027-py27 demo
           .venv/bin/ai2027-py27 providers
           .venv/bin/ai2027-py27 bench --iterations 15 --json > /tmp/bench-2027.json
           .venv/bin/ai2027-py27 audit python-2027 --json > /tmp/audit-2027.json
+          .venv/bin/ai2027-py27 registry --json > /tmp/registry-2027.json
 
-      - name: Upload benchmark and audit artifacts
+      - name: Upload benchmark, audit, and 48-project registry artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
         with:
           name: python-2027-evidence-${{ matrix.python-version }}-${{ github.sha }}
           path: |
             /tmp/bench-2027.json
             /tmp/audit-2027.json
+            /tmp/registry-2027.json
           if-no-files-found: error
 
-  edge-gateway:
-    name: Cloudflare Edge Gateway · Node contract tests ($0)
+  edge-workers:
+    name: Cloudflare Workers · Contract Tests + Wrangler Dry-Run ($0)
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 8
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
         with:
@@ -112,8 +115,35 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4
         with:
           node-version: "20"
-      - name: Edge Gateway unit + rate-limit + failover tests
+      - name: Edge Gateway unit + fail-closed + budget + failover tests
         run: node --test python-2027/workers/edge-gateway/tests/gateway.test.mjs
+      - name: Wrangler dry-run + local edge-gateway smoke (NOT live Cloudflare deploy)
+        run: |
+          npm --prefix /tmp/wrangler-ci install --no-save wrangler@4.165.0
+          /tmp/wrangler-ci/node_modules/.bin/wrangler deploy --dry-run --config python-2027/workers/edge-gateway/wrangler.jsonc
+          /tmp/wrangler-ci/node_modules/.bin/wrangler deploy --dry-run --config python-2027/workers/python-worker/wrangler.toml
+          /tmp/wrangler-ci/node_modules/.bin/wrangler dev --local --port 8799 --config python-2027/workers/edge-gateway/wrangler.jsonc > /tmp/gw-dev.log 2>&1 &
+          GW_PID=$!
+          trap 'kill "$GW_PID" >/dev/null 2>&1 || true' EXIT
+          node -e '
+            const deadline = Date.now() + 20000;
+            async function poll() {
+              while (Date.now() < deadline) {
+                try {
+                  const res = await fetch("http://127.0.0.1:8799/health");
+                  if (res.status === 200) {
+                    const data = await res.json();
+                    console.log("edge-gateway local health:", data);
+                    process.exit(0);
+                  }
+                } catch {}
+                await new Promise((r) => setTimeout(r, 300));
+              }
+              console.error("edge-gateway wrangler dev did not respond");
+              process.exit(1);
+            }
+            poll();
+          '
 
   live-actions-keys:
     # Security gate matching docs/SECRETS.md: credentials never run on pull_request
@@ -137,12 +167,12 @@ jobs:
         with:
           python-version: "3.13"
 
-      - name: Install python-2027 runtime with uv
+      - name: Install python-2027 runtime strictly from uv.lock
         working-directory: python-2027
         run: |
-          python -m pip install --upgrade pip uv
-          uv venv .venv
-          uv pip install --python .venv/bin/python -e .
+          python -m venv .venv
+          .venv/bin/pip install --upgrade pip "uv==0.13.9"
+          .venv/bin/uv sync --locked --python .venv/bin/python
 
       - name: Route through existing GitHub Actions secrets safely
         working-directory: python-2027
@@ -169,7 +199,7 @@ jobs:
           print()
           print(f"- target: `{data['target']}` · configured remote keys: **{data['configured_count']}** · live succeeded: **{data['live_succeeded']}** · trace: `{data['trace_id']}`")
           routed = data["routed"]
-          print(f"- Free-First route: `{routed['provider']}` (`{routed['model']}`) · simulated=`{routed['simulated']}` · latency=`{routed['latency_ms']} ms`")
+          print(f"- Free-First route: `{routed['provider']}` (`{routed['model']}`) · tier=`{routed['billing_tier']}` · cost_known=`{routed['cost_known']}` · simulated=`{routed['simulated']}` · latency=`{routed['latency_ms']} ms`")
           if data["probes"]:
               print()
               print("| Provider | Model | Credential | Status | Latency |")

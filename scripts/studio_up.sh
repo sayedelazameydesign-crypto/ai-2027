@@ -27,20 +27,14 @@ while [ $# -gt 0 ]; do
 done
 
 cd "$PY27"
-if ! command -v uv >/dev/null 2>&1; then
-  if [ ! -x ".venv/bin/uv" ]; then
-    python3 -m venv .venv
-    .venv/bin/pip install -q --upgrade pip uv
-  fi
-  UV=".venv/bin/uv"
-else
-  UV="uv"
-fi
-
+UV_VERSION="${UV_VERSION:-0.13.9}"
 if [ ! -d ".venv" ]; then
-  "$UV" venv .venv --python python3
+  python3 -m venv .venv
 fi
-"$UV" pip install --python .venv/bin/python -q -e .
+if [ ! -x ".venv/bin/uv" ]; then
+  .venv/bin/pip install -q --upgrade pip "uv==${UV_VERSION}"
+fi
+.venv/bin/uv sync --locked --python .venv/bin/python
 
 if [ "$CHECK" -eq 0 ]; then
   echo "Starting AI-2027 Agent Studio at http://${HOST}:${PORT}/studio"
