@@ -13,6 +13,31 @@ fail or when any GitHub Action is not pinned to a full-length SHA.
 
 ## [Unreleased]
 
+### Added — Phase A resilience audit: what breaks, and what already holds (2026-11-19)
+- **`docs/PAP-2027-RESILIENCE-AUDIT.md`** — read-only audit of the execution and
+  failure paths (architecture, dependency graph, failure propagation, protection
+  inventory, ranked gaps, phased plan, exact files). Every claim carries one
+  classification (PROVEN / TESTED LOCALLY / READ FROM CODE / SIMULATED /
+  NOT EXECUTED); nothing is called live that was not executed.
+- **`python-2027/tests/session_race_demo.py`** — manual harness (not a pytest
+  test, not in CI) that runs four writer processes against one session. Measured
+  today: **23–61 of 240 concurrent saves fail**, and up to **13 torn JSON reads**,
+  because `session.tmp` is one fixed filename for every writer. After the session
+  lease lands this harness must report zero; `--assert` already encodes that.
+- **Findings that need action** (details in the audit): no per-session writer
+  lease (R1), checkpointing is not exactly-once execution and there is no action
+  journal or idempotency key anywhere (R2), circuit breaking covers LLM providers
+  only (R3), a corrupt memory store aborts the run (R4), no bulkhead (R5), no
+  per-component health states (R6), no deploy rollback (R7), and the
+  `failure-recovery` gate is still unimplemented (R8).
+- **Verified existing protections** worth reusing instead of rebuilding:
+  `EventLedger`'s cross-process lock, router timeouts/backoff-with-jitter/breaker,
+  `BudgetGuard`, deterministic planner fallback, tool timeouts and output caps,
+  evidence-gated memory admission, human approval for connector writes, and the
+  SIGKILL resume gate.
+- No product code was modified; `agent-fleet` stays blocked until the lease,
+  action journal, and failure-recovery gate pass.
+
 ### Added — the `live-connector` gate: one real call, judged as evidence (2026-11-19)
 - **`python-2027/src/ai2027_protocol/live_probe.py`** — probes a provider with the
   production transport and records the exchange: endpoint host, request/response
