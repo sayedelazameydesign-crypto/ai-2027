@@ -11,6 +11,7 @@ from .agent import (
     ArtifactRecord,
     AutonomousAgent,
     PlanStep,
+    SessionBusyError,
     SessionStore,
 )
 from .ai_providers import (
@@ -79,6 +80,7 @@ from .contracts import (
     RuleStatus,
     TelemetrySink,
 )
+from .lease import Lease, LeaseError, LeaseHeldError, LeaseLostError, LeaseStore, SqliteLeaseStore
 from .ollama_layer import (
     AsyncOllamaTransport,
     HardwareProfileSpec,
@@ -112,6 +114,13 @@ from .tools import (
 )
 
 __all__ = [
+    "SqliteLeaseStore",
+    "SessionBusyError",
+    "LeaseStore",
+    "LeaseLostError",
+    "LeaseHeldError",
+    "LeaseError",
+    "Lease",
     "AIProvider",
     "AgentEvent",
     "AgentPlannerProtocol",
