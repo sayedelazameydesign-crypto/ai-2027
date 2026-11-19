@@ -7,9 +7,11 @@
 #   2. unit       — the 101-test suite on 3.11 / 3.12 / 3.13. No installs: the
 #                   package is stdlib-only by design, so anything that needs pip
 #                   would fail here.
-#   3. gate       — the nine-gate evidence run, including a real SIGKILL of a
-#                   child worker. It uploads `launch/evidence/fleet-2027-gate.json`
-#                   so the claim can be audited later instead of trusted.
+#   3. gate       — the twelve-gate evidence run, including a real SIGKILL of a
+#                   child worker, two real OS processes on one database, and a
+#                   router failover through python-2027's FreeFirstRouter. It
+#                   uploads `launch/evidence/fleet-2027-gate.json` so the claim
+#                   can be audited later instead of trusted.
 #
 # The gate job is deliberately NOT mocked or skipped on any runner: if the
 # durability mechanism breaks, the workflow must go red.
@@ -21,6 +23,7 @@ on:
     paths:
       - "fleet-2027/**"
       - "scripts/fleet_guard.py"
+      - "scripts/fleet_router_bridge_check.py"
       - ".github/workflows/fleet-2027.yml"
       - "docs/pap-2027-engines.json"
   pull_request:
@@ -28,6 +31,7 @@ on:
     paths:
       - "fleet-2027/**"
       - "scripts/fleet_guard.py"
+      - "scripts/fleet_router_bridge_check.py"
       - ".github/workflows/fleet-2027.yml"
       - "docs/pap-2027-engines.json"
   workflow_dispatch:
@@ -82,7 +86,7 @@ jobs:
           PYTHONDONTWRITEBYTECODE: "1"
 
   gate:
-    name: Evidence gate · 11 gates incl. SIGKILL + two-process recovery
+    name: Evidence gate · 12 gates incl. SIGKILL, two-process, router failover
     runs-on: ubuntu-latest
     timeout-minutes: 15
     needs: [guards]
@@ -93,6 +97,17 @@ jobs:
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
         with:
           python-version: "3.12"
+      - name: Install python-2027 (A2 needs the real FreeFirstRouter importable)
+        run: |
+          # The fleet package itself imports nothing external — `Guards` proves
+          # that. This installs the *repo's* protocol package so the router gate
+          # can exercise the real FreeFirstRouter instead of a stand-in.
+          python3 -m pip install --disable-pip-version-check \
+            "pydantic>=2.9,<3" "httpx>=0.27,<1" "structlog>=24.4,<27" \
+            "opentelemetry-api>=1.27,<2" "opentelemetry-sdk>=1.27,<2" \
+            "fastapi>=0.115,<1" "uvicorn>=0.30,<1"
+          python3 -m pip install --disable-pip-version-check -e python-2027
+          python3 -c "import ai2027_protocol; print('python-2027 importable:', ai2027_protocol.__file__)"
       - name: Run the gate (fails the job if any gate fails)
         run: python3 fleet-2027/gate.py --assert --out launch/evidence/fleet-2027-gate.json
       - name: Re-run the verifier against the artifact
@@ -110,13 +125,22 @@ jobs:
           raise SystemExit(0 if claimed == actual else 1)
           PY
       - name: LLM bridge · a real python-2027 provider must be refusable and injectable
+        run: python3 scripts/fleet_llm_bridge_check.py --mode offline
+      - name: Router bridge · A2 failover + exhaustion must be real
         run: |
-          # Installs only what python-2027 declares; fleet itself stays stdlib-only.
-          python3 -m pip install --disable-pip-version-check \
-            "pydantic>=2.9,<3" "httpx>=0.27,<1" "structlog>=24.4,<27" \
-            "opentelemetry-api>=1.27,<2" "opentelemetry-sdk>=1.27,<2" \
-            "fastapi>=0.115,<1" "uvicorn>=0.30,<1"
-          python3 scripts/fleet_llm_bridge_check.py --mode offline
+          # simulated: provider A dies, provider B answers, file verified.
+          python3 scripts/fleet_router_bridge_check.py --mode simulated
+          # exhausted: every provider dies → dead letter with the full trail.
+          python3 scripts/fleet_router_bridge_check.py --mode exhausted
+          # live: must exit 3 (not attempted) when no real provider is configured,
+          # and must never be counted as a pass. Both outcomes are acceptable here;
+          # silently succeeding via the deterministic provider is not.
+          set +e
+          python3 scripts/fleet_router_bridge_check.py --mode live
+          code=$?
+          set -e
+          echo "live exit=$code"
+          test "$code" -eq 0 -o "$code" -eq 3
       - name: Publish evidence artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
         if: always()
