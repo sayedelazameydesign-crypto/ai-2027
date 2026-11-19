@@ -3,7 +3,7 @@
 # ⚙️ fleet-2027 — محرك مهام دائم لأسطول وكلاء يثبت عمله
 
 **الوضع:** 🟢 مستقل · صفر اعتماديات خارجية (stdlib فقط) · Python 3.10+
-**الاختبارات:** 101 اختبارًا · **البوابات:** 9/9 · **الأثر:** `launch/evidence/fleet-2027-gate.json`
+**الاختبارات:** 157 اختبارًا · **البوابات:** 11/11 · **الأثر:** `launch/evidence/fleet-2027-gate.json`
 
 </div>
 
@@ -58,7 +58,7 @@ python3 fleet-2027/cli.py status  --db /tmp/fleet.db --task <task-id>
 python3 fleet-2027/cli.py verify  --db /tmp/fleet.db
 python3 fleet-2027/cli.py dlq     --db /tmp/fleet.db
 
-# 3) Run the nine evidence gates (includes a real SIGKILL test, ~24 s)
+# 3) Run the eleven evidence gates (real SIGKILL + two real OS processes, ~35 s)
 python3 fleet-2027/gate.py --assert
 ```
 
@@ -128,12 +128,17 @@ A handler receives a `HandlerContext` and returns a `StepResult`. Three rules:
 | `independent_review` | a **different** agent approved (self-review is refused) |
 | `no_pending_compensation` | no rollback is still pending for the task |
 
-## The nine gates
+## The eleven gates
 
 ```
 parallel-wave · verification-refuses · retry-backoff · dead-letter
 degraded-success · failover · idempotency · audit-chain · sigkill-resume
+multi-process · llm-verified-artifact
 ```
+
+`multi-process` is the only gate that spawns **two interpreters** against one
+database file instead of reasoning about coordination inside one process (see
+"Several workers, one database" below).
 
 `launch/evidence/fleet-2027-gate.json` holds the measured values, the platform,
 and the SHA-256 of the artifact itself — CI re-computes that digest and fails if
@@ -144,9 +149,15 @@ it does not match.
 * **The demo agents are deterministic local programs.** They write real files
   and run a real `compile()` + behaviour probe, but **no LLM is called**. The
   CLI prints this on every run.
-* **Threads inside one process.** A hard crash takes the whole wave with it;
-  that is exactly why the lease + `recover` path exists — and the crash gate
-  kills a real process to prove it. Distribution across *machines* is not built.
+* **Threads inside one process by default.** A hard crash takes the whole wave
+  with it; that is exactly why the lease + `recover` path exists — and the crash
+  gate kills a real process to prove it. Work *can* now be spread over several
+  processes sharing one database file (below), but nothing is replicated: a
+  shared file on a network mount is still one failure domain.
+* **Liveness is a heartbeat, not an oracle.** A worker killed with `SIGKILL`
+  keeps looking alive until its heartbeat goes stale, so recovery latency is
+  bounded by `--stale-after-s`. The gate measures that latency instead of
+  pretending it is zero.
 * **SQLite protects integrity, not authorship.** A writer with SQL access can
   forge rows; `verify_integrity()` says so in its `limitations` list.
 * **Cancellation cannot interrupt a handler already inside a C extension.**
@@ -188,9 +199,41 @@ A refusal, an empty answer, a truncated file, an oversized output, a path
 outside the workspace, or a file changed after the digest was taken all fail the
 step — and fail it the same way any other agent fails.
 
+## Several workers, one database (A3)
+
+The engine is no longer single-process. A worker is a row in the database, not a
+private assumption:
+
+```bash
+# terminal 1 and terminal 2 — distinct ids, same file
+python3 fleet-2027/cli.py worker --db /tmp/fleet.db --workspace /tmp/ws \
+    --id w1 --idle-exit-s 5
+python3 fleet-2027/cli.py worker --db /tmp/fleet.db --workspace /tmp/ws \
+    --id w2 --idle-exit-s 5
+```
+
+| Mechanism | What it actually guarantees |
+|---|---|
+| `workers` table (schema v3) | who is alive, on which host/pid, how much work they kept |
+| `claim_ready_steps(capacities=…)` | a wave never exceeds the agent's `max_parallel`, so surplus steps stay *queued* instead of burning attempts |
+| `requeue_steps_of_dead_workers` | only a **provably dead owner's** steps move; a live worker's fresh lease is never stolen |
+| write-ahead effects | `declare_effect_intent` → act → `complete_effect`; a crash leaves `state='intent'`, which a recovering worker must verify or compensate instead of repeating |
+| `serve(idle_exit_after_s=…)` | exits by itself when the database owes nothing — a test, a CLI call and a cron tick all terminate |
+
+Proven by `--mode concurrent | contention | kill` in
+`scripts/multi_process_probe.py`, and by the `multi-process` gate: two real
+interpreters split one task (no duplicated ledger line), a serial agent is never
+oversubscribed, and a `SIGKILL` between the external write and its completion
+leaves **4 effects for 4 steps** with zero unresolved intents.
+
+Honest limit: SQLite on a local disk coordinates *processes*; it is not a
+distributed consensus system. Two *machines* need a network filesystem with
+working file locking, which is why `multi-node` stays unbuilt rather than
+claimed.
+
 ## What was *not* built here
 
 An MCP server, a real browser under test, xlsx/pptx artifacts, adaptive
-quality-based retry, and multi-node distribution. Each has a row and an
+quality-based retry, and multi-node (multi-*machine*) distribution. Each has a row and an
 acceptance criterion in
 [`docs/AI-2027-COMPETITIVE-ARCHITECTURE.md`](../docs/AI-2027-COMPETITIVE-ARCHITECTURE.md) §4.

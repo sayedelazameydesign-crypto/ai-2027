@@ -57,7 +57,7 @@ from .contracts import (
     utc_now,
 )
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 3
 
 logger = logging.getLogger("fleet2027.store")
 
@@ -140,7 +140,13 @@ CREATE TABLE IF NOT EXISTS effects (
     step_id         TEXT NOT NULL,
     summary         TEXT,
     recorded_at     TEXT NOT NULL,
-    replay_count    INTEGER NOT NULL DEFAULT 0
+    replay_count    INTEGER NOT NULL DEFAULT 0,
+    state           TEXT NOT NULL DEFAULT 'completed',
+    intent_at       TEXT,
+    intent_worker   TEXT,
+    completed_at    TEXT,
+    compensated_at  TEXT,
+    compensation    TEXT
 );
 CREATE TABLE IF NOT EXISTS checkpoints (
     seq          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -160,6 +166,17 @@ CREATE TABLE IF NOT EXISTS audit_log (
     payload_json TEXT NOT NULL,
     prev_sha   TEXT NOT NULL,
     sha256     TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS workers (
+    worker_id      TEXT PRIMARY KEY,
+    hostname       TEXT NOT NULL,
+    pid            INTEGER NOT NULL,
+    started_at     TEXT NOT NULL,
+    heartbeat_at   REAL NOT NULL,
+    stopped_at     TEXT,
+    last_task_id   TEXT,
+    steps_claimed  INTEGER NOT NULL DEFAULT 0,
+    steps_kept     INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS task_events (
     seq      INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -215,6 +232,7 @@ class DurableTaskStore:
         # NOTE: ``executescript`` issues an implicit COMMIT, so it must run
         # outside our explicit transaction wrapper.
         self._conn.executescript(_SCHEMA)
+        self._migrate()
         with self.transaction():
             self._conn.execute(
                 "INSERT OR IGNORE INTO meta(key, value) VALUES('schema_version', ?)",
@@ -223,6 +241,38 @@ class DurableTaskStore:
             self._conn.execute(
                 "INSERT OR IGNORE INTO meta(key, value) VALUES('audit_genesis', ?)",
                 ("0" * 64,),
+            )
+
+    def _migrate(self) -> None:
+        """Bring a pre-existing database up to :data:`SCHEMA_VERSION`.
+
+        ``CREATE TABLE IF NOT EXISTS`` never alters an existing table, so an
+        older database would silently lack the write-ahead effect columns. The
+        migration is additive and idempotent: adding a column that already
+        exists is a no-op, and no row is rewritten.
+        """
+        wanted = {
+            "state": "TEXT NOT NULL DEFAULT 'completed'",
+            "intent_at": "TEXT",
+            "intent_worker": "TEXT",
+            "completed_at": "TEXT",
+            "compensated_at": "TEXT",
+            "compensation": "TEXT",
+        }
+        existing = {
+            row["name"]
+            for row in self._conn.execute("PRAGMA table_info(effects)").fetchall()
+        }
+        with self.transaction() as conn:
+            for column, ddl in wanted.items():
+                if column in existing:
+                    continue
+                conn.execute(f"ALTER TABLE effects ADD COLUMN {column} {ddl}")
+                logger.info("migrated effects: added column %s", column)
+            conn.execute(
+                "INSERT INTO meta(key, value) VALUES('schema_version', ?) "
+                "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                (str(SCHEMA_VERSION),),
             )
 
     # ------------------------------------------------------------------ #
@@ -547,6 +597,7 @@ class DurableTaskStore:
         now: str | None = None,
         now_ts: float | None = None,
         limit: int = 64,
+        capacities: Mapping[str, int] | None = None,
     ) -> tuple[StepSnapshot, ...]:
         """Atomically claim every executable step of one task for ``worker``.
 
@@ -554,6 +605,12 @@ class DurableTaskStore:
         (fresh) or ``RETRYING`` (past its backoff). Claims happen inside one
         ``BEGIN IMMEDIATE`` transaction, so two workers racing for the same
         step can never both win.
+
+        ``capacities`` maps an agent name to how many of its steps this worker
+        can actually run at once (its bulkhead). Without it, a wave can claim
+        more work than it has capacity for, and the surplus is "failed" — the
+        right scheduling decision, the wrong *state change*.  Steps that do not
+        fit stay queued and keep their attempts.
         """
         at = now or utc_now()
         ts = now_ts if now_ts is not None else self._now_ts()
@@ -583,10 +640,19 @@ class DurableTaskStore:
                 (task_id, StepStatus.READY.value, StepStatus.RETRYING.value, limit),
             ).fetchall()
             claimed_ids: list[str] = []
+            remaining_capacity = dict(capacities or {})
             for row in rows:
                 if row["next_attempt_at"] is not None and float(row["next_attempt_at"]) > ts:
                     # Still inside its retry backoff — a candidate, not a claim.
                     continue
+                if remaining_capacity:
+                    # A step with no known capacity is never blocked: unknown is
+                    # not a reason to refuse work.
+                    available = remaining_capacity.get(row["agent"])
+                    if available is not None and available <= 0:
+                        continue
+                    if available is not None:
+                        remaining_capacity[row["agent"]] = available - 1
                 claimed_ids.append(row["step_id"])
                 attempt_no = int(row["attempts"]) + 1
                 conn.execute(
@@ -607,6 +673,12 @@ class DurableTaskStore:
                     "INSERT INTO attempts(task_id, step_id, attempt_no, agent, started_at,"
                     " outcome, worker) VALUES(?,?,?,?,?, 'running', ?)",
                     (task_id, row["step_id"], attempt_no, row["agent"], at, worker),
+                )
+                # Keep the worker row honest: attempts taken, last task touched.
+                conn.execute(
+                    "UPDATE workers SET steps_claimed = steps_claimed + 1,"
+                    " last_task_id = ?, heartbeat_at = ? WHERE worker_id = ?",
+                    (task_id, ts, worker),
                 )
                 self._event(
                     conn,
@@ -629,6 +701,27 @@ class DurableTaskStore:
             by_id = {step.step_id: step for step in snapshot.steps}
             claimed = [by_id[step_id] for step_id in claimed_ids]
         return tuple(claimed)
+
+    def runnable_now(self, task_id: str, *, now_ts: float | None = None) -> bool:
+        """Whether any step of ``task_id`` could be claimed in this instant.
+
+        A task that is merely *waiting* out a retry backoff is not runnable, and
+        a long-lived worker must not confuse "nothing to do yet" with "nothing
+        left to do". Uses the same expirable-open check the runner uses.
+        """
+        ts = now_ts if now_ts is not None else self._now_ts()
+        row = self._conn.execute(
+            "SELECT 1 FROM steps WHERE task_id = ? AND status IN (?, ?, ?) "
+            "AND (next_attempt_at IS NULL OR next_attempt_at <= ?) LIMIT 1",
+            (
+                task_id,
+                StepStatus.READY.value,
+                StepStatus.RETRYING.value,
+                StepStatus.RUNNING.value,
+                ts,
+            ),
+        ).fetchone()
+        return row is not None
 
     def next_attempt_delay(self, task_id: str, *, now_ts: float | None = None) -> float | None:
         """Seconds until the earliest scheduled retry, or ``None`` if unscheduled.
@@ -1221,12 +1314,354 @@ class DurableTaskStore:
             )
             return False
 
+    def declare_effect_intent(
+        self,
+        key: str,
+        *,
+        task_id: str,
+        step_id: str,
+        summary: str = "",
+        worker: str = "",
+        now: str | None = None,
+    ) -> dict[str, Any]:
+        """Write *intent* rows for step effects before the handler runs.
+
+        This is the write-ahead half of exactly-once. A process that appends to
+        an external ledger and dies before recording the effect leaves **no**
+        trace — so a recovering worker cannot tell "never ran" from "ran and
+        vanished", and repeating the effect is the only safe choice. With an
+        intent row committed first, a recovering worker sees ``state='intent'``
+        and must reconcile (verify, or compensate) instead of blindly repeating.
+
+        Returns the effect row as it stands after the call.
+        """
+        at = now or utc_now()
+        keys = [key]
+        with self.transaction() as conn:
+            for effect_key in keys:
+                conn.execute(
+                    "INSERT OR IGNORE INTO effects(idempotency_key, task_id, step_id,"
+                    " summary, recorded_at, state, intent_at, intent_worker)"
+                    " VALUES(?,?,?,?,?, 'intent', ?, ?)",
+                    (effect_key, task_id, step_id, summary[:400], at, at, worker[:120]),
+                )
+                conn.execute(
+                    "UPDATE effects SET intent_at = COALESCE(intent_at, ?),"
+                    " intent_worker = COALESCE(intent_worker, ?)"
+                    " WHERE idempotency_key = ? AND state = 'intent'",
+                    (at, worker[:120], effect_key),
+                )
+            self._append_audit(
+                conn,
+                kind="effect.intent",
+                task_id=task_id,
+                payload={"step_id": step_id, "keys": keys, "worker": worker},
+                at=at,
+            )
+            row = conn.execute(
+                "SELECT * FROM effects WHERE idempotency_key = ?", (key,)
+            ).fetchone()
+        return dict(row) if row else {}
+
+    def reconcile_effects(self, task_id: str, *, at: str | None = None) -> tuple[dict[str, Any], ...]:
+        """Reconcile effect intents left behind by a dead or crashed worker.
+
+        An ``intent`` row is an *unfinished* external effect. Two honest options
+        exist, and the store refuses to pick silently:
+
+        * **completed** — the effect really happened (the agent verifies it), so
+          record it and move on;
+        * **compensated** — it may or may not have happened, and compensation
+          makes that irrelevant (delete, reverse, void).
+
+        Anything left as ``intent`` is reported as an unresolved risk, not
+        counted as done.
+        """
+        stamp = at or utc_now()
+        with self.transaction() as conn:
+            rows = conn.execute(
+                "SELECT * FROM effects WHERE task_id = ? AND state = 'intent'", (task_id,)
+            ).fetchall()
+            ids = [row["idempotency_key"] for row in rows]
+            if not ids:
+                return ()
+            conn.execute(
+                "UPDATE effects SET state = 'compensated', compensated_at = ?,"
+                " compensation = COALESCE(compensation, 'reconciled: outcome unknown,"
+                " compensation applied before retry')"
+                " WHERE task_id = ? AND state = 'intent'",
+                (stamp, task_id),
+            )
+            self._append_audit(
+                conn,
+                kind="effect.reconciled",
+                task_id=task_id,
+                payload={"keys": ids, "outcome": "compensated"},
+                at=stamp,
+            )
+            self._event(
+                conn,
+                task_id,
+                "effect.reconciled",
+                f"{len(ids)} effect intent(s) left by a dead worker were compensated",
+                at=stamp,
+            )
+        return tuple({"idempotency_key": key, "outcome": "compensated"} for key in ids)
+
+    def complete_effect(
+        self,
+        key: str,
+        *,
+        task_id: str,
+        step_id: str,
+        summary: str = "",
+        now: str | None = None,
+    ) -> bool:
+        """Mark a declared intent as really completed (idempotent)."""
+        at = now or utc_now()
+        with self.transaction() as conn:
+            cur = conn.execute(
+                "UPDATE effects SET state = 'completed', completed_at = ?,"
+                " summary = COALESCE(NULLIF(?, ''), summary)"
+                " WHERE idempotency_key = ? AND state IN ('intent', 'completed')",
+                (at, summary[:400], key),
+            )
+            if cur.rowcount == 0:
+                conn.execute(
+                    "INSERT OR IGNORE INTO effects(idempotency_key, task_id, step_id,"
+                    " summary, recorded_at, state, completed_at)"
+                    " VALUES(?,?,?,?,?, 'completed', ?)",
+                    (key, task_id, step_id, summary[:400], at, at),
+                )
+        return True
+
+    def unresolved_effect_intents(self, task_id: str | None = None) -> tuple[dict[str, Any], ...]:
+        """Effect intents whose external outcome is still unknown."""
+        if task_id is None:
+            rows = self._conn.execute(
+                "SELECT * FROM effects WHERE state = 'intent' ORDER BY recorded_at"
+            ).fetchall()
+        else:
+            rows = self._conn.execute(
+                "SELECT * FROM effects WHERE state = 'intent' AND task_id = ?"
+                " ORDER BY recorded_at",
+                (task_id,),
+            ).fetchall()
+        return tuple(dict(row) for row in rows)
+
     def effect(self, key: str) -> dict[str, Any] | None:
         """Return one recorded effect, or ``None``."""
         row = self._conn.execute(
             "SELECT * FROM effects WHERE idempotency_key = ?", (key,)
         ).fetchone()
         return dict(row) if row else None
+
+    # ------------------------------------------------------------------ #
+    # Worker registry (cross-process coordination)
+    # ------------------------------------------------------------------ #
+
+    def register_worker(
+        self,
+        worker_id: str,
+        *,
+        hostname: str | None = None,
+        pid: int | None = None,
+        now_ts: float | None = None,
+        now: str | None = None,
+    ) -> dict[str, Any]:
+        """Announce a worker process. Re-registering the same id is a heartbeat.
+
+        The row is what makes "who is alive?" answerable *without* asking the OS:
+        a worker that stops heartbeating is dead, no matter which machine it ran
+        on. That is the only honest cross-machine liveness signal available at
+        zero infrastructure cost.
+        """
+        import os
+        import socket
+
+        require_safe_id(worker_id, where="worker_id")
+        at = now or utc_now()
+        ts = now_ts if now_ts is not None else self._now_ts()
+        host = hostname or socket.gethostname()[:120]
+        process = pid if pid is not None else os.getpid()
+        with self.transaction() as conn:
+            conn.execute(
+                "INSERT INTO workers(worker_id, hostname, pid, started_at, heartbeat_at)"
+                " VALUES(?,?,?,?,?)"
+                " ON CONFLICT(worker_id) DO UPDATE SET heartbeat_at = excluded.heartbeat_at,"
+                " stopped_at = NULL",
+                (worker_id, host, process, at, ts),
+            )
+            self._append_audit(
+                conn,
+                kind="worker.registered",
+                task_id=None,
+                payload={"worker_id": worker_id, "pid": pid, "hostname": hostname},
+                at=at,
+            )
+            self._event(conn, "*", "worker.registered",
+                        f"{worker_id}@{host}:{process} joined", at=at)
+        return {"worker_id": worker_id, "hostname": host, "pid": process, "at": at}
+
+    def worker_heartbeat(
+        self,
+        worker_id: str,
+        *,
+        now_ts: float | None = None,
+        last_task_id: str | None = None,
+        steps_claimed: int | None = None,
+        steps_kept: int | None = None,
+    ) -> None:
+        """Update liveness and running counters for one worker."""
+        ts = now_ts if now_ts is not None else self._now_ts()
+        with self._lock:
+            self._conn.execute(
+                "UPDATE workers SET heartbeat_at = ?, last_task_id = COALESCE(?, last_task_id),"
+                " steps_claimed = COALESCE(?, steps_claimed),"
+                " steps_kept = COALESCE(?, steps_kept) WHERE worker_id = ?",
+                (ts, last_task_id, steps_claimed, steps_kept, worker_id),
+            )
+
+    def deregister_worker(
+        self, worker_id: str, *, now: str | None = None, now_ts: float | None = None
+    ) -> None:
+        """Mark a worker as stopped (graceful exit). It may still be shown as dead later."""
+        at = now or utc_now()
+        with self.transaction() as conn:
+            conn.execute(
+                "UPDATE workers SET stopped_at = ? WHERE worker_id = ?", (at, worker_id)
+            )
+            self._append_audit(
+                conn,
+                kind="worker.stopped",
+                task_id=None,
+                payload={"worker_id": worker_id},
+                at=at,
+            )
+            self._event(conn, "*", "worker.stopped", f"{worker_id} left", at=at)
+
+    def list_workers(self, *, stale_after_s: float = 120.0,
+                     now_ts: float | None = None) -> tuple[dict[str, Any], ...]:
+        """Return every known worker with an explicit ``alive`` verdict."""
+        ts = now_ts if now_ts is not None else self._now_ts()
+        rows = self._conn.execute("SELECT * FROM workers ORDER BY started_at").fetchall()
+        out = []
+        for row in rows:
+            stopped = row["stopped_at"] is not None
+            fresh = (ts - float(row["heartbeat_at"])) <= stale_after_s
+            out.append(
+                {
+                    "worker_id": row["worker_id"],
+                    "hostname": row["hostname"],
+                    "pid": row["pid"],
+                    "started_at": row["started_at"],
+                    "age_s": round(ts - float(row["heartbeat_at"]), 3),
+                    "stopped": stopped,
+                    "alive": bool(fresh and not stopped),
+                    "last_task_id": row["last_task_id"],
+                    "steps_claimed": row["steps_claimed"],
+                    "steps_kept": row["steps_kept"],
+                }
+            )
+        return tuple(out)
+
+    def live_workers(self, *, stale_after_s: float = 120.0,
+                     now_ts: float | None = None) -> tuple[dict[str, Any], ...]:
+        """Only the workers whose heartbeat is fresh and who have not stopped."""
+        return tuple(
+            worker
+            for worker in self.list_workers(stale_after_s=stale_after_s, now_ts=now_ts)
+            if worker["alive"]
+        )
+
+    def requeue_steps_of_dead_workers(
+        self,
+        *,
+        stale_after_s: float,
+        now: str | None = None,
+        now_ts: float | None = None,
+    ) -> tuple[dict[str, Any], ...]:
+        """Requeue work held by a worker whose process died without releasing it.
+
+        Unlike :meth:`recover_expired_leases` (which is lease-time based), this is
+        *worker* based: it only touches steps owned by an id whose heartbeat is
+        stale or that has deregistered. That distinction matters when two live
+        workers are running — a fresh lease on a live worker is never stolen.
+        """
+        at = now or utc_now()
+        ts = now_ts if now_ts is not None else self._now_ts()
+        registry = {
+            row["worker_id"]: row
+            for row in self._conn.execute(
+                "SELECT worker_id, heartbeat_at, stopped_at FROM workers"
+            )
+        }
+        dead_ids = {
+            worker_id
+            for worker_id, row in registry.items()
+            if row["stopped_at"] is not None
+            or (ts - float(row["heartbeat_at"])) > stale_after_s
+        }
+        recovered: list[dict[str, Any]] = []
+        with self.transaction() as conn:
+            rows = conn.execute(
+                "SELECT task_id, step_id, attempts, lease_owner, heartbeat_at FROM steps"
+                " WHERE status = ?",
+                (StepStatus.RUNNING.value,),
+            ).fetchall()
+            for row in rows:
+                owner = row["lease_owner"]
+                # A registered owner is judged by its worker row; an owner that
+                # never registered (an ad-hoc run) is judged by the step's own
+                # heartbeat, so a live lease is never stolen in either case.
+                if owner is None:
+                    stale = False
+                elif owner in registry:
+                    stale = owner in dead_ids
+                else:
+                    stale = row["heartbeat_at"] is None or (
+                        (ts - float(row["heartbeat_at"])) > stale_after_s
+                    )
+                if not stale:
+                    continue
+                conn.execute(
+                    "UPDATE steps SET status = ?, lease_owner = NULL, heartbeat_at = NULL,"
+                    " started_at = NULL WHERE task_id = ? AND step_id = ? AND status = ?",
+                    (StepStatus.RETRYING.value, row["task_id"], row["step_id"],
+                     StepStatus.RUNNING.value),
+                )
+                conn.execute(
+                    "UPDATE attempts SET finished_at = ?, outcome = 'owner_dead'"
+                    " WHERE task_id = ? AND step_id = ? AND attempt_no = ?",
+                    (at, row["task_id"], row["step_id"], row["attempts"]),
+                )
+                recovered.append(
+                    {
+                        "task_id": row["task_id"],
+                        "step_id": row["step_id"],
+                        "attempts": row["attempts"],
+                        "previous_owner": owner,
+                    }
+                )
+                self._event(
+                    conn, row["task_id"], "step.owner_dead",
+                    f"{row['step_id']} requeued: owner {owner!r} is not alive",
+                    step_id=row["step_id"], at=at,
+                )
+                self._append_audit(
+                    conn, kind="step.recovered_dead_worker", task_id=row["task_id"],
+                    payload={"step_id": row["step_id"], "previous_owner": owner,
+                             "attempts": row["attempts"]}, at=at,
+                )
+        return tuple(recovered)
+
+    def active_task_ids(self) -> tuple[str, ...]:
+        """Task ids that are not terminal yet — the work pool a worker may claim from."""
+        rows = self._conn.execute(
+            "SELECT task_id FROM tasks WHERE status IN (?, ?) ORDER BY created_at",
+            (TaskStatus.QUEUED.value, TaskStatus.RUNNING.value),
+        ).fetchall()
+        return tuple(row["task_id"] for row in rows)
 
     # ------------------------------------------------------------------ #
     # Checkpoints and recovery seeds
