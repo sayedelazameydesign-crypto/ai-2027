@@ -8,8 +8,11 @@ from __future__ import annotations
 import contextlib
 import io
 import json
+import os
+import subprocess
 import sys
 import tempfile
+import textwrap
 import unittest
 from pathlib import Path
 
@@ -20,7 +23,7 @@ import workflow_secret_audit as wsa  # noqa: E402
 
 class ReferenceTests(unittest.TestCase):
     def test_01_an_env_assignment_is_the_safe_shape(self):
-        refs = wsa.find_references("        API_KEY: ${{ secrets.MY_KEY }}\n")
+        refs = wsa.find_references("    env:\n      API_KEY: ${{ secrets.MY_KEY }}\n")
         self.assertEqual(len(refs), 1)
         self.assertTrue(refs[0]["safe"])
         self.assertEqual(refs[0]["name"], "MY_KEY")
@@ -30,9 +33,9 @@ class ReferenceTests(unittest.TestCase):
         refs = wsa.find_references(line)
         self.assertFalse(refs[0]["safe"])
 
-    def test_03_an_if_condition_is_allowed(self):
+    def test_03_a_secret_reference_in_if_is_rejected(self):
         refs = wsa.find_references("    if: ${{ secrets.MY_KEY != '' }}\n")
-        self.assertTrue(refs[0]["safe"])
+        self.assertFalse(refs[0]["safe"])
 
     def test_04_commented_references_are_ignored(self):
         self.assertEqual(wsa.find_references("#   KEY: ${{ secrets.OLD }}\n"), [])
@@ -48,6 +51,20 @@ class ReferenceTests(unittest.TestCase):
     def test_06_an_unrelated_expression_is_not_a_secret(self):
         self.assertEqual(wsa.find_references("  X: ${{ github.sha }}\n"), [])
 
+    def test_07_a_named_reusable_workflow_secret_mapping_is_safe(self):
+        text = ("jobs:\n  call:\n    uses: ./.github/workflows/child.yml\n"
+                "    secrets:\n      CHILD_KEY: ${{ secrets.MY_KEY }}\n")
+        refs = wsa.find_references(text)
+        self.assertEqual(len(refs), 1)
+        self.assertTrue(refs[0]["safe"])
+
+    def test_08_a_secret_under_with_is_not_a_safe_transport(self):
+        text = ("jobs:\n  call:\n    uses: ./.github/workflows/child.yml\n"
+                "    with:\n      CHILD_KEY: ${{ secrets.MY_KEY }}\n")
+        refs = wsa.find_references(text)
+        self.assertEqual(len(refs), 1)
+        self.assertFalse(refs[0]["safe"])
+
 
 class AuditTests(unittest.TestCase):
     def _audit(self, workflow_text: str, register_text: str):
@@ -60,24 +77,24 @@ class AuditTests(unittest.TestCase):
             return wsa.audit(workflows_dir=wf, register_path=doc)
 
     def test_10_a_documented_env_secret_passes(self):
-        result = self._audit("        K: ${{ secrets.MY_KEY }}\n", "uses `MY_KEY`")
+        result = self._audit("    env:\n      K: ${{ secrets.MY_KEY }}\n", "uses `MY_KEY`")
         self.assertTrue(result["ok"], result["findings"])
-        self.assertEqual(result["references"]["MY_KEY"], ["x.yml:1"])
+        self.assertEqual(result["references"]["MY_KEY"], ["x.yml:2"])
 
     def test_11_an_undocumented_secret_fails(self):
-        result = self._audit("        K: ${{ secrets.MY_KEY }}\n", "nothing here")
+        result = self._audit("    env:\n      K: ${{ secrets.MY_KEY }}\n", "nothing here")
         self.assertFalse(result["ok"])
         self.assertEqual(result["findings"][0]["rule"], "undocumented_secret")
 
     def test_11b_an_unrecorded_name_is_not_echoed(self):
         """A name nobody recorded may itself be sensitive; report the location."""
-        result = self._audit("        K: ${{ secrets.actual-key-material }}\n",
+        result = self._audit("    env:\n      K: ${{ secrets.actual-key-material }}\n",
                              "the register says nothing")
         self.assertNotIn("actual-key-material", json.dumps(result))
         self.assertIn("<undocumented secret>", json.dumps(result))
 
     def test_11c_a_recorded_name_is_echoed_so_it_can_be_rotated(self):
-        result = self._audit("        K: ${{ secrets.GEMINI_API_KEY }}\n",
+        result = self._audit("    env:\n      K: ${{ secrets.GEMINI_API_KEY }}\n",
                              "| `GEMINI_API_KEY` | ci.yml |")
         self.assertIn("GEMINI_API_KEY", result["references"])
 
@@ -112,7 +129,7 @@ class AuditTests(unittest.TestCase):
 class RealRepositoryTests(unittest.TestCase):
     """The check that keeps the actual workflows honest as they change."""
 
-    def test_20_every_secret_in_the_real_workflows_is_documented_and_env_assigned(self):
+    def test_20_every_secret_in_real_workflows_is_documented_and_safely_mapped(self):
         result = wsa.audit()
         self.assertTrue(result["ok"], json.dumps(result["findings"], indent=2))
         self.assertIn("GEMINI_API_KEY", result["references"])
@@ -145,7 +162,133 @@ class RealRepositoryTests(unittest.TestCase):
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
             self.assertEqual(wsa.main(["--assert"]), 0)
-        self.assertIn("env-assigned and documented", buf.getvalue())
+        self.assertIn("env/reusable-workflow mapping and is documented", buf.getvalue())
+
+    def test_24_lifecycle_is_manual_and_paid_checks_default_off(self):
+        text = (wsa.WORKFLOWS / "project-lifecycle.yml").read_text(encoding="utf-8")
+        self.assertIn("workflow_dispatch:", text)
+        self.assertNotIn("pull_request:", text)
+        self.assertNotIn("\n  push:", text)
+        self.assertEqual(text.count("default: false"), 4)
+        self.assertIn('GITHUB_REF" != "refs/heads/main"', text)
+
+    def test_25_lifecycle_passes_only_named_provider_secrets(self):
+        text = (wsa.WORKFLOWS / "project-lifecycle.yml").read_text(encoding="utf-8")
+        for name in ("GEMINI_API_KEY", "NVIDIA_API_KEY", "E2B_API_KEY", "RENDER_API_KEY"):
+            self.assertIn(f"secrets.{name}", text)
+        self.assertNotIn("secrets: inherit", text)
+
+    def test_26_render_requires_ci_provider_gates_and_exact_confirmation(self):
+        text = (wsa.WORKFLOWS / "project-lifecycle.yml").read_text(encoding="utf-8")
+        self.assertIn("RENDER_CONFIRM\" != \"$SERVICE_NAME", text)
+        self.assertIn("needs.quality.result == 'success'", text)
+        self.assertIn("needs.gemini.result == 'success'", text)
+        self.assertIn("needs.nvidia.result == 'success'", text)
+        self.assertIn("needs.e2b.result == 'success'", text)
+        self.assertIn("require_credential: true", text)
+
+    def test_27_nonsecret_variables_configure_models_and_render_service(self):
+        render = (wsa.WORKFLOWS / "deploy.yml").read_text(encoding="utf-8")
+        gemini = (wsa.WORKFLOWS / "gemini-live-check.yml").read_text(encoding="utf-8")
+        nvidia = (wsa.WORKFLOWS / "nvidia-live-check.yml").read_text(encoding="utf-8")
+        self.assertIn("inputs.service_id || vars.RENDER_SERVICE_ID", render)
+        self.assertIn("inputs.service_name || vars.RENDER_SERVICE_NAME", render)
+        self.assertIn("environment: production", render)
+        self.assertIn("vars.GEMINI_MODEL", gemini)
+        self.assertIn("vars.NVIDIA_MODEL", nvidia)
+
+    def test_28_reusable_live_checks_fail_closed_when_requested_keys_are_missing(self):
+        for filename, key in (("gemini-live-check.yml", "GEMINI_API_KEY"),
+                              ("nvidia-live-check.yml", "NVIDIA_API_KEY"),
+                              ("e2b-live-check.yml", "E2B_API_KEY"),
+                              ("deploy.yml", "RENDER_API_KEY")):
+            text = (wsa.WORKFLOWS / filename).read_text(encoding="utf-8")
+            self.assertIn("workflow_call:", text, filename)
+            self.assertIn("REQUIRE_CREDENTIAL", text, filename)
+            self.assertIn(f"{key} is required", text, filename)
+
+    def test_29_secret_bearing_operations_are_main_only(self):
+        for filename in ("ci.yml", "gemini-live-check.yml", "nvidia-live-check.yml",
+                         "e2b-live-check.yml", "deploy.yml", "project-lifecycle.yml"):
+            text = (wsa.WORKFLOWS / filename).read_text(encoding="utf-8")
+            self.assertIn("refs/heads/main", text, filename)
+
+    def test_30_windows_job_extracts_only_verified_blobs_without_checkout(self):
+        if os.name == "nt":
+            self.skipTest("the synthetic trailing-dot path exists only on POSIX filesystems")
+        ci = (wsa.WORKFLOWS / "ci.yml").read_text(encoding="utf-8")
+        start = ci.index("      - name: Materialize verified BrowserSkill files without full checkout")
+        run_start = ci.index("        run: |\n", start) + len("        run: |\n")
+        end = ci.index("\n      - name: Native NTFS ACLs", run_start)
+        source = textwrap.dedent(ci[run_start:end])
+        self.assertIn("git(\"ls-tree\"", source)
+        self.assertIn("git(\"cat-file\", \"blob\"", source)
+        self.assertIn("hashlib.sha1", source)
+        self.assertIn("url, revision)", source)
+        self.assertIn("GITHUB_SHA", source)
+
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            bare, seed = root / "fixture.git", root / "seed"
+            workspace, runner_temp = root / "workspace", root / "runner-temp"
+            workspace.mkdir()
+            runner_temp.mkdir()
+            subprocess.run(["git", "init", "--bare", str(bare)], check=True,
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            subprocess.run(["git", "clone", str(bare), str(seed)], check=True,
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            subprocess.run(["git", "-C", str(seed), "config", "user.name", "CI fixture"], check=True)
+            subprocess.run(["git", "-C", str(seed), "config", "user.email", "ci@example.invalid"], check=True)
+
+            adapter_file = seed / "browser_skill_adapter" / "proof.py"
+            adapter_file.parent.mkdir(parents=True)
+            adapter_file.write_text("PROOF = 'tracked blob'\n", encoding="utf-8")
+            archived = seed / "projects" / "celia-fashion-2026." / ".env.example"
+            archived.parent.mkdir(parents=True)
+            archived.write_text("must never be checked out\n", encoding="utf-8")
+            subprocess.run(["git", "-C", str(seed), "add", "-A"], check=True)
+            subprocess.run(["git", "-C", str(seed), "commit", "-m", "fixture"], check=True,
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            subprocess.run(["git", "-C", str(seed), "branch", "-M", "main"], check=True)
+            subprocess.run(["git", "-C", str(seed), "push", "origin", "main"], check=True,
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            revision = subprocess.check_output(
+                ["git", "-C", str(seed), "rev-parse", "HEAD"], text=True
+            ).strip()
+            env = os.environ | {
+                "GITHUB_SHA": revision,
+                "GITHUB_REF": "refs/heads/main",
+                "GITHUB_SERVER_URL": root.as_uri(),
+                "GITHUB_REPOSITORY": "fixture",
+                "GITHUB_WORKSPACE": str(workspace),
+                "RUNNER_TEMP": str(runner_temp),
+                "GIT_TERMINAL_PROMPT": "0",
+            }
+            result = subprocess.run([sys.executable, "-c", source], env=env,
+                                    capture_output=True, text=True, timeout=30)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertEqual((workspace / "browser_skill_adapter" / "proof.py").read_text(),
+                             "PROOF = 'tracked blob'\n")
+            self.assertFalse((workspace / "projects").exists())
+
+    def test_31_render_judge_receives_fail_closed_flag_and_formats_summary(self):
+        text = (wsa.WORKFLOWS / "deploy.yml").read_text(encoding="utf-8")
+        judge = text.split("      - name: Judge the run by the measured verdict\n", 1)[1]
+        self.assertIn(
+            "env:\n          REQUIRE_CREDENTIAL: ${{ inputs.require_credential }}\n        run: |\n",
+            judge,
+        )
+        self.assertIn(r'write_text("\n".join(lines) + "\n")', text)
+
+    def test_32_live_gemini_in_ci_requires_main_branch_explicit_opt_in(self):
+        text = (wsa.WORKFLOWS / "ci.yml").read_text(encoding="utf-8")
+        dispatch = text.split("  workflow_dispatch:\n", 1)[1].split("  workflow_call:\n", 1)[0]
+        self.assertIn("run_live_gemini:", dispatch)
+        self.assertIn("default: false", dispatch)
+        live_job = text.split("  live-gemini:\n", 1)[1]
+        self.assertIn("github.ref == 'refs/heads/main'", live_job)
+        self.assertIn("inputs.run_live_gemini", live_job)
+        self.assertIn("require_credential: ${{ inputs.run_live_gemini }}", live_job)
 
 
 if __name__ == "__main__":

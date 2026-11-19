@@ -1,0 +1,206 @@
+# One operator entry point for the AI-2027 project lifecycle.
+#
+# Default run = the secret-free Evidence-First CI. Live provider checks and
+# Render deployment require explicit checkbox selection, main-branch execution,
+# and credentials passed only to their own reusable workflow. Render additionally
+# requires an exact-name confirmation and runs in the `production` environment;
+# configure required reviewers there when human approval is desired.
+name: AI-2027 Project Lifecycle
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_gemini:
+        description: "Run the tiny Gemini live check (uses provider quota)"
+        required: false
+        type: boolean
+        default: false
+      run_nvidia:
+        description: "Run one small NVIDIA NIM check (uses provider quota)"
+        required: false
+        type: boolean
+        default: false
+      nvidia_model:
+        description: "Non-secret NVIDIA model ID; falls back to the NVIDIA_MODEL repository variable"
+        required: false
+        type: string
+        default: ""
+      run_e2b:
+        description: "Run one temporary E2B microVM check (may consume sandbox credits)"
+        required: false
+        type: boolean
+        default: false
+      deploy_render:
+        description: "Deploy the configured Render service (exact confirmation; production reviewers apply if configured)"
+        required: false
+        type: boolean
+        default: false
+      render_service_id:
+        description: "Optional Render service ID; otherwise uses RENDER_SERVICE_ID"
+        required: false
+        type: string
+        default: ""
+      render_service_name:
+        description: "Optional exact Render service name; otherwise uses RENDER_SERVICE_NAME"
+        required: false
+        type: string
+        default: ""
+      render_confirm:
+        description: "To deploy, type the exact configured service name. Leave blank otherwise."
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: project-lifecycle-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  policy:
+    name: Branch and deployment confirmation gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    env:
+      USES_LIVE_CREDENTIALS: ${{ inputs.run_gemini || inputs.run_nvidia || inputs.run_e2b || inputs.deploy_render }}
+      RUN_NVIDIA: ${{ inputs.run_nvidia }}
+      NVIDIA_MODEL: ${{ inputs.nvidia_model || vars.NVIDIA_MODEL || '' }}
+      DEPLOY_RENDER: ${{ inputs.deploy_render }}
+      SERVICE_NAME: ${{ inputs.render_service_name || vars.RENDER_SERVICE_NAME || 'ai-2027-live-agent' }}
+      RENDER_CONFIRM: ${{ inputs.render_confirm }}
+    steps:
+      - name: Require main for provider calls and deployments
+        run: |
+          set -euo pipefail
+          if [ "$USES_LIVE_CREDENTIALS" = "true" ] && [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "::error::Live provider checks and Render deployment are restricted to main. No credential-bearing job was started."
+            exit 1
+          fi
+          if [ "$RUN_NVIDIA" = "true" ] && [ -z "$NVIDIA_MODEL" ]; then
+            echo "::error::NVIDIA was selected but no model ID was supplied. Set the nvidia_model input or NVIDIA_MODEL repository variable."
+            exit 1
+          fi
+          if [ "$DEPLOY_RENDER" = "true" ] && [ "$RENDER_CONFIRM" != "$SERVICE_NAME" ]; then
+            echo "::error::Render confirmation must exactly match the configured service name. No deployment was started."
+            exit 1
+          fi
+          echo "Policy passed. This job did not receive provider credentials."
+
+  quality:
+    name: Full Evidence-First CI (offline providers)
+    needs: policy
+    uses: ./.github/workflows/ci.yml
+    with:
+      run_live_gemini: false
+
+  gemini:
+    name: Gemini live smoke
+    needs: [policy, quality]
+    if: ${{ inputs.run_gemini && needs.policy.result == 'success' && needs.quality.result == 'success' }}
+    uses: ./.github/workflows/gemini-live-check.yml
+    with:
+      require_credential: true
+    secrets:
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+
+  nvidia:
+    name: NVIDIA NIM live smoke
+    needs: [policy, quality]
+    if: ${{ inputs.run_nvidia && needs.policy.result == 'success' && needs.quality.result == 'success' }}
+    uses: ./.github/workflows/nvidia-live-check.yml
+    with:
+      model: ${{ inputs.nvidia_model || vars.NVIDIA_MODEL || '' }}
+      require_credential: true
+    secrets:
+      NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+
+  e2b:
+    name: E2B isolated sandbox smoke
+    needs: [policy, quality]
+    if: ${{ inputs.run_e2b && needs.policy.result == 'success' && needs.quality.result == 'success' }}
+    uses: ./.github/workflows/e2b-live-check.yml
+    with:
+      require_credential: true
+    secrets:
+      E2B_API_KEY: ${{ secrets.E2B_API_KEY }}
+
+  deploy:
+    name: Render deploy after selected checks pass
+    needs: [policy, quality, gemini, nvidia, e2b]
+    if: >-
+      ${{
+        always() &&
+        inputs.deploy_render &&
+        needs.policy.result == 'success' &&
+        needs.quality.result == 'success' &&
+        (inputs.run_gemini == false || needs.gemini.result == 'success') &&
+        (inputs.run_nvidia == false || needs.nvidia.result == 'success') &&
+        (inputs.run_e2b == false || needs.e2b.result == 'success')
+      }}
+    uses: ./.github/workflows/deploy.yml
+    with:
+      service_id: ${{ inputs.render_service_id || vars.RENDER_SERVICE_ID || '' }}
+      service_name: ${{ inputs.render_service_name || vars.RENDER_SERVICE_NAME || 'ai-2027-live-agent' }}
+      confirm: ${{ inputs.render_confirm }}
+      require_credential: true
+    secrets:
+      RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+
+  report:
+    name: Publish lifecycle verdict
+    if: always()
+    needs: [policy, quality, gemini, nvidia, e2b, deploy]
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    env:
+      POLICY_RESULT: ${{ needs.policy.result }}
+      QUALITY_RESULT: ${{ needs.quality.result }}
+      GEMINI_RESULT: ${{ needs.gemini.result }}
+      NVIDIA_RESULT: ${{ needs.nvidia.result }}
+      E2B_RESULT: ${{ needs.e2b.result }}
+      DEPLOY_RESULT: ${{ needs.deploy.result }}
+      RUN_GEMINI: ${{ inputs.run_gemini }}
+      RUN_NVIDIA: ${{ inputs.run_nvidia }}
+      RUN_E2B: ${{ inputs.run_e2b }}
+      DEPLOY_RENDER: ${{ inputs.deploy_render }}
+    steps:
+      - name: Summarize job outcomes without credential data
+        run: |
+          set -euo pipefail
+          {
+            echo "## AI-2027 Project Lifecycle"
+            echo
+            echo "| Gate | Requested | Result |"
+            echo "|---|---:|---|"
+            echo "| Branch/confirmation policy | always | ${POLICY_RESULT} |"
+            echo "| Full Evidence-First CI | always | ${QUALITY_RESULT} |"
+            echo "| Gemini live check | ${RUN_GEMINI} | ${GEMINI_RESULT} |"
+            echo "| NVIDIA NIM | ${RUN_NVIDIA} | ${NVIDIA_RESULT} |"
+            echo "| E2B sandbox | ${RUN_E2B} | ${E2B_RESULT} |"
+            echo "| Render deployment | ${DEPLOY_RENDER} | ${DEPLOY_RESULT} |"
+            echo
+            echo "Secrets are not included in this summary. Provider checks run only when selected; Render runs in the production environment, where configured protection rules can require reviewer approval."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$POLICY_RESULT" != "success" ] || [ "$QUALITY_RESULT" != "success" ]; then
+            echo "::error::A required policy or CI gate did not pass."
+            exit 1
+          fi
+          if [ "$RUN_GEMINI" = "true" ] && [ "$GEMINI_RESULT" != "success" ]; then
+            echo "::error::The selected Gemini smoke check did not pass."
+            exit 1
+          fi
+          if [ "$RUN_NVIDIA" = "true" ] && [ "$NVIDIA_RESULT" != "success" ]; then
+            echo "::error::The selected NVIDIA smoke check did not pass."
+            exit 1
+          fi
+          if [ "$RUN_E2B" = "true" ] && [ "$E2B_RESULT" != "success" ]; then
+            echo "::error::The selected E2B smoke check did not pass."
+            exit 1
+          fi
+          if [ "$DEPLOY_RENDER" = "true" ] && [ "$DEPLOY_RESULT" != "success" ]; then
+            echo "::error::The requested Render deployment did not verify successfully."
+            exit 1
+          fi
