@@ -37,6 +37,7 @@ from .contracts import (
     PlanStep,
     StepResult,
     StepSnapshot,
+    StepStatus,
     TaskSnapshot,
     TaskSpec,
     TaskStatus,
@@ -80,6 +81,15 @@ class RunnerConfig:
     max_worker_threads: int = 8
     verification_policy: VerificationPolicy = field(default_factory=VerificationPolicy)
     on_event: Callable[[dict[str, Any]], None] | None = None
+    #: Cross-process knobs. A worker announces itself, heartbeats its own row, and
+    #: gives up waiting for exclusivity after ``max_wait_s`` instead of blocking.
+    worker_heartbeat_s: float = 5.0
+    worker_stale_after_s: float = 60.0
+    claim_wait_s: float = 2.0
+    idle_sleep_s: float = 0.25
+    #: Surface effect intents left behind by another worker before retrying a
+    #: step. Handlers that touch the outside world declare those intents.
+    surface_effect_intents: bool = True
 
 
 @dataclass
@@ -145,16 +155,31 @@ class FleetRunner:
         workspace_root: Path | str = ".",
         reviewer: Reviewer | None = None,
         scratch_root: Path | str | None = None,
+        worker_id: str | None = None,
+        announce: bool = True,
     ) -> None:
-        """Bind a store, a registry and a policy; nothing executes yet."""
+        """Bind a store, a registry and a policy; nothing executes yet.
+
+        ``worker_id`` makes a worker's identity explicit and stable across
+        processes — that is what lets two *processes* (or two machines) share one
+        database without stealing each other's leases. ``announce=False`` skips
+        the registry row for short-lived, in-process runs.
+        """
         self.store = store
         self.registry = registry
         self.config = config or RunnerConfig()
         self.workspace_root = Path(workspace_root).resolve()
         self.reviewer = reviewer
         self.scratch_root = Path(scratch_root) if scratch_root else self.workspace_root / ".fleet-scratch"
-        self.worker_id = f"worker-{threading.get_ident()}-{int(time.time() * 1000) % 100000}"
+        self.worker_id = worker_id or (
+            f"worker-{threading.get_ident()}-{int(time.time() * 1000) % 100000}"
+        )
+        if announce:
+            self.store.register_worker(self.worker_id)
+        self.announced = announce
         self._stop = threading.Event()
+        self.steps_kept = 0
+        self._last_heartbeat = 0.0
         self.recovered_leases = False
         self.lease_seconds_used = self.config.lease_seconds
 
@@ -220,6 +245,7 @@ class FleetRunner:
                 worker=self.worker_id,
                 lease_seconds=self.config.lease_seconds,
                 limit=min(64, self.config.max_worker_threads * 4),
+                capacities=self._agent_capacities(),
             )
             if not claimed:
                 # Nothing is runnable *right now*. Distinguish the three
@@ -285,6 +311,167 @@ class FleetRunner:
                 persist=True,
             )
         return report
+
+    def _agent_capacities(self) -> dict[str, int]:
+        """How many steps of each agent this worker can genuinely run at once."""
+        caps: dict[str, int] = {}
+        for name in self.registry.names:
+            try:
+                entry = self.registry.handler_for(name)
+            except AgentRegistrationError:  # pragma: no cover - registry invariant
+                continue
+            bulkhead = getattr(entry, "bulkhead", None)
+            caps[name] = int(bulkhead.limit) if bulkhead else self.config.max_worker_threads
+        return caps
+
+    def run_once(self, task_id: str) -> int:
+        """Claim and execute at most one wave, then return how many steps ran.
+
+        This is the cross-process unit of work: a worker calls ``run_once`` in a
+        loop, so exclusivity is decided by SQLite's write lock per wave instead
+        of by holding the whole task. Returning ``0`` means "nothing runnable
+        right now" — the honest signal a scheduler needs.
+        """
+        snapshot = self.store.get_task(task_id)
+        if snapshot.status in TERMINAL_TASK_STATUSES:
+            return 0
+        # Effects left as bare intents belong to an owner that never finished.
+        # Compensate them *before* the step is retried, so a second attempt can
+        # never silently duplicate a side effect that may already have happened.
+        intents = (
+            self.store.unresolved_effect_intents(task_id)
+            if self.config.surface_effect_intents
+            else ()
+        )
+        if intents:
+            # We do not guess on the owner's behalf: only the agent knows whether
+            # its external effect can be verified or compensated. We *do* refuse
+            # to let the risk stay invisible — it is logged, evented and reported.
+            for intent in intents:
+                self._emit(
+                    task_id,
+                    "effect.unresolved",
+                    f"{intent['step_id']}: external effect recorded as intent by "
+                    f"{intent.get('intent_worker') or 'unknown'} — outcome unverified; "
+                    "the handler must verify or compensate",
+                    persist=False,
+                )
+        try:
+            claimed = self.store.claim_ready_steps(
+                task_id,
+                worker=self.worker_id,
+                lease_seconds=self.config.lease_seconds,
+                limit=min(64, self.config.max_worker_threads * 4),
+                capacities=self._agent_capacities(),
+            )
+        except Exception:  # noqa: BLE001 - a busy database is not a crash
+            logger.warning("claim failed for %s; another worker may hold it", task_id,
+                           exc_info=True)
+            return 0
+        if not claimed:
+            self.store.finalize(task_id)
+            return 0
+        spec = self.store.spec(task_id)
+        step_by_id = {step.step_id: step for step in spec.steps}
+        outcomes = self._execute_wave(task_id, spec, claimed, step_by_id)
+        self.steps_kept += sum(1 for outcome in outcomes if outcome.status == "succeeded")
+        return len(outcomes)
+
+    def serve(
+        self,
+        *,
+        task_ids: Sequence[str] | None = None,
+        max_steps: int | None = None,
+        idle_exit_after_s: float = 3.0,
+    ) -> dict[str, Any]:
+        """Consume work from the shared database until there is none left.
+
+        Designed for N processes on one SQLite file (and, in principle, on a
+        network share). Each worker:
+
+        1. registers itself and heartbeats its own row;
+        2. requeues steps held by workers that are provably dead;
+        3. claims one wave at a time and verifies it exactly as before;
+        4. exits **quietly** when nothing has been runnable for
+           ``idle_exit_after_s`` — so a test, a CLI run, or a cron tick ends by
+           itself instead of hanging.
+
+        Returns a small report with the counters an operator needs.
+        """
+        started = time.perf_counter()
+        idle_since: float | None = None
+        steps_run = 0
+        waves = 0
+        while not self._stop.is_set():
+            now = time.time()
+            if now - self._last_heartbeat >= self.config.worker_heartbeat_s:
+                self.store.worker_heartbeat(
+                    self.worker_id, now_ts=now, steps_kept=self.steps_kept
+                )
+                self._last_heartbeat = now
+            # Recover work whose owner process is provably gone.
+            recovered = self.store.requeue_steps_of_dead_workers(
+                stale_after_s=self.config.worker_stale_after_s, now_ts=now
+            )
+            for item in recovered:
+                self._emit(
+                    item["task_id"], "step.owner_dead",
+                    f"{item['step_id']}: previous owner {item['previous_owner']!r} is not alive",
+                    persist=True,
+                )
+            pool = tuple(task_ids) if task_ids is not None else self.store.active_task_ids()
+            progressed = False
+            for task_id in pool:
+                if self._stop.is_set():
+                    break
+                ran = self.run_once(task_id)
+                if ran:
+                    progressed = True
+                    steps_run += ran
+                    waves += 1
+                    if max_steps is not None and steps_run >= max_steps:
+                        self._stop.set()
+                        break
+            if progressed:
+                idle_since = None
+                continue
+            # Nothing ran. That is *not* the same as "nothing left": a task may
+            # be waiting out a retry backoff, or its remaining steps may be held
+            # by a worker that is still alive. Wait for those, but never sit on
+            # a database that owes nothing forever.
+            pending = False
+            for task_id in pool:
+                snapshot = self.store.get_task(task_id)
+                if snapshot.status in TERMINAL_TASK_STATUSES:
+                    continue
+                if self.store.runnable_now(task_id):
+                    pending = True
+                    break
+                if any(step.status is StepStatus.RUNNING for step in snapshot.steps):
+                    pending = True
+                    break
+                if self.store.next_attempt_delay(task_id) is not None:
+                    pending = True
+                    break
+            if pending:
+                idle_since = None
+                time.sleep(self.config.idle_sleep_s)
+                continue
+            if idle_since is None:
+                idle_since = time.time()
+            if time.time() - idle_since >= idle_exit_after_s:
+                break
+            time.sleep(self.config.idle_sleep_s)
+        if self.announced:
+            self.store.deregister_worker(self.worker_id)
+        return {
+            "worker_id": self.worker_id,
+            "steps_run": steps_run,
+            "steps_kept": self.steps_kept,
+            "waves": waves,
+            "duration_ms": round((time.perf_counter() - started) * 1000.0, 2),
+            "stopped_early": self._stop.is_set(),
+        }
 
     # ------------------------------------------------------------------ #
     # Wave execution

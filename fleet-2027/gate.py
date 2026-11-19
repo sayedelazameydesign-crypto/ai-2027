@@ -720,6 +720,117 @@ def gate_llm_live_ollama(base: Path) -> GateResult:
     )
 
 
+def gate_multi_process(base: Path) -> GateResult:
+    """Two real OS processes on one database, then SIGKILL one mid-effect.
+
+    This is the A3 claim, proven the only way it can be: separate interpreters
+    contending for the same SQLite file. A single-process test can *simulate*
+    coordination; it cannot show that two kernels-level processes agree on who
+    owns a step.
+    """
+    started = time.perf_counter()
+    if not hasattr(signal, "SIGKILL"):
+        return GateResult("multi-process", False, "requires SIGKILL", {}, ["SIGKILL unavailable"])
+    probe = Path(__file__).resolve().parent / "scripts" / "multi_process_probe.py"
+    if not probe.is_file():  # pragma: no cover - packaging guard
+        return GateResult("multi-process", False, "probe missing", {}, [f"no {probe}"])
+    work = base / "multi"
+    work.mkdir(parents=True, exist_ok=True)
+    paths = [
+        "--db", str(work / "fleet.db"),
+        "--workspace", str(work / "ws"),
+        "--ledger", str(work / "ledger.txt"),
+    ]
+    failures: list[str] = []
+    measured: dict[str, Any] = {}
+
+    def run_probe(*args: str) -> tuple[int, dict[str, Any]]:
+        completed = subprocess.run(  # noqa: S603 - fixed argv, no shell
+            [sys.executable, str(probe), *args, *paths],
+            capture_output=True, text=True, timeout=300, check=False,
+        )
+        payload: dict[str, Any] = {}
+        start = completed.stdout.find("{")
+        if start != -1:
+            try:
+                payload, _ = json.JSONDecoder().raw_decode(completed.stdout[start:])
+            except json.JSONDecodeError:  # pragma: no cover - probe bug
+                payload = {}
+        return completed.returncode, payload
+
+    code, payload = run_probe("--mode", "concurrent", "--workers", "2", "--steps", "6",
+                              "--sleep", "0.3")
+    checks = payload.get("checks", {})
+    measured["concurrent"] = {
+        "exit": code,
+        "distinct_os_pids": payload.get("distinct_pids_in_ledger"),
+        "ledger_lines": payload.get("ledger_lines"),
+        "duplicated_steps": payload.get("duplicated_step_ids"),
+        "status": payload.get("snapshot", {}).get("status"),
+        "workers": [
+            {"worker_id": row["worker_id"], "steps_kept": row["steps_kept"]}
+            for row in payload.get("worker_rows", [])
+        ],
+    }
+    if code != 0 or not all(checks.values()):
+        failures.append(f"concurrent probe failed: {[k for k, v in checks.items() if not v]}")
+
+    code, payload = run_probe("--mode", "contention", "--workers", "2", "--steps", "5",
+                              "--sleep", "0.05")
+    checks = payload.get("checks", {})
+    measured["contention"] = {
+        "exit": code,
+        "bulkhead_saturated_events": payload.get("bulkhead_saturated_events"),
+        "attempts_per_step": payload.get("attempts_per_step"),
+        "status": payload.get("snapshot", {}).get("status"),
+    }
+    if code != 0 or not all(checks.values()):
+        failures.append(f"contention probe failed: {[k for k, v in checks.items() if not v]}")
+
+    code, payload = run_probe("--mode", "kill", "--steps", "4", "--sleep", "0.05",
+                              "--crash-window-s", "5")
+    checks = payload.get("checks", {})
+    measured["kill"] = {
+        "exit": code,
+        "status_after_kill": payload.get("status_after_kill"),
+        "status_after_survivor": payload.get("status_after_survivor"),
+        "ledger_lines_after_kill": payload.get("ledger_lines_after_kill"),
+        "ledger_lines_final": payload.get("ledger_lines_final"),
+        "duplicated_side_effects": not checks.get("no_duplicated_side_effects", False),
+        "recovery_ms": payload.get("recovery_ms"),
+        "unresolved_intents": payload.get("unresolved_intents_after"),
+    }
+    if code != 0 or not all(checks.values()):
+        failures.append(f"kill probe failed: {[k for k, v in checks.items() if not v]}")
+    if measured["kill"]["ledger_lines_final"] != 4:
+        failures.append(
+            f"{measured['kill']['ledger_lines_final']} effects for 4 steps — duplicated work"
+        )
+
+    with DurableTaskStore(str(work / "fleet.db")) as store:
+        integrity = store.verify_integrity()
+        schema = store.stats()["schema_version"]
+        live = [row["worker_id"] for row in store.live_workers(stale_after_s=2.0)]
+    measured["integrity_ok"] = integrity["ok"]
+    measured["audit_rows"] = integrity.get("audit_rows")
+    measured["schema_version"] = schema
+    measured["live_workers"] = live
+    if not integrity["ok"]:
+        failures.append(f"store integrity after multi-process run: {integrity}")
+    if live:
+        failures.append(f"workers still marked alive after every process exited: {live}")
+
+    return GateResult(
+        "multi-process",
+        not failures,
+        "two OS processes share one SQLite database; SIGKILL mid-effect loses no work "
+        "and duplicates no side effect",
+        measured,
+        failures,
+        (time.perf_counter() - started) * 1000,
+    )
+
+
 GATES: list[Callable[[Path], GateResult]] = [
     gate_parallel_wave,
     gate_verification_refuses,
@@ -730,6 +841,7 @@ GATES: list[Callable[[Path], GateResult]] = [
     gate_idempotency,
     gate_audit_chain,
     gate_sigkill_resume,
+    gate_multi_process,
     gate_llm_verified_artifact,
 ]
 
