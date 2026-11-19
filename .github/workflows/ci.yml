@@ -1,5 +1,5 @@
 # Evidence-First CI — Phase 2 / Week 1 of the 2027 roadmap.
-# Gates: 86 kernel tests + 6 wrapper tests + CLI contract, AST zero-deps proof,
+# Gates: 86 kernel tests + 7 wrapper tests + CLI contract, AST zero-deps proof,
 # reproducible benchmarks with a published jitter-aware regression ceiling,
 # 12 demo contract tests, 44 watchdog tests + 9 Phase 2B alerting tests, and
 # an installable-wheel smoke test.

@@ -4,7 +4,8 @@
 We do NOT copy or reimplement the kernel. We import `live-agent/server.py` in
 place (which itself inserts `projects/agi-system` into sys.path and imports
 `core.*` directly). Only RUNS_DIR / SANDBOXES_DIR are redirected so the HUD
-never writes into the live-agent demo's evidence trail.
+never writes into the live-agent demo's evidence trail. Existing HUD runtime
+data is preserved by default; a clean reset is explicit (`fresh=True`).
 
 Stdlib only.
 """
@@ -20,11 +21,12 @@ RUNTIME = ROOT / "command-hud" / "runtime"
 _MODULE_NAME = "ai2027_live_agent_server"
 
 
-def load(runtime: Path | None = None, fresh: bool = True):
+def load(runtime: Path | None = None, fresh: bool = False):
     """Return the live-agent module, pointed at `runtime`.
 
     runtime defaults to command-hud/runtime (gitignored). Pass a tempdir in
-    tests. `fresh=True` clears the evidence trail for a clean boot.
+    tests. Existing evidence is retained by default; `fresh=True` is a
+    destructive reset for disposable test/demo runtimes only.
     """
     if not LIVE_SERVER.is_file():
         raise RuntimeError(f"live-agent server not found: {LIVE_SERVER}")
@@ -42,6 +44,10 @@ def load(runtime: Path | None = None, fresh: bool = True):
     # this process would share (and _fresh_state would DELETE) the live-agent's
     # memory file. That bug was found by the HTTP smoke test, not by review.
     mod.MEMORY_DB = rt / "state" / "memory.db"
+    mod._prepare_state(fresh=fresh)
+    history_file = rt / "state" / "hud-history.jsonl"
     if fresh:
-        mod._fresh_state()
+        # The HUD's summary/audit trail is separate from the kernel DB. A full
+        # explicit reset must clear both stores, and only this runtime.
+        history_file.unlink(missing_ok=True)
     return mod

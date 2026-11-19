@@ -18,7 +18,11 @@ Covered promises:
      query produces no confident hit (the noise floor is measured, not assumed)
   9. the agent card is machine-readable and every endpoint it advertises exists
  10. Prometheus metrics expose real counters (no derived "health score")
- 11. the HUD dispatches to the same kernel, and its 100-attack gate still passes
+ 11. the HUD returns a real plan, an independently re-hashed artifact, and a
+     durable history/DecisionRecord over its own HTTP API; its red-team gate passes
+
+Topology note: HUD and Live Agent are exercised as separate HTTP services, but
+HUD dispatches through an in-process kernel bridge—not an HTTP call to Live Agent.
 
 Usage:
     python3 live-agent/server.py --port 8090 &
@@ -29,12 +33,14 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import sys
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import uuid
 
 TIMEOUT = 20
 
@@ -183,10 +189,40 @@ def check_hud(base: str, results: list[tuple[str, bool, str]]) -> None:
     expect(health.get("no_llm") is True, "HUD must declare no_llm")
     results.append(("hud: health (stdlib, no LLM)", True, "ok"))
 
+    nonce = uuid.uuid4().hex
+    rel = f"smoke/hud-{nonce}.txt"
+    content = f"via hud:{nonce}"
     status, rec = jcall(base, "/api/run", {
-        "goal_type": "create_file", "params": {"path": "smoke/hud.txt", "content": "via hud"}})
-    expect(rec.get("status") == "VERIFIED", f"HUD run not VERIFIED: {rec.get('status')}")
-    results.append(("hud: dispatch -> real kernel VERIFIED", True, rec["run_id"]))
+        "goal_type": "create_file", "params": {"path": rel, "content": content}})
+    expect(status == 200 and rec.get("status") == "VERIFIED",
+           f"HUD run not VERIFIED: HTTP {status}, {rec.get('status')}")
+    expect(rec.get("plan_steps", 0) >= 1, "HUD did not return the real plan step count")
+    expected_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
+    expect(rec.get("sha256") == {
+        "file": rel, "bytes": len(content.encode("utf-8")), "sha256": expected_hash,
+    }, f"HUD independent artifact hash differs: {rec.get('sha256')}")
+    expect(rec.get("history_persisted") is True,
+           f"HUD event history was not durably appended: {rec.get('history_persisted')}")
+
+    status, state = jcall(base, "/api/state")
+    expect(status == 200, f"HUD state -> HTTP {status}")
+    restored_entry = next((h for h in state.get("history", [])
+                           if h.get("run_id") == rec.get("run_id")), None)
+    expect(restored_entry is not None, "HUD run missing from its history endpoint")
+    expect(restored_entry.get("status") == "VERIFIED", "HUD history status differs from run result")
+
+    status, record = jcall(base, f"/api/record/{rec['run_id']}")
+    expect(status == 200 and record.get("run_id") == rec["run_id"],
+           f"HUD persisted record unavailable: HTTP {status}")
+    expect(record.get("status") == "VERIFIED" and
+           record.get("goal", {}).get("params") == {"path": rel, "content": content},
+           "HUD persisted DecisionRecord does not match the requested task")
+    record_checks = (record.get("evidence") or [{}])[0].get("checks", {})
+    expect(all(record_checks.get(k) is True for k in
+               ("claimed_ok", "file_exists", "correct_path", "correct_content", "hash_matches")),
+           f"restored HUD record is missing real verifier evidence: {record_checks}")
+    results.append(("hud: plan + VERIFIED artifact/hash + history and persisted record restore",
+                    True, rec["run_id"]))
 
     status, esc = jcall(base, "/api/escape", {})
     expect(status == 200 and esc.get("status") == "DENIED", f"HUD escape -> {esc.get('status')}")
