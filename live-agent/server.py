@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import shutil
 import sys
@@ -71,6 +72,17 @@ _run_index: dict[str, dict] = {}       # run_id -> {record, sandbox, ts}
 _BOOT_TS = time.time()
 _memory: EvidenceMemoryStore | None = None
 _memory_lock = threading.Lock()
+
+
+def _configure_runtime(runtime_dir: str | Path) -> None:
+    """Redirect this process to an explicit, isolated runtime directory."""
+    global RUNS_DIR, SANDBOXES_DIR, MEMORY_DB, _memory
+    root = Path(runtime_dir).expanduser().resolve()
+    RUNS_DIR = root / "runs"
+    SANDBOXES_DIR = root / "sandboxes"
+    MEMORY_DB = root / "state" / "memory.db"
+    with _memory_lock:
+        _memory = None
 
 
 def memory() -> EvidenceMemoryStore:
@@ -381,12 +393,17 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, default=8090)
     ap.add_argument("--host", default="0.0.0.0")
+    ap.add_argument("--runtime-dir", default=os.environ.get("AI2027_LIVE_RUNTIME_DIR"),
+                    help="isolate persistent runs/sandboxes/memory under this directory")
     ap.add_argument("--fresh", action="store_true",
                     help="DESTRUCTIVE: delete this service's runs, sandboxes, and memory before starting")
     args = ap.parse_args()
+    if args.runtime_dir:
+        _configure_runtime(args.runtime_dir)
     restore_warnings = _prepare_state(fresh=args.fresh)
     print(f"AI-2027 Live Agent Experience — http://{args.host}:{args.port}")
     print(f"kernel: {AGI_DIR} (imported in place, untouched)")
+    print(f"runtime directory: {RUNS_DIR.parent}")
     print(f"runtime: {'fresh (explicit reset)' if args.fresh else 'preserving existing evidence'}")
     print(f"supported goals: {', '.join(SUPPORTED_GOALS)}")
     for warning in restore_warnings:
