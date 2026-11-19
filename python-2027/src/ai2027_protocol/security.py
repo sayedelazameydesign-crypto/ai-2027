@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ipaddress
+import os
 import re
 from collections.abc import Mapping
 from pathlib import Path
@@ -159,8 +160,13 @@ def resolve_safe_path(base_dir: Path, untrusted_path: str) -> Path:
     ):
         raise SecurityValidationError("Target path must be relative and POSIX-formatted.")
 
-    base_resolved = base_dir.resolve()
-    candidate = (base_resolved / untrusted_path).resolve()
-    if not candidate.is_relative_to(base_resolved):
+    base_str = os.path.realpath(base_dir)
+    if untrusted_path.strip() == ".":
+        return Path(base_str)
+    fullpath = os.path.normpath(os.path.join(base_str, untrusted_path))
+    if not fullpath.startswith(base_str + os.sep):
         raise SecurityValidationError("Target path escapes the allowed workspace root.")
-    return candidate
+    resolved = os.path.realpath(fullpath)
+    if not resolved.startswith(base_str + os.sep):
+        raise SecurityValidationError("Target path escapes the allowed workspace root.")
+    return Path(resolved)

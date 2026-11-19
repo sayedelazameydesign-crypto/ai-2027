@@ -5,6 +5,7 @@ import sys
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 _WORKER_SRC = Path(__file__).resolve().parents[1] / "workers" / "python-worker" / "src"
 if str(_WORKER_SRC) not in sys.path:
@@ -47,9 +48,10 @@ async def test_python_worker_free_first_failover_and_retry() -> None:
         url: str, headers: Mapping[str, str], body_json: str, timeout_s: float
     ) -> tuple[int, dict[str, Any]]:
         calls.append(url)
-        if "googleapis.com" in url:
+        host = urlparse(url).hostname
+        if host == "generativelanguage.googleapis.com":
             return 429, {"error": "quota"}
-        if "groq.com" in url:
+        if host == "api.groq.com":
             return 200, {"choices": [{"message": {"content": "groq worker reply"}}]}
         return 500, {}
 
@@ -76,9 +78,10 @@ async def test_python_worker_openrouter_and_deterministic_fallback() -> None:
     async def all_bad_fetch(
         url: str, headers: Mapping[str, str], body_json: str, timeout_s: float
     ) -> tuple[int, dict[str, Any]]:
-        if "openrouter.ai" in url:
+        host = urlparse(url).hostname
+        if host == "openrouter.ai":
             return 200, {"choices": [{"message": {"content": "openrouter reply"}}]}
-        if "groq.com" in url:
+        if host == "api.groq.com":
             raise TimeoutError("timed out")
         return 401, {"error": "bad key"}
 
@@ -171,7 +174,7 @@ async def test_python_worker_gemini_direct_and_malformed_payloads() -> None:
     async def broken_json(
         url: str, headers: Mapping[str, str], body_json: str, timeout_s: float
     ) -> tuple[int, dict[str, Any]]:
-        if "groq.com" in url:
+        if urlparse(url).hostname == "api.groq.com":
             raise OSError("network dropped")
         return 200, {"unexpected": "shape"}
 
@@ -193,7 +196,7 @@ async def test_python_worker_gemini_direct_and_malformed_payloads() -> None:
     async def nvidia_ok(
         url: str, headers: Mapping[str, str], body_json: str, timeout_s: float
     ) -> tuple[int, dict[str, Any]]:
-        assert "nvidia.com" in url
+        assert urlparse(url).hostname == "integrate.api.nvidia.com"
         assert headers["authorization"] == "Bearer nvapi-worker-key"
         return 200, {"choices": [{"message": {"content": "nvidia worker ok"}}]}
 
