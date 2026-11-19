@@ -1,0 +1,14 @@
+{
+  "$schema": "https://raw.githubusercontent.com/cloudflare/workers-sdk/main/packages/wrangler/config-schema.json",
+  "name": "ai2027-edge-gateway",
+  "main": "src/index.mjs",
+  "compatibility_date": "2026-10-01",
+  "workers_dev": true,
+  "observability": {
+    "enabled": true
+  },
+  "vars": {
+    "AI2027_RATE_LIMIT_PER_MIN": "30",
+    "AI2027_UPSTREAM_TIMEOUT_MS": "7000"
+  }
+}

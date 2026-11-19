@@ -1,0 +1,14 @@
+name = "ai2027-python-worker"
+main = "src/entry.py"
+compatibility_date = "2025-11-01"
+compatibility_flags = ["python_workers"]
+workers_dev = true
+
+[observability]
+enabled = true
+
+[vars]
+AI2027_PROTOCOL_VERSION = "2027.1"
+GEMINI_MODEL = "gemini-2.5-flash"
+GROQ_MODEL = "llama-3.3-70b-versatile"
+OPENROUTER_MODEL = "meta-llama/llama-3.3-70b-instruct:free"
