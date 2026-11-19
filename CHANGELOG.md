@@ -13,6 +13,21 @@ fail or when any GitHub Action is not pinned to a full-length SHA.
 
 ## [Unreleased]
 
+### Added — PAP-2027 gap audit on real code (2026-11-19)
+- **`docs/pap-2027-engines.json`** + **`scripts/pap_gap_audit.py`** — the twelve
+  proposed PAP-2027 engines are mapped to files that actually exist, each with
+  the test files and the marker string that proves it is exercised in CI.
+  `--assert` fails when an evidence path or a test disappears, when a
+  `present` engine has no tests, or when an `absent` engine starts listing
+  evidence. 14 stdlib tests (`scripts/test_pap_gap_audit.py`) keep the gate
+  itself honest; wired into the `tests` job of `ci.yml`.
+- **`docs/PAP-2027-GAP-AUDIT.md`** — the audit result: **4 present · 7 partial ·
+  1 absent** (`agent-fleet`), the exact names and `if:` conditions of the two
+  skipped checks on #66, which CI job proves which engine, what CI explicitly
+  does *not* prove (mock connectors, simulated browser, wrangler dry-run,
+  offline E2B), and a falsifiable eight-gate "Live Capability Gate" proposal
+  where every gate must produce a stored artifact or it did not run.
+
 ### Fixed — retired model IDs and the "free" label (2026-11-19)
 - **`python-2027/src/ai2027_protocol/model_catalog.py`** (new) — one registry for
   every shipped remote default (`GEMINI_MODEL`, `NVIDIA_MODEL`, `GROQ_MODEL`,

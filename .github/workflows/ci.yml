@@ -100,6 +100,11 @@ jobs:
       - name: Secret gate on every tracked file (no credentials in code paths)
         run: python scripts/secret_scan.py --all --scope code
 
+      - name: PAP-2027 gap audit — a claimed engine must keep its code and tests
+        run: |
+          python scripts/test_pap_gap_audit.py -v
+          python scripts/pap_gap_audit.py --assert
+
       - name: Network preflight tests — blindness is not death (10)
         run: python scripts/test_network_preflight.py -v
 
