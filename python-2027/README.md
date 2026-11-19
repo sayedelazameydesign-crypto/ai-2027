@@ -23,6 +23,8 @@ Or inside `python-2027/`:
 ```bash
 uv sync --locked --group dev
 .venv/bin/ai2027-py27 demo
+.venv/bin/ai2027-py27 models          # live defaults + retired IDs (no network)
+.venv/bin/ai2027-py27 providers       # tier + $0 guard per provider
 .venv/bin/ai2027-py27 registry
 .venv/bin/ai2027-py27 agent "Audit python-2027 and generate a verified HTML + SVG architecture report"
 ```
@@ -33,6 +35,7 @@ uv sync --locked --group dev
 
 1. **Real `$0` Budget Enforcement (`budget.py`, `router.py`, `workers/`)**:
    - Distinguishes `BillingTier.LOCAL` (`proven_zero_local`, `cost_known=True`), `BillingTier.FREE_TIER` (`declared_free_tier_unbilled`, `cost_known=False`), `BillingTier.UNKNOWN_COST`, and `BillingTier.PAID`.
+   - **Model catalogue (`model_catalog.py`, `ai2027-py27 models`)**: every shipped default and every provider retirement lives in one place. Retired IDs (`meta/llama-3.1-8b-instruct` → HTTP 410; Groq `llama-3.1-8b-instant` / `llama-3.3-70b-versatile` → HTTP 404 on free keys) are blocked *before* a request with the dated replacement in the reason, and an `HTTP 410` answer is reported as `ProviderError("model_retired")`. OpenRouter defaults to the dynamic `openrouter/free` router so no pinned `:free` ID goes stale. Groq's replacement `openai/gpt-oss-20b` is priced per token, so it stays `UNKNOWN_COST` until declared in `AI2027_FREE_MODELS` — a paid model is never used to "fix" a free check. See [`docs/MODEL-CATALOG.md`](../docs/MODEL-CATALOG.md).
    - Having an API key (`GEMINI_API_KEY`, `OPENROUTER_API_KEY`, etc.) **never** proves `$0` usage by itself: unapproved models or OpenRouter models missing `:free` are classified `UNKNOWN_COST` and **blocked pre-request** by `BudgetGuard` when `AI2027_MAX_SPEND_USD=0`.
 2. **Fail-Closed Cloudflare Workers (`workers/python-worker/` & `workers/edge-gateway/`)**:
    - Protected routes (`/v1/route`, `/v1/agent/plan`) return `401` by default when `WORKER_AUTH_TOKEN` / `GATEWAY_TOKEN` is missing unless the route is explicitly declared in `AI2027_PUBLIC_ROUTES`.
@@ -58,3 +61,4 @@ uv sync --locked --group dev
 - **Python version matrix:** CI tests both **Python 3.13** and **Python 3.14** strictly against `uv.lock` (`uv==0.13.9`). `python-2027/pyproject.toml` keeps `requires-python = ">=3.11"` for compatibility with Debian/Ubuntu hosts (`3.11.2`), while `workers/python-worker/pyproject.toml` enforces `requires-python = ">=3.13"` matching `python_workers_314`.
 - **Cloudflare Workers local vs live:** `node --test`, `pytest`, `wrangler deploy --dry-run`, and local `wrangler dev --local` (on `edge-gateway`) verify local request/auth/budget/stream contracts. Local contract tests and CI runs **do not** prove a live deployment on Cloudflare Workers; live deployment requires `wrangler deploy` against a Cloudflare account.
 - **Cost classification honesty:** Local deterministic/Ollama execution records `cost_known=True, cost_usd=0.0`. Remote free-tier calls record `cost_usd=0.0, cost_known=False, cost_status="declared_free_tier_unbilled"` unless an invoice/usage proof exists — never faking invoice proof.
+- **Model IDs age:** the catalogue blocks retirements we have evidence for; it does not prove that a provider is serving a model right now, that a free plan still covers it, or that quota remains. Only `ai2027-py27 live --require-any` on `main` with Actions secrets shows the state at that instant.

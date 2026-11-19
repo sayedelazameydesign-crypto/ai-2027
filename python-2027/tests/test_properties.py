@@ -97,9 +97,7 @@ async def test_property_router_always_resolves_to_first_healthy_backup(
     class _ToggleProvider:
         def __init__(self, kind: ProviderKind, should_fail: bool) -> None:
             self.kind = kind
-            self.model = (
-                "gemini-2.5-flash" if kind == ProviderKind.GEMINI else "llama-3.3-70b-versatile"
-            )
+            self.model = "gemini-2.5-flash" if kind == ProviderKind.GEMINI else "openai/gpt-oss-20b"
             self.is_remote = True
             self.billing_tier = BillingTier.FREE_TIER
             self._should_fail = should_fail

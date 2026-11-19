@@ -172,7 +172,7 @@ async def test_router_retries_transient_then_falls_back_to_backup() -> None:
     )
     backup = _ScriptedProvider(
         ProviderKind.GROQ,
-        "llama-3.3-70b-versatile",
+        "openai/gpt-oss-20b",
         ["backup answer"],
     )
     router = FreeFirstRouter(
@@ -235,7 +235,7 @@ async def test_router_circuit_breaker_and_allow_remote_and_preferred_order() -> 
 async def test_router_timeout_and_all_providers_failed() -> None:
     class _SlowProvider:
         kind = ProviderKind.GROQ
-        model = "llama-3.3-70b-versatile"
+        model = "openai/gpt-oss-20b"
         is_remote = True
         billing_tier = BillingTier.FREE_TIER
 
