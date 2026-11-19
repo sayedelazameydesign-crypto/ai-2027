@@ -77,6 +77,10 @@ async def test_python_worker_free_first_failover_and_retry() -> None:
         "WORKER_AUTH_TOKEN": "tok-failover",
         "GEMINI_API_KEY": "AIza-fake-worker-key",
         "GROQ_API_KEY": "gsk-fake-worker-key",
+        # Groq retired its free Llama IDs on 2026-08-16: the replacement model is
+        # priced per token, so the free plan must be declared explicitly.
+        "GROQ_MODEL": "openai/gpt-oss-20b",
+        "AI2027_FREE_MODELS": "openai/gpt-oss-20b",
         "OPENROUTER_API_KEY": "sk-or-fake-worker-key",
     }
     res = await handle_worker_request(
@@ -127,6 +131,36 @@ async def test_python_worker_budget_guard_blocks_unknown_cost_openrouter() -> No
     assert res.body["cost_known"] is True
     assert res.body["budget_summary"]["unknown_cost_blocked"] == 1
     assert res.body["attempts"][0]["error"] == "budget_blocked"
+
+
+async def test_python_worker_blocks_retired_groq_model_without_calling() -> None:
+    fetched: list[str] = []
+
+    async def spy_fetch(
+        url: str, headers: Mapping[str, str], body_json: str, timeout_s: float
+    ) -> tuple[int, dict[str, Any]]:
+        fetched.append(url)
+        return 200, {"choices": [{"message": {"content": "should-never-run"}}]}
+
+    env = {
+        "WORKER_AUTH_TOKEN": "tok-retired",
+        "GROQ_API_KEY": "gsk-fixture",
+        "GROQ_MODEL": "llama-3.3-70b-versatile",  # retired 2026-08-16
+        "AI2027_MAX_SPEND_USD": "0",
+    }
+    res = await handle_worker_request(
+        method="POST",
+        path="/v1/route",
+        headers={"Authorization": "Bearer tok-retired"},
+        raw_body=json.dumps({"prompt": "Retired model must not be called"}),
+        env=env,
+        fetcher=spy_fetch,
+    )
+    assert res.status == 200
+    assert fetched == []
+    assert res.body["provider"] == "deterministic"
+    assert res.body["attempts"][0]["error"] == "model_retired"
+    assert "docs/MODEL-CATALOG.md" in res.body["attempts"][0]["detail"]
 
 
 async def test_python_worker_openrouter_free_and_deterministic_fallback() -> None:

@@ -19,8 +19,10 @@ is **not safe**, and these are measured facts, not caution:
 | A global kernel lock | a handful of clients makes the demo unusable for everyone |
 
 `deployment/live_server.py` fixes the part that silently takes the service down
-(**disk cap + run budget**). It does **not** add authentication, and it says so in
-its startup banner. For a public URL, run it **read-only**:
+(**disk cap + run budget**). Normal startup now preserves existing runtime files;
+`--fresh` is the explicit destructive reset. This protects process restarts that
+reuse the same filesystem only: it does **not** add authentication, and it says so
+in its startup banner. For a public URL, run it **read-only**:
 
 ```bash
 AI2027_READ_ONLY=1 python3 deployment/live_server.py
@@ -66,6 +68,21 @@ Two things that will bite if you copy them from elsewhere:
 
 You do not need a build step: there are **zero dependencies**, and
 `requirements.txt` is deliberately empty of packages.
+
+### Storage and redeploy durability
+
+The blueprint has **no persistent disk** configured. Its free plan therefore does
+not guarantee that runs, sandboxes, or memory survive an instance replacement,
+redeploy, or migration; this launcher only promises recovery from a process restart
+while the same runtime filesystem is retained. Verify the host's disk/mount lifecycle
+before treating it as durable. On a host that provides persistent storage, set
+`AI2027_LIVE_RUNTIME_DIR` to its mounted path; the Render blueprint does not set
+one. To request a clean local runtime explicitly, start with
+`python3 deployment/live_server.py --fresh`; never add that flag to a routine
+production restart. The stdlib process-level regression test is
+`python3 scripts/test_runtime_restart.py -v`: it runs both real HTTP services
+against temporary runtime directories, terminates them, starts new OS processes,
+and checks records, history, artifacts, hashes, and memory through the APIs.
 
 ## Option B — Hugging Face Spaces (Docker)
 

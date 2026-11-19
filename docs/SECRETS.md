@@ -16,7 +16,7 @@
 | `GEMINI_API_KEY` | `.github/workflows/gemini-live-check.yml`، يستدعيه CI ولوحة دورة الحياة، و`.github/workflows/python-2027.yml` (على `main` فقط)، و`.github/workflows/pr-lens.yml` (تشغيل يدوي على `main` فقط عبر `env: PR_LENS_API_KEY`) | **نداء واحد** صغير (`maxOutputTokens=24`, `temperature=0`) يثبت أن المفتاح يعمل وأن النقطة تُجيب، أو رسم خريطة PR عبر `pr-lens` على `main` فقط. لا يُشغَّل على `pull_request` ولا يُستعمل في أي مسار وكيل تلقائي | تشغيل CI المباشر يبقي سلوك `SKIPPED` عند غياب المفتاح؛ طلبه صراحةً في لوحة دورة الحياة يجعل غيابه فشلاً واضحاً | AI Studio → Keys |
 | `NVIDIA_API_KEY` | `.github/workflows/nvidia-live-check.yml` (يدوي أو من لوحة دورة الحياة)، و`.github/workflows/python-2027.yml` (على `main` فقط) | نداء NIM واحد إلى prompt ثابت، `temperature=0` و`max_tokens=16`؛ النموذج مُعرّف غير سري. لا يُطبع النص أو جسم خطأ المزوّد ولا تُعاد المحاولة | التشغيل اليدوي يتخطى غياب المفتاح؛ الخيار الصريح في لوحة دورة الحياة يفشل بدلاً من تسجيل نجاح زائف | NVIDIA Build / API Catalog → API Keys |
 | `GROQ_API_KEY` | `.github/workflows/python-2027.yml` في وظيفة `live-actions-keys` (على `main` فقط عبر `env:`) | فحص Free-Tier واحد قصير (`Reply with exactly the word: pong`, `max_tokens=24`) عبر `GroqFreeProvider` ضمن حد `AI2027_MAX_SPEND_USD=0`. لا يُشغَّل على `pull_request` ولا يطبع قيمة المفتاح | يُسجَّل `skipped_no_key` بوضوح؛ يفشل فقط عند تمرير `--require-any` صراحةً دون مزوّد نشط آخر | Groq Console → API Keys |
-| `OPENROUTER_API_KEY` | `.github/workflows/python-2027.yml` في وظيفة `live-actions-keys` (على `main` فقط عبر `env:`) | فحص نموذج `:free` صريح (`openrouter/free` أو `OPENROUTER_MODEL` المنتهي بـ`:free`). أي نموذج مدفوع أو غير معلوم التكلفة يُحجب تلقائياً بـ`BudgetGuard` عند `MAX_SPEND=0`. لا يُشغَّل على `pull_request` | يُسجَّل `skipped_no_key` بوضوح، أو `budget_blocked` إذا خالف النموذج شرط `:free` | OpenRouter → Keys |
+| `OPENROUTER_API_KEY` | `.github/workflows/python-2027.yml` في وظيفة `live-actions-keys` (على `main` فقط عبر `env:`) | فحص توجيه مجاني صريح: `openrouter/free` (الموجّه الديناميكي الافتراضي) أو أي `OPENROUTER_MODEL` منتهٍ بـ`:free`. أي نموذج مدفوع أو غير معلوم التكلفة يُحجب تلقائياً بـ`BudgetGuard` عند `MAX_SPEND=0`. لا يُشغَّل على `pull_request` | يُسجَّل `skipped_no_key` بوضوح، أو `budget_blocked` إذا خالف النموذج شرط `:free` | OpenRouter → Keys |
 | `OLLAMA_API_KEY` | اختياري محلياً/يدوياً عبر `OllamaCloudProvider` فقط — **غير مفعّل في CI التلقائي** ومفصول تماماً عن Ollama المحلي (`OLLAMA_BASE_URL` مجاني `$0`) | مصنَّف **`UNKNOWN_COST`** في `ai2027_protocol/budget.py`: محجوب تلقائياً تحت `AI2027_MAX_SPEND_USD=0` حتى عند وجود المفتاح، ولا يعمل إلا بتجاوز صريح (`max_spend_usd > 0` و`allow_unknown_cost=True`) | لا يؤثر على التشغيل المحلي (`qwen3.5:0.8b` على loopback يعمل بـ`$0` دون مفتاح)؛ وعند وجوده تحت `$0` يُسجَّل `UNKNOWN_COST_BLOCKED` دون أي اتصال خارجي | Ollama Account Settings → API Keys |
 | `E2B_API_KEY` | `.github/workflows/e2b-live-check.yml` (يدوي أو من لوحة دورة الحياة) | تشغيل ثابت واحد `print(40 + 2)` عبر `E2BBackend` في microVM مؤقتة؛ يطلب backend إنهاء الـsandbox في `finally`. لا يُطبع إخراج التنفيذ أو خطأ SDK. قد يستهلك رصيد/وقت E2B | التشغيل اليدوي يتخطى غياب المفتاح؛ الخيار الصريح في لوحة دورة الحياة يفشل بدلاً من نجاح زائف | E2B Dashboard → API Keys |
 | `RENDER_API_KEY` | `.github/workflows/deploy.yml` (يدوي أو من لوحة دورة الحياة) | نشر خدمة واحدة عبر `scripts/render_deploy.py` بعد مطابقة اسم الخدمة حرفياً؛ يعمل في Environment باسم `production`، ويمكن تفعيل مراجعين مطلوبين من إعداداته، ثم لا يُعلَن النجاح إلا بعد الفحص النهائي | التشغيل اليدوي يتخطى غياب المفتاح؛ طلب النشر الصريح في لوحة دورة الحياة يفشل بوضوح. لا يرسل شيئاً قبل اجتياز بوابة التأكيد | Render Dashboard → Account Settings → API Keys |
@@ -28,12 +28,26 @@
 |---|---|---|
 | `RENDER_SERVICE_ID` | يختار خدمة Render مباشرة في النشر اليدوي أو لوحة دورة الحياة بدل البحث بالاسم | فارغ ⇒ البحث بالاسم |
 | `RENDER_SERVICE_NAME` | اسم الخدمة المستعمل في البحث والتأكيد؛ قيمة الإدخال اليدوي تتجاوز المتغيّر | `ai-2027-live-agent` |
-| `GEMINI_MODEL` | النموذج المستعمل في فحص Gemini الحي | `gemini-2.0-flash` |
-| `NVIDIA_MODEL` | معرّف نموذج NVIDIA غير السري عند استخدام لوحة دورة الحياة؛ يمكن تجاوزه بمدخل التشغيل | فارغ؛ يجب تمرير معرّف عند طلب فحص NVIDIA |
-| `GROQ_MODEL` | معرّف نموذج Groq المستخدم في فحص Free-Tier على `main` | `llama-3.1-8b-instant` |
-| `OPENROUTER_MODEL` | معرّف نموذج OpenRouter؛ يجب أن يكون `openrouter/free` أو ينتهي بـ`:free` تحت سياسة `$0` | `openrouter/free` |
+| `GEMINI_MODEL` | النموذج المستعمل في فحص Gemini الحي | `gemini-2.5-flash` |
+| `NVIDIA_MODEL` | معرّف نموذج NVIDIA غير السري؛ `meta/llama-3.1-8b-instruct` تقاعد (HTTP 410 منذ 2026-08-26) ويُحجب كـ`model_retired`. يمكن تجاوزه بمدخل التشغيل | `meta/llama-3.3-70b-instruct` |
+| `GROQ_MODEL` | معرّف نموذج Groq. المعرّفان `llama-3.1-8b-instant` و`llama-3.3-70b-versatile` تقاعدا (2026-08-16) ويُحجبان كـ`model_retired`. البديل الرسمي `openai/gpt-oss-20b` مسعّر لكل توكن، لذا يبقى `UNKNOWN_COST` حتى تصرّح به في `AI2027_FREE_MODELS` | `openai/gpt-oss-20b` |
+| `OPENROUTER_MODEL` | معرّف نموذج OpenRouter؛ يجب أن يكون `openrouter/free` أو منتهيًا بـ`:free` تحت سياسة `$0` | `openrouter/free` |
+| `AI2027_FREE_MODELS` | قائمة مفصولة بفواصل تعلن نماذج إضافية مجانية على خطة المزوّد المعدّلة. لا تتجاوز تقاعد معرّف، ولا تُثبت `$0` | فارغة |
 | `OLLAMA_MODEL` | نموذج Ollama المحلي لبيئة `4gb-laptop` (يعمل بلا مفتاح سحابي) | `qwen3.5:0.8b` |
 | `OLLAMA_CLOUD_MODEL` | نموذج Ollama Cloud عند الإذن المدفوع الصريح فقط | `qwen3.5:0.8b` |
+
+### أسرار Cloudflare / R2 المعرَّفة وغير المستعملة بعد
+
+هذه الأسرار موجودة في `Settings → Secrets and variables → Actions` **ولا يقرأها أي workflow في المستودع حاليًا** — لا كود Python ولا Worker ولا سكربت نشر. وجودها لا يعني أن التخزين أو النشر إلى Cloudflare مدعوم.
+
+| السرّ | ما يفعله فعلًا | ما لا يفعله |
+|---|---|---|
+| `CLOUDFLARE_ACCOUNT_ID` | معرّف الحساب، ويدخل في تركيب نطاق R2: `https://ACCOUNT_ID.r2.cloudflarestorage.com` | ليس مفتاحًا سريًا، ولا يمنح صلاحية قراءة أو كتابة |
+| `CLOUDFLARE_API_TOKEN` | مصادقة REST إدارية لدى Cloudflare (`Authorization: Bearer …`) لإدارة الموارد حسب الأذونات | **ليس** بديلًا عن مفاتيح S3، ولا يُستعمل في أي مسار هنا |
+| `R2_ACCESS_KEY_ID` | معرّف مفتاح S3 لمساحة R2 | لا يكفي وحده للدخول |
+| `R2_SECRET_ACCESS_KEY` | توقيع طلبات S3 إلى R2 (أعلى حساسية في المجموعة) | لا يُستعمل في المتصفح ولا في أي ملف يُرفع إلى المستودع |
+
+**إذا أردت تفعيل R2 فعليًا:** أضف كودًا يقرأ `R2_ENDPOINT` و`R2_BUCKET_NAME` و`R2_REGION` (ليست أسرارًا)، ثم أضف صفًا لهذه الأسرار في الجدول أعلاه وحدّث `scripts/workflow_secret_audit.py` قبل تمريرها إلى أي وظيفة. حتى ذلك الحين، إضافتها إلى `env:` بلا مستهلك تُعدّ سطح هجوم بلا فائدة.
 
 ### التشغيل الآمن لدورة الحياة
 
@@ -64,7 +78,7 @@
 **تفعله:**
 - `GEMINI_API_KEY` يتيح فحص endpoint صغيراً، لا يجعل الوكيل يستخدم Gemini تلقائياً. Connectors Hub يبقى محلياً افتراضياً؛ أما NVIDIA في الاستدلال فتتطلب موافقة صريحة مستقلة. فحص Gemini في لوحة دورة الحياة اختياري ويُشترط له المفتاح عند طلبه.
 - `NVIDIA_API_KEY` يختبر نقطة NIM بطلب ثابت واحد؛ لا يرسل prompt المستخدم ولا يثبت جودة النموذج أو توافقه مع جهاز المستخدم.
-- `GROQ_API_KEY` و`OPENROUTER_API_KEY` يُستعملان فقط على `main` عبر `env:` داخل `python-2027.yml` لفحوص Free-Tier (`:free` لـOpenRouter) تحت حراسة `AI2027_MAX_SPEND_USD=0`.
+- `GROQ_API_KEY` و`OPENROUTER_API_KEY` يُستعملان فقط على `main` عبر `env:` داخل `python-2027.yml` لفحوص Free-Tier (`openrouter/free` لـOpenRouter) تحت حراسة `AI2027_MAX_SPEND_USD=0`. معرّفات النماذج المتقاعدة تُحجب قبل أي طلب — انظر [`MODEL-CATALOG.md`](MODEL-CATALOG.md).
 - `OLLAMA_API_KEY` يبقى معزولاً بوصفه `UNKNOWN_COST` لخدمة Ollama Cloud البعيدة ولا يُصرف تلقائياً تحت `$0`، بينما يظل Ollama المحلي (`OLLAMA_BASE_URL` على loopback) مجانياً دون مفتاح.
 - `E2B_API_KEY` يختبر backend العزل بتنفيذ ثابت `print(40 + 2)` في microVM مؤقتة؛ اختيار الفحص صريح وقد يستهلك رصيداً.
 - `RENDER_API_KEY` يسمح بطلب نشر خدمة واحدة. لا يُعدّ قبول الطلب نجاحاً: يلزم `wait_for_deploy()` ثم فحص حياة الخدمة.

@@ -19,10 +19,10 @@ class TestRunGoal(unittest.TestCase):
         self.tmp = tempfile.mkdtemp()
         server.RUNS_DIR = Path(self.tmp) / "runs"
         server.SANDBOXES_DIR = Path(self.tmp) / "sandboxes"
-        # Redirect the memory DB too: `_fresh_state()` deletes it, and without
-        # this the test suite wipes the memory of a live running server.
+        # Isolate all durable files because this test explicitly starts fresh.
+        # Never let the destructive test reset touch a developer's live runtime.
         server.MEMORY_DB = Path(self.tmp) / "memory.db"
-        server._fresh_state()
+        server._prepare_state(fresh=True)
 
     def tearDown(self):
         shutil.rmtree(self.tmp, ignore_errors=True)
@@ -72,6 +72,32 @@ class TestRunGoal(unittest.TestCase):
         self.assertIsNone(server.sandbox_file(rec["run_id"], "ledger.jsonl"))
         self.assertIsNone(server.sandbox_file("bad id", "pub.txt"))
         self.assertIsNone(server.sandbox_file("run_0_00000000", "pub.txt"))
+
+    def test_runtime_is_restored_by_default_and_reset_only_when_explicit(self):
+        rec = server.run_goal("create_file", {
+            "path": "restore/proof.txt", "content": "durable-run"})
+        run_id = rec["run_id"]
+        run_file = server.RUNS_DIR / f"{run_id}.json"
+        artifact = server.SANDBOXES_DIR / run_id / "restore" / "proof.txt"
+        self.assertTrue(run_file.is_file())
+        self.assertEqual(artifact.read_bytes(), b"durable-run")
+
+        # Model a new process: its module-level index and memory handle are empty,
+        # but the run record, artifact, and SQLite data must remain on disk.
+        server._run_index.clear()
+        server._memory = None
+        warnings = server._prepare_state()
+        self.assertEqual(warnings, [])
+        self.assertEqual(server.read_run(run_id)["status"], "VERIFIED")
+        self.assertEqual(server._run_index[run_id]["status"], "VERIFIED")
+        self.assertEqual(artifact.read_bytes(), b"durable-run")
+        self.assertGreaterEqual(server.memory().stats()["memories"], 1)
+
+        # Wiping is available for disposable demos/tests, but never implicit.
+        server._prepare_state(fresh=True)
+        self.assertFalse(run_file.exists())
+        self.assertFalse(artifact.exists())
+        self.assertFalse(server._run_index)
 
 
 if __name__ == "__main__":

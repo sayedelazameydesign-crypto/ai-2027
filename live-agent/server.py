@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import shutil
 import sys
@@ -73,6 +74,17 @@ _memory: EvidenceMemoryStore | None = None
 _memory_lock = threading.Lock()
 
 
+def _configure_runtime(runtime_dir: str | Path) -> None:
+    """Redirect this process to an explicit, isolated runtime directory."""
+    global RUNS_DIR, SANDBOXES_DIR, MEMORY_DB, _memory
+    root = Path(runtime_dir).expanduser().resolve()
+    RUNS_DIR = root / "runs"
+    SANDBOXES_DIR = root / "sandboxes"
+    MEMORY_DB = root / "state" / "memory.db"
+    with _memory_lock:
+        _memory = None
+
+
 def memory() -> EvidenceMemoryStore:
     """Lazy store: sandbox artifacts must exist before admission is checked."""
     global _memory
@@ -83,19 +95,59 @@ def memory() -> EvidenceMemoryStore:
 
 
 def _fresh_state() -> None:
-    """Each boot starts with a clean evidence trail (demo hygiene)."""
+    """Destructively clear local runtime data; callers must opt into this."""
     global _memory
     for d in (RUNS_DIR, SANDBOXES_DIR):
         if d.exists():
             shutil.rmtree(d)
         d.mkdir(parents=True, exist_ok=True)
     Path(MEMORY_DB).parent.mkdir(parents=True, exist_ok=True)
+    _run_index.clear()
     with _memory_lock:
         _memory = None
         for suffix in ("", "-wal", "-shm"):
             f = Path(str(MEMORY_DB) + suffix)
             if f.exists():
                 f.unlink()
+
+
+def _ensure_state() -> None:
+    """Create runtime directories without deleting prior runs or memory."""
+    for d in (RUNS_DIR, SANDBOXES_DIR, Path(MEMORY_DB).parent):
+        d.mkdir(parents=True, exist_ok=True)
+
+
+def _restore_run_index() -> list[str]:
+    """Rebuild the in-memory recent-run index from durable DecisionRecords."""
+    _run_index.clear()
+    warnings: list[str] = []
+    for path in sorted(RUNS_DIR.glob("run_*.json")):
+        if path.is_symlink() or not re.fullmatch(r"run_\d+_[0-9a-f]{8}\.json", path.name):
+            continue
+        try:
+            rec = json.loads(path.read_text(encoding="utf-8"))
+            if not isinstance(rec, dict) or rec.get("run_id") != path.stem:
+                raise ValueError("record id does not match its filename")
+            run_id = rec["run_id"]
+            goal = rec.get("goal") if isinstance(rec.get("goal"), dict) else {}
+            stamp = rec.get("finished_at") or rec.get("started_at") or path.stat().st_mtime
+            _run_index[run_id] = {
+                "ts": float(stamp),
+                "status": str(rec.get("status") or "UNKNOWN"),
+                "goal_type": str(goal.get("goal_type") or "unknown"),
+            }
+        except (OSError, UnicodeError, ValueError, TypeError, AttributeError) as exc:
+            warnings.append(f"could not restore {path.name}: {type(exc).__name__}")
+    return warnings
+
+
+def _prepare_state(fresh: bool = False) -> list[str]:
+    """Default to preservation; destructive cleanup requires `fresh=True`."""
+    if fresh:
+        _fresh_state()
+        return []
+    _ensure_state()
+    return _restore_run_index()
 
 
 def _sanitize_params(params: object) -> dict:
@@ -341,11 +393,21 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, default=8090)
     ap.add_argument("--host", default="0.0.0.0")
+    ap.add_argument("--runtime-dir", default=os.environ.get("AI2027_LIVE_RUNTIME_DIR"),
+                    help="isolate persistent runs/sandboxes/memory under this directory")
+    ap.add_argument("--fresh", action="store_true",
+                    help="DESTRUCTIVE: delete this service's runs, sandboxes, and memory before starting")
     args = ap.parse_args()
-    _fresh_state()
+    if args.runtime_dir:
+        _configure_runtime(args.runtime_dir)
+    restore_warnings = _prepare_state(fresh=args.fresh)
     print(f"AI-2027 Live Agent Experience — http://{args.host}:{args.port}")
     print(f"kernel: {AGI_DIR} (imported in place, untouched)")
+    print(f"runtime directory: {RUNS_DIR.parent}")
+    print(f"runtime: {'fresh (explicit reset)' if args.fresh else 'preserving existing evidence'}")
     print(f"supported goals: {', '.join(SUPPORTED_GOALS)}")
+    for warning in restore_warnings:
+        print(f"runtime warning: {warning}", file=sys.stderr)
     ThreadingHTTPServer((args.host, args.port), Handler).serve_forever()
 
 

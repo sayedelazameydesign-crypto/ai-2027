@@ -28,24 +28,25 @@ FREE_MODELS: dict[str, frozenset[str]] = {
             "gemini-1.5-flash-8b",
         }
     ),
-    "nvidia": frozenset(
-        {
-            "meta/llama-3.1-8b-instruct",
-            "meta/llama-3.1-70b-instruct",
-            "meta/llama-3.3-70b-instruct",
-            "mistralai/mixtral-8x7b-instruct-v0.1",
-            "qwen/qwen2.5-72b-instruct",
-        }
-    ),
-    "groq": frozenset(
-        {
-            "llama-3.3-70b-versatile",
-            "llama-3.1-8b-instant",
-            "mixtral-8x7b-32768",
-            "gemma2-9b-it",
-            "qwen-qwq-32b",
-        }
-    ),
+    # Only IDs the provider still serves. A retired ID left in this map is how a
+    # "free" worker check starts answering HTTP 404/410 while still claiming $0.
+    "nvidia": frozenset({"meta/llama-3.3-70b-instruct"}),
+    # Groq retired its free Llama models on 2026-08-16; GPT-OSS IDs are priced per
+    # token, so they are admitted only through an explicit AI2027_FREE_MODELS entry.
+    "groq": frozenset(),
+}
+
+#: Mirrors ai2027_protocol/model_catalog.py (a Worker cannot import the package).
+RETIRED_MODELS: dict[str, dict[str, str]] = {
+    "nvidia": {
+        "meta/llama-3.1-8b-instruct": "meta/llama-3.3-70b-instruct",
+    },
+    "groq": {
+        "llama-3.1-8b-instant": "openai/gpt-oss-20b",
+        "llama-3.3-70b-versatile": "openai/gpt-oss-120b",
+        "meta-llama/llama-4-scout-17b-16e-instruct": "openai/gpt-oss-120b",
+        "qwen/qwen3-32b": "openai/gpt-oss-120b",
+    },
 }
 
 
@@ -153,6 +154,8 @@ def classify_worker_model(provider: str, model: str, env: object) -> tuple[str, 
         if norm.endswith(":free") or norm == "openrouter/free":
             return "free_tier", False, "declared_free_tier_unbilled"
         return "unknown_cost", False, "unknown_cost_blocked"
+    if norm in RETIRED_MODELS.get(provider, {}):
+        return "unknown_cost", False, "model_retired"
     extra = {m.strip().lower() for m in env_get(env, "AI2027_FREE_MODELS").split(",") if m.strip()}
     if norm in FREE_MODELS.get(provider, frozenset()) or norm in extra:
         return "free_tier", False, "declared_free_tier_unbilled"
