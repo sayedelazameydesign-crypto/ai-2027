@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
 from typing import Any
+
+import pytest
 
 GATE = Path(__file__).resolve().parents[2] / "scripts" / "live_connector_gate.py"
 
@@ -39,6 +42,21 @@ def _evidence(**overrides: Any) -> dict[str, Any]:
     return evidence
 
 
+def _wrapper(tmp_path: Path) -> Path:
+    """Create ``.venv/bin/python`` as a shell wrapper around the current interpreter.
+
+    A wrapper, not a symlink: executing a symlink to a venv's python does not
+    reliably inherit that venv's site-packages, and this test is about the gate
+    resolving a *relative* path — not about interpreter plumbing.
+    """
+    venv = tmp_path / ".venv" / "bin"
+    venv.mkdir(parents=True, exist_ok=True)
+    wrapper = venv / "python"
+    wrapper.write_text(f'#!/bin/sh\nexec "{sys.executable}" "$@"\n', encoding="utf-8")
+    wrapper.chmod(0o755)
+    return wrapper
+
+
 def _worker(tmp_path: Path, report: dict[str, Any], *, rc: int = 0, name: str = "w") -> Path:
     """Write a fake worker that prints ``report`` (a JSON file) verbatim."""
     payload = tmp_path / f"{name}.json"
@@ -53,13 +71,18 @@ def _worker(tmp_path: Path, report: dict[str, Any], *, rc: int = 0, name: str = 
     return path
 
 
-def _run(*args: str) -> subprocess.CompletedProcess[str]:
+def _run(
+    *args: str, cwd: Path | None = None, env_extra: dict[str, str] | None = None
+) -> subprocess.CompletedProcess[str]:
+    env = {**os.environ, **(env_extra or {})}
     return subprocess.run(  # noqa: S603 - fixed interpreter and repo-owned gate path
         [sys.executable, str(GATE), *args],
         capture_output=True,
         text=True,
         timeout=300,
         check=False,
+        cwd=str(cwd) if cwd else None,
+        env=env,
     )
 
 
@@ -241,6 +264,53 @@ def test_non_object_worker_output_exits_2(tmp_path: Path) -> None:
     assert "not an object" in _report(report_path)["error"]
 
 
+def test_a_relative_interpreter_resolves_against_the_caller_cwd(tmp_path: Path) -> None:
+    """The exact failure that broke the first main run: `--python .venv/bin/python`."""
+    _wrapper(tmp_path)
+
+    worker = _worker(
+        tmp_path,
+        {"attempts": [{"provider": "gemini", "status": "ok", "evidence": _evidence()}]},
+        name="rel",
+    )
+    report_path = tmp_path / "evidence.json"
+
+    result = _run(
+        "--python",
+        ".venv/bin/python",
+        "--worker",
+        str(worker),
+        "--report",
+        str(report_path),
+        "--assert",
+        cwd=tmp_path,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    payload = _report(report_path)
+    assert payload["verdict"] == "PASS"
+    assert payload["error"] == ""
+    assert payload["worker_returncode"] == 0
+
+
+def test_a_missing_interpreter_writes_a_fail_report(tmp_path: Path) -> None:
+    report_path = tmp_path / "evidence.json"
+
+    result = _run(
+        "--python",
+        "./nowhere/python",
+        "--report",
+        str(report_path),
+        "--assert",
+        cwd=tmp_path,
+    )
+
+    assert result.returncode == 2
+    payload = _report(report_path)
+    assert payload["verdict"] == "FAIL"
+    assert "interpreter not found" in payload["error"]
+
+
 def test_a_missing_worker_exits_2_with_a_reason(tmp_path: Path) -> None:
     report_path = tmp_path / "evidence.json"
 
@@ -272,3 +342,53 @@ def test_a_broken_interpreter_exits_2_instead_of_passing(tmp_path: Path) -> None
     payload = _report(report_path)
     assert payload["verdict"] == "FAIL"
     assert payload["error"]
+
+
+def _load_gate_module() -> Any:
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("gate_under_test", GATE)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module  # dataclasses resolve their module by name
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_the_interpreter_path_is_not_resolved_through_its_symlink(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A venv shim is a symlink to the base python; following it loses site-packages."""
+    monkeypatch.chdir(tmp_path)
+    venv = tmp_path / ".venv" / "bin"
+    venv.mkdir(parents=True)
+    (venv / "python").symlink_to(sys.executable)
+    module = _load_gate_module()
+
+    resolved = module.resolve_interpreter(".venv/bin/python")
+
+    assert resolved.endswith(".venv/bin/python")
+    assert Path(resolved).is_file()
+
+
+def test_the_gate_does_not_annotate_under_a_test_run(tmp_path: Path) -> None:
+    """``::error::`` fails a GitHub step; only a real gate run may emit it."""
+    worker = _worker(
+        tmp_path,
+        {"attempts": [{"provider": "gemini", "status": "no_key", "evidence": None}]},
+        name="annot",
+    )
+    report_path = tmp_path / "evidence.json"
+
+    quiet = _run("--worker", str(worker), "--report", str(report_path), "--assert")
+    assert "::error" not in quiet.stdout
+
+    loud = _run(
+        "--worker",
+        str(worker),
+        "--report",
+        str(report_path),
+        "--assert",
+        env_extra={"PAP_GATE_ANNOTATE": "1"},
+    )
+    assert "::error title=PAP-2027 live-connector gate" in loud.stdout

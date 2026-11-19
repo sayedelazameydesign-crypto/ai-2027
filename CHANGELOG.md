@@ -76,6 +76,16 @@ fail or when any GitHub Action is not pinned to a full-length SHA.
   action journal, and failure-recovery gate pass.
 
 ### Added — the `live-connector` gate: one real call, judged as evidence (2026-11-19)
+- **Fixed after the first `main` run (same day).** The gate passed
+  `--python .venv/bin/python` but launched the worker from the repo root, so the
+  relative interpreter did not exist, the process died before writing evidence,
+  and the step failed in under a second with no artifact. Both gates now resolve
+  a relative `--python` against the caller's cwd, refuse a missing interpreter
+  with a written FAIL report (exit 2), always write a report even on an
+  unexpected exception, and emit a GitHub `::error::` annotation carrying the
+  failing check names — because a failure you cannot read is a failure you cannot
+  fix. Regression tests cover the relative path, the missing interpreter, and
+  the exact marker spellings requested from the model.
 - **`python-2027/src/ai2027_protocol/live_probe.py`** — probes a provider with the
   production transport and records the exchange: endpoint host, request/response
   timestamps, latency, HTTP status, response headers, `request_id` (payload or
