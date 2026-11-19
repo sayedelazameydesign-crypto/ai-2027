@@ -154,7 +154,11 @@ def offline_decision(
     """Deterministic multi-step task engine executing real repo, Python, and L0/L5 tools."""
     low = task.lower()
     wants_audit = any(k in low for k in ("audit", "score", "protocol", "تدقيق", "فحص", "بروتوكول"))
-    wants_python = any(
+    wants_diff = any(k in low for k in ("git", "diff", "status", "changes", "تغييرات"))
+    wants_tests = any(
+        k in low for k in ("test", "unittest", "calculator", "build", "اختبار", "بناء", "كود")
+    )
+    wants_python = wants_tests or any(
         k in low
         for k in ("python", "script", "calc", "analyze", "benchmark", "تحليل", "سكربت", "حساب")
     )
@@ -184,20 +188,57 @@ def offline_decision(
         ]
         if wants_audit:
             actions.append(ToolInvocation(tool="repo.audit", args={"path": "python-2027"}))
+        if wants_diff:
+            actions.append(ToolInvocation(tool="workspace.git_diff", args={"path": "."}))
         if wants_connector:
             actions.append(ToolInvocation(tool="connector.inspect", args={}))
         return PlannerDecision(
             thought="Gathering workspace layout, L1 memories, and system signals in parallel.",
             plan=(
                 "Inspect workspace & L1 verified memory",
-                "Run sandboxed analysis / gated actions",
-                "Generate SHA-256 verified artifact & report",
+                "Run sandboxed code/tests & generate artifacts",
+                "Independently verify SHA-256 & L0 ledger chain",
             ),
             actions=tuple(actions),
         )
 
     if step_num == 2:
         second_actions: list[ToolInvocation] = []
+        if wants_tests:
+            module_code = (
+                "def compute_score(values: list[float]) -> dict[str, float]:\n"
+                "    if not values:\n"
+                "        return {'count': 0, 'sum': 0.0, 'mean': 0.0}\n"
+                "    total = float(sum(values))\n"
+                "    return {'count': len(values), 'sum': total, 'mean': total / len(values)}\n"
+            )
+            test_code = (
+                "import unittest\n"
+                "from solution import compute_score\n\n"
+                "class SolutionTests(unittest.TestCase):\n"
+                "    def test_compute_score(self) -> None:\n"
+                "        res = compute_score([10.0, 20.0, 30.0])\n"
+                "        self.assertEqual(res['count'], 3)\n"
+                "        self.assertAlmostEqual(res['mean'], 20.0)\n\n"
+                "if __name__ == '__main__':\n"
+                "    unittest.main()\n"
+            )
+            second_actions.extend(
+                [
+                    ToolInvocation(
+                        tool="sandbox.write_artifact",
+                        args={"path": "solution.py", "content": module_code},
+                    ),
+                    ToolInvocation(
+                        tool="sandbox.write_artifact",
+                        args={"path": "test_solution.py", "content": test_code},
+                    ),
+                    ToolInvocation(
+                        tool="sandbox.run_tests",
+                        args={"path": "test_solution.py", "timeout_s": 6.0},
+                    ),
+                ]
+            )
         if wants_python or not artifacts:
             code = (
                 "import json, pathlib\n"
@@ -238,13 +279,25 @@ def offline_decision(
             )
         )
         return PlannerDecision(
-            thought="Generating verified sandbox artifacts and running isolated computations.",
+            thought="Generating verified artifacts and running isolated sandbox tests.",
             actions=tuple(second_actions),
         )
 
     art_summary = "\n".join(f"- `{item}` (L0 SHA-256 verified)" for item in artifacts) or "- None"
+    if "deliverable.html" in artifacts:
+        verify_target = "deliverable.html"
+    elif artifacts:
+        verify_target = artifacts[0]
+    else:
+        verify_target = ""
+    verify_actions: tuple[ToolInvocation, ...] = (
+        (ToolInvocation(tool="sandbox.verify_artifact", args={"path": verify_target}),)
+        if verify_target
+        else ()
+    )
     return PlannerDecision(
-        thought="All steps completed and verified through L0 Policy + SHA-256 Verifier.",
+        thought="Running independent disk SHA-256 and L0 ledger chain verification.",
+        actions=verify_actions,
         final_answer=(
             "### Verified Autonomous Execution Summary\n\n"
             "**Mode:** `offline-deterministic` (honest rule-based planner; `$0.00` cost)\n\n"

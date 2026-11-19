@@ -108,13 +108,40 @@ async def test_offline_agent_runs_full_multistep_workflow_with_artifacts_and_app
     assert state.mode == "offline-deterministic"
     assert state.simulated_llm is True
     assert state.cost_usd == 0.0
-    assert len(state.steps) == 2
+    assert len(state.steps) == 3
+    assert any(o.tool == "sandbox.verify_artifact" and o.ok for o in state.steps[-1].outcomes)
     paths = {a.path for a in state.artifacts}
     assert "deliverable.html" in paths
     assert "architecture.svg" in paths
     assert "analyze_task.py" in paths
     assert all(a.verified for a in state.artifacts)
     assert len(state.approvals) == 1
+
+
+async def test_offline_agent_builds_and_runs_unittest_suite(tmp_path: Path) -> None:
+    store = SessionStore(tmp_path / "studio")
+    session = store.create_session(title="Coding Agent Test")
+    runtime = ObservabilityRuntime(json_logs=True)
+    agent = AutonomousAgent(
+        workspace_root=_REPO_ROOT,
+        session_store=store,
+        router=FreeFirstRouter(telemetry=runtime),
+        telemetry=runtime,
+    )
+    state = await agent.run(
+        session.session_id,
+        AgentTaskRequest(
+            task="Build a Python calculator module with unittest tests and verify SHA-256",
+            max_steps=4,
+            preferred_provider=ProviderKind.DETERMINISTIC,
+        ),
+    )
+    assert state.status == "completed"
+    paths = {a.path for a in state.artifacts}
+    assert {"solution.py", "test_solution.py", "deliverable.html"}.issubset(paths)
+    outcomes = [out for st in state.steps for out in st.outcomes]
+    test_runs = [o for o in outcomes if o.tool == "sandbox.run_tests"]
+    assert len(test_runs) == 1 and test_runs[0].ok is True
 
 
 async def test_live_llm_agent_planner_parses_fenced_json_and_writes_artifact(

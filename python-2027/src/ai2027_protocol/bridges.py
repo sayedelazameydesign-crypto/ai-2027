@@ -275,6 +275,15 @@ class KernelSandboxBridge:
         """Return whether projects/agi-system/core is present on disk."""
         return (self._workspace_root / "projects" / "agi-system" / "core" / "kernel.py").is_file()
 
+    def fsck_ledger_sync(self, ledger_path: Path) -> dict[str, Any] | None:
+        """Verify L0 EventLedger hash-chain integrity when core.event_ledger is present."""
+        if not ledger_path.is_file() or not self.is_available:
+            return None
+        _load_agi_core(self._workspace_root)
+        ledger_mod = importlib.import_module("core.event_ledger")
+        result: dict[str, Any] = ledger_mod.EventLedger(ledger_path).fsck()
+        return result
+
     def write_verified_file_sync(
         self,
         *,
