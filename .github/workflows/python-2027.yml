@@ -104,7 +104,7 @@ jobs:
                   .replace("%", "%25")
                   .replace("\r", "%0D")
                   .replace("\n", "%0A")
-              )[:900]
+              )[:4000]
 
           path = Path(os.environ["JUNIT"])
           if not path.is_file():
@@ -116,7 +116,7 @@ jobs:
                   for tag in ("failure", "error"):
                       node = case.find(tag)
                       if node is not None:
-                          message = (node.get("message") or node.text or "").strip()
+                          message = (node.text or node.get("message") or "").strip()
                           failures.append(f"{case.get('classname')}::{case.get('name')} — {message}")
               if not failures:
                   print("::error title=pytest::junit shows no failing case (coverage or step-level failure)")
