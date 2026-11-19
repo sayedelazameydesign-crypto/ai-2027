@@ -3,12 +3,14 @@
 
 Two rules, both learned from real incidents rather than intuition:
 
-**Rule 1 — no inline interpolation.** `${{ secrets.X }}` is safe only when it is
-assigned to an `env:` key, because GitHub passes the value to the process through
-the environment. Interpolated into the *script text* it becomes part of the step's
-command line, which the runner prints — and a secret printed once is public.
+**Rule 1 — no inline interpolation.** A secret may be assigned to a step's
+`env:` or explicitly mapped by name to a reusable workflow's `secrets:` input.
+Interpolated into the *script text* or an action's `with:` input it becomes part
+of the command or action input and may be logged or forwarded unexpectedly. GitHub
+also forbids referencing `secrets.*` directly in an `if:` expression.
 
-    safe:    RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+    safe:    env: RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+    safe:    secrets: RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
     unsafe:  run: curl -H "Authorization: ${{ secrets.RENDER_API_KEY }}" ...
 
 **Rule 2 — no undocumented secret.** Every secret a workflow references must be
@@ -46,24 +48,50 @@ EXPR = re.compile(r"\$\{\{(.*?)\}\}")
 #: Named without "secret" on purpose — see REGISTER_PATH above. The query's
 #: heuristic keys on identifiers, and this regex's matches are printed.
 NAME_IN_EXPR = re.compile(r"secrets\.([A-Za-z_][A-Za-z0-9_]*)")
-#: The only shapes allowed to carry a secret reference: `env:` assignment, and an
-#: `if:` condition (which compares the name, never moves the value).
-SAFE_LINE = re.compile(r"^\s*(?:-\s*)?(?:if\s*:|[A-Z][A-Z0-9_]*\s*:)\s*\S")
+#: Match simple YAML mapping keys so a secret assignment is accepted only in
+#: an `env:` block or a named reusable-workflow `secrets:` mapping. An uppercase
+#: key under `with:` or arbitrary script text is not a safe transport.
+MAPPING_KEY = re.compile(r"^\s*(?:-\s*)?([A-Za-z_][A-Za-z0-9_-]*)\s*:(.*)$")
+ENV_NAME = re.compile(r"[A-Z][A-Z0-9_]*\Z")
 
 
 def find_references(workflow_text: str) -> list[dict]:
-    """Every `secrets.NAME` reference with its line number and safety verdict."""
+    """Every `secrets.NAME` reference with its line number and safe context.
+
+    The small indentation stack is deliberately conservative: credentials may
+    travel through an explicit env assignment, or a named `secrets:` mapping to
+    a reusable workflow. Direct secret references in `if:` expressions are
+    rejected because GitHub does not permit that context there.
+    """
     refs = []
+    stack: list[tuple[int, str]] = []
     for lineno, line in enumerate(workflow_text.splitlines(), start=1):
-        if line.strip().startswith("#"):
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
             continue
-        safe = bool(SAFE_LINE.match(line))
+        indent = len(line) - len(line.lstrip())
+        while stack and stack[-1][0] >= indent:
+            stack.pop()
+
+        match = MAPPING_KEY.match(line)
+        key = match.group(1) if match else ""
+        value = match.group(2).strip() if match else ""
+        parents = [name for _, name in stack]
+        safe = (
+            bool(ENV_NAME.fullmatch(key))
+            and bool(parents)
+            and parents[-1] in {"env", "secrets"}
+        )
+
         for expr in EXPR.finditer(line):
             for name in NAME_IN_EXPR.finditer(expr.group(1)):
                 # No copy of the audited line is kept: `file:line` already points
                 # at it, and a copy would carry the workflow's own text into every
                 # report we print (CodeQL flagged exactly that path).
                 refs.append({"line": lineno, "name": name.group(1), "safe": safe})
+
+        if match and not value:
+            stack.append((indent, key))
     return refs
 
 
@@ -115,7 +143,7 @@ def audit(workflows_dir: Path = WORKFLOWS, register_path: Path = REGISTER_PATH) 
                 findings.append({
                     "file": rel, "line": ref["line"], "rule": "inline_secret",
                     "reference": shown,
-                    "detail": "interpolated into script text — assign it under `env:` instead"})
+                    "detail": "unsafe transport — use a step `env:` assignment or a named reusable-workflow `secrets:` mapping"})
             if not documented(ref["name"], register_text):
                 findings.append({
                     "file": rel, "line": ref["line"], "rule": "undocumented_secret",
@@ -152,7 +180,7 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"      {f['detail']}")
             print("  => FAIL")
         else:
-            print("  ✓ every reference is env-assigned and documented")
+            print("  ✓ every reference uses env/reusable-workflow mapping and is documented")
     if args.assert_ and not result["ok"]:
         return 1
     return 0
