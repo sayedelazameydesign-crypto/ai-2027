@@ -91,6 +91,17 @@ class RenderYamlTests(unittest.TestCase):
         """A PaaS needs a health path, or a half-broken deploy looks healthy."""
         self.assertIn("healthCheckPath: /api/health", self.text)
 
+    def test_05_render_blueprint_does_not_promise_a_persistent_disk(self):
+        """A process restart is not an instance-replacement durability guarantee."""
+        active_yaml = "\n".join(
+            line for line in self.text.splitlines()
+            if not line.lstrip().startswith("#"))
+        self.assertFalse(re.search(r"^\s+disk\s*:", active_yaml, re.MULTILINE),
+                         "this free blueprint must not imply it provisions a disk")
+        doc = (DEPLOY / "README.md").read_text(encoding="utf-8").lower()
+        self.assertIn("no persistent disk", doc)
+        self.assertIn("instance replacement", doc)
+
 
 class RequirementsTests(unittest.TestCase):
     def test_10_no_third_party_requirements(self):
@@ -150,26 +161,34 @@ class LauncherTests(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.tmp = Path(tempfile.mkdtemp(prefix="ai2027-deploy-"))
+        cls.tmp = tempfile.TemporaryDirectory(prefix="ai2027-deploy-")
+        cls.runtime_dir = Path(cls.tmp.name) / "live-agent-runtime"
         cls.port = _free_port()
         cls.env = {**os.environ, "PORT": str(cls.port), "HOST": "127.0.0.1",
+                   "AI2027_LIVE_RUNTIME_DIR": str(cls.runtime_dir),
                    "AI2027_MAX_DISK_MB": "1", "AI2027_MAX_RUNS": "40"}
         cls.proc = subprocess.Popen(
             [sys.executable, "deployment/live_server.py"], cwd=ROOT, env=cls.env,
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
             start_new_session=True)
         if not _wait_http(cls.port):
-            out = cls.proc.stdout.read() if cls.proc.stdout else ""
             cls.proc.kill()
+            out = cls.proc.stdout.read() if cls.proc.stdout else ""
+            cls.tmp.cleanup()
             raise AssertionError(f"launcher did not start:\n{out}")
 
     @classmethod
     def tearDownClass(cls):
-        cls.proc.terminate()
+        if cls.proc.poll() is None:
+            cls.proc.terminate()
         try:
             cls.proc.wait(timeout=10)
         except subprocess.TimeoutExpired:
             cls.proc.kill()
+            cls.proc.wait(timeout=5)
+        if cls.proc.stdout:
+            cls.proc.stdout.close()
+        cls.tmp.cleanup()
 
     def _post(self, payload: dict) -> tuple[int, dict]:
         body = json.dumps(payload).encode()
@@ -196,8 +215,8 @@ class LauncherTests(unittest.TestCase):
                 ok += 1
         self.assertGreater(ok, 0, "no run succeeded")
         total = 0
-        for d in ("live-agent/runs", "live-agent/sandboxes"):
-            for p in (ROOT / d).rglob("*"):
+        for d in (self.runtime_dir / "runs", self.runtime_dir / "sandboxes"):
+            for p in d.rglob("*"):
                 if p.is_file():
                     total += p.stat().st_size
         self.assertLessEqual(total, 1024 * 1024,
@@ -215,29 +234,86 @@ class LauncherTests(unittest.TestCase):
         self.assertIn("budget", body["error"].lower())
 
 
+class FreshResetTests(unittest.TestCase):
+    def test_40_fresh_option_clears_only_the_selected_runtime(self):
+        """The wrapper reset is explicit, scoped, and never the normal boot path."""
+        port = _free_port()
+        with tempfile.TemporaryDirectory(prefix="ai2027-fresh-reset-") as tmp:
+            root = Path(tmp)
+            runtime = root / "isolated-runtime"
+            stale_run = runtime / "runs" / "stale.json"
+            stale_artifact = runtime / "sandboxes" / "old-run" / "artifact.txt"
+            stale_db = runtime / "state" / "memory.db"
+            for path in (stale_run, stale_artifact, stale_db):
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(b"stale")
+            outside = root / "outside-runtime.txt"
+            outside.write_text("must survive", encoding="utf-8")
+
+            env = {**os.environ, "PORT": str(port), "HOST": "127.0.0.1",
+                   "AI2027_LIVE_RUNTIME_DIR": str(runtime)}
+            log_path = root / "launcher.log"
+            with log_path.open("w", encoding="utf-8") as log:
+                proc = subprocess.Popen(
+                    [sys.executable, "deployment/live_server.py", "--fresh"],
+                    cwd=ROOT, env=env, stdout=log, stderr=subprocess.STDOUT)
+                try:
+                    self.assertTrue(
+                        _wait_http(port),
+                        "fresh launcher did not start:\n" +
+                        log_path.read_text(encoding="utf-8", errors="replace"))
+                    self.assertFalse(stale_run.exists())
+                    self.assertFalse(stale_artifact.exists())
+                    # Health initializes a new, empty SQLite DB after --fresh,
+                    # so check its content/state rather than expecting no file.
+                    self.assertNotEqual(stale_db.read_bytes(), b"stale")
+                    self.assertTrue(outside.is_file())
+                    runs = json.loads(urllib.request.urlopen(
+                        f"http://127.0.0.1:{port}/api/runs", timeout=5).read())
+                    self.assertEqual(runs["runs"], [])
+                    memory = json.loads(urllib.request.urlopen(
+                        f"http://127.0.0.1:{port}/api/memory", timeout=5).read())
+                    self.assertEqual(memory["memories"], 0)
+                finally:
+                    if proc.poll() is None:
+                        proc.terminate()
+                    try:
+                        proc.wait(timeout=10)
+                    except subprocess.TimeoutExpired:
+                        proc.kill()
+                        proc.wait(timeout=5)
+
+
 class ReadOnlyTests(unittest.TestCase):
     def test_40_read_only_serves_but_refuses_writes(self):
         port = _free_port()
-        env = {**os.environ, "PORT": str(port), "HOST": "127.0.0.1", "AI2027_READ_ONLY": "1"}
-        proc = subprocess.Popen([sys.executable, "deployment/live_server.py"], cwd=ROOT,
-                                env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                                text=True, start_new_session=True)
-        try:
-            self.assertTrue(_wait_http(port), "read-only launcher did not start")
-            body = json.dumps({"goal_type": "create_file",
-                               "params": {"path": "x.txt", "content": "y"}}).encode()
-            req = urllib.request.Request(f"http://127.0.0.1:{port}/api/run", data=body,
-                                         headers={"Content-Type": "application/json"})
-            with self.assertRaises(urllib.error.HTTPError) as ctx:
-                urllib.request.urlopen(req, timeout=10).read()
-            self.assertGreaterEqual(ctx.exception.code, 400)
-            self.assertIn("READ-ONLY", ctx.exception.read().decode().upper())
-        finally:
-            proc.terminate()
+        with tempfile.TemporaryDirectory(prefix="ai2027-read-only-") as runtime:
+            env = {**os.environ, "PORT": str(port), "HOST": "127.0.0.1",
+                   "AI2027_LIVE_RUNTIME_DIR": str(Path(runtime) / "live-agent-runtime"),
+                   "AI2027_READ_ONLY": "1"}
+            proc = subprocess.Popen([sys.executable, "deployment/live_server.py"], cwd=ROOT,
+                                    env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                    text=True, start_new_session=True)
             try:
-                proc.wait(timeout=10)
-            except subprocess.TimeoutExpired:
-                proc.kill()
+                self.assertTrue(_wait_http(port), "read-only launcher did not start")
+                body = json.dumps({"goal_type": "create_file",
+                                   "params": {"path": "x.txt", "content": "y"}}).encode()
+                req = urllib.request.Request(f"http://127.0.0.1:{port}/api/run", data=body,
+                                             headers={"Content-Type": "application/json"})
+                with self.assertRaises(urllib.error.HTTPError) as ctx:
+                    urllib.request.urlopen(req, timeout=10).read()
+                self.assertGreaterEqual(ctx.exception.code, 400)
+                self.assertIn("READ-ONLY", ctx.exception.read().decode().upper())
+            finally:
+                if proc.poll() is None:
+                    proc.terminate()
+                try:
+                    proc.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    proc.wait(timeout=5)
+                if proc.stdout:
+                    proc.stdout.close()
 
 
 class DocumentationHonestyTests(unittest.TestCase):
