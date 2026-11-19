@@ -190,10 +190,15 @@ textarea{resize:none;min-height:66px;max-height:140px}
     <div class="scroll" id="tab-preview">
       <div class="card">
         <div class="row-between">
-          <strong id="artTitle" style="font-size:12.5px">No artifact selected yet</strong>
-          <a id="artDownload" class="btn sm" href="#" target="_blank" rel="noopener" style="display:none">Open Raw</a>
+          <strong id="artTitle" style="font-size:12.5px" data-en="No artifact selected yet" data-ar="لم يُحدَّد مخرج بعد">No artifact selected yet</strong>
+          <div class="comp-row">
+            <button class="btn sm" id="artModeBtn" onclick="toggleArtifactView()" style="display:none" data-en="View Source" data-ar="عرض الكود">View Source</button>
+            <button class="btn sm" id="artCopyBtn" onclick="copyArtifactSource()" style="display:none" data-en="Copy" data-ar="نسخ">Copy</button>
+            <a id="artDownload" class="btn sm" href="#" target="_blank" rel="noopener" style="display:none" data-en="Open Raw" data-ar="فتح الخام">Open Raw</a>
+            <a id="evidenceDownload" class="btn sm primary" href="#" style="display:none" data-en="⬇ Evidence JSON" data-ar="⬇ حزمة الأدلة JSON">⬇ Evidence JSON</a>
+          </div>
         </div>
-        <div class="muted" id="artMeta" style="margin-top:4px;font-family:var(--mono)">Run a task to produce SHA-256 verified HTML, SVG, Python, or Markdown deliverables.</div>
+        <div class="muted" id="artMeta" style="margin-top:4px;font-family:var(--mono)" data-en="Run a task to produce SHA-256 verified HTML, SVG, Python, or Markdown deliverables." data-ar="شغّل مهمة لإنتاج مخرجات HTML أو SVG أو بايثون أو Markdown موثقة بـ SHA-256.">Run a task to produce SHA-256 verified HTML, SVG, Python, or Markdown deliverables.</div>
       </div>
       <iframe id="artIframe" class="preview-frame" sandbox="allow-scripts" style="display:none" title="Sandboxed Artifact Preview"></iframe>
       <pre id="artCode" class="code-view" style="display:none"></pre>
@@ -205,8 +210,23 @@ textarea{resize:none;min-height:66px;max-height:140px}
 
     <div class="scroll" id="tab-governance" style="display:none">
       <div class="card">
-        <div class="sec-title"><span>L0 Kernel & Ledger</span><span class="pill ok" id="ledgerPill">0 events</span></div>
-        <p class="muted" id="honestScopeNote">Every file write passes projects/agi-system PolicyEngine + Verifier before admission to L1 memory. Mode (live-llm vs offline-deterministic) is always declared explicitly.</p>
+        <div class="sec-title"><span data-en="L0 Kernel & Ledger" data-ar="نواة L0 وسجل الأدلة">L0 Kernel & Ledger</span><span class="pill ok" id="ledgerPill">0 events</span></div>
+        <p class="muted" id="honestScopeNote" data-en="Every file write passes projects/agi-system PolicyEngine + Verifier before admission to L1 memory. Mode (live-llm vs offline-deterministic) is always declared explicitly." data-ar="كل كتابة ملف تمر عبر نواة السياسة والتحقق SHA-256 قبل القبول في ذاكرة L1، ويُعلن وضع التشغيل بصدق تام.">Every file write passes projects/agi-system PolicyEngine + Verifier before admission to L1 memory. Mode (live-llm vs offline-deterministic) is always declared explicitly.</p>
+      </div>
+      <div class="card">
+        <div class="sec-title"><span data-en="Read-Only Connector Search (L5)" data-ar="بحث قراءة فقط في موصلات L5">Read-Only Connector Search (L5)</span></div>
+        <div class="comp-row" style="margin:6px 0">
+          <select id="connSearchId" style="width:auto;min-width:130px">
+            <option value="github">GitHub</option>
+            <option value="notion">Notion</option>
+            <option value="linear">Linear</option>
+            <option value="google_drive">Google Drive</option>
+            <option value="vercel">Vercel</option>
+          </select>
+          <input id="connSearchQ" placeholder="Search connector…" style="flex:1">
+          <button class="btn sm primary" onclick="searchConnector()" data-en="Search" data-ar="بحث">Search</button>
+        </div>
+        <pre class="code-view" id="connSearchOut" style="max-height:150px;display:none"></pre>
       </div>
       <div class="card">
         <div class="sec-title"><span data-en="L5 Connectors Hub" data-ar="موصلات L5 الخارجية">L5 Connectors Hub</span></div>
@@ -216,11 +236,12 @@ textarea{resize:none;min-height:66px;max-height:140px}
 
     <div class="scroll" id="tab-telemetry" style="display:none">
       <div class="comp-row">
-        <button class="btn sm primary" onclick="runAudit()">Run 10-Rule Audit</button>
-        <button class="btn sm" onclick="runBench()">Run Benchmark</button>
-        <button class="btn sm" onclick="loadTraces()">Refresh OTel Traces</button>
+        <button class="btn sm primary" onclick="runAudit()" data-en="Run 10-Rule Audit" data-ar="تدقيق 10 قواعد">Run 10-Rule Audit</button>
+        <button class="btn sm" onclick="runBench()" data-en="Run Benchmark" data-ar="قياس الأداء">Run Benchmark</button>
+        <button class="btn sm" onclick="loadTraces()" data-en="OTel Traces" data-ar="تتبع OTel">OTel Traces</button>
+        <button class="btn sm" onclick="loadAgentCard()" data-en="🪪 A2A Card" data-ar="🪪 بطاقة A2A">🪪 A2A Card</button>
       </div>
-      <pre class="code-view" id="telemetryOut">Click a button above to measure live repository audit scores, TaskGroup speedup, or OpenTelemetry spans.</pre>
+      <pre class="code-view" id="telemetryOut">Click a button above to measure live repository audit scores, TaskGroup speedup, A2A agent card, or OpenTelemetry spans.</pre>
     </div>
   </aside>
 </main>
@@ -230,11 +251,48 @@ let currentSessionId = null;
 let currentLang = "en";
 let activeAbort = null;
 let currentArtifacts = [];
+let activeArtifact = null;
+let artifactSourceMode = false;
+
+const I18N = {
+  en: {
+    approve: "Approve",
+    reject: "Reject",
+    running: "Running…",
+    stopped: "Stopped",
+    aborted: "Aborted by user",
+    noApprovals: "No queued connector mutations.",
+    noMemory: "No verified memories matched.",
+    viewSource: "View Source",
+    livePreview: "Live Preview",
+    copied: "Copied!"
+  },
+  ar: {
+    approve: "موافقة",
+    reject: "رفض",
+    running: "قيد التنفيذ…",
+    stopped: "متوقف",
+    aborted: "أوقفه المستخدم",
+    noApprovals: "لا توجد طلبات موصلات معلّقة.",
+    noMemory: "لا توجد نتائج ذاكرة مطابقة.",
+    viewSource: "عرض الكود",
+    livePreview: "معاينة حية",
+    copied: "تم النسخ!"
+  }
+};
+
+function t(key) {
+  return (I18N[currentLang] && I18N[currentLang][key]) || I18N.en[key] || key;
+}
 
 const PRESETS = [
   {
     en: "Build an interactive HTML dashboard + SVG diagram of ai-2027, run a Python verification script, and verify SHA-256.",
     ar: "أنشئ لوحة HTML تفاعلية ومخطط SVG لمنظومة ai-2027 وشغّل سكربت بايثون للتحقق من بصمة SHA-256."
+  },
+  {
+    en: "Build a Python calculator module with unittest unit tests, execute tests in sandbox, and verify SHA-256.",
+    ar: "ابنِ وحدة بايثون مع اختبارات unittest وشغّل الاختبارات داخل الصندوق المعزول ثم تحقّق من SHA-256."
   },
   {
     en: "Audit python-2027 protocol compliance and inspect repository files in parallel.",
@@ -259,6 +317,7 @@ function toggleLang() {
     el.textContent = el.getAttribute("data-" + currentLang) || el.textContent;
   });
   renderPresets();
+  loadApprovals();
 }
 
 function renderPresets() {
@@ -337,18 +396,40 @@ async function loadSessions() {
   list.forEach((s) => {
     const div = document.createElement("div");
     div.className = "session-item" + (s.session_id === currentSessionId ? " active" : "");
+    const top = document.createElement("div");
+    top.className = "row-between";
     const title = document.createElement("strong");
     title.textContent = s.title || s.session_id;
+    const delBtn = document.createElement("button");
+    delBtn.className = "btn sm danger";
+    delBtn.textContent = "×";
+    delBtn.onclick = async (ev) => {
+      ev.stopPropagation();
+      await deleteSession(s.session_id);
+    };
+    top.append(title, delBtn);
     const sub = document.createElement("span");
     sub.className = "sub";
     sub.textContent = s.session_id + " · " + s.status + " · " + s.artifacts.length + " file(s)";
-    div.append(title, sub);
+    div.append(top, sub);
     div.onclick = () => selectSession(s.session_id);
     box.appendChild(div);
   });
   if (!currentSessionId && list.length > 0) {
     await selectSession(list[0].session_id);
   }
+}
+
+async function deleteSession(sessionId) {
+  await apiJson("/v1/studio/sessions/" + encodeURIComponent(sessionId), { method: "DELETE" });
+  if (currentSessionId === sessionId) {
+    currentSessionId = null;
+    document.getElementById("sessionIdPill").textContent = "session: —";
+    document.getElementById("stepsBox").textContent = "";
+    document.getElementById("finalBox").style.display = "none";
+    document.getElementById("evidenceDownload").style.display = "none";
+  }
+  await loadSessions();
 }
 
 async function createNewSession() {
@@ -363,7 +444,14 @@ async function createNewSession() {
 async function selectSession(sessionId) {
   currentSessionId = sessionId;
   document.getElementById("sessionIdPill").textContent = sessionId;
-  const state = await apiJson("/v1/studio/sessions/" + encodeURIComponent(sessionId));
+  const evLink = document.getElementById("evidenceDownload");
+  evLink.href = "/v1/studio/sessions/" + encodeURIComponent(sessionId) + "/evidence";
+  evLink.style.display = "inline-block";
+  const [state, artsMeta] = await Promise.all([
+    apiJson("/v1/studio/sessions/" + encodeURIComponent(sessionId)),
+    apiJson("/v1/studio/sessions/" + encodeURIComponent(sessionId) + "/artifacts")
+  ]);
+  document.getElementById("ledgerPill").textContent = String(artsMeta.ledger_events || 0) + " events";
   renderSessionState(state);
   await loadApprovals();
 }
@@ -476,24 +564,56 @@ function renderArtifacts(artifacts) {
 }
 
 async function previewArtifact(art) {
+  activeArtifact = art;
+  artifactSourceMode = !(art.kind === "html" || art.kind === "svg");
   document.getElementById("artTitle").textContent = art.path;
   document.getElementById("artMeta").textContent =
     "kind=" + art.kind + " · bytes=" + art.byte_size + " · sha256=" + (art.sha256 || "none");
   const dl = document.getElementById("artDownload");
   dl.style.display = "inline-block";
   dl.href = art.preview_url;
+  const modeBtn = document.getElementById("artModeBtn");
+  const copyBtn = document.getElementById("artCopyBtn");
+  copyBtn.style.display = "inline-block";
+  modeBtn.style.display = (art.kind === "html" || art.kind === "svg") ? "inline-block" : "none";
+  modeBtn.textContent = artifactSourceMode ? t("livePreview") : t("viewSource");
+  await renderActiveArtifactView();
+}
 
+async function renderActiveArtifactView() {
+  if (!activeArtifact) return;
   const iframe = document.getElementById("artIframe");
   const code = document.getElementById("artCode");
-  if (art.kind === "html" || art.kind === "svg") {
+  if (!artifactSourceMode && (activeArtifact.kind === "html" || activeArtifact.kind === "svg")) {
     iframe.style.display = "block";
     code.style.display = "none";
-    iframe.src = art.preview_url;
+    iframe.src = activeArtifact.preview_url;
   } else {
     iframe.style.display = "none";
     code.style.display = "block";
-    const resp = await fetch(art.preview_url);
+    const resp = await fetch(activeArtifact.preview_url);
     code.textContent = await resp.text();
+  }
+}
+
+async function toggleArtifactView() {
+  if (!activeArtifact) return;
+  artifactSourceMode = !artifactSourceMode;
+  document.getElementById("artModeBtn").textContent =
+    artifactSourceMode ? t("livePreview") : t("viewSource");
+  await renderActiveArtifactView();
+}
+
+async function copyArtifactSource() {
+  if (!activeArtifact) return;
+  const resp = await fetch(activeArtifact.preview_url);
+  const txt = await resp.text();
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    await navigator.clipboard.writeText(txt);
+    const btn = document.getElementById("artCopyBtn");
+    const prev = btn.textContent;
+    btn.textContent = t("copied");
+    setTimeout(() => { btn.textContent = prev; }, 1200);
   }
 }
 
@@ -509,7 +629,7 @@ async function runTaskStream() {
   document.getElementById("stepsBox").textContent = "";
   document.getElementById("finalBox").style.display = "none";
   document.getElementById("planBox").style.display = "none";
-  document.getElementById("modePill").textContent = "Running…";
+  document.getElementById("modePill").textContent = t("running");
 
   if (activeAbort) activeAbort.abort();
   activeAbort = new AbortController();
@@ -563,7 +683,7 @@ async function runTaskStream() {
       } else if (evName === "final") {
         renderSessionState(evt.data);
       } else if (evName === "aborted") {
-        document.getElementById("modePill").textContent = "Aborted by user";
+        document.getElementById("modePill").textContent = t("aborted");
       }
     }
   }
@@ -574,7 +694,7 @@ async function stopRun() {
   if (!currentSessionId) return;
   await apiJson("/v1/studio/sessions/" + encodeURIComponent(currentSessionId) + "/stop", { method: "POST" });
   if (activeAbort) activeAbort.abort();
-  document.getElementById("modePill").textContent = "Stopped";
+  document.getElementById("modePill").textContent = t("stopped");
 }
 
 async function loadApprovals() {
@@ -586,7 +706,7 @@ async function loadApprovals() {
   if (items.length === 0) {
     const empty = document.createElement("div");
     empty.className = "muted";
-    empty.textContent = "No queued connector mutations.";
+    empty.textContent = t("noApprovals");
     box.appendChild(empty);
     return;
   }
@@ -614,14 +734,14 @@ async function loadApprovals() {
       actions.style.marginTop = "6px";
       const okBtn = document.createElement("button");
       okBtn.className = "btn sm primary";
-      okBtn.textContent = "Approve";
+      okBtn.textContent = t("approve");
       okBtn.onclick = async () => {
         await apiJson("/v1/studio/approvals/" + item.action_id + "/approve", { method: "POST", body: "{}" });
         await Promise.all([loadApprovals(), refreshStatus()]);
       };
       const rejBtn = document.createElement("button");
       rejBtn.className = "btn sm danger";
-      rejBtn.textContent = "Reject";
+      rejBtn.textContent = t("reject");
       rejBtn.onclick = async () => {
         await apiJson("/v1/studio/approvals/" + item.action_id + "/reject", { method: "POST", body: "{}" });
         await Promise.all([loadApprovals(), refreshStatus()]);
@@ -642,7 +762,7 @@ async function searchMemory() {
   if (hits.length === 0) {
     const m = document.createElement("div");
     m.className = "muted";
-    m.textContent = "No verified memories matched.";
+    m.textContent = t("noMemory");
     box.appendChild(m);
     return;
   }
@@ -663,6 +783,24 @@ async function searchMemory() {
     card.append(top, txt);
     box.appendChild(card);
   });
+}
+
+async function searchConnector() {
+  const cid = document.getElementById("connSearchId").value;
+  const q = document.getElementById("connSearchQ").value.trim();
+  if (!q) return;
+  const box = document.getElementById("connSearchOut");
+  box.style.display = "block";
+  const data = await apiJson("/v1/studio/connectors/search", {
+    method: "POST",
+    body: JSON.stringify({ connector: cid, query: q, limit: 5 })
+  });
+  box.textContent = JSON.stringify(data, null, 2);
+}
+
+async function loadAgentCard() {
+  const data = await apiJson("/v1/studio/agent-card");
+  document.getElementById("telemetryOut").textContent = JSON.stringify(data, null, 2);
 }
 
 async function runAudit() {

@@ -39,7 +39,7 @@ def _make_ctx(tmp_path: Path, *, read_only: bool = False) -> ToolContext:
 async def test_workspace_read_grep_list_and_security(tmp_path: Path) -> None:
     ctx = _make_ctx(tmp_path)
     runtime = SandboxToolRuntime()
-    assert len(runtime.specs()) >= 10
+    assert len(runtime.specs()) >= 15
 
     batch = await runtime.execute_parallel(
         [
