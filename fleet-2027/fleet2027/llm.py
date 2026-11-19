@@ -589,6 +589,9 @@ class LLMAgent:
                 "output_sha256": artifact.sha256,
                 "attempt": ctx.attempt,
                 "called": True,
+                # A2: when the backend is a router, the whole failover trail
+                # travels with the result instead of living only in memory.
+                "routing": self.routing_evidence(),
             },
             duration_ms=response.latency_ms,
         )
@@ -598,6 +601,19 @@ class LLMAgent:
     def verified_call_count(self) -> int:
         """Number of completions this instance actually issued."""
         return self.calls
+
+    def routing_evidence(self) -> dict[str, Any]:
+        """Return the backend's routing trail, or a plain "not routed" marker.
+
+        Deliberately a method and not an attribute: a backend that grew routing
+        later must not silently break an agent that was written before it.
+        """
+        provider = getattr(self.backend, "routing_evidence", None)
+        if callable(provider):
+            evidence = provider()
+            if isinstance(evidence, dict):
+                return evidence
+        return {"routed": False}
 
 
 def build_llm_registry(

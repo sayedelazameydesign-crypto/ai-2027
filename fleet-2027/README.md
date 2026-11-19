@@ -3,7 +3,7 @@
 # ⚙️ fleet-2027 — محرك مهام دائم لأسطول وكلاء يثبت عمله
 
 **الوضع:** 🟢 مستقل · صفر اعتماديات خارجية (stdlib فقط) · Python 3.10+
-**الاختبارات:** 157 اختبارًا · **البوابات:** 11/11 · **الأثر:** `launch/evidence/fleet-2027-gate.json`
+**الاختبارات:** 173 اختبارًا · **البوابات:** 12/12 · **الأثر:** `launch/evidence/fleet-2027-gate.json`
 
 </div>
 
@@ -58,7 +58,7 @@ python3 fleet-2027/cli.py status  --db /tmp/fleet.db --task <task-id>
 python3 fleet-2027/cli.py verify  --db /tmp/fleet.db
 python3 fleet-2027/cli.py dlq     --db /tmp/fleet.db
 
-# 3) Run the eleven evidence gates (real SIGKILL + two real OS processes, ~35 s)
+# 3) Run the twelve evidence gates (real SIGKILL + two OS processes + router failover, ~36 s)
 python3 fleet-2027/gate.py --assert
 ```
 
@@ -128,12 +128,12 @@ A handler receives a `HandlerContext` and returns a `StepResult`. Three rules:
 | `independent_review` | a **different** agent approved (self-review is refused) |
 | `no_pending_compensation` | no rollback is still pending for the task |
 
-## The eleven gates
+## The twelve gates
 
 ```
 parallel-wave · verification-refuses · retry-backoff · dead-letter
 degraded-success · failover · idempotency · audit-chain · sigkill-resume
-multi-process · llm-verified-artifact
+multi-process · router-failover · llm-verified-artifact
 ```
 
 `multi-process` is the only gate that spawns **two interpreters** against one
@@ -231,9 +231,49 @@ distributed consensus system. Two *machines* need a network filesystem with
 working file locking, which is why `multi-node` stays unbuilt rather than
 claimed.
 
+## Routing steps through FreeFirstRouter (A2)
+
+A model call is no longer "one backend, or nothing". A step can be driven by
+`python-2027`'s `FreeFirstRouter`, which owns the *choice* of provider —
+zero-spend budget guard, circuit breaker, retry with backoff — while the runner
+still owns *what* must be done and whether it verified.
+
+```python
+from fleet2027.llm import LLMAgent
+from fleet2027.routing import RouterBackend
+
+backend = RouterBackend(router=free_first_router, request_factory=build_request)
+registry.register(LLMAgent(backend=backend, agent_name="routed-writer").spec(), ...)
+```
+
+| Behaviour | What is recorded |
+|---|---|
+| first provider times out, second answers | `step.failover` event (persisted + audit-chained) and `evidence["routing"]["failovers"] = 1` |
+| the router answers with its deterministic provider | `step.simulated` event — never passed off as a model |
+| every provider fails | `RoutingExhausted` → retried, then **dead-lettered with the per-provider trail in the reason** |
+| backend that has no router | `{"routed": false}` — an explicit "not routed", not a silent zero |
+
+**The deterministic trap.** `build_default_providers()` ends with an always
+"configured" deterministic provider. A naive wiring therefore reports success
+with **zero model calls**. That is why live mode exits `3` (not `0`) unless a
+*real* provider is configured — measured, not assumed:
+
+```
+$ python3 scripts/fleet_router_bridge_check.py --mode live
+NOT ATTEMPTED: the router would answer from its deterministic simulation
+provider. Set a real provider key (e.g. GEMINI_API_KEY) or run a local Ollama.
+exit=3
+```
+
+Honest scope: the router is exercised for real (`FreeFirstRouter`, its budget
+guard, its circuit breaker), but the *providers* in the `simulated` mode are
+stubs; only the `live` mode talks to a real provider, and it needs a local
+Ollama or a key. A measured live run is in `launch/evidence/fleet-router-live.json`
+(gitignored by design — regenerate it, never quote it as live proof).
+
 ## What was *not* built here
 
 An MCP server, a real browser under test, xlsx/pptx artifacts, adaptive
-quality-based retry, and multi-node (multi-*machine*) distribution. Each has a row and an
+quality-based retry (A4), and multi-node (multi-*machine*) distribution. Each has a row and an
 acceptance criterion in
 [`docs/AI-2027-COMPETITIVE-ARCHITECTURE.md`](../docs/AI-2027-COMPETITIVE-ARCHITECTURE.md) §4.

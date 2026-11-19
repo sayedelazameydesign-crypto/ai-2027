@@ -679,6 +679,11 @@ class FleetRunner:
                 result.error or "handler reported failure", duration,
             )
 
+        # A2: a provider substitution inside a *successful* step is exactly the
+        # kind of quiet downgrade that must survive the process. Record it before
+        # verification so it is on the record even if verification then refuses.
+        self._note_routing(task_id, snapshot.step_id, result)
+
         verification = verify_step(
             step,
             result,
@@ -802,6 +807,39 @@ class FleetRunner:
 
         threading.Thread(target=beat, daemon=True, name="fleet-heartbeat").start()
         return stop
+
+    def _note_routing(self, task_id: str, step_id: str, result: StepResult) -> None:
+        """Persist a router failover or a simulated answer, if either happened.
+
+        Two distinct facts, two distinct events — collapsing them would hide the
+        difference between "a free provider saved us" and "no model ran at all".
+        """
+        routing = result.evidence.get("routing") if result.evidence else None
+        if not isinstance(routing, dict) or not routing.get("routed"):
+            return
+        attempts = routing.get("attempts") or ()
+        failed = [attempt for attempt in attempts if not attempt.get("ok")]
+        provider = routing.get("provider", "unknown")
+        model = routing.get("model", "unknown")
+        if routing.get("simulated"):
+            self._emit(
+                task_id,
+                "step.simulated",
+                f"{step_id}: answered by the deterministic provider ({model}) — "
+                "no model was called and the output says so",
+                persist=True,
+            )
+        if failed:
+            reasons = ", ".join(
+                f"{attempt.get('provider')}:{attempt.get('error_code')}" for attempt in failed
+            )
+            self._emit(
+                task_id,
+                "step.failover",
+                f"{step_id}: {len(failed)} provider(s) failed ({reasons}); "
+                f"{provider}:{model} answered",
+                persist=True,
+            )
 
     def _emit(self, task_id: str, kind: str, message: str, *, persist: bool = False) -> None:
         """Push an observability event to the sink, and persist it when it matters.
