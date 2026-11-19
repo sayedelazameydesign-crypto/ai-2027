@@ -331,7 +331,17 @@ class Kernel:
             self._check_deadline(deadline)
 
         if not self.config.verify:
-            return self._finalize(record, ExecStatus.VERIFIED)
+            # Disabled verification is not passed verification.  The action ran,
+            # but nothing independent checked the world, so the only honest
+            # verdict is INCONCLUSIVE -- and no evidence block is produced,
+            # because none was collected (issue #54).
+            return self._finalize(
+                record,
+                ExecStatus.INCONCLUSIVE,
+                error="verification disabled: the action ran but was never checked "
+                "against the world",
+                code="VERIFICATION_DISABLED",
+            )
 
         already = {e.action_id for e in record.evidence}
         for action, observation in _pairs(plan, record):
