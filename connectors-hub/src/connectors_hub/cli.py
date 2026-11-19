@@ -20,6 +20,7 @@ _CREDENTIALS = (
     "google_access_token",
     "linear_api_key",
     "notion_integration_token",
+    "nvidia_api_key",
     "supabase_publishable_key",
     "supabase_user_jwt",
     "vercel_token",
@@ -169,6 +170,16 @@ def main(argv: Sequence[str] | None = None) -> int:
 
             for item in get_connector_info(vault, settings):
                 print(f"{item.id.value:20} {item.state.value}")
+            try:
+                nvidia_state = (
+                    "key_stored" if vault.get("nvidia_api_key") else "key_missing"
+                )
+            except VaultError:
+                nvidia_state = "keyring_unavailable"
+            print(f"{'nvidia_nim':20} {nvidia_state}")
+            print(
+                f"{'lm_studio':20} endpoint configured (not connection-tested): {settings.lm_studio_base_url}"
+            )
             return 0
 
         store = _store(settings, vault)
