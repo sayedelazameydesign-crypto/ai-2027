@@ -36,11 +36,17 @@ if __package__ in (None, ""):  # pragma: no cover - direct script execution
 from fleet2027 import (  # noqa: E402
     AgentRegistry,
     DurableTaskStore,
+    EvidenceKind,
     FleetRunner,
+    LLMAgent,
+    OllamaBackend,
+    PlanStep,
     RunnerConfig,
+    ScriptedBackend,
     TaskRunReport,
     TaskSpec,
     TaskStatus,
+    build_llm_registry,
     build_reviewer,
     examples,  # noqa: E402
     summarize_snapshot,
@@ -295,6 +301,62 @@ def cmd_cancel(args: argparse.Namespace) -> int:
     return EXIT_FAILED
 
 
+def cmd_llm(args: argparse.Namespace) -> int:
+    """Run one real LLM-backed step through the durable engine and verify it.
+
+    The model's output is treated as a claim: it is written to the workspace,
+    re-hashed from disk by the verifier, and the exit code reflects the
+    *verified* outcome — never the model's own say-so.
+    """
+    workspace = Path(args.workspace).resolve()
+    workspace.mkdir(parents=True, exist_ok=True)
+    if args.backend == "scripted":
+        backend = ScriptedBackend(
+            script=["```" + args.language + "\ndef add(a, b):\n    return a + b\n```"]
+        )
+        print("note: --backend scripted uses a deterministic fake; no model is called.")
+    else:
+        backend = OllamaBackend(model=args.model)
+        if not backend.is_configured():
+            print(
+                "error: OLLAMA_BASE_URL is not set. Start a local Ollama and export "
+                "OLLAMA_BASE_URL=http://127.0.0.1:11434, or use --backend scripted.",
+                file=sys.stderr,
+            )
+            return EXIT_USAGE
+    agent = LLMAgent(backend=backend, agent_name=args.agent)
+    registry, _ = build_llm_registry(agent)
+    out = args.out
+    language = args.language
+    spec = TaskSpec(
+        task_id=args.task,
+        goal="produce a verified file from a model completion",
+        steps=(
+            PlanStep(
+                step_id="write",
+                agent=agent.spec().name,
+                action="generate",
+                inputs={"prompt": args.prompt, "out": out, "language": language},
+                verification=(EvidenceKind.ARTIFACT_SHA256.value,
+                              EvidenceKind.OUTPUT_NON_EMPTY.value),
+            ),
+        ),
+        created_by="cli-llm",
+    )
+    with DurableTaskStore(args.db) as store:
+        runner = FleetRunner(
+            store, registry, workspace_root=workspace,
+            config=RunnerConfig(backoff_base_s=0.05),
+        )
+        print(f"llm · backend={backend.name} · model={getattr(backend, 'model', '?')}")
+        report = runner.submit_and_run(spec)
+        _print_report(report)
+        _print_task(store, args.task)
+        target = workspace / out
+        print(f"artifact: {target} exists={target.is_file()}")
+        return _exit_for(report.status)
+
+
 def build_parser() -> argparse.ArgumentParser:
     """Build the argument parser."""
     parser = argparse.ArgumentParser(
@@ -344,6 +406,18 @@ def build_parser() -> argparse.ArgumentParser:
     imp = sub.add_parser("import", parents=[common], help="import a resume seed")
     imp.add_argument("--seed", required=True)
     imp.set_defaults(func=cmd_import)
+
+    llm = sub.add_parser(
+        "llm", parents=[common], help="run one model-backed step and verify its artifact"
+    )
+    llm.add_argument("--prompt", required=True)
+    llm.add_argument("--out", required=True, help="workspace-relative output path")
+    llm.add_argument("--language", default="python")
+    llm.add_argument("--backend", choices=["ollama", "scripted"], default="ollama")
+    llm.add_argument("--model", default=None, help="Ollama model tag (backend=ollama)")
+    llm.add_argument("--agent", default="llm-writer")
+    llm.add_argument("--task", default="llm-task")
+    llm.set_defaults(func=cmd_llm)
 
     cancel = sub.add_parser("cancel", parents=[common], help="cancel a live task")
     cancel.add_argument("--task", required=True)

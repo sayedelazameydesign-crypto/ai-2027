@@ -53,13 +53,17 @@ from fleet2027 import (  # noqa: E402
     EvidenceKind,
     FleetRunner,
     HandlerContext,
+    LLMAgent,
+    OllamaBackend,
     PlanStep,
     RunnerConfig,
+    ScriptedBackend,
     StepFailure,
     StepResult,
     StepStatus,
     TaskSpec,
     TaskStatus,
+    build_llm_registry,
     canonical_json,
     sha256_text,
     utc_now,
@@ -551,6 +555,171 @@ def gate_sigkill_resume(base: Path) -> GateResult:
     )
 
 
+def gate_llm_verified_artifact(base: Path) -> GateResult:
+    """A model's output must be written, re-hashed from disk, and refused when wrong.
+
+    Uses a **scripted** backend: this gate proves the harness (prompt → file →
+    independent verification → refusal of a tampered file), not the quality of
+    any model. A separate gate, ``llm-live-ollama``, is the only one that may
+    touch a real model, and it is opt-in.
+    """
+    started = time.perf_counter()
+    failures: list[str] = []
+
+    # 1) A good completion becomes a verified artifact.
+    good = ScriptedBackend(script=["```python\ndef add(a, b):\n    return a + b\n```"])
+    agent = LLMAgent(backend=good)
+    registry, _ = build_llm_registry(agent)
+    spec = TaskSpec(
+        task_id="gate-llm",
+        goal="model output is verified, not trusted",
+        steps=(
+            PlanStep(
+                step_id="write", agent=agent.spec().name, action="generate",
+                inputs={"prompt": "write add(a, b)", "out": "app.py", "language": "python"},
+                verification=(EvidenceKind.ARTIFACT_SHA256.value,
+                              EvidenceKind.OUTPUT_NON_EMPTY.value),
+            ),
+        ),
+    )
+    ws = base / "llm"
+    ws.mkdir(parents=True, exist_ok=True)
+    with DurableTaskStore(str(base / "llm.db")) as store:
+        report = _runner(store, registry, ws).submit_and_run(spec)
+        record = store.step_result("gate-llm", "write")
+    if report.status is not TaskStatus.SUCCEEDED:
+        failures.append(f"a valid completion did not verify: {report.status.value}")
+    if not (ws / "app.py").is_file():
+        failures.append("the artifact was not written to the workspace")
+    evidence = (record or {}).get("evidence") or {}
+    if evidence.get("called") is not True:
+        failures.append("success was reported without the backend being called")
+    if record and not (record.get("verification") or {}).get("ok"):
+        failures.append("the step succeeded without a passing verification record")
+
+    # 2) A tampered file must be refused (the verifier is the judge, not the model).
+    tampering = ScriptedBackend(script=["```python\nvalue = 1\n```"])
+    liar = LLMAgent(backend=tampering, agent_name="llm-tamper", capability="llm-tamper")
+    honest = liar.handler
+
+    def sabotage(ctx: Any) -> StepResult:
+        result = honest(ctx)
+        (ctx.workspace_root / "app.py").write_text("value = 999\n", encoding="utf-8")
+        return result
+
+    registry2 = AgentRegistry()
+    registry2.register(liar.spec(), sabotage)
+    spec2 = TaskSpec(
+        task_id="gate-llm-tamper",
+        goal="a tampered artifact must not pass",
+        steps=(
+            PlanStep(
+                step_id="write", agent="llm-tamper", action="generate",
+                inputs={"prompt": "write a value", "out": "app.py", "language": "python"},
+                verification=(EvidenceKind.ARTIFACT_SHA256.value,),
+            ),
+        ),
+    )
+    ws2 = base / "llm-tamper"
+    ws2.mkdir(parents=True, exist_ok=True)
+    with DurableTaskStore(str(base / "llm-tamper.db")) as store:
+        report2 = _runner(store, registry2, ws2, backoff_base_s=0.01).submit_and_run(spec2)
+    if report2.verified != 0:
+        failures.append("a tampered artifact was counted as verified")
+    if report2.status is TaskStatus.SUCCEEDED:
+        failures.append("the task succeeded despite a post-hoc file change")
+
+    # 3) An unconfigured backend must fail loudly, never "succeed" silently.
+    unconfigured = LLMAgent(backend=OllamaBackend(base_url="", model="none"), agent_name="llm-off")
+    registry3, _ = build_llm_registry(unconfigured)
+    spec3 = TaskSpec(
+        task_id="gate-llm-off", goal="no backend",
+        steps=(PlanStep(step_id="write", agent="llm-off", action="generate",
+                        inputs={"prompt": "x", "out": "x.py", "language": "python"}),),
+    )
+    ws3 = base / "llm-off"
+    ws3.mkdir(parents=True, exist_ok=True)
+    with DurableTaskStore(str(base / "llm-off.db")) as store:
+        report3 = _runner(store, registry3, ws3, backoff_base_s=0.01).submit_and_run(spec3)
+    if report3.status is TaskStatus.SUCCEEDED:
+        failures.append("an unconfigured backend was reported as success")
+
+    measured = {
+        "verified_status": report.status.value,
+        "artifact_written": (ws / "app.py").is_file(),
+        "backend_called": evidence.get("called"),
+        "backend": evidence.get("backend"),
+        "model": evidence.get("model"),
+        "output_sha256": (evidence.get("output_sha256") or "")[:16],
+        "tamper_status": report2.status.value,
+        "tamper_verified": report2.verified,
+        "unconfigured_status": report3.status.value,
+        "scripted_calls": len(good.calls),
+    }
+    return GateResult(
+        "llm-verified-artifact", not failures,
+        "model output is written, re-hashed from disk, and refused when it does not match",
+        measured, failures, (time.perf_counter() - started) * 1000,
+    )
+
+
+def gate_llm_live_ollama(base: Path) -> GateResult:
+    """Opt-in: one real completion from a local Ollama. Skips (with a reason) if absent.
+
+    This gate is **not** in the default list. Run it explicitly::
+
+        python3 fleet-2027/gate.py --only llm-live-ollama --out /tmp/live.json
+
+    ``skipped`` is a first-class outcome here: claiming a live model ran when no
+    model was reachable would be exactly the dishonesty the other gates exist to
+    prevent.
+    """
+    started = time.perf_counter()
+    backend = OllamaBackend()
+    if not backend.is_configured():
+        return GateResult(
+            "llm-live-ollama", False,
+            "OPT-IN · not run: OLLAMA_BASE_URL is not set",
+            {"status": "skipped_no_endpoint", "model": backend.model},
+            ["skipped: no loopback Ollama endpoint configured (this is not a failure of the code)"],
+            (time.perf_counter() - started) * 1000,
+        )
+    agent = LLMAgent(backend=backend, agent_name="llm-live", capability="llm-live")
+    registry, _ = build_llm_registry(agent)
+    spec = TaskSpec(
+        task_id="gate-llm-live", goal="a real local model produces a verified file",
+        steps=(PlanStep(step_id="write", agent="llm-live", action="generate",
+                        inputs={"prompt": "Write a Python function add(a, b) that returns a + b. "
+                                          "Return only the code in a fenced python block.",
+                                "out": "live.py", "language": "python"},
+                        verification=(EvidenceKind.ARTIFACT_SHA256.value,
+                                      EvidenceKind.OUTPUT_NON_EMPTY.value)),),
+    )
+    ws = base / "llm-live"
+    ws.mkdir(parents=True, exist_ok=True)
+    with DurableTaskStore(str(base / "llm-live.db")) as store:
+        report = _runner(store, registry, ws).submit_and_run(spec)
+        record = store.step_result("gate-llm-live", "write")
+    evidence = (record or {}).get("evidence") or {}
+    failures = []
+    if report.status is not TaskStatus.SUCCEEDED:
+        failures.append(f"live model run did not verify: {report.status.value}")
+    if evidence.get("called") is not True:
+        failures.append("no completion was actually issued")
+    return GateResult(
+        "llm-live-ollama", not failures,
+        "OPT-IN · a loopback model produced a file that passed independent verification",
+        {
+            "status": report.status.value,
+            "model": evidence.get("model"),
+            "latency_ms": evidence.get("latency_ms"),
+            "output_bytes": evidence.get("output_bytes"),
+            "output_sha256": (evidence.get("output_sha256") or "")[:16],
+        },
+        failures, (time.perf_counter() - started) * 1000,
+    )
+
+
 GATES: list[Callable[[Path], GateResult]] = [
     gate_parallel_wave,
     gate_verification_refuses,
@@ -561,16 +730,30 @@ GATES: list[Callable[[Path], GateResult]] = [
     gate_idempotency,
     gate_audit_chain,
     gate_sigkill_resume,
+    gate_llm_verified_artifact,
 ]
 
+#: Opt-in gates: they need a real external resource and never run by default.
+OPT_IN_GATES: dict[str, Callable[[Path], GateResult]] = {
+    "llm-live-ollama": gate_llm_live_ollama,
+}
 
-def run_gates(*, out: Path | None = None, selected: list[str] | None = None) -> dict[str, Any]:
+
+def run_gates(
+    *,
+    out: Path | None = None,
+    selected: list[str] | None = None,
+    include_opt_in: bool = False,
+) -> dict[str, Any]:
     """Run every gate and return the evidence payload (also written to ``out``)."""
     started = utc_now()
     results: list[GateResult] = []
     with tempfile.TemporaryDirectory(prefix="fleet-gate-") as tmp:
         base = Path(tmp)
-        for gate in GATES:
+        candidates = list(GATES)
+        if include_opt_in or (selected and any(n in OPT_IN_GATES for n in selected)):
+            candidates.extend(OPT_IN_GATES.values())
+        for gate in candidates:
             name = gate.__name__.removeprefix("gate_").replace("_", "-")
             if selected and name not in selected:
                 continue
@@ -613,10 +796,16 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--assert", dest="assert_all", action="store_true",
                         help="exit non-zero when any gate fails")
     parser.add_argument("--only", nargs="*", default=None, help="gate names to run")
+    parser.add_argument(
+        "--opt-in",
+        dest="opt_in",
+        action="store_true",
+        help="also run gates that need a real external resource (e.g. a local model)",
+    )
     parser.add_argument("--json", action="store_true", help="print the payload")
     args = parser.parse_args(argv)
     out = Path(args.out)
-    payload = run_gates(out=out, selected=args.only)
+    payload = run_gates(out=out, selected=args.only, include_opt_in=args.opt_in)
     if args.json:
         print(json.dumps(payload, indent=2))
     else:

@@ -45,7 +45,7 @@ def _python_files() -> list[Path]:
 def check_imports() -> int:
     """Fail on any third-party import in the fleet package."""
     stdlib = set(sys.stdlib_module_names) | CONDITIONAL_STDLIB
-    rel = {"contracts", "store", "verifier", "registry", "runner", "examples"}
+    rel = {"contracts", "store", "verifier", "registry", "runner", "examples", "llm"}
     bad: dict[str, set[str]] = {}
     files = _python_files()
     for path in files:
