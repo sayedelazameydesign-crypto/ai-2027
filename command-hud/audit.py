@@ -111,10 +111,20 @@ def classify_license(p: Path) -> tuple[str, str]:
     return "OTHER/UNREADABLE", "pending"
 
 
+_EXCLUDED_DIRS = {
+    ".git", "node_modules", "__pycache__",
+    # Tool caches are generated artifacts, not project source. Including them
+    # makes the catalog/disk counts depend on whether pytest/ruff/mypy ever ran,
+    # which would make the archive-identity assertion flaky on every test run.
+    ".pytest_cache", ".mypy_cache", ".ruff_cache",
+    ".next", "dist", "out", "build",
+}
+
+
 def count_files(p: Path) -> tuple[int, int]:
     files = dirs = 0
     for _root, dnames, fnames in os.walk(p):
-        dnames[:] = [d for d in dnames if d not in {".git", "node_modules", "__pycache__"}]
+        dnames[:] = [d for d in dnames if d not in _EXCLUDED_DIRS]
         files += len(fnames)
         dirs += len(dnames)
     return files, dirs
@@ -123,7 +133,7 @@ def count_files(p: Path) -> tuple[int, int]:
 def detect_tests(p: Path) -> int:
     n = 0
     for _root, dnames, fnames in os.walk(p):
-        dnames[:] = [d for d in dnames if d not in {".git", "node_modules", "__pycache__"}]
+        dnames[:] = [d for d in dnames if d not in _EXCLUDED_DIRS]
         for f in fnames:
             if re.match(r"(test_.*\.py$|_test\.py$|.*\.test\.[jt]sx?$|.*\.spec\.[jt]sx?$)", f):
                 n += 1
