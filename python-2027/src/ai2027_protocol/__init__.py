@@ -2,6 +2,17 @@
 
 from __future__ import annotations
 
+from .agent import (
+    AgentEvent,
+    AgentPlannerProtocol,
+    AgentSessionState,
+    AgentStepTrace,
+    AgentTaskRequest,
+    ArtifactRecord,
+    AutonomousAgent,
+    PlanStep,
+    SessionStore,
+)
 from .ai_providers import (
     DeterministicFallbackProvider,
     GeminiFreeProvider,
@@ -17,6 +28,19 @@ from .ai_providers import (
 )
 from .auditor import ProtocolAuditor, format_audit_markdown
 from .benchmark import run_benchmark_suite, summarize_nanoseconds
+from .bridges import (
+    ApprovalProposal,
+    ConnectorBridgePort,
+    ConnectorDescriptor,
+    ConnectorsBridge,
+    KernelSandboxBridge,
+    KernelSandboxPort,
+    KernelWriteResult,
+    MemoryBridge,
+    MemoryHit,
+    MemoryStats,
+    MemoryStorePort,
+)
 from .contracts import (
     AIProvider,
     CompletionResponse,
@@ -29,18 +53,46 @@ from .contracts import (
 )
 from .router import AllProvidersFailedError, FreeFirstRouter, RouterConfig
 from .server import create_app
+from .studio import build_studio_router
 from .telemetry import ObservabilityRuntime
+from .tools import (
+    SandboxToolRuntime,
+    ToolContext,
+    ToolExecutor,
+    ToolInvocation,
+    ToolOutcome,
+    ToolSpec,
+)
 
 __all__ = [
     "AIProvider",
+    "AgentEvent",
+    "AgentPlannerProtocol",
+    "AgentSessionState",
+    "AgentStepTrace",
+    "AgentTaskRequest",
     "AllProvidersFailedError",
+    "ApprovalProposal",
+    "ArtifactRecord",
+    "AutonomousAgent",
     "CompletionResponse",
+    "ConnectorBridgePort",
+    "ConnectorDescriptor",
+    "ConnectorsBridge",
     "DeterministicFallbackProvider",
     "FreeFirstRouter",
     "GeminiFreeProvider",
+    "KernelSandboxBridge",
+    "KernelSandboxPort",
+    "KernelWriteResult",
+    "MemoryBridge",
+    "MemoryHit",
+    "MemoryStats",
+    "MemoryStorePort",
     "ObservabilityRuntime",
     "OllamaLocalProvider",
     "OpenAICompatibleFreeProvider",
+    "PlanStep",
     "PromptRequest",
     "ProtocolAuditReport",
     "ProtocolAuditor",
@@ -49,8 +101,16 @@ __all__ = [
     "ProviderStatus",
     "RouterConfig",
     "RuleStatus",
+    "SandboxToolRuntime",
+    "SessionStore",
     "TelemetrySink",
+    "ToolContext",
+    "ToolExecutor",
+    "ToolInvocation",
+    "ToolOutcome",
+    "ToolSpec",
     "build_default_providers",
+    "build_studio_router",
     "create_app",
     "create_groq_free_provider",
     "create_nvidia_nim_provider",

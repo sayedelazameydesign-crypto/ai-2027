@@ -154,3 +154,31 @@ test("POST /v1/route uses GEMINI_API_KEY and NVIDIA_API_KEY when UPSTREAM_URL is
   assert.equal(data.simulated, false);
   assert.equal(seen.length, 2);
 });
+
+test("POST /v1/agent/plan returns structured 4-step edge plan and enforces auth", async () => {
+  resetRateLimitsForTest();
+  const unauth = await handleGatewayFetch(
+    new Request("https://edge.local/v1/agent/plan", {
+      method: "POST",
+      body: JSON.stringify({ task: "Analyze repo" }),
+    }),
+    { GATEWAY_TOKEN: "secret-gw-token" },
+  );
+  assert.equal(unauth.status, 401);
+
+  const ok = await handleGatewayFetch(
+    new Request("https://edge.local/v1/agent/plan", {
+      method: "POST",
+      headers: { authorization: "Bearer secret-gw-token" },
+      body: JSON.stringify({ task: "Build verified HTML dashboard" }),
+    }),
+    { GATEWAY_TOKEN: "secret-gw-token" },
+  );
+  assert.equal(ok.status, 200);
+  const body = await ok.json();
+  assert.equal(body.steps.length, 4);
+  assert.equal(body.cost_usd, 0.0);
+
+  const badMethod = await handleGatewayFetch(new Request("https://edge.local/v1/agent/plan"));
+  assert.equal(badMethod.status, 405);
+});
