@@ -183,10 +183,11 @@ class OllamaLocalProvider:
         *,
         base_url: str | None = None,
         model: str | None = None,
+        num_ctx: int | None = None,
         enabled: bool | None = None,
         transport: AsyncHttpTransport | None = None,
     ) -> None:
-        """Configure local Ollama endpoint and optional injectable transport."""
+        """Configure local Ollama endpoint, 4GB-safe defaults, and optional transport."""
         raw_url = base_url if base_url is not None else os.environ.get("OLLAMA_BASE_URL", "")
         self._base_url = (
             validate_provider_url(raw_url, allow_local_http=True) if raw_url.strip() else ""
@@ -194,8 +195,14 @@ class OllamaLocalProvider:
         self._model = (
             model.strip()
             if model and model.strip()
-            else _env_or_default("OLLAMA_MODEL", "qwen2.5:3b")
+            else _env_or_default("OLLAMA_MODEL", "qwen3.5:0.8b")
         )
+        raw_ctx = os.environ.get("OLLAMA_NUM_CTX", "2048").strip()
+        try:
+            env_ctx = int(raw_ctx) if raw_ctx else 2048
+        except ValueError:
+            env_ctx = 2048
+        self._num_ctx = max(256, min(32768, env_ctx if num_ctx is None else num_ctx))
         self._enabled = bool(self._base_url) if enabled is None else enabled
         self._transport = transport or HttpxJsonTransport()
         self._billing_tier, _ = classify_billing_tier(
@@ -206,6 +213,11 @@ class OllamaLocalProvider:
     def model(self) -> str:
         """Return configured Ollama model identifier."""
         return self._model
+
+    @property
+    def num_ctx(self) -> int:
+        """Return context window size passed to Ollama options."""
+        return self._num_ctx
 
     @property
     def billing_tier(self) -> BillingTier:
@@ -239,6 +251,7 @@ class OllamaLocalProvider:
                 "options": {
                     "temperature": request.temperature,
                     "num_predict": request.max_tokens,
+                    "num_ctx": self._num_ctx,
                 },
             },
             timeout_s=timeout_s,
