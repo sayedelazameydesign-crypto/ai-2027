@@ -39,6 +39,11 @@ on:
         required: false
         type: string
         default: "120000"
+      max_output_tokens:
+        description: "Max output tokens (65536 prevents thinking+JSON cutoff on gemini-2.5-flash)"
+        required: false
+        type: string
+        default: "65536"
 
 permissions:
   contents: read
@@ -75,6 +80,7 @@ jobs:
           PR_LENS_PROVIDER: ${{ inputs.provider || 'gemini' }}
           PR_LENS_MODEL: ${{ inputs.model || 'gemini-2.5-flash' }}
           PR_LENS_MAX_DIFF_BYTES: ${{ inputs.max_diff_bytes || '120000' }}
+          PR_LENS_MAX_OUTPUT_TOKENS: ${{ inputs.max_output_tokens || '65536' }}
         run: |
           set +x
           set -euo pipefail
@@ -88,6 +94,9 @@ jobs:
           case "$PR_LENS_MAX_DIFF_BYTES" in
             *[!0-9]*|"") PR_LENS_MAX_DIFF_BYTES=120000 ;;
           esac
+          case "$PR_LENS_MAX_OUTPUT_TOKENS" in
+            *[!0-9]*|"") PR_LENS_MAX_OUTPUT_TOKENS=65536 ;;
+          esac
           mkdir -p .pr-lens
           args=(
             analyze
@@ -96,6 +105,7 @@ jobs:
             --provider "$PR_LENS_PROVIDER"
             --model "$PR_LENS_MODEL"
             --max-diff-bytes "$PR_LENS_MAX_DIFF_BYTES"
+            --max-output-tokens "$PR_LENS_MAX_OUTPUT_TOKENS"
             --api-key-env PR_LENS_API_KEY
             -o .pr-lens/graph.json
           )
@@ -103,17 +113,21 @@ jobs:
             args+=(--pr "$PR_LENS_PR_NUMBER")
           fi
           set +e
-          npx --yes @coldtea/pr-lens-cli@0.15.2 "${args[@]}"
-          rc=$?
+          npx --yes @coldtea/pr-lens-cli@0.15.2 "${args[@]}" 2>&1 | tee /tmp/pr-lens.log
+          rc=${PIPESTATUS[0]}
           if [ "$rc" -eq 0 ]; then
-            npx --yes @coldtea/pr-lens-cli@0.15.2 validate .pr-lens/graph.json &&
-              npx --yes @coldtea/pr-lens-cli@0.15.2 render .pr-lens/graph.json
-            rc=$?
+            npx --yes @coldtea/pr-lens-cli@0.15.2 validate .pr-lens/graph.json 2>&1 | tee -a /tmp/pr-lens.log &&
+              npx --yes @coldtea/pr-lens-cli@0.15.2 render .pr-lens/graph.json 2>&1 | tee -a /tmp/pr-lens.log
+            rc=${PIPESTATUS[0]}
           fi
           set -e
+          if [ "$rc" -ne 0 ]; then
+            last_line=$(grep -E 'error|MODEL_OUTPUT_INVALID|cut off|limit|http|status|failed' -i /tmp/pr-lens.log | tail -n 1 | tr '\r\n' ' ' | sed -E 's/(AIza|nvapi-|gsk_|sk-)[A-Za-z0-9_-]+/[redacted]/g' | cut -c1-240 || true)
+            echo "::error title=pr-lens::exit=$rc ${last_line}"
+          fi
           {
             echo "### PR Lens Map Run"
-            echo "- Base: \`$PR_LENS_BASE_REF\` · Head: \`$PR_LENS_HEAD_REF\` · Max diff bytes: \`$PR_LENS_MAX_DIFF_BYTES\`"
+            echo "- Base: \`$PR_LENS_BASE_REF\` · Head: \`$PR_LENS_HEAD_REF\` · Max diff bytes: \`$PR_LENS_MAX_DIFF_BYTES\` · Max output tokens: \`$PR_LENS_MAX_OUTPUT_TOKENS\`"
             echo "- Outcome exit code: \`$rc\` · graph.json present: \`$([ -f .pr-lens/graph.json ] && echo true || echo false)\`"
             echo "- Note: CLI workflow renders visual maps without step-1 GitHub App line review."
           } >> "$GITHUB_STEP_SUMMARY"

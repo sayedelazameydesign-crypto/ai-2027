@@ -108,11 +108,12 @@ def test_expired_lease_is_taken_over_with_a_new_fence(tmp_path: Path) -> None:
 def test_stale_writer_is_refused_under_enforce(tmp_path: Path) -> None:
     """The whole point of the fence: a slow writer cannot clobber newer state."""
     store = _store(tmp_path, "enforce")
-    store.lease_ttl_s = 0.05
+    store.lease_ttl_s = 0.08
     stale = store.acquire_lease(_SID)
     store.save_sync(_state(), lease=stale)
 
-    time.sleep(0.15)
+    time.sleep(0.2)
+    store.lease_ttl_s = 5.0
     fresh = store.acquire_lease(_SID, owner="successor")
     assert fresh.fence == stale.fence + 1
 
@@ -136,10 +137,11 @@ def test_warn_mode_records_the_refusal_but_still_writes(
 ) -> None:
     """``warn`` exists for staged rollout: visible in logs, behaviour unchanged."""
     store = _store(tmp_path, "warn")
-    store.lease_ttl_s = 0.05
+    store.lease_ttl_s = 0.08
     stale = store.acquire_lease(_SID)
     store.save_sync(_state(), lease=stale)
-    time.sleep(0.15)
+    time.sleep(0.2)
+    store.lease_ttl_s = 5.0
     store.acquire_lease(_SID, owner="successor")
 
     with caplog.at_level("WARNING"):
