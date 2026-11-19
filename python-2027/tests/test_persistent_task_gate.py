@@ -6,6 +6,9 @@ import json
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
+
+import pytest
 
 GATE = Path(__file__).resolve().parents[2] / "scripts" / "persistent_task_gate.py"
 
@@ -109,3 +112,30 @@ def test_gate_reports_a_broken_interpreter_instead_of_crashing(tmp_path: Path) -
     assert payload["verdict"] == "FAIL"
     assert payload["error"]
     assert payload["checks"] and not any(check["ok"] for check in payload["checks"])
+
+
+def _load_gate_module() -> Any:
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("gate_under_test", GATE)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module  # dataclasses resolve their module by name
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_the_interpreter_path_is_not_resolved_through_its_symlink(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A venv shim is a symlink to the base python; following it loses site-packages."""
+    monkeypatch.chdir(tmp_path)
+    venv = tmp_path / ".venv" / "bin"
+    venv.mkdir(parents=True)
+    (venv / "python").symlink_to(sys.executable)
+    module = _load_gate_module()
+
+    resolved = module.resolve_interpreter(".venv/bin/python")
+
+    assert resolved.endswith(".venv/bin/python")
+    assert Path(resolved).is_file()

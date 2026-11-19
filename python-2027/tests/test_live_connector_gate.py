@@ -8,6 +8,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 GATE = Path(__file__).resolve().parents[2] / "scripts" / "live_connector_gate.py"
 
 
@@ -322,3 +324,30 @@ def test_a_broken_interpreter_exits_2_instead_of_passing(tmp_path: Path) -> None
     payload = _report(report_path)
     assert payload["verdict"] == "FAIL"
     assert payload["error"]
+
+
+def _load_gate_module() -> Any:
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("gate_under_test", GATE)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module  # dataclasses resolve their module by name
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_the_interpreter_path_is_not_resolved_through_its_symlink(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A venv shim is a symlink to the base python; following it loses site-packages."""
+    monkeypatch.chdir(tmp_path)
+    venv = tmp_path / ".venv" / "bin"
+    venv.mkdir(parents=True)
+    (venv / "python").symlink_to(sys.executable)
+    module = _load_gate_module()
+
+    resolved = module.resolve_interpreter(".venv/bin/python")
+
+    assert resolved.endswith(".venv/bin/python")
+    assert Path(resolved).is_file()

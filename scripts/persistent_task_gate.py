@@ -54,7 +54,10 @@ def resolve_interpreter(value: str) -> str:
     worker runs with ``cwd=repo root``, so a relative path has to be resolved here.
     """
     if os.sep in value or (os.altsep and os.altsep in value):
-        return str(Path(value).expanduser().resolve())
+        # ``absolute()``, never ``resolve()``: a venv's ``bin/python`` is a symlink
+        # to the base interpreter, and following it leaves the venv (and its
+        # site-packages) behind.
+        return str(Path(value).expanduser().absolute())
     return shutil.which(value) or value
 
 
