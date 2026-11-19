@@ -212,6 +212,62 @@ async def test_a_provider_that_echoes_the_key_is_redacted_in_the_evidence(
     assert key not in json.dumps(attempt.as_dict())
 
 
+@pytest.mark.parametrize(
+    "answer",
+    [
+        "PAP-2027-LIVE-OK",
+        "PAP 2027 LIVE OK",
+        "**PAP-2027-LIVE-OK**",
+        "Sure, here it is: `PAP-2027-LIVE-OK`.",
+        "pap-2027-live-ok",
+    ],
+)
+async def test_the_marker_is_formatting_agnostic(
+    monkeypatch: pytest.MonkeyPatch, answer: str
+) -> None:
+    monkeypatch.setenv("GEMINI_API_KEY", "AIza" + "m" * 33)
+    from ai2027_protocol.ai_providers import GeminiFreeProvider
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={"candidates": [{"content": {"parts": [{"text": answer}]}}]},
+        )
+
+    attempt = await probe(
+        "gemini",
+        lambda transport: GeminiFreeProvider(transport=transport),
+        client=_client(handler),
+    )
+
+    assert attempt.status == "ok"
+    assert attempt.evidence is not None
+    assert attempt.evidence.marker_found is True
+
+
+async def test_an_unrelated_answer_does_not_count_as_the_marker(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("GEMINI_API_KEY", "AIza" + "n" * 33)
+    from ai2027_protocol.ai_providers import GeminiFreeProvider
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={"candidates": [{"content": {"parts": [{"text": "I cannot help with that."}]}}]},
+        )
+
+    attempt = await probe(
+        "gemini",
+        lambda transport: GeminiFreeProvider(transport=transport),
+        client=_client(handler),
+    )
+
+    assert attempt.status == "ok"
+    assert attempt.evidence is not None
+    assert attempt.evidence.marker_found is False
+
+
 def test_redact_hides_known_credential_shapes() -> None:
     # Built from parts on purpose: no credential-shaped literal stays in the tree.
     fake_nvapi = "nvapi-" + "a" * 24

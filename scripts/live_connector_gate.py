@@ -22,7 +22,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
+import shutil
 import subprocess
 import sys
 import time
@@ -85,6 +87,28 @@ def _run_worker(
     return subprocess.run(
         command, cwd=ROOT, capture_output=True, text=True, timeout=600, check=False
     )
+
+
+def resolve_interpreter(value: str) -> str:
+    """Resolve the worker interpreter against the caller's cwd, or report it missing.
+
+    ``--python .venv/bin/python`` is what a human types from ``python-2027/``. The
+    worker runs with ``cwd=repo root``, so a relative path must be resolved here —
+    otherwise the gate dies before it can write any evidence.
+    """
+    candidate = value
+    if os.sep in value or (os.altsep and os.altsep in value):
+        candidate = str(Path(value).expanduser().resolve())
+    else:
+        found = shutil.which(value)
+        candidate = found or value
+    return candidate
+
+
+def _missing_interpreter(python: str) -> str:
+    if os.sep in python and not Path(python).is_file():
+        return f"interpreter not found: {python}"
+    return ""
 
 
 def _parse_timestamp(value: Any) -> bool:
@@ -191,6 +215,10 @@ def run_gate(*, python: str, worker: Path, providers: list[str], timeout_s: floa
     if not worker.is_file():
         result.error = f"worker not found: {worker}"
         return result
+    missing = _missing_interpreter(python)
+    if missing:
+        result.error = missing
+        return result
 
     completed = _run_worker(python, worker, providers=providers, timeout_s=timeout_s)
     result.worker_returncode = completed.returncode
@@ -279,9 +307,15 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    result = run_gate(
-        python=args.python, worker=args.worker, providers=args.provider, timeout_s=args.timeout_s
-    )
+    try:
+        result = run_gate(
+            python=resolve_interpreter(args.python),
+            worker=args.worker,
+            providers=args.provider,
+            timeout_s=args.timeout_s,
+        )
+    except Exception as exc:  # noqa: BLE001 - a crash must still leave evidence
+        result = GateResult(error=f"{type(exc).__name__}: {exc}")
 
     try:
         write_report(result, args.report)
@@ -294,6 +328,12 @@ def main(argv: list[str] | None = None) -> int:
     else:
         print(render(result))
         print(f"evidence: {args.report}")
+
+    if not result.ok and os.environ.get("GITHUB_ACTIONS") == "true":
+        reason = result.error or "; ".join(
+            f"{check.name}: {check.detail}" for check in result.checks if not check.ok
+        )
+        print(f"::error title=PAP-2027 live-connector gate::{reason[:900]}")
 
     if result.error:
         return 2

@@ -258,13 +258,13 @@ jobs:
           set +x
           set -euo pipefail
           .venv/bin/python ../scripts/live_connector_gate.py --assert \
-            --python .venv/bin/python --timeout-s 25 \
-            --report /tmp/live-connector-gate.json
+            --python .venv/bin/python --timeout-s 60 \
+            --report "$RUNNER_TEMP/live-connector-gate.json"
 
       - name: Upload the live-connector evidence (id, time, sanitized response)
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
         with:
           name: pap-live-connector-${{ github.sha }}
-          path: /tmp/live-connector-gate.json
-          if-no-files-found: warn
+          path: ${{ runner.temp }}/live-connector-gate.json
+          if-no-files-found: error
