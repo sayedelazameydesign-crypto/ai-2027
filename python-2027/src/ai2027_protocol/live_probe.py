@@ -297,6 +297,19 @@ def _usage(payload: Mapping[str, Any]) -> dict[str, int]:
     return usage
 
 
+def _contains_marker(text: str, marker: str) -> bool:
+    """Return True when the answer carries the marker, ignoring punctuation/spacing.
+
+    ``PAP-2027-LIVE-OK``, `PAP 2027 LIVE OK` and ``**PAP-2027-LIVE-OK**`` all pass:
+    the gate asks for a token, not for a formatting convention.
+    """
+
+    def squash(value: str) -> str:
+        return re.sub(r"[^A-Z0-9]", "", value.upper())
+
+    return squash(marker) in squash(text)
+
+
 def _now() -> str:
     return datetime.now(UTC).isoformat()
 
@@ -340,10 +353,10 @@ async def probe(
         requested_at = _now()
         started = time.perf_counter()
         try:
-            # 256 output tokens, not 32: thinking models spend part of the budget on
+            # 512 output tokens, not 32: thinking models spend part of the budget on
             # internal reasoning, and an empty completion would look like an outage.
             text = await provider.complete(
-                PromptRequest(prompt=prompt, temperature=0.0, max_tokens=256),
+                PromptRequest(prompt=prompt, temperature=0.0, max_tokens=512),
                 timeout_s=timeout_s,
             )
         except ProviderError as exc:
@@ -390,7 +403,7 @@ async def probe(
             response_sha256=hashlib.sha256(text.encode("utf-8")).hexdigest(),
             response_bytes=len(text.encode("utf-8")),
             response_excerpt=_excerpt(text),
-            marker_found=marker.upper() in re.sub(r"[`*_]", "", text.upper()),
+            marker_found=_contains_marker(text, marker),
             mock=provider.kind.value == "deterministic" or not provider.is_remote,
             cost_usd=0.0 if tier in (BillingTier.FREE_TIER, BillingTier.LOCAL) else None,
             response_headers=dict(recorder.headers),

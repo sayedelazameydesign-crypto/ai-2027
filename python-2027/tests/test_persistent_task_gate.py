@@ -10,13 +10,14 @@ from pathlib import Path
 GATE = Path(__file__).resolve().parents[2] / "scripts" / "persistent_task_gate.py"
 
 
-def _run(*args: str) -> subprocess.CompletedProcess[str]:
+def _run(*args: str, cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
     return subprocess.run(  # noqa: S603 - fixed interpreter and repo-owned gate path
         [sys.executable, str(GATE), *args],
         capture_output=True,
         text=True,
         timeout=300,
         check=False,
+        cwd=str(cwd) if cwd else None,
     )
 
 
@@ -63,6 +64,29 @@ def test_gate_fails_closed_when_the_worker_never_crashes(tmp_path: Path) -> None
     assert payload["verdict"] == "FAIL"
     failed = {check["name"] for check in payload["checks"] if not check["ok"]}
     assert "phase-1-killed-by-signal" in failed
+
+
+def test_a_relative_interpreter_resolves_against_the_caller_cwd(tmp_path: Path) -> None:
+    venv = tmp_path / ".venv" / "bin"
+    venv.mkdir(parents=True)
+    (venv / "python").symlink_to(sys.executable)
+    report = tmp_path / "evidence.json"
+
+    result = _run("--python", ".venv/bin/python", "--report", str(report), "--assert", cwd=tmp_path)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert json.loads(report.read_text(encoding="utf-8"))["verdict"] == "PASS"
+
+
+def test_a_missing_interpreter_writes_a_fail_report(tmp_path: Path) -> None:
+    report = tmp_path / "evidence.json"
+
+    result = _run("--python", "./nowhere/python", "--report", str(report), "--assert", cwd=tmp_path)
+
+    assert result.returncode == 1
+    payload = json.loads(report.read_text(encoding="utf-8"))
+    assert payload["verdict"] == "FAIL"
+    assert "interpreter not found" in payload["error"]
 
 
 def test_gate_reports_a_missing_worker_instead_of_passing(tmp_path: Path) -> None:

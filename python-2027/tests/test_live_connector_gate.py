@@ -53,13 +53,14 @@ def _worker(tmp_path: Path, report: dict[str, Any], *, rc: int = 0, name: str = 
     return path
 
 
-def _run(*args: str) -> subprocess.CompletedProcess[str]:
+def _run(*args: str, cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
     return subprocess.run(  # noqa: S603 - fixed interpreter and repo-owned gate path
         [sys.executable, str(GATE), *args],
         capture_output=True,
         text=True,
         timeout=300,
         check=False,
+        cwd=str(cwd) if cwd else None,
     )
 
 
@@ -239,6 +240,55 @@ def test_non_object_worker_output_exits_2(tmp_path: Path) -> None:
 
     assert result.returncode == 2
     assert "not an object" in _report(report_path)["error"]
+
+
+def test_a_relative_interpreter_resolves_against_the_caller_cwd(tmp_path: Path) -> None:
+    """The exact failure that broke the first main run: `--python .venv/bin/python`."""
+    venv = tmp_path / ".venv" / "bin"
+    venv.mkdir(parents=True)
+    (venv / "python").symlink_to(sys.executable)
+
+    worker = _worker(
+        tmp_path,
+        {"attempts": [{"provider": "gemini", "status": "ok", "evidence": _evidence()}]},
+        name="rel",
+    )
+    report_path = tmp_path / "evidence.json"
+
+    result = _run(
+        "--python",
+        ".venv/bin/python",
+        "--worker",
+        str(worker),
+        "--report",
+        str(report_path),
+        "--assert",
+        cwd=tmp_path,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    payload = _report(report_path)
+    assert payload["verdict"] == "PASS"
+    assert payload["error"] == ""
+    assert payload["worker_returncode"] == 0
+
+
+def test_a_missing_interpreter_writes_a_fail_report(tmp_path: Path) -> None:
+    report_path = tmp_path / "evidence.json"
+
+    result = _run(
+        "--python",
+        "./nowhere/python",
+        "--report",
+        str(report_path),
+        "--assert",
+        cwd=tmp_path,
+    )
+
+    assert result.returncode == 2
+    payload = _report(report_path)
+    assert payload["verdict"] == "FAIL"
+    assert "interpreter not found" in payload["error"]
 
 
 def test_a_missing_worker_exits_2_with_a_reason(tmp_path: Path) -> None:
