@@ -283,8 +283,8 @@ def _provider_specs(
         }
 
     gem_model = env_get(env, "GEMINI_MODEL", "gemini-2.5-flash")
-    nv_model = env_get(env, "NVIDIA_MODEL", "meta/llama-3.1-8b-instruct")
-    groq_model = env_get(env, "GROQ_MODEL", "llama-3.3-70b-versatile")
+    nv_model = env_get(env, "NVIDIA_MODEL", "meta/llama-3.3-70b-instruct")
+    groq_model = env_get(env, "GROQ_MODEL", "openai/gpt-oss-20b")
     or_model = env_get(env, "OPENROUTER_MODEL", "openrouter/free")
 
     return [
@@ -466,6 +466,7 @@ async def handle_worker_request(
             tier, cost_known, cost_status = classify_worker_model(prov, model, env)
             if tier == "unknown_cost" and max_spend <= 0.0:
                 unknown_blocked += 1
+                retired = cost_status == "model_retired"
                 all_attempts.append(
                     _attempt_entry(
                         prov,
@@ -475,8 +476,13 @@ async def handle_worker_request(
                         "unknown_cost_blocked",
                         1,
                         ok=False,
-                        error="budget_blocked",
-                        detail="API key does not prove $0; unknown cost blocked at MAX_SPEND=0.",
+                        error="model_retired" if retired else "budget_blocked",
+                        detail=(
+                            "Model ID was retired by the provider; update the *_MODEL "
+                            "variable (see docs/MODEL-CATALOG.md)."
+                            if retired
+                            else "API key does not prove $0; unknown cost blocked at MAX_SPEND=0."
+                        ),
                     )
                 )
                 continue

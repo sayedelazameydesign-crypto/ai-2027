@@ -8,13 +8,15 @@ const GEMINI_FREE_MODELS = new Set([
   "gemini-1.5-flash",
   "gemini-1.5-flash-8b",
 ]);
-const NVIDIA_FREE_MODELS = new Set([
-  "meta/llama-3.1-8b-instruct",
-  "meta/llama-3.1-70b-instruct",
-  "meta/llama-3.3-70b-instruct",
-  "mistralai/mixtral-8x7b-instruct-v0.1",
-  "qwen/qwen2.5-72b-instruct",
-]);
+// Only IDs NVIDIA still serves. meta/llama-3.1-8b-instruct answers HTTP 410 Gone.
+const NVIDIA_FREE_MODELS = new Set(["meta/llama-3.3-70b-instruct"]);
+const RETIRED_MODELS = {
+  nvidia: { "meta/llama-3.1-8b-instruct": "meta/llama-3.3-70b-instruct" },
+  groq: {
+    "llama-3.1-8b-instant": "openai/gpt-oss-20b",
+    "llama-3.3-70b-versatile": "openai/gpt-oss-120b",
+  },
+};
 const rateWindows = new Map();
 
 function resolveTrace(request) {
@@ -152,6 +154,9 @@ function classifyGatewayModel(provider, model, env) {
       .filter(Boolean),
   );
   const norm = String(model || "").trim().toLowerCase();
+  if (Object.hasOwn(RETIRED_MODELS[provider] || {}, norm)) {
+    return { billingTier: "unknown_cost", costKnown: false, costStatus: "model_retired" };
+  }
   const allowed = provider === "gemini" ? GEMINI_FREE_MODELS : NVIDIA_FREE_MODELS;
   if (allowed.has(norm) || extra.has(norm)) {
     return { billingTier: "free_tier", costKnown: false, costStatus: "declared_free_tier_unbilled" };
@@ -360,7 +365,8 @@ export async function handleGatewayFetch(
     const budget = classifyGatewayModel("gemini", model, env);
     if (budget.billingTier === "unknown_cost" && maxSpend <= 0) {
       unknownBlocked += 1;
-      attempts.push({ provider: "gemini", model, ok: false, error: "budget_blocked", ...budget });
+      const blockedBy = budget.costStatus === "model_retired" ? "model_retired" : "budget_blocked";
+      attempts.push({ provider: "gemini", model, ok: false, error: blockedBy, ...budget });
     } else {
       try {
         const gemRes = await fetchImpl(
@@ -412,11 +418,12 @@ export async function handleGatewayFetch(
   }
 
   if (allowRemote && env.NVIDIA_API_KEY && !String(env.NVIDIA_API_KEY).includes("placeholder")) {
-    const model = String(env.NVIDIA_MODEL || "").trim() || "meta/llama-3.1-8b-instruct";
+    const model = String(env.NVIDIA_MODEL || "").trim() || "meta/llama-3.3-70b-instruct";
     const budget = classifyGatewayModel("nvidia", model, env);
     if (budget.billingTier === "unknown_cost" && maxSpend <= 0) {
       unknownBlocked += 1;
-      attempts.push({ provider: "nvidia", model, ok: false, error: "budget_blocked", ...budget });
+      const blockedBy = budget.costStatus === "model_retired" ? "model_retired" : "budget_blocked";
+      attempts.push({ provider: "nvidia", model, ok: false, error: blockedBy, ...budget });
     } else {
       try {
         const nvRes = await fetchImpl("https://integrate.api.nvidia.com/v1/chat/completions", {

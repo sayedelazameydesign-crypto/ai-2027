@@ -14,6 +14,12 @@ import httpx
 
 from .budget import BudgetGuard, BudgetPolicy, classify_billing_tier
 from .contracts import AIProvider, BillingTier, PromptRequest, ProviderKind, ProviderStatus
+from .model_catalog import (
+    DEFAULT_MODELS,
+    MODEL_ENV_VARS,
+    find_retired_model,
+    retirement_reason,
+)
 from .security import redact_secrets, validate_provider_url
 
 _MAX_RESPONSE_BYTES = 1024 * 1024
@@ -143,6 +149,15 @@ class HttpxJsonTransport:
                 f"Transient provider HTTP status {response.status_code}",
                 retryable=True,
                 status_code=response.status_code,
+            )
+        if response.status_code == 410:
+            raise ProviderError(
+                "model_retired",
+                "Provider answered HTTP 410 Gone: this model endpoint was withdrawn. "
+                "Update the provider's *_MODEL variable to an ID that is still served "
+                "(see docs/MODEL-CATALOG.md).",
+                retryable=False,
+                status_code=410,
             )
         if response.status_code >= 400:
             raise ProviderError(
@@ -294,7 +309,7 @@ class GeminiFreeProvider:
         self._model = chosen_model
         self._base_url = validate_provider_url(base_url, allow_local_http=False)
         self._transport = transport or HttpxJsonTransport()
-        self._billing_tier, _ = classify_billing_tier(
+        self._billing_tier, self._billing_reason = classify_billing_tier(
             kind=self.kind,
             model=self._model,
             is_remote=self.is_remote,
@@ -310,6 +325,11 @@ class GeminiFreeProvider:
     def billing_tier(self) -> BillingTier:
         """Return explicit billing classification (FREE_TIER or UNKNOWN_COST)."""
         return self._billing_tier
+
+    @property
+    def billing_reason(self) -> str:
+        """Return why the tier was assigned, so the guard can explain a block."""
+        return self._billing_reason
 
     @property
     def credential_state(self) -> str:
@@ -389,7 +409,8 @@ class OpenAICompatibleFreeProvider:
         self.env_var = env_var
         self._extra_headers = dict(extra_headers or {})
         self._transport = transport or HttpxJsonTransport()
-        self._billing_tier, _ = classify_billing_tier(
+        self._retired = find_retired_model(self._kind, self._model)
+        self._billing_tier, self._billing_reason = classify_billing_tier(
             kind=self._kind,
             model=self._model,
             is_remote=self.is_remote,
@@ -407,9 +428,19 @@ class OpenAICompatibleFreeProvider:
         return self._model
 
     @property
+    def retirement_reason(self) -> str | None:
+        """Return why this model ID can no longer be served, or None when it is live."""
+        return None if self._retired is None else retirement_reason(self._retired)
+
+    @property
     def billing_tier(self) -> BillingTier:
         """Return model-verified billing tier (never inferred from API key presence)."""
         return self._billing_tier
+
+    @property
+    def billing_reason(self) -> str:
+        """Return why the tier was assigned, so the guard can explain a block."""
+        return self._billing_reason
 
     @property
     def credential_state(self) -> str:
@@ -424,6 +455,8 @@ class OpenAICompatibleFreeProvider:
         """Send a chat completion request to the OpenAI-compatible free endpoint."""
         if not self.is_configured():
             raise ProviderError("not_configured", f"{self._kind.value} key is not configured")
+        if self._retired is not None:
+            raise ProviderError("model_retired", retirement_reason(self._retired))
         messages = []
         if request.system_prompt:
             messages.append({"role": "system", "content": request.system_prompt})
@@ -447,6 +480,12 @@ class OpenAICompatibleFreeProvider:
         return _extract_openai_text(result.payload)
 
 
+def _choose_openai_model(kind: ProviderKind, model: str | None) -> str:
+    if model and model.strip():
+        return model.strip()
+    return _env_or_default(MODEL_ENV_VARS[kind], DEFAULT_MODELS[kind])
+
+
 def create_nvidia_nim_provider(
     *,
     api_key: str | None = None,
@@ -455,16 +494,11 @@ def create_nvidia_nim_provider(
     billing_tier: BillingTier | None = None,
 ) -> OpenAICompatibleFreeProvider:
     """Build an NVIDIA NIM provider reading NVIDIA_API_KEY and NVIDIA_MODEL from env."""
-    chosen_model = (
-        model.strip()
-        if model and model.strip()
-        else _env_or_default("NVIDIA_MODEL", "meta/llama-3.1-8b-instruct")
-    )
     return OpenAICompatibleFreeProvider(
         kind=ProviderKind.NVIDIA,
         endpoint_url="https://integrate.api.nvidia.com/v1/chat/completions",
         api_key=api_key if api_key is not None else os.environ.get("NVIDIA_API_KEY", ""),
-        model=chosen_model,
+        model=_choose_openai_model(ProviderKind.NVIDIA, model),
         env_var="NVIDIA_API_KEY",
         transport=transport,
         billing_tier=billing_tier,
@@ -478,17 +512,12 @@ def create_groq_free_provider(
     transport: AsyncHttpTransport | None = None,
     billing_tier: BillingTier | None = None,
 ) -> OpenAICompatibleFreeProvider:
-    """Build a Groq free-tier provider reading credentials from arguments or env."""
-    chosen_model = (
-        model.strip()
-        if model and model.strip()
-        else _env_or_default("GROQ_MODEL", "llama-3.3-70b-versatile")
-    )
+    """Build a Groq provider; the default replacement model is not claimed as free."""
     return OpenAICompatibleFreeProvider(
         kind=ProviderKind.GROQ,
         endpoint_url="https://api.groq.com/openai/v1/chat/completions",
         api_key=api_key if api_key is not None else os.environ.get("GROQ_API_KEY", ""),
-        model=chosen_model,
+        model=_choose_openai_model(ProviderKind.GROQ, model),
         env_var="GROQ_API_KEY",
         transport=transport,
         billing_tier=billing_tier,
@@ -502,17 +531,12 @@ def create_openrouter_free_provider(
     transport: AsyncHttpTransport | None = None,
     billing_tier: BillingTier | None = None,
 ) -> OpenAICompatibleFreeProvider:
-    """Build an OpenRouter provider; ':free' or 'openrouter/free' passes MAX_SPEND=0."""
-    chosen_model = (
-        model.strip()
-        if model and model.strip()
-        else _env_or_default("OPENROUTER_MODEL", "openrouter/free")
-    )
+    """Build an OpenRouter provider; ':free' or 'openrouter/free' pass MAX_SPEND=0."""
     return OpenAICompatibleFreeProvider(
         kind=ProviderKind.OPENROUTER,
         endpoint_url="https://openrouter.ai/api/v1/chat/completions",
-        api_key=(api_key if api_key is not None else os.environ.get("OPENROUTER_API_KEY", "")),
-        model=chosen_model,
+        api_key=api_key if api_key is not None else os.environ.get("OPENROUTER_API_KEY", ""),
+        model=_choose_openai_model(ProviderKind.OPENROUTER, model),
         env_var="OPENROUTER_API_KEY",
         extra_headers={
             "HTTP-Referer": "https://github.com/sayedelazameydesign-crypto/ai-2027",

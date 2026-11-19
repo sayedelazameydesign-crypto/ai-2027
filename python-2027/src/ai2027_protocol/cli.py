@@ -8,10 +8,16 @@ import json
 import sys
 from collections.abc import Sequence
 from pathlib import Path
+from typing import Any
 
 import uvicorn
 
-from .agent import AgentTaskRequest, AutonomousAgent, SessionStore
+from .agent import (
+    AgentResumeError,
+    AgentTaskRequest,
+    AutonomousAgent,
+    SessionStore,
+)
 from .ai_providers import describe_provider_readiness
 from .auditor import ProtocolAuditor, format_audit_markdown
 from .benchmark import run_benchmark_suite
@@ -20,10 +26,17 @@ from .celia_memory import CeliaMemoryStore, OllamaEmbeddingBackend
 from .compliance import build_compliance_registry, format_compliance_markdown
 from .contracts import PromptRequest, ProviderKind
 from .demo import run_one_command_demo, verify_live_providers
+from .model_catalog import (
+    DEFAULT_MODELS,
+    MODEL_ENV_VARS,
+    OPENROUTER_FREE_ROUTER,
+    RETIRED_MODELS,
+)
 from .ollama_layer import OllamaRuntimeClient
 from .ollama_readiness import verify_ollama_capabilities
 from .router import FreeFirstRouter
 from .server import create_app
+from .session_store import SessionBusyError
 from .telemetry import ObservabilityRuntime
 
 
@@ -137,6 +150,51 @@ async def _run_cli_async(args: argparse.Namespace) -> int:
             )
         return 0
 
+    if args.command == "models":
+        catalog: dict[str, Any] = {
+            "defaults": [
+                {
+                    "provider": kind.value,
+                    "env_var": MODEL_ENV_VARS[kind],
+                    "model": model,
+                }
+                for kind, model in DEFAULT_MODELS.items()
+            ],
+            "openrouter_free_router": OPENROUTER_FREE_ROUTER,
+            "retired": [
+                {
+                    "provider": entry.kind.value,
+                    "model": entry.model,
+                    "retired_on": entry.retired_on,
+                    "replacement": entry.replacement,
+                    "evidence": entry.evidence,
+                }
+                for entry in RETIRED_MODELS
+            ],
+        }
+        if args.json:
+            print(json.dumps(catalog, indent=2, ensure_ascii=False))
+            return 0
+        print("Provider defaults (used only when the matching env var is empty):")
+        print("-" * 92)
+        print(f"{'Provider':<12} | {'Env var':<18} | Model")
+        for row in catalog["defaults"]:
+            print(f"{row['provider']:<12} | {row['env_var']:<18} | {row['model']}")
+        print()
+        print(
+            "OpenRouter also accepts the dynamic free router "
+            f"`{OPENROUTER_FREE_ROUTER}` (no pinned model to go stale)."
+        )
+        print()
+        print("Retired IDs blocked before any request:")
+        print("-" * 92)
+        for entry in catalog["retired"]:
+            print(
+                f"{entry['provider']:<9} | {entry['model']:<42} | "
+                f"retired {entry['retired_on']} -> {entry['replacement']}"
+            )
+        return 0
+
     if args.command == "registry":
         runtime = ObservabilityRuntime(json_logs=True)
         reg = await build_compliance_registry(root, telemetry=runtime)
@@ -231,14 +289,32 @@ async def _run_cli_async(args: argparse.Namespace) -> int:
             router=router,
             telemetry=runtime,
         )
-        session = store.create_session(title=args.task[:64])
-        req = AgentTaskRequest(
-            task=args.task,
-            max_steps=args.max_steps,
-            preferred_provider=ProviderKind(args.provider) if args.provider else None,
-            allow_remote=not args.offline_only,
-        )
-        state = await agent.run(session.session_id, req)
+        try:
+            if args.resume:
+                existing = await store.load(args.resume)
+                session_id = existing.session_id
+                task_text = args.task.strip() or existing.task
+            else:
+                if not args.task.strip():
+                    print(
+                        "agent: a task is required unless --resume names a session", file=sys.stderr
+                    )
+                    runtime.shutdown()
+                    return 2
+                session_id = store.create_session(title=args.task[:64]).session_id
+                task_text = args.task
+            req = AgentTaskRequest(
+                task=task_text,
+                max_steps=args.max_steps,
+                preferred_provider=ProviderKind(args.provider) if args.provider else None,
+                allow_remote=not args.offline_only,
+                resume=bool(args.resume),
+            )
+            state = await agent.run(session_id, req)
+        except (AgentResumeError, SessionBusyError, FileNotFoundError) as exc:
+            print(f"agent: {exc}", file=sys.stderr)
+            runtime.shutdown()
+            return 2
         runtime.shutdown()
         if args.json:
             print(state.model_dump_json(indent=2))
@@ -357,6 +433,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     prov_p.add_argument("--json", action="store_true", help="Emit JSON output.")
 
+    models_p = sub.add_parser(
+        "models",
+        help="List default, free-router, and retired remote model IDs (no network).",
+    )
+    models_p.add_argument("--json", action="store_true", help="Emit JSON output.")
+
     live_p = sub.add_parser(
         "live",
         help="Invoke configured Actions/environment providers safely without printing secrets.",
@@ -418,7 +500,12 @@ def build_parser() -> argparse.ArgumentParser:
     studio_p.add_argument("--studio-dir", type=Path, default=None)
 
     agent_p = sub.add_parser("agent", help="Run a multi-step autonomous task from the CLI.")
-    agent_p.add_argument("task", help="Goal or instruction for the autonomous agent.")
+    agent_p.add_argument(
+        "task",
+        nargs="?",
+        default="",
+        help="Goal or instruction; optional when --resume names a checkpointed session.",
+    )
     agent_p.add_argument("--max-steps", type=int, default=5)
     agent_p.add_argument(
         "--provider",
@@ -427,6 +514,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     agent_p.add_argument("--offline-only", action="store_true")
     agent_p.add_argument("--studio-dir", type=Path, default=None)
+    agent_p.add_argument(
+        "--resume",
+        metavar="SESSION_ID",
+        default="",
+        help="Continue an interrupted session from its last checkpointed step.",
+    )
     agent_p.add_argument("--json", action="store_true")
 
     appr_p = sub.add_parser("approvals", help="Inspect or approve/reject queued L5 actions.")

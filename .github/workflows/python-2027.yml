@@ -18,7 +18,7 @@ on:
   workflow_dispatch:
     inputs:
       run_live_providers:
-        description: "Invoke Actions secrets (GEMINI / NVIDIA / GROQ / OPENROUTER :free) on main"
+        description: "Invoke Actions secrets (GEMINI / NVIDIA / GROQ / OPENROUTER free router) on main"
         required: false
         type: boolean
         default: true
@@ -34,7 +34,7 @@ on:
         default: "all"
         options: ["all", "auto", "gemini", "nvidia", "groq", "openrouter"]
       nvidia_model:
-        description: "Optional non-secret NVIDIA model ID (defaults to NVIDIA_MODEL var or meta/llama-3.1-8b-instruct)"
+        description: "Optional non-secret NVIDIA model ID (defaults to NVIDIA_MODEL var or meta/llama-3.3-70b-instruct)"
         required: false
         type: string
         default: ""
@@ -83,7 +83,63 @@ jobs:
 
       - name: Tests + Hypothesis property suite (>90% branch coverage)
         working-directory: python-2027
-        run: .venv/bin/pytest --cov-fail-under=90
+        run: |
+          .venv/bin/pytest --cov-fail-under=90 \
+            --junitxml="$RUNNER_TEMP/junit-${{ matrix.python-version }}.xml"
+
+      - name: Summarize test failures as annotations (readable without the log)
+        if: failure()
+        working-directory: python-2027
+        env:
+          JUNIT: ${{ runner.temp }}/junit-${{ matrix.python-version }}.xml
+        run: |
+          python - <<'PY'
+          import os
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
+
+          def esc(text: str) -> str:
+              return (
+                  " ".join(text.split())
+                  .replace("%", "%25")
+                  .replace("\r", "%0D")
+                  .replace("\n", "%0A")
+              )[:4000]
+
+          path = Path(os.environ["JUNIT"])
+          if not path.is_file():
+              print("::error title=pytest::no junit report was written (the suite did not start)")
+          else:
+              tree = ET.parse(path)
+              failures = []
+              for case in tree.iter("testcase"):
+                  for tag in ("failure", "error"):
+                      node = case.find(tag)
+                      if node is not None:
+                          message = (node.text or node.get("message") or "").strip()
+                          failures.append(f"{case.get('classname')}::{case.get('name')} — {message}")
+              if not failures:
+                  print("::error title=pytest::junit shows no failing case (coverage or step-level failure)")
+              for item in failures[:20]:
+                  print(f"::error title=pytest::{esc(item)}")
+              print(f"::notice title=pytest::{len(failures)} failing case(s)")
+          PY
+
+      - name: PAP persistent-task gate · real SIGKILL, resume from checkpoint (evidence artifact)
+        working-directory: python-2027
+        env:
+          PAP_GATE_ANNOTATE: "1"
+        run: |
+          .venv/bin/python ../scripts/persistent_task_gate.py --assert \
+            --report "$RUNNER_TEMP/persistent-task-gate-${{ matrix.python-version }}.json"
+
+      - name: Upload the persistent-task gate evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        with:
+          name: pap-persistent-task-${{ matrix.python-version }}-${{ github.sha }}
+          path: ${{ runner.temp }}/persistent-task-gate-${{ matrix.python-version }}.json
+          if-no-files-found: warn
 
       - name: Demo, persistent traces, 48-project compliance registry & benchmarks
         working-directory: python-2027
@@ -163,7 +219,7 @@ jobs:
         (github.event_name != 'workflow_dispatch' || inputs.run_live_providers)
       }}
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
         with:
@@ -188,8 +244,8 @@ jobs:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           GEMINI_MODEL: ${{ vars.GEMINI_MODEL || 'gemini-2.5-flash' }}
-          NVIDIA_MODEL: ${{ inputs.nvidia_model || vars.NVIDIA_MODEL || 'meta/llama-3.1-8b-instruct' }}
-          GROQ_MODEL: ${{ vars.GROQ_MODEL || 'llama-3.1-8b-instant' }}
+          NVIDIA_MODEL: ${{ inputs.nvidia_model || vars.NVIDIA_MODEL || 'meta/llama-3.3-70b-instruct' }}
+          GROQ_MODEL: ${{ vars.GROQ_MODEL || 'openai/gpt-oss-20b' }}
           OPENROUTER_MODEL: ${{ vars.OPENROUTER_MODEL || 'openrouter/free' }}
           AI2027_MAX_SPEND_USD: "0"
           AI2027_LIVE_PROVIDER: ${{ inputs.provider || 'all' }}
@@ -238,3 +294,31 @@ jobs:
           name: python-2027-live-keys-${{ github.sha }}
           path: /tmp/live-2027.json
           if-no-files-found: ignore
+
+      - name: PAP-2027 live-connector gate · one real call, no key is a FAILURE
+        working-directory: python-2027
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          GEMINI_MODEL: ${{ vars.GEMINI_MODEL || 'gemini-2.5-flash' }}
+          NVIDIA_MODEL: ${{ vars.NVIDIA_MODEL || 'meta/llama-3.3-70b-instruct' }}
+          GROQ_MODEL: ${{ vars.GROQ_MODEL || 'openai/gpt-oss-20b' }}
+          OPENROUTER_MODEL: ${{ vars.OPENROUTER_MODEL || 'openrouter/free' }}
+          AI2027_MAX_SPEND_USD: "0"
+          PAP_GATE_ANNOTATE: "1"
+        run: |
+          set +x
+          set -euo pipefail
+          .venv/bin/python ../scripts/live_connector_gate.py --assert \
+            --python .venv/bin/python --timeout-s 60 \
+            --report "$RUNNER_TEMP/live-connector-gate.json"
+
+      - name: Upload the live-connector evidence (id, time, sanitized response)
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        with:
+          name: pap-live-connector-${{ github.sha }}
+          path: ${{ runner.temp }}/live-connector-gate.json
+          if-no-files-found: error

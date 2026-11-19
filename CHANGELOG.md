@@ -13,6 +13,170 @@ fail or when any GitHub Action is not pinned to a full-length SHA.
 
 ## [Unreleased]
 
+### Fixed — P0.1: one writer per session, ordered by a fencing token (2026-11-19)
+- **Gap R1 closed.** The audit measured the defect: four writers saving one
+  session lost **59–67 of 240 writes** per run (previously 23–61 by a different
+  counter), because `session.tmp` was one fixed filename and nothing owned the
+  session. Re-running the same harness with the lease gives **0 lost writes,
+  0 torn reads, 240/240 accepted** (`tests/session_race_demo.py --mode lease --assert`).
+- **`lease.py`** (new) — `LeaseStore` protocol and `SqliteLeaseStore`: one row per
+  session, acquired inside `BEGIN IMMEDIATE`, carrying `owner`, `fence` and
+  `expires_at`; WAL and a bounded busy timeout. Leases expire, so a crashed
+  process cannot lock a session forever — the next writer takes over and the
+  fence moves.
+- **Every write is atomic.** The temp file is now unique per write
+  (`.session.{pid}.{hex8}.tmp`), so one writer can no longer publish another's
+  half-finished JSON — the torn reads in the audit came from exactly that.
+- **`session_store.py` / `session_state.py`** (new) — `SessionStore` and the
+  session models moved out of `agent.py` (778 → 478 lines, back under the
+  auditor's 650-line ceiling) so persistence can be tested on its own; the public
+  names `ai2027_protocol.agent.SessionStore` and `ai2027_protocol.SessionStore`
+  are unchanged.
+- **Refusals are explicit.** Three modes via `AI2027_SESSION_LEASE`: `off`
+  (default, historical behaviour), `warn` (logs the refusal, still writes),
+  `enforce` (refuses). Under `enforce` a writer that lost its lease gets
+  `LeaseLostError` instead of silently overwriting newer state; the first write
+  of a brand-new session is exempt because a fresh uuid cannot be contended.
+- **Studio answers 409, not a dead stream.** `/v1/studio/sessions/{id}/run` and
+  `/stream` acquire the lease *before* the 200, return `409` naming the holder
+  when the session is busy, and release it in `finally`. The CLI maps
+  `SessionBusyError` to exit code 2 with a readable message.
+- **Fence stays monotonic across release.** Releasing a lease invalidates the row
+  (`expires_at = 0`) instead of deleting it: a deleted row would restart the fence
+  at 1 and hand a stale writer a token that looks current. Found by
+  `tests/test_session_lease.py`, which now pins it.
+- **`tests/test_session_lease.py`** (new, 10 tests) — cross-process contention,
+  live-lease refusal, takeover after expiry with a higher fence, stale-writer
+  write refused, first-write exemption, `warn` logging, `409` on both Studio
+  paths, and no lease left behind after a finished run.
+
+### Added — Phase A resilience audit: what breaks, and what already holds (2026-11-19)
+- **`docs/PAP-2027-RESILIENCE-AUDIT.md`** — read-only audit of the execution and
+  failure paths (architecture, dependency graph, failure propagation, protection
+  inventory, ranked gaps, phased plan, exact files). Every claim carries one
+  classification (PROVEN / TESTED LOCALLY / READ FROM CODE / SIMULATED /
+  NOT EXECUTED); nothing is called live that was not executed.
+- **`python-2027/tests/session_race_demo.py`** — manual harness (not a pytest
+  test, not in CI) that runs four writer processes against one session. Measured
+  today: **23–61 of 240 concurrent saves fail**, and up to **13 torn JSON reads**,
+  because `session.tmp` is one fixed filename for every writer. After the session
+  lease lands this harness must report zero; `--assert` already encodes that.
+- **Findings that need action** (details in the audit): no per-session writer
+  lease (R1), checkpointing is not exactly-once execution and there is no action
+  journal or idempotency key anywhere (R2), circuit breaking covers LLM providers
+  only (R3), a corrupt memory store aborts the run (R4), no bulkhead (R5), no
+  per-component health states (R6), no deploy rollback (R7), and the
+  `failure-recovery` gate is still unimplemented (R8).
+- **Verified existing protections** worth reusing instead of rebuilding:
+  `EventLedger`'s cross-process lock, router timeouts/backoff-with-jitter/breaker,
+  `BudgetGuard`, deterministic planner fallback, tool timeouts and output caps,
+  evidence-gated memory admission, human approval for connector writes, and the
+  SIGKILL resume gate.
+- No product code was modified; `agent-fleet` stays blocked until the lease,
+  action journal, and failure-recovery gate pass.
+
+### Added — the `live-connector` gate: one real call, judged as evidence (2026-11-19)
+- **Fixed after the first `main` run (same day).** The gate passed
+  `--python .venv/bin/python` but launched the worker from the repo root, so the
+  relative interpreter did not exist, the process died before writing evidence,
+  and the step failed in under a second with no artifact. Both gates now resolve
+  a relative `--python` against the caller's cwd, refuse a missing interpreter
+  with a written FAIL report (exit 2), always write a report even on an
+  unexpected exception, and emit a GitHub `::error::` annotation carrying the
+  failing check names — because a failure you cannot read is a failure you cannot
+  fix. Regression tests cover the relative path, the missing interpreter, and
+  the exact marker spellings requested from the model.
+- **`python-2027/src/ai2027_protocol/live_probe.py`** — probes a provider with the
+  production transport and records the exchange: endpoint host, request/response
+  timestamps, latency, HTTP status, response headers, `request_id` (payload or
+  header, else `server_model_version`), token usage, response SHA-256 and a
+  redacted excerpt. A provider whose billing tier is not `FREE_TIER`/`LOCAL` is
+  **never called**, so `MAX_SPEND = $0` is enforced before the request instead of
+  asserted afterwards.
+- **`scripts/live_connector_gate.py`** (stdlib) — judges the worker report. Per
+  the audit's stricter rule, `skipped_no_key` is a **failure**, not a skip; a
+  simulated (`mock`) answer fails; a missing marker fails; a credential-shaped
+  string anywhere in the evidence fails *and* is redacted from the artifact.
+  Evidence JSON on pass and fail; `--assert` exits 1 on FAIL, 2 when the worker
+  could not run (so a broken interpreter can never look like a pass).
+- **`tests/live_connector_worker.py`** — thin JSON worker; `--provider` selects
+  candidates, exits 3 only when it cannot run at all.
+- **Tests** — `test_live_probe.py` (9: free-tier refusal without a call, missing
+  key, end-to-end evidence against a mocked HTTP transport, header-id fallback,
+  410/503 error paths, key redaction) and `test_live_connector_gate.py` (11:
+  clean pass, no-key failure, mock failure, marker failure, unknown-cost failure,
+  missing id/time, leaked credential, non-object JSON, missing worker, crashing
+  worker, broken interpreter).
+- **CI** — the gate runs in the main-only `live-actions-keys` job with the
+  existing secrets and uploads its evidence artifact; PRs stay offline.
+
+### Added — checkpoint/resume + the first live capability gate (2026-11-19)
+- **`python-2027/src/ai2027_protocol/agent.py`** — the autonomous loop now
+  checkpoints after **every completed step** (`checkpoint_step`,
+  `checkpoint_at`) and accepts `AgentTaskRequest(resume=True)`. Resume is
+  refused with `AgentResumeError` when the session is not `running`, when the
+  task text differs, or when no step was checkpointed: restarting from step 1 is
+  never silently reported as a resume. A `session_resumed` event reports
+  `resume_from_step`/`next_step`/`checkpoint_at`.
+- **`scripts/persistent_task_gate.py`** (stdlib) + **`python-2027/tests/resume_worker.py`**
+  — the first PAP-2027 "Live Capability Gate". It runs the real agent in a child
+  process, SIGKILLs it **inside step 3** after steps 1–2 were checkpointed
+  (phase-1 returncode `-9`), then resumes in a second process that must start at
+  step 3. Ten checks, all falsifiable: no step executed twice, every step
+  completed exactly once, artifacts match their journaled SHA-256, final session
+  `completed` with steps `[1,2,3,4]`. Evidence JSON is written on pass **and**
+  fail, and the report is uploaded as a CI artifact.
+- **Tests** — `tests/test_agent_resume.py` (7) and
+  `tests/test_persistent_task_gate.py` (4, including a tampered worker that must
+  not be able to produce a PASS). Wired into the `python-2027.yml` matrix job.
+- **`docs/PAP-2027-GAP-AUDIT.md` / `docs/pap-2027-engines.json`** — the
+  `persistent-task` gate is marked implemented, `memory-engine` gained the
+  resume evidence, and the engine table no longer copies counts that the audit
+  script owns.
+
+### Added — PAP-2027 gap audit on real code (2026-11-19)
+- **`docs/pap-2027-engines.json`** + **`scripts/pap_gap_audit.py`** — the twelve
+  proposed PAP-2027 engines are mapped to files that actually exist, each with
+  the test files and the marker string that proves it is exercised in CI.
+  `--assert` fails when an evidence path or a test disappears, when a
+  `present` engine has no tests, or when an `absent` engine starts listing
+  evidence. 14 stdlib tests (`scripts/test_pap_gap_audit.py`) keep the gate
+  itself honest; wired into the `tests` job of `ci.yml`.
+- **`docs/PAP-2027-GAP-AUDIT.md`** — the audit result: **4 present · 7 partial ·
+  1 absent** (`agent-fleet`), the exact names and `if:` conditions of the two
+  skipped checks on #66, which CI job proves which engine, what CI explicitly
+  does *not* prove (mock connectors, simulated browser, wrangler dry-run,
+  offline E2B), and a falsifiable eight-gate "Live Capability Gate" proposal
+  where every gate must produce a stored artifact or it did not run.
+
+### Fixed — retired model IDs and the "free" label (2026-11-19)
+- **`python-2027/src/ai2027_protocol/model_catalog.py`** (new) — one registry for
+  every shipped remote default (`GEMINI_MODEL`, `NVIDIA_MODEL`, `GROQ_MODEL`,
+  `OPENROUTER_MODEL`) and every retirement we have evidence for:
+  `meta/llama-3.1-8b-instruct` (NVIDIA NIM, HTTP 410, 2026-08-26),
+  `llama-3.1-8b-instant` / `llama-3.3-70b-versatile` (Groq free + developer
+  tiers, HTTP 404, 2026-08-16), and the two Groq preview models retired
+  2026-07-17. `find_retired_model()` and `retirement_reason()` name the dated
+  replacement instead of leaving an operator with a bare 404/410.
+- **`budget.py`** — retirement is checked *before* any tier (an explicit
+  `FREE_TIER` claim can no longer resurrect a dead ID); `openrouter/free` is
+  accepted next to the `:free` suffix in both the explicit and the inferred
+  path; the Groq allowlist is now empty because Groq's free Llama models are
+  gone and `openai/gpt-oss-20b` is priced per token, so a paid model is never
+  used to "fix" a free check. `AI2027_FREE_MODELS` still opts in explicitly.
+- **`ai_providers.py` / `demo.py` / workers** — defaults follow the catalogue
+  (NVIDIA → `meta/llama-3.3-70b-instruct`, OpenRouter →
+  `openrouter/free`); `complete()` refuses a retired ID before the network;
+  `HTTP 410` is reported as `ProviderError("model_retired")`; `ai2027-py27 live`
+  and both Workers report `model_retired` with `0.0 ms` latency (no request
+  spent). New `ai2027-py27 models [--json]` command.
+- **`docs/MODEL-CATALOG.md`** (new) + `docs/SECRETS.md` — defaults, retirement
+  table, the exact Groq opt-in, and an explicit note that the four
+  Cloudflare/R2 secrets are defined but consumed by no workflow yet.
+- **Tests** — `tests/test_model_catalog.py` (12 tests) plus worker/gateway
+  regressions; `pytest` 77 passed at 91% branch coverage, `ruff`, `mypy src
+  tests`, `node --test` (9), and `scripts/` (208) all green locally.
+
 ### Added — BrowserSkill Stage 1 of 3 (`local` mode: browser + machine, 2026-11-18)
 - **`docs/adr/0005-browserskill-adapter-boundary.md`** + **`docs/BROWSERSKILL-PLAN.md`** —
   three-stage / three-mode rollout plan (`local` → `skill_mcp` → `remote_wss`)

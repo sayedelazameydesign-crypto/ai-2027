@@ -15,7 +15,19 @@ from .contracts import (
     ProviderKind,
     StrictModel,
 )
+from .model_catalog import (
+    find_retired_model,
+    is_openrouter_free_model,
+    normalize_model_id,
+    retirement_reason,
+)
 
+#: Policy-declared free-tier IDs. Only IDs the provider still serves belong here:
+#: a retired ID that lingers in this map is how a "free" check starts failing with
+#: HTTP 404/410. Groq has no free Llama model left after the 2026-08-16 retirement,
+#: so its set is empty on purpose — a paid-per-token model is never allowlisted by
+#: default. Declare a specific model with ``GROQ_MODEL`` + ``AI2027_FREE_MODELS``
+#: when you are relying on Groq's rate-limited free plan.
 FREE_TIER_MODELS: dict[ProviderKind, frozenset[str]] = {
     ProviderKind.GEMINI: frozenset(
         {
@@ -29,32 +41,13 @@ FREE_TIER_MODELS: dict[ProviderKind, frozenset[str]] = {
     ),
     ProviderKind.NVIDIA: frozenset(
         {
-            "meta/llama-3.1-8b-instruct",
-            "meta/llama-3.1-70b-instruct",
             "meta/llama-3.3-70b-instruct",
-            "mistralai/mixtral-8x7b-instruct-v0.1",
-            "qwen/qwen2.5-72b-instruct",
         }
     ),
-    ProviderKind.GROQ: frozenset(
-        {
-            "llama-3.3-70b-versatile",
-            "llama-3.1-8b-instant",
-            "mixtral-8x7b-32768",
-            "gemma2-9b-it",
-            "qwen-qwq-32b",
-        }
-    ),
+    ProviderKind.GROQ: frozenset(),
 }
 
-
-def _normalize_model_id(raw_model: str) -> str:
-    return raw_model.strip().lower().split(" ", 1)[0]
-
-
-def _is_openrouter_free_model(raw_model: str) -> bool:
-    norm = _normalize_model_id(raw_model)
-    return norm.endswith(":free") or norm == "openrouter/free"
+_normalize_model_id = normalize_model_id
 
 
 def classify_billing_tier(
@@ -65,12 +58,17 @@ def classify_billing_tier(
     explicit_tier: BillingTier | None = None,
 ) -> tuple[BillingTier, str]:
     """Classify provider billing tier; an API key alone NEVER proves free usage."""
+    retired = find_retired_model(kind, model)
+    if retired is not None:
+        return BillingTier.UNKNOWN_COST, retirement_reason(retired)
+
     if explicit_tier is not None:
         if explicit_tier == BillingTier.FREE_TIER and kind == ProviderKind.OPENROUTER:
-            if not _is_openrouter_free_model(model):
+            if not is_openrouter_free_model(model):
                 return (
                     BillingTier.UNKNOWN_COST,
-                    "OpenRouter models without ':free' suffix cannot be claimed as FREE_TIER.",
+                    "OpenRouter models without ':free' (or the 'openrouter/free' router) "
+                    "cannot be claimed as FREE_TIER.",
                 )
         return explicit_tier, f"Explicitly classified as {explicit_tier.value}."
 
@@ -84,14 +82,16 @@ def classify_billing_tier(
 
     norm_model = _normalize_model_id(model)
     if kind == ProviderKind.OPENROUTER:
-        if _is_openrouter_free_model(model):
+        if is_openrouter_free_model(model):
             return (
                 BillingTier.FREE_TIER,
-                "OpenRouter ':free' model explicitly designated free-tier (no live invoice).",
+                "OpenRouter free routing ('openrouter/free' or an explicit ':free' model) "
+                "is declared free-tier (no live invoice).",
             )
         return (
             BillingTier.UNKNOWN_COST,
-            f"OpenRouter model {model!r} lacks ':free' suffix; key presence does not prove $0.",
+            f"OpenRouter model {model!r} is neither ':free' nor 'openrouter/free'; "
+            "key presence does not prove $0.",
         )
 
     allowed_models = FREE_TIER_MODELS.get(kind, frozenset())
@@ -104,7 +104,8 @@ def classify_billing_tier(
         )
     return (
         BillingTier.UNKNOWN_COST,
-        f"Unclassified remote model {kind.value}:{model!r}; API key presence does not prove free.",
+        f"Unclassified remote model {kind.value}:{model!r}; API key presence does not prove "
+        "free. Declare it in AI2027_FREE_MODELS only if the free plan still serves it.",
     )
 
 
@@ -167,6 +168,12 @@ class BudgetGuard:
             is_remote=provider.is_remote,
             explicit_tier=tier_val,
         )
+        provider_reason = getattr(provider, "billing_reason", "")
+        if isinstance(provider_reason, str) and provider_reason.strip():
+            # A provider classified itself at construction (e.g. "not in the free
+            # allowlist; declare AI2027_FREE_MODELS"); keep that explanation
+            # instead of collapsing it into "explicitly classified".
+            tier_reason = provider_reason
 
         if tier == BillingTier.LOCAL:
             return BudgetDecision(
