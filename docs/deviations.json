@@ -9,6 +9,7 @@
   },
   "deviations": {
     "agi-system": [
+      "core/kernel.py",
       "core/policy.py"
     ],
     "ai-store2": [

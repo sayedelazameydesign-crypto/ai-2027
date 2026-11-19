@@ -9,7 +9,7 @@ Three outcomes are kept apart, because collapsing them is how an archive starts
 lying about itself:
 
 * **byte-identical** — same blob SHAs every file.
-* **documented deviation** — a file we changed on purpose (``D-1``, ``D-2``).
+* **documented deviation** — a file we changed on purpose (``D-1``, ``D-2``, ``D-3``).
 * **generated** — a file the *upstream* regenerates on its own (timestamps,
   ``run_id``). Its blob can differ within hours without anybody touching it, so
   it is reported, not counted as drift. The 2026-11-18 run caught exactly this:
@@ -49,7 +49,8 @@ import network_preflight  # noqa: E402  (same-directory helper, stdlib only)
 # Fallback if docs/deviations.json is unreadable (kept in sync with that file).
 DEFAULT_REGISTER = {
     "deviations": {
-        "agi-system": ["core/policy.py"],   # D-1 cross-platform hardening
+        "agi-system": ["core/kernel.py",    # D-3 no VERIFIED without verification
+                       "core/policy.py"],   # D-1 cross-platform hardening
         "ai-store2": ["env.local"],         # D-2 exposed secret redacted
     },
     "generated": {

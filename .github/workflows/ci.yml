@@ -68,6 +68,9 @@ jobs:
       - name: Cross-platform containment regression (6)
         run: python scripts/test_policy_hardening.py -v
 
+      - name: Kernel verification regression (11) — verify=False can never be VERIFIED
+        run: python scripts/test_kernel_verification.py -v
+
       - name: CLI contract — VERIFIED / DENIED exit codes
         working-directory: projects/agi-system
         shell: bash
