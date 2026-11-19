@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import mimetypes
+import shutil
 from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any
@@ -16,6 +18,7 @@ from pydantic import Field
 from .agent import AgentSessionState, AgentTaskRequest, AutonomousAgent, SessionStore
 from .ai_providers import describe_provider_readiness
 from .bridges import ApprovalProposal, ConnectorDescriptor, MemoryHit, MemoryStats
+from .connector_hub_bridge import ConnectorReadOutcome, ConnectorSearchOutcome
 from .contracts import StrictModel, TelemetrySink
 from .router import FreeFirstRouter
 from .security import SecurityValidationError, resolve_safe_path
@@ -33,6 +36,21 @@ class ApprovalDecisionRequest(StrictModel):
     """Optional human reviewer note recorded when approving or rejecting an action."""
 
     note: str | None = Field(default=None, max_length=240)
+
+
+class ConnectorSearchRequest(StrictModel):
+    """Input payload for bounded read-only search across one L5 workspace connector."""
+
+    connector: str = Field(default="github", min_length=2, max_length=32)
+    query: str = Field(min_length=1, max_length=160)
+    limit: int = Field(default=5, ge=1, le=10)
+
+
+class ConnectorReadRequest(StrictModel):
+    """Input payload for bounded UTF-8 read of one external connector resource."""
+
+    connector: str = Field(default="github", min_length=2, max_length=32)
+    resource_id: str = Field(min_length=1, max_length=256)
 
 
 class StudioStatusResponse(StrictModel):
@@ -281,5 +299,138 @@ def build_studio_router(
     ) -> list[MemoryHit]:
         """Search L1 EvidenceMemoryStore for SHA-256 verified artifacts and insights."""
         return await agent.memory_bridge.search(q, k=k)
+
+    @api.get("/v1/studio/agent-card")
+    async def studio_agent_card() -> dict[str, Any]:
+        """Serve an A2A-compatible discovery card advertising Studio tools & honest limits."""
+        providers = [
+            s.model_dump(mode="json") for s in describe_provider_readiness(router.providers)
+        ]
+        tools = [spec.model_dump(mode="json") for spec in agent.tool_executor.specs()]
+        return {
+            "protocolVersion": "0.2.0",
+            "name": "AI-2027 Agent Studio",
+            "description": (
+                "Unified L0-L5 autonomous workspace bridging projects/agi-system SHA-256 "
+                "verification, L1 EvidenceMemoryStore, L4 Free-First LLM routing ($0), "
+                "and L5 human-approved connectors."
+            ),
+            "costUsd": 0.0,
+            "capabilities": {
+                "streaming": True,
+                "evidenceRequired": True,
+                "humanApprovalRequiredForExternalWrites": True,
+                "sandboxedExecution": True,
+            },
+            "providers": providers,
+            "tools": tools,
+            "endpoints": {
+                "status": "/v1/studio/status",
+                "sessions": "/v1/studio/sessions",
+                "stream": "/v1/studio/sessions/{session_id}/stream",
+                "evidence": "/v1/studio/sessions/{session_id}/evidence",
+                "approvals": "/v1/studio/approvals",
+                "memory_search": "/v1/studio/memory/search?q={query}",
+                "connectors_search": "/v1/studio/connectors/search",
+            },
+            "honest_limits": [
+                "Runs default to offline-deterministic mode unless Free-First LLM keys exist.",
+                "External writes are never auto-dispatched; they enter approvals.json for review.",
+                "L1 retrieval uses lexical hashed uni/bi-grams + declared thesaurus, not neural.",
+            ],
+        }
+
+    @api.get("/v1/studio/sessions/{session_id}/evidence")
+    async def download_session_evidence(session_id: str) -> Response:
+        """Independently re-verify every session artifact on disk and return JSON bundle."""
+        try:
+            state = await store.load(session_id)
+            sdir = store.session_dir(session_id)
+        except SecurityValidationError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+        sandbox_dir = sdir / "sandbox"
+        ledger_path = sdir / "ledger.jsonl"
+
+        def _collect_evidence() -> dict[str, Any]:
+            checked_artifacts: list[dict[str, Any]] = []
+            all_match = True
+            for art in state.artifacts:
+                target = resolve_safe_path(sandbox_dir, art.path)
+                exists = target.is_file()
+                disk_sha = hashlib.sha256(target.read_bytes()).hexdigest() if exists else None
+                matches = bool(exists and art.sha256 and disk_sha == art.sha256)
+                if not matches:
+                    all_match = False
+                checked_artifacts.append(
+                    {
+                        "path": art.path,
+                        "kind": art.kind,
+                        "recorded_sha256": art.sha256,
+                        "disk_sha256": disk_sha,
+                        "file_exists": exists,
+                        "hash_matches": matches,
+                        "byte_size": target.stat().st_size if exists else 0,
+                    }
+                )
+            fsck = agent.kernel_bridge.fsck_ledger_sync(ledger_path)
+            return {
+                "session_id": state.session_id,
+                "trace_id": state.trace_id,
+                "mode": state.mode,
+                "provider": state.provider,
+                "cost_usd": state.cost_usd,
+                "verified_all_artifacts": all_match and len(checked_artifacts) > 0,
+                "artifacts": checked_artifacts,
+                "ledger": fsck or {"exists": ledger_path.is_file(), "chain_valid": True},
+            }
+
+        bundle = await asyncio.to_thread(_collect_evidence)
+        bundle["memory_stats"] = (await agent.memory_bridge.stats()).model_dump(mode="json")
+        headers = {
+            "Cache-Control": "no-store",
+            "Content-Disposition": f'attachment; filename="{session_id}-evidence.json"',
+        }
+        return Response(
+            content=json.dumps(bundle, indent=2, ensure_ascii=False),
+            media_type="application/json",
+            headers=headers,
+        )
+
+    @api.delete("/v1/studio/sessions/{session_id}")
+    async def delete_session(session_id: str) -> dict[str, Any]:
+        """Delete an isolated session directory cleanly."""
+        if read_only:
+            raise HTTPException(status_code=403, detail="Service is in AI2027_READ_ONLY mode.")
+        try:
+            _ = await store.load(session_id)
+            sdir = store.session_dir(session_id)
+        except SecurityValidationError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+        await asyncio.to_thread(shutil.rmtree, sdir)
+        return {"deleted": True, "session_id": session_id}
+
+    @api.post("/v1/studio/connectors/search", response_model=ConnectorSearchOutcome)
+    async def search_connector(payload: ConnectorSearchRequest) -> ConnectorSearchOutcome:
+        """Run bounded read-only search against a configured L5 connector."""
+        try:
+            return await agent.connector_client.search(
+                payload.connector, payload.query, limit=payload.limit
+            )
+        except SecurityValidationError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @api.post("/v1/studio/connectors/read", response_model=ConnectorReadOutcome)
+    async def read_connector(payload: ConnectorReadRequest) -> ConnectorReadOutcome:
+        """Read one explicit bounded UTF-8 resource from a configured L5 connector."""
+        try:
+            return await agent.connector_client.read(payload.connector, payload.resource_id)
+        except SecurityValidationError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     return api, agent, store

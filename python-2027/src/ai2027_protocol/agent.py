@@ -15,6 +15,7 @@ from pydantic import Field
 
 from .auditor import ProtocolAuditor
 from .bridges import ConnectorsBridge, KernelSandboxBridge, MemoryBridge
+from .connector_hub_bridge import LiveConnectorClient
 from .contracts import ProviderKind, StrictModel, TelemetrySink
 from .planner_engine import (
     AgentPlannerProtocol,
@@ -267,6 +268,7 @@ class AutonomousAgent:
         self.connectors_bridge = ConnectorsBridge(
             store_path=self.session_store.sessions_root.parent / "approvals.json"
         )
+        self.connector_client = LiveConnectorClient()
         self.auditor = ProtocolAuditor(workspace_root=self.workspace_root, telemetry=self.telemetry)
 
     async def stream_run(
@@ -290,6 +292,7 @@ class AutonomousAgent:
             memory_bridge=self.memory_bridge,
             connectors_bridge=self.connectors_bridge,
             auditor=self.auditor,
+            connector_client=self.connector_client,
             read_only=self.read_only,
         )
 

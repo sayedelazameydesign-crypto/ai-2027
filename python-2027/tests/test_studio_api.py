@@ -107,6 +107,34 @@ async def test_studio_api_end_to_end_lifecycle(tmp_path: Path) -> None:
         mem_search = await client.get("/v1/studio/memory/search", params={"q": "deliverable"})
         assert mem_search.status_code == 200
 
+        card_resp = await client.get("/v1/studio/agent-card")
+        assert card_resp.status_code == 200
+        card = card_resp.json()
+        assert card["costUsd"] == 0.0
+        assert len(card["tools"]) >= 14
+
+        ev_resp = await client.get(f"/v1/studio/sessions/{sid}/evidence")
+        assert ev_resp.status_code == 200
+        assert "attachment" in ev_resp.headers["content-disposition"]
+        ev = ev_resp.json()
+        assert ev["verified_all_artifacts"] is True
+        assert ev["ledger"]["chain_valid"] is True
+
+        conn_resp = await client.post(
+            "/v1/studio/connectors/search",
+            json={"connector": "github", "query": "ai-2027", "limit": 2},
+        )
+        assert conn_resp.status_code == 200
+        bad_conn_read = await client.post(
+            "/v1/studio/connectors/read",
+            json={"connector": "github", "resource_id": "../secret"},
+        )
+        assert bad_conn_read.status_code == 400
+
+        del_resp = await client.delete(f"/v1/studio/sessions/{sid}")
+        assert del_resp.status_code == 200
+        assert (await client.get(f"/v1/studio/sessions/{sid}")).status_code == 404
+
 
 async def test_studio_api_read_only_and_error_guards(tmp_path: Path) -> None:
     ro_app = create_app(workspace_root=_REPO_ROOT, studio_dir=tmp_path / "ro", read_only=True)
@@ -131,3 +159,5 @@ async def test_studio_api_read_only_and_error_guards(tmp_path: Path) -> None:
         assert blocked_approve.status_code == 403
         blocked_reject = await client.post("/v1/studio/approvals/0123456789abcdef/reject")
         assert blocked_reject.status_code == 403
+        blocked_delete = await client.delete("/v1/studio/sessions/sess_missing01")
+        assert blocked_delete.status_code == 403
