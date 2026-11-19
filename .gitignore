@@ -60,3 +60,9 @@ browser-skill-audit*.json
 
 # PR Lens writes its previews here. They are rebuilt on demand.
 .pr-lens/
+
+# fleet-2027 local runtime artifacts
+fleet-2027/fleet.db*
+fleet-2027/**/.fleet-scratch/
+.fleet-scratch/
+demo/
