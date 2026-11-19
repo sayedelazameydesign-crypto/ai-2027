@@ -20,10 +20,13 @@ from .models import (
     ConnectorInfo,
     ReadRequest,
     ReadResponse,
+    ReasoningRequest,
+    ReasoningResponse,
     SearchRequest,
     SearchResponse,
 )
 from .read import read_one
+from .reasoning import reason_one
 from .search import search_many
 
 HttpAsyncClientFactory = Callable[[], httpx.AsyncClient]
@@ -138,6 +141,51 @@ def create_app(
                 "invalid_resource_id",
                 "unsupported_resource_type",
                 "unsupported_media_type",
+            }:
+                status_code = 422
+            elif exc.code == "response_too_large":
+                status_code = 413
+            else:
+                status_code = 502
+            raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+        finally:
+            await client.aclose()
+
+    @app.post(
+        "/v1/reasoning",
+        response_model=ReasoningResponse,
+        dependencies=[Depends(require_api_token)],
+    )
+    async def reasoning(request: ReasoningRequest) -> ReasoningResponse:
+        factory = app.state.async_client_factory
+        client = (
+            factory()
+            if factory is not None
+            else httpx.AsyncClient(
+                timeout=httpx.Timeout(120.0, connect=5.0),
+                follow_redirects=False,
+                trust_env=False,
+            )
+        )
+        try:
+            return await reason_one(
+                request, client=client, settings=settings, vault=vault
+            )
+        except ProviderError as exc:
+            if exc.status_code in {401, 403, 404}:
+                status_code = exc.status_code
+            elif exc.code in {
+                "not_configured",
+                "remote_confirmation_required",
+            }:
+                status_code = 409
+            elif exc.code in {
+                "invalid_model",
+                "model_required",
+                "output_limit_exceeded",
+                "context_limit_exceeded",
+                "invalid_context_config",
+                "unsafe_endpoint",
             }:
                 status_code = 422
             elif exc.code == "response_too_large":
