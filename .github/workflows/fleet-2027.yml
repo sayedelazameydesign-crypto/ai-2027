@@ -82,7 +82,7 @@ jobs:
           PYTHONDONTWRITEBYTECODE: "1"
 
   gate:
-    name: Evidence gate · 9 gates incl. real SIGKILL recovery
+    name: Evidence gate · 11 gates incl. SIGKILL + two-process recovery
     runs-on: ubuntu-latest
     timeout-minutes: 15
     needs: [guards]

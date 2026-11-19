@@ -28,6 +28,7 @@ from fleet2027 import (  # noqa: E402
     VerificationReport,
 )
 from fleet2027.contracts import ContractError  # noqa: E402
+from fleet2027.store import SCHEMA_VERSION  # noqa: E402
 
 
 def _plan(task_id: str = "t1", *, steps: tuple[PlanStep, ...] | None = None) -> TaskSpec:
@@ -299,7 +300,7 @@ class AuditTests(StoreTestCase):
         self.assertFalse(report["running_steps_without_heartbeat"])
 
     def test_schema_version_is_recorded(self) -> None:
-        self.assertEqual(self.store.stats()["schema_version"], 1)
+        self.assertEqual(self.store.stats()["schema_version"], SCHEMA_VERSION)
 
 
 class CheckpointTests(StoreTestCase):
