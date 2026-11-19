@@ -85,6 +85,20 @@ jobs:
         working-directory: python-2027
         run: .venv/bin/pytest --cov-fail-under=90
 
+      - name: PAP persistent-task gate · real SIGKILL, resume from checkpoint (evidence artifact)
+        working-directory: python-2027
+        run: |
+          .venv/bin/python ../scripts/persistent_task_gate.py --assert \
+            --report "$RUNNER_TEMP/persistent-task-gate-${{ matrix.python-version }}.json"
+
+      - name: Upload the persistent-task gate evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        with:
+          name: pap-persistent-task-${{ matrix.python-version }}-${{ github.sha }}
+          path: ${{ runner.temp }}/persistent-task-gate-${{ matrix.python-version }}.json
+          if-no-files-found: warn
+
       - name: Demo, persistent traces, 48-project compliance registry & benchmarks
         working-directory: python-2027
         run: |

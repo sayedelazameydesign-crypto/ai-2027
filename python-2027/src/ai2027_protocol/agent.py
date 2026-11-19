@@ -51,6 +51,10 @@ from .tools import (
 _SESSION_ID_RE = re.compile(r"^[a-z0-9_-]{8,48}$")
 
 
+class AgentResumeError(RuntimeError):
+    """Raised when a resume request cannot be honoured without inventing progress."""
+
+
 class AgentTaskRequest(StrictModel):
     """Validated user goal submitted to the autonomous Studio/CLI agent."""
 
@@ -59,6 +63,12 @@ class AgentTaskRequest(StrictModel):
     preferred_provider: ProviderKind | None = None
     allow_remote: bool = True
     language: Literal["auto", "en", "ar"] = "auto"
+    resume: bool = False
+
+    # Note: ``resume=True`` continues an interrupted run from its last
+    # checkpointed step. It is refused (``AgentResumeError``) when the session is
+    # not in ``running`` state, when the task text differs, or when no step was
+    # checkpointed — silently restarting from step 1 is never an acceptable answer.
 
     @classmethod
     def sanitize(cls, raw_task: str) -> str:
@@ -102,6 +112,7 @@ class AgentEvent(StrictModel):
 
     event: Literal[
         "session_started",
+        "session_resumed",
         "plan",
         "step_start",
         "tool_result",
@@ -143,6 +154,8 @@ class AgentSessionState(StrictModel):
     artifacts: tuple[ArtifactRecord, ...] = ()
     approvals: tuple[str, ...] = ()
     final_answer: str = ""
+    checkpoint_step: int = Field(default=0, ge=0)
+    checkpoint_at: str = ""
 
 
 class SessionStore:
@@ -290,6 +303,7 @@ class AutonomousAgent:
         """Execute an autonomous task and stream live typed AgentEvent updates."""
         clean_task = AgentTaskRequest.sanitize(request.task)
         state = await self.session_store.load(session_id)
+        resume_from = self._resume_point(state, clean_task, requested=request.resume)
         self.session_store.clear_abort(session_id)
         cancel_flag = self.session_store.get_cancel_flag(session_id)
 
@@ -311,15 +325,18 @@ class AutonomousAgent:
 
         with self.telemetry.start_span("agent.run", {"max_steps": request.max_steps}):
             trace_id = self.telemetry.current_trace_id()
+            resumed_steps = tuple(state.steps) if resume_from else ()
+            resumed_plan = tuple(state.plan) if resume_from else ()
             state = state.model_copy(
                 update={
                     "status": "running",
                     "task": clean_task,
                     "title": clean_task[:64],
                     "trace_id": trace_id,
-                    "steps": (),
-                    "plan": (),
+                    "steps": resumed_steps,
+                    "plan": resumed_plan,
                     "final_answer": "",
+                    "checkpoint_step": resume_from,
                     "updated_at": datetime.now(UTC).isoformat(),
                 }
             )
@@ -327,16 +344,29 @@ class AutonomousAgent:
             yield self._evt(
                 "session_started", session_id, 0, "Agent started", {"trace_id": trace_id}
             )
+            if resume_from:
+                yield self._evt(
+                    "session_resumed",
+                    session_id,
+                    resume_from,
+                    f"Resuming from step {resume_from + 1} "
+                    f"(checkpoint saved {state.checkpoint_at})",
+                    {
+                        "resume_from_step": resume_from,
+                        "next_step": resume_from + 1,
+                        "checkpoint_at": state.checkpoint_at,
+                    },
+                )
 
             mem_hits = await self.memory_bridge.search(clean_task, k=3)
             memory_ctx = "\n".join(
                 f"- [{h.score:.3f}] {h.run_id}: {h.text[:160]}" for h in mem_hits if h.above_noise
             )
 
-            history: list[AgentStepTrace] = []
+            history: list[AgentStepTrace] = list(resumed_steps)
             artifacts: dict[str, ArtifactRecord] = {a.path: a for a in state.artifacts}
             approvals: list[str] = list(state.approvals)
-            plan_steps: list[PlanStep] = []
+            plan_steps: list[PlanStep] = list(resumed_plan)
             mode: Literal["live-llm", "offline-deterministic"] = "offline-deterministic"
             last_provider = ProviderKind.DETERMINISTIC.value
             last_model = "offline-planner-v1"
@@ -347,7 +377,7 @@ class AutonomousAgent:
             router_attempts: list[ProviderAttempt] = []
             final_answer = ""
 
-            for step_num in range(1, request.max_steps + 1):
+            for step_num in range(resume_from + 1, request.max_steps + 1):
                 if cancel_flag.is_set():
                     state = state.model_copy(
                         update={
@@ -473,6 +503,20 @@ class AutonomousAgent:
                         model=model_name,
                     )
                 )
+                checkpoint_at = datetime.now(UTC).isoformat()
+                state = state.model_copy(
+                    update={
+                        "status": "running",
+                        "steps": tuple(history),
+                        "plan": tuple(plan_steps),
+                        "artifacts": tuple(artifacts.values()),
+                        "approvals": tuple(dict.fromkeys(approvals)),
+                        "checkpoint_step": step_num,
+                        "checkpoint_at": checkpoint_at,
+                        "updated_at": checkpoint_at,
+                    }
+                )
+                await self.session_store.save(state)
                 if decision.final_answer:
                     final_answer = decision.final_answer
                     break
@@ -533,6 +577,25 @@ class AutonomousAgent:
                 final_state.model_dump(mode="json"),
             )
 
+    @staticmethod
+    def _resume_point(state: AgentSessionState, clean_task: str, *, requested: bool) -> int:
+        """Return the last checkpointed step, or 0 for a fresh run; never guess."""
+        if not requested:
+            return 0
+        if state.status != "running":
+            raise AgentResumeError(
+                f"Resume refused: session {state.session_id} is '{state.status}', not 'running'."
+            )
+        if state.task != clean_task:
+            raise AgentResumeError(
+                "Resume refused: the submitted task text differs from the checkpointed run."
+            )
+        if state.checkpoint_step < 1:
+            raise AgentResumeError(
+                "Resume refused: the session has no checkpointed step to continue from."
+            )
+        return state.checkpoint_step
+
     async def run(self, session_id: str, request: AgentTaskRequest) -> AgentSessionState:
         """Run an autonomous task to completion and return the persisted session state."""
         async for _ in self.stream_run(session_id, request):
@@ -543,6 +606,7 @@ class AutonomousAgent:
         self,
         event: Literal[
             "session_started",
+            "session_resumed",
             "plan",
             "step_start",
             "tool_result",
