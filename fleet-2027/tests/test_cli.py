@@ -129,5 +129,36 @@ class PlanAndRunTests(CliTestCase):
             cli.main(["nonsense"])
 
 
+class LlmCommandTests(CliTestCase):
+    def test_scripted_backend_produces_a_verified_file_and_exits_zero(self) -> None:
+        code = cli.main([
+            "llm", "--db", self.db, "--workspace", self.ws, "--backend", "scripted",
+            "--prompt", "write add(a,b)", "--out", "app.py", "--task", "cli-llm",
+        ])
+        self.assertEqual(code, 0)
+        written = Path(self.ws) / "app.py"
+        self.assertTrue(written.is_file())
+        self.assertIn("def add", written.read_text(encoding="utf-8"))
+        with DurableTaskStore(self.db) as store:
+            record = store.step_result("cli-llm", "write")
+            self.assertTrue(record["verification"]["ok"])
+            self.assertEqual(record["evidence"]["called"], True)
+
+    def test_ollama_without_an_endpoint_is_a_usage_error_not_a_fake_success(self) -> None:
+        import os
+
+        previous = os.environ.pop("OLLAMA_BASE_URL", None)
+        try:
+            code = cli.main([
+                "llm", "--db", self.db, "--workspace", self.ws, "--backend", "ollama",
+                "--prompt", "x", "--out", "x.py", "--task", "cli-llm-off",
+            ])
+        finally:
+            if previous is not None:
+                os.environ["OLLAMA_BASE_URL"] = previous
+        self.assertEqual(code, 1, "a missing endpoint must never look like success")
+        self.assertFalse((Path(self.ws) / "x.py").exists())
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

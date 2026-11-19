@@ -105,7 +105,9 @@
         "fleet-2027/cli.py",
         "fleet-2027/crash_worker.py",
         "fleet-2027/gate.py",
-        "scripts/fleet_guard.py"
+        "scripts/fleet_guard.py",
+        "fleet-2027/fleet2027/llm.py",
+        "scripts/fleet_llm_bridge_check.py"
       ],
       "tests": [
         {
@@ -135,9 +137,13 @@
         {
           "file": "fleet-2027/tests/test_cli.py",
           "marker": "def test_"
+        },
+        {
+          "file": "fleet-2027/tests/test_llm.py",
+          "marker": "def test_"
         }
       ],
-      "gap_ar": "الطبقة موجودة الآن: تخطيط DAG، تنفيذ موجات متوازية، حفظ حالة في SQLite مع WAL+synchronous=FULL، استئناف مُثبت بقتل عملية حقيقية بـSIGKILL، طابور رسائل ميتة، مفاتيح idempotency، تحقق مستقل من البصمات على القرص، وسلسلة تدقيق مُجزّأة. الفجوة المتبقية: المحرّك لا يزال داخل العملية (threads) لا موزّعًا عبر عدة عُقد، ولا يزوّد وكلاء LLM حقيقيين — الوكلاء التجريبيون برامج محلية حتمية.",
+      "gap_ar": "الطبقة موجودة: تخطيط DAG، موجات متوازية، حالة دائمة في SQLite (WAL+synchronous=FULL)، استئناف مُثبت بقتل عملية حقيقية بـSIGKILL، DLQ، Idempotency، تحقق مستقل من البصمات على القرص، سلسلة تدقيق مُجزّأة، ووكيل LLM حقيقي (A1) عبر واجهة حقن بلا أي SDK داخل النواة — يعمل مع مزوّد python-2027 الفعلي (OllamaLocalProvider) بمسارات async حقيقية، وبوابة تُفشل أي نجاح منسوب لنموذج لم يُستدعَ. الفجوة المتبقية: التنفيذ threads داخل عملية واحدة لا موزّع عبر عُقد، والوكيل الحقيقي يحتاج نقطة Ollama محلية لتشغيله الحيّ (البوابة الحيّة اختيارية ولا تعمل بلا OLLAMA_BASE_URL).",
       "evidence_gate": "launch/evidence/fleet-2027-gate.json"
     },
     {
