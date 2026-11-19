@@ -11,9 +11,11 @@ from pathlib import Path
 
 import uvicorn
 
+from .agent import AgentTaskRequest, AutonomousAgent, SessionStore
 from .ai_providers import describe_provider_readiness
 from .auditor import ProtocolAuditor, format_audit_markdown
 from .benchmark import run_benchmark_suite
+from .bridges import ConnectorsBridge
 from .contracts import PromptRequest, ProviderKind
 from .demo import run_one_command_demo, verify_live_providers
 from .router import FreeFirstRouter
@@ -148,6 +150,70 @@ async def _run_cli_async(args: argparse.Namespace) -> int:
         print(response.model_dump_json(indent=2))
         return 0
 
+    if args.command == "agent":
+        runtime = ObservabilityRuntime(json_logs=False)
+        router = FreeFirstRouter(telemetry=runtime)
+        studio_dir = (args.studio_dir or (root / ".ai2027_studio")).resolve()
+        store = SessionStore(studio_dir)
+        agent = AutonomousAgent(
+            workspace_root=root,
+            session_store=store,
+            router=router,
+            telemetry=runtime,
+        )
+        session = store.create_session(title=args.task[:64])
+        req = AgentTaskRequest(
+            task=args.task,
+            max_steps=args.max_steps,
+            preferred_provider=ProviderKind(args.provider) if args.provider else None,
+            allow_remote=not args.offline_only,
+        )
+        state = await agent.run(session.session_id, req)
+        runtime.shutdown()
+        if args.json:
+            print(state.model_dump_json(indent=2))
+            return 0
+        print(
+            f"[AI-2027 Agent] session={state.session_id} mode={state.mode} "
+            f"provider={state.provider} cost=${state.cost_usd:.2f} trace={state.trace_id}"
+        )
+        for step_trace in state.steps:
+            print(f"  Step {step_trace.step}: {step_trace.thought}")
+            for out in step_trace.outcomes:
+                print(f"    -> {out.tool} (ok={out.ok}): {out.summary}")
+        if state.artifacts:
+            print("Artifacts:")
+            for art in state.artifacts:
+                print(
+                    f"  - {art.path} ({art.kind}, verified={art.verified}, "
+                    f"sha256={(art.sha256 or '')[:14]})"
+                )
+        print()
+        print(state.final_answer)
+        return 0
+
+    if args.command == "approvals":
+        studio_dir = (args.studio_dir or (root / ".ai2027_studio")).resolve()
+        bridge = ConnectorsBridge(store_path=studio_dir / "approvals.json")
+        if args.action == "list":
+            items = await bridge.list_approvals()
+            payload = [i.model_dump(mode="json") for i in items]
+            if args.json:
+                print(json.dumps(payload, indent=2, ensure_ascii=False))
+            else:
+                if not items:
+                    print("No queued approvals.")
+                for i in items:
+                    print(f"{i.action_id} | {i.status:<8} | {i.connector:<14} | {i.summary}")
+            return 0
+        decided = await bridge.decide_approval(
+            action_id=args.action_id,
+            approve=args.action == "approve",
+            note=args.note,
+        )
+        print(decided.model_dump_json(indent=2))
+        return 0
+
     return 2  # pragma: no cover
 
 
@@ -227,6 +293,30 @@ def build_parser() -> argparse.ArgumentParser:
     serve_p.add_argument("--host", default="0.0.0.0")  # noqa: S104
     serve_p.add_argument("--port", type=int, default=8790)
 
+    studio_p = sub.add_parser("studio", help="Start the AI-2027 Agent Studio web UI & API.")
+    studio_p.add_argument("--host", default="0.0.0.0")  # noqa: S104
+    studio_p.add_argument("--port", type=int, default=8080)
+    studio_p.add_argument("--studio-dir", type=Path, default=None)
+
+    agent_p = sub.add_parser("agent", help="Run a multi-step autonomous task from the CLI.")
+    agent_p.add_argument("task", help="Goal or instruction for the autonomous agent.")
+    agent_p.add_argument("--max-steps", type=int, default=5)
+    agent_p.add_argument(
+        "--provider",
+        choices=("ollama", "gemini", "nvidia", "groq", "openrouter", "deterministic"),
+        default=None,
+    )
+    agent_p.add_argument("--offline-only", action="store_true")
+    agent_p.add_argument("--studio-dir", type=Path, default=None)
+    agent_p.add_argument("--json", action="store_true")
+
+    appr_p = sub.add_parser("approvals", help="Inspect or approve/reject queued L5 actions.")
+    appr_p.add_argument("action", choices=("list", "approve", "reject"))
+    appr_p.add_argument("action_id", nargs="?", default="")
+    appr_p.add_argument("--note", default=None)
+    appr_p.add_argument("--studio-dir", type=Path, default=None)
+    appr_p.add_argument("--json", action="store_true")
+
     return parser
 
 
@@ -234,8 +324,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     """Execute the Python 2027 CLI entrypoint and return an exit code."""
     parser = build_parser()
     args = parser.parse_args(list(argv) if argv is not None else None)
-    if args.command == "serve":  # pragma: no cover - long-running server
-        app = create_app(workspace_root=args.root)
+    if args.command in {"serve", "studio"}:  # pragma: no cover - long-running server
+        sdir = getattr(args, "studio_dir", None)
+        app = create_app(workspace_root=args.root, studio_dir=sdir)
         uvicorn.run(app, host=args.host, port=args.port, log_level="info")
         return 0
     return asyncio.run(_run_cli_async(args))

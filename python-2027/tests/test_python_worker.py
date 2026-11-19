@@ -210,3 +210,29 @@ async def test_python_worker_gemini_direct_and_malformed_payloads() -> None:
     assert nvidia_res.status == 200
     assert nvidia_res.body["provider"] == "nvidia"
     assert nvidia_res.body["text"] == "nvidia worker ok"
+
+    plan_res = await handle_worker_request(
+        method="POST",
+        path="/v1/agent/plan",
+        raw_body=json.dumps({"task": "Inspect repo and verify SHA-256"}),
+        env={},
+    )
+    assert plan_res.status == 200
+    assert len(plan_res.body["steps"]) == 4
+
+    plan_bad = await handle_worker_request(
+        method="POST",
+        path="/v1/agent/plan",
+        raw_body=json.dumps({"task": "   "}),
+        env={},
+    )
+    assert plan_bad.status == 400
+    assert (await handle_worker_request(method="GET", path="/v1/agent/plan", env={})).status == 405
+    assert (
+        await handle_worker_request(
+            method="POST",
+            path="/v1/agent/plan",
+            raw_body='{"task":"x"}',
+            env={"WORKER_AUTH_TOKEN": "tok"},
+        )
+    ).status == 401

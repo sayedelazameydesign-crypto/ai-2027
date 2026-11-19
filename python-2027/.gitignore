@@ -13,3 +13,5 @@ build/
 .env.local
 .wrangler/
 node_modules/
+.ai2027_studio/
+.ai2027_work/

@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import ast
 import re
+import threading
 from dataclasses import dataclass
 from pathlib import Path
+
+_AST_PARSE_LOCK = threading.Lock()
 
 SKIP_DIRS = frozenset(
     {
@@ -20,6 +23,8 @@ SKIP_DIRS = frozenset(
         "dist",
         "build",
         ".wrangler",
+        ".ai2027_studio",
+        ".ai2027_work",
     }
 )
 _BLOCKING_CALL_NAMES = frozenset({"sleep", "urlopen"})
@@ -151,7 +156,8 @@ def scan_project_ast(project_dir: Path) -> AstScanMetrics:
                     secret_hits += 1
 
         try:
-            tree = ast.parse(text, filename=str(file_path))
+            with _AST_PARSE_LOCK:
+                tree = ast.parse(text, filename=str(file_path))
         except SyntaxError:
             continue
 

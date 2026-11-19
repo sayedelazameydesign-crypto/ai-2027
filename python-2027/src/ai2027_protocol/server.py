@@ -25,6 +25,7 @@ from .contracts import (
 )
 from .router import AllProvidersFailedError, FreeFirstRouter
 from .security import SecurityValidationError
+from .studio import build_studio_router
 from .telemetry import ObservabilityRuntime
 
 _DEFAULT_ROOT = Path(__file__).resolve().parents[3]
@@ -46,12 +47,14 @@ PROTOCOL_RULES: tuple[dict[str, str | int], ...] = (
 def create_app(
     *,
     workspace_root: Path | None = None,
+    studio_dir: Path | None = None,
     router: FreeFirstRouter | None = None,
     telemetry: TelemetrySink | None = None,
     read_only: bool | None = None,
 ) -> FastAPI:
     """Build a configured FastAPI application with replaceable router and telemetry."""
     root = (workspace_root or _DEFAULT_ROOT).resolve()
+    resolved_studio_dir = (studio_dir or (root / ".ai2027_studio")).resolve()
     runtime: TelemetrySink = telemetry or ObservabilityRuntime(json_logs=True)
     ai_router = router or FreeFirstRouter(telemetry=runtime)
     auditor = ProtocolAuditor(workspace_root=root, telemetry=runtime)
@@ -60,10 +63,18 @@ def create_app(
     )
 
     app = FastAPI(
-        title="AI-2027 Python 2027 Protocol API",
-        version="0.1.0",
-        description="Free-First AI routing, TaskGroup concurrency, auditing, and telemetry.",
+        title="AI-2027 Agent Studio & Protocol API",
+        version="0.2.0",
+        description="Unified Manus+Claude Autonomous Agent Studio, Free-First AI, L0/L1/L5.",
     )
+    studio_router, _agent, _store = build_studio_router(
+        workspace_root=root,
+        studio_dir=resolved_studio_dir,
+        router=ai_router,
+        telemetry=runtime,
+        read_only=is_read_only,
+    )
+    app.include_router(studio_router)
 
     @app.get("/health")
     async def health() -> dict[str, Any]:
