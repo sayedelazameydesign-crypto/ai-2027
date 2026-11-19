@@ -178,7 +178,7 @@ test("POST /v1/route uses GEMINI_API_KEY and NVIDIA_API_KEY when UPSTREAM_URL is
       GATEWAY_TOKEN: "tok-keys",
       GEMINI_API_KEY: "AIza-edge-fixture-key",
       NVIDIA_API_KEY: "nvapi-edge-fixture-key",
-      NVIDIA_MODEL: "meta/llama-3.1-8b-instruct",
+      NVIDIA_MODEL: "meta/llama-3.3-70b-instruct",
     },
     {
       fetchImpl: async (url, init) => {
@@ -203,6 +203,35 @@ test("POST /v1/route uses GEMINI_API_KEY and NVIDIA_API_KEY when UPSTREAM_URL is
   assert.equal(data.billing_tier, "free_tier");
   assert.equal(data.cost_known, false);
   assert.equal(seen.length, 2);
+});
+
+test("POST /v1/route blocks a retired NVIDIA model before any outbound call", async () => {
+  resetRateLimitsForTest();
+  const seen = [];
+  const res = await handleGatewayFetch(
+    new Request("https://edge.local/v1/route", {
+      method: "POST",
+      headers: { authorization: "Bearer tok-retired" },
+      body: JSON.stringify({ prompt: "retired model must not be called" }),
+    }),
+    {
+      GATEWAY_TOKEN: "tok-retired",
+      NVIDIA_API_KEY: "nvapi-edge-fixture-key",
+      NVIDIA_MODEL: "meta/llama-3.1-8b-instruct",
+    },
+    {
+      fetchImpl: async (url) => {
+        seen.push(String(url));
+        return new Response("{}", { status: 200 });
+      },
+    },
+  );
+  assert.equal(res.status, 200);
+  const data = await res.json();
+  assert.deepEqual(seen, []);
+  assert.equal(data.provider, "deterministic");
+  assert.equal(data.attempts[0].error, "model_retired");
+  assert.equal(data.attempts[0].costStatus, "model_retired");
 });
 
 test("POST /v1/agent/plan returns structured 4-step edge plan and enforces auth", async () => {

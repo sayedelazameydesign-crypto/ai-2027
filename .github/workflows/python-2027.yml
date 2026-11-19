@@ -18,7 +18,7 @@ on:
   workflow_dispatch:
     inputs:
       run_live_providers:
-        description: "Invoke Actions secrets (GEMINI / NVIDIA / GROQ / OPENROUTER :free) on main"
+        description: "Invoke Actions secrets (GEMINI / NVIDIA / GROQ / OPENROUTER free router) on main"
         required: false
         type: boolean
         default: true
@@ -34,7 +34,7 @@ on:
         default: "all"
         options: ["all", "auto", "gemini", "nvidia", "groq", "openrouter"]
       nvidia_model:
-        description: "Optional non-secret NVIDIA model ID (defaults to NVIDIA_MODEL var or meta/llama-3.1-8b-instruct)"
+        description: "Optional non-secret NVIDIA model ID (defaults to NVIDIA_MODEL var or meta/llama-3.3-70b-instruct)"
         required: false
         type: string
         default: ""
@@ -188,9 +188,9 @@ jobs:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           GEMINI_MODEL: ${{ vars.GEMINI_MODEL || 'gemini-2.5-flash' }}
-          NVIDIA_MODEL: ${{ inputs.nvidia_model || vars.NVIDIA_MODEL || 'meta/llama-3.1-8b-instruct' }}
-          GROQ_MODEL: ${{ vars.GROQ_MODEL || 'llama-3.1-8b-instant' }}
-          OPENROUTER_MODEL: ${{ vars.OPENROUTER_MODEL || 'meta-llama/llama-3.2-3b-instruct:free' }}
+          NVIDIA_MODEL: ${{ inputs.nvidia_model || vars.NVIDIA_MODEL || 'meta/llama-3.3-70b-instruct' }}
+          GROQ_MODEL: ${{ vars.GROQ_MODEL || 'openai/gpt-oss-20b' }}
+          OPENROUTER_MODEL: ${{ vars.OPENROUTER_MODEL || 'openrouter/free' }}
           AI2027_MAX_SPEND_USD: "0"
           AI2027_LIVE_PROVIDER: ${{ inputs.provider || 'all' }}
           AI2027_REQUIRE_LIVE: ${{ inputs.require_live_credential || false }}

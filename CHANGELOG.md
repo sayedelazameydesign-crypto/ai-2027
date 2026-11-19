@@ -13,6 +13,34 @@ fail or when any GitHub Action is not pinned to a full-length SHA.
 
 ## [Unreleased]
 
+### Fixed — retired model IDs and the "free" label (2026-11-19)
+- **`python-2027/src/ai2027_protocol/model_catalog.py`** (new) — one registry for
+  every shipped remote default (`GEMINI_MODEL`, `NVIDIA_MODEL`, `GROQ_MODEL`,
+  `OPENROUTER_MODEL`) and every retirement we have evidence for:
+  `meta/llama-3.1-8b-instruct` (NVIDIA NIM, HTTP 410, 2026-08-26),
+  `llama-3.1-8b-instant` / `llama-3.3-70b-versatile` (Groq free + developer
+  tiers, HTTP 404, 2026-08-16), and the two Groq preview models retired
+  2026-07-17. `find_retired_model()` and `retirement_reason()` name the dated
+  replacement instead of leaving an operator with a bare 404/410.
+- **`budget.py`** — retirement is checked *before* any tier (an explicit
+  `FREE_TIER` claim can no longer resurrect a dead ID); `openrouter/free` is
+  accepted next to the `:free` suffix in both the explicit and the inferred
+  path; the Groq allowlist is now empty because Groq's free Llama models are
+  gone and `openai/gpt-oss-20b` is priced per token, so a paid model is never
+  used to "fix" a free check. `AI2027_FREE_MODELS` still opts in explicitly.
+- **`ai_providers.py` / `demo.py` / workers** — defaults follow the catalogue
+  (NVIDIA → `meta/llama-3.3-70b-instruct`, OpenRouter →
+  `openrouter/free`); `complete()` refuses a retired ID before the network;
+  `HTTP 410` is reported as `ProviderError("model_retired")`; `ai2027-py27 live`
+  and both Workers report `model_retired` with `0.0 ms` latency (no request
+  spent). New `ai2027-py27 models [--json]` command.
+- **`docs/MODEL-CATALOG.md`** (new) + `docs/SECRETS.md` — defaults, retirement
+  table, the exact Groq opt-in, and an explicit note that the four
+  Cloudflare/R2 secrets are defined but consumed by no workflow yet.
+- **Tests** — `tests/test_model_catalog.py` (12 tests) plus worker/gateway
+  regressions; `pytest` 77 passed at 91% branch coverage, `ruff`, `mypy src
+  tests`, `node --test` (9), and `scripts/` (208) all green locally.
+
 ### Added — BrowserSkill Stage 1 of 3 (`local` mode: browser + machine, 2026-11-18)
 - **`docs/adr/0005-browserskill-adapter-boundary.md`** + **`docs/BROWSERSKILL-PLAN.md`** —
   three-stage / three-mode rollout plan (`local` → `skill_mcp` → `remote_wss`)
