@@ -17,6 +17,7 @@ from .ai_providers import (
 from .auditor import ProtocolAuditor, format_audit_markdown
 from .benchmark import run_benchmark_suite
 from .contracts import AIProvider, BillingTier, PromptRequest, ProviderKind, TelemetrySink
+from .model_catalog import find_retired_model, retirement_reason
 from .router import FreeFirstRouter, RouterConfig
 from .security import redact_secrets
 from .telemetry import ObservabilityRuntime
@@ -193,6 +194,20 @@ async def verify_live_providers(
                 "ok": False,
                 "status": "skipped_no_key",
                 "latency_ms": 0.0,
+            }
+            return
+
+        retired = find_retired_model(provider.kind, provider.model)
+        if retired is not None:
+            probe_results[idx] = {
+                "provider": provider.kind.value,
+                "model": provider.model,
+                "credential_state": cred_state,
+                "configured": True,
+                "ok": False,
+                "status": "model_retired",
+                "latency_ms": 0.0,
+                "error": retirement_reason(retired),
             }
             return
 

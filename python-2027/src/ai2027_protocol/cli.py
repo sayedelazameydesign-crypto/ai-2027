@@ -8,6 +8,7 @@ import json
 import sys
 from collections.abc import Sequence
 from pathlib import Path
+from typing import Any
 
 import uvicorn
 
@@ -20,6 +21,12 @@ from .celia_memory import CeliaMemoryStore, OllamaEmbeddingBackend
 from .compliance import build_compliance_registry, format_compliance_markdown
 from .contracts import PromptRequest, ProviderKind
 from .demo import run_one_command_demo, verify_live_providers
+from .model_catalog import (
+    DEFAULT_MODELS,
+    MODEL_ENV_VARS,
+    OPENROUTER_FREE_ROUTER,
+    RETIRED_MODELS,
+)
 from .ollama_layer import OllamaRuntimeClient
 from .ollama_readiness import verify_ollama_capabilities
 from .router import FreeFirstRouter
@@ -134,6 +141,51 @@ async def _run_cli_async(args: argparse.Namespace) -> int:
                 f"{prov_col:<12} | {cfg_col:<10} | "
                 f"{tier_col:<12} | {guard_col:<8} | {env_col:<18} | "
                 f"{state_col}"
+            )
+        return 0
+
+    if args.command == "models":
+        catalog: dict[str, Any] = {
+            "defaults": [
+                {
+                    "provider": kind.value,
+                    "env_var": MODEL_ENV_VARS[kind],
+                    "model": model,
+                }
+                for kind, model in DEFAULT_MODELS.items()
+            ],
+            "openrouter_free_router": OPENROUTER_FREE_ROUTER,
+            "retired": [
+                {
+                    "provider": entry.kind.value,
+                    "model": entry.model,
+                    "retired_on": entry.retired_on,
+                    "replacement": entry.replacement,
+                    "evidence": entry.evidence,
+                }
+                for entry in RETIRED_MODELS
+            ],
+        }
+        if args.json:
+            print(json.dumps(catalog, indent=2, ensure_ascii=False))
+            return 0
+        print("Provider defaults (used only when the matching env var is empty):")
+        print("-" * 92)
+        print(f"{'Provider':<12} | {'Env var':<18} | Model")
+        for row in catalog["defaults"]:
+            print(f"{row['provider']:<12} | {row['env_var']:<18} | {row['model']}")
+        print()
+        print(
+            "OpenRouter also accepts the dynamic free router "
+            f"`{OPENROUTER_FREE_ROUTER}` (no pinned model to go stale)."
+        )
+        print()
+        print("Retired IDs blocked before any request:")
+        print("-" * 92)
+        for entry in catalog["retired"]:
+            print(
+                f"{entry['provider']:<9} | {entry['model']:<42} | "
+                f"retired {entry['retired_on']} -> {entry['replacement']}"
             )
         return 0
 
@@ -356,6 +408,12 @@ def build_parser() -> argparse.ArgumentParser:
         "providers", help="Show sanitized readiness for Actions/environment provider keys."
     )
     prov_p.add_argument("--json", action="store_true", help="Emit JSON output.")
+
+    models_p = sub.add_parser(
+        "models",
+        help="List default, free-router, and retired remote model IDs (no network).",
+    )
+    models_p.add_argument("--json", action="store_true", help="Emit JSON output.")
 
     live_p = sub.add_parser(
         "live",
