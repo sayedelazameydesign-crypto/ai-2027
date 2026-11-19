@@ -113,11 +113,12 @@ class HttpxJsonTransport:
         json_body: Mapping[str, Any],
         timeout_s: float,
     ) -> HttpJsonResult:
+        merged_headers = {"User-Agent": "ai2027-protocol/1.0", **dict(headers)}
         try:
             async with asyncio.timeout(timeout_s):
                 response = await client.post(
                     url,
-                    headers=dict(headers),
+                    headers=merged_headers,
                     json=dict(json_body),
                     timeout=timeout_s,
                     follow_redirects=False,
@@ -374,6 +375,7 @@ class OpenAICompatibleFreeProvider:
         api_key: str,
         model: str,
         env_var: str = "API_KEY",
+        extra_headers: Mapping[str, str] | None = None,
         transport: AsyncHttpTransport | None = None,
         billing_tier: BillingTier | None = None,
     ) -> None:
@@ -385,6 +387,7 @@ class OpenAICompatibleFreeProvider:
         self._api_key = api_key.strip()
         self._model = model.strip()
         self.env_var = env_var
+        self._extra_headers = dict(extra_headers or {})
         self._transport = transport or HttpxJsonTransport()
         self._billing_tier, _ = classify_billing_tier(
             kind=self._kind,
@@ -428,6 +431,7 @@ class OpenAICompatibleFreeProvider:
         result = await self._transport.post_json(
             self._endpoint_url,
             headers={
+                **self._extra_headers,
                 "Accept": "application/json",
                 "Content-Type": "application/json",
                 "Authorization": f"Bearer {self._api_key}",
@@ -498,11 +502,11 @@ def create_openrouter_free_provider(
     transport: AsyncHttpTransport | None = None,
     billing_tier: BillingTier | None = None,
 ) -> OpenAICompatibleFreeProvider:
-    """Build an OpenRouter provider; only ':free' models pass MAX_SPEND=0 BudgetGuard."""
+    """Build an OpenRouter provider; ':free' or 'openrouter/free' passes MAX_SPEND=0."""
     chosen_model = (
         model.strip()
         if model and model.strip()
-        else _env_or_default("OPENROUTER_MODEL", "meta-llama/llama-3.3-70b-instruct:free")
+        else _env_or_default("OPENROUTER_MODEL", "openrouter/free")
     )
     return OpenAICompatibleFreeProvider(
         kind=ProviderKind.OPENROUTER,
@@ -510,6 +514,10 @@ def create_openrouter_free_provider(
         api_key=(api_key if api_key is not None else os.environ.get("OPENROUTER_API_KEY", "")),
         model=chosen_model,
         env_var="OPENROUTER_API_KEY",
+        extra_headers={
+            "HTTP-Referer": "https://github.com/sayedelazameydesign-crypto/ai-2027",
+            "X-Title": "AI-2027 Protocol",
+        },
         transport=transport,
         billing_tier=billing_tier,
     )

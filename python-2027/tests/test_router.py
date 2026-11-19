@@ -22,6 +22,7 @@ from ai2027_protocol.ai_providers import (
     create_nvidia_nim_provider,
     create_openrouter_free_provider,
 )
+from ai2027_protocol.budget import BudgetGuard, BudgetPolicy
 from ai2027_protocol.contracts import BillingTier, PromptRequest, ProviderKind
 from ai2027_protocol.router import AllProvidersFailedError, FreeFirstRouter, RouterConfig
 from ai2027_protocol.telemetry import ObservabilityRuntime
@@ -114,7 +115,15 @@ async def test_providers_send_expected_headers_and_parse_responses() -> None:
 
     openrouter = create_openrouter_free_provider(api_key="sk-or-test-fixture", transport=transport)
     assert openrouter.kind == ProviderKind.OPENROUTER
+    assert openrouter.model == "openrouter/free"
+    assert openrouter.billing_tier == BillingTier.FREE_TIER
+    or_decision = BudgetGuard(BudgetPolicy(max_spend_usd=0.0)).evaluate_provider(openrouter)
+    assert or_decision.allowed is True
+    assert or_decision.billing_tier == BillingTier.FREE_TIER
     assert await openrouter.complete(req, timeout_s=2.0) == "openai reply"
+    or_headers = transport.calls[-1][1]
+    assert or_headers["HTTP-Referer"] == "https://github.com/sayedelazameydesign-crypto/ai-2027"
+    assert or_headers["X-Title"] == "AI-2027 Protocol"
 
     defaults = build_default_providers(transport=transport)
     assert defaults[-1].kind == ProviderKind.DETERMINISTIC
@@ -122,7 +131,10 @@ async def test_providers_send_expected_headers_and_parse_responses() -> None:
 
 
 async def test_httpx_transport_error_mapping() -> None:
+    observed_agents: list[str] = []
+
     def handler(request: httpx.Request) -> httpx.Response:
+        observed_agents.append(request.headers.get("User-Agent", ""))
         if "rate-limit" in str(request.url):
             return httpx.Response(429, json={"error": "rate limit"})
         if "bad-auth" in str(request.url):
@@ -141,6 +153,15 @@ async def test_httpx_transport_error_mapping() -> None:
             "https://example.test/ok", headers={}, json_body={}, timeout_s=2.0
         )
         assert res.payload == {"ok": True}
+        assert observed_agents[0] == "ai2027-protocol/1.0"
+
+        await transport.post_json(
+            "https://example.test/ok",
+            headers={"User-Agent": "custom-agent/2.0"},
+            json_body={},
+            timeout_s=2.0,
+        )
+        assert observed_agents[1] == "custom-agent/2.0"
 
         with pytest.raises(ProviderError) as rate_err:
             await transport.post_json(
