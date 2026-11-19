@@ -28,22 +28,29 @@ that would silently take the service down:
 
 Usage
 -----
-    python3 deployment/live_server.py                 # local, port 8090
+    python3 deployment/live_server.py                 # preserve evidence on normal start
+    python3 deployment/live_server.py --fresh          # explicit destructive reset
     PORT=10000 python3 deployment/live_server.py      # any PaaS
     AI2027_READ_ONLY=1 python3 deployment/live_server.py
 
 Environment
 -----------
-    PORT                listening port (default 8090)
-    HOST                bind address (default 0.0.0.0 in PaaS, else 127.0.0.1)
-    AI2027_MAX_DISK_MB  cap for generated evidence (default 256)
-    AI2027_MAX_RUNS     hard cap on runs per process (default 5000)
-    AI2027_READ_ONLY    "1" disables POST /api/run entirely
+    PORT                     listening port (default 8090)
+    HOST                     bind address (default 0.0.0.0 in PaaS, else 127.0.0.1)
+    AI2027_LIVE_RUNTIME_DIR   runtime root; default keeps the existing live-agent/ paths
+    AI2027_MAX_DISK_MB        cap for generated evidence (default 256)
+    AI2027_MAX_RUNS           hard cap on runs per process (default 5000)
+    AI2027_READ_ONLY          "1" disables POST /api/run entirely
+
+Runtime files are preserved across process restarts on the same filesystem.
+Survival across instance replacement/redeploy depends on a persistent mount;
+this launcher and `render.yaml` do not provision one.
 
 Stdlib only — this file adds no dependency to a zero-dependency project.
 """
 from __future__ import annotations
 
+import argparse
 import importlib.util
 import os
 import shutil
@@ -120,6 +127,11 @@ def main() -> int:
         sys.stderr.write(f"FATAL: {SERVER_PY} not found\n")
         return 2
 
+    ap = argparse.ArgumentParser(description="Bounded deployment wrapper for the Live Agent")
+    ap.add_argument("--fresh", action="store_true",
+                    help="DESTRUCTIVE: delete this Live Agent runtime before starting")
+    args = ap.parse_args()
+
     port = _env_int("PORT", 8090)
     on_paas = any(os.environ.get(k) for k in ("PORT", "RENDER", "DYNO", "SPACE_ID"))
     host = os.environ.get("HOST") or ("0.0.0.0" if on_paas else "127.0.0.1")
@@ -135,6 +147,10 @@ def main() -> int:
     server = importlib.util.module_from_spec(spec)
     sys.modules[_MODULE] = server
     spec.loader.exec_module(server)
+    runtime_dir = os.environ.get("AI2027_LIVE_RUNTIME_DIR")
+    if runtime_dir:
+        server._configure_runtime(runtime_dir)
+    restore_warnings = server._prepare_state(fresh=args.fresh)
 
     max_disk_bytes = max_disk_mb * 1024 * 1024
     state = {"runs": 0, "pruned": 0, "rejected": 0, "freed": 0}
@@ -165,12 +181,16 @@ def main() -> int:
         return payload
 
     server.run_goal = guarded_run_goal
-    server._fresh_state()
 
     print("AI-2027 live demo — deployed mode", flush=True)
     print(f"  bind             : {host}:{port}", flush=True)
-    print(f"  disk cap         : {max_disk_mb} MB (oldest runs pruned first)", flush=True)
+    print(f"  runtime          : {server.RUNS_DIR.parent}", flush=True)
+    print(f"  runtime mode     : {'fresh (explicit reset)' if args.fresh else 'preserving existing evidence'}", flush=True)
+    print(f"  storage scope    : same-filesystem process restart only; instance replacement depends on a persistent mount", flush=True)
+    print(f"  disk cap         : {max_disk_mb} MB (oldest runs pruned after a run)", flush=True)
     print(f"  run budget       : {max_runs} per process", flush=True)
+    for warning in restore_warnings:
+        print(f"  runtime warning  : {warning}", file=sys.stderr, flush=True)
     print(f"  write path       : {'DISABLED (read-only)' if read_only else 'ENABLED, unauthenticated'}", flush=True)
     print("  NOT protected    : no login, no rate limit, no per-IP quota", flush=True)
     print("  kernel           : deterministic planner, NO LLM, stdlib only", flush=True)

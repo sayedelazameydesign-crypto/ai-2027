@@ -575,6 +575,8 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, default=8090)
     ap.add_argument("--host", default="0.0.0.0")
+    ap.add_argument("--runtime-dir", default=os.environ.get("AI2027_HUD_RUNTIME_DIR"),
+                    help="isolate persistent HUD evidence/history/memory under this directory")
     ap.add_argument("--fast-audit", action="store_true",
                     help="skip the 5 subprocess probes at boot")
     ap.add_argument("--fresh", action="store_true",
@@ -582,15 +584,16 @@ def main() -> None:
     args = ap.parse_args()
 
     global MEM
-    SRV = kernel_bridge.load(fresh=args.fresh)
+    runtime_root = (Path(args.runtime_dir).expanduser().resolve()
+                    if args.runtime_dir else kernel_bridge.RUNTIME)
+    SRV = kernel_bridge.load(runtime=runtime_root, fresh=args.fresh)
     STATE["history"] = restore_history()
+    hud_memory_db = runtime_root / "memory.sqlite"
     if args.fresh:
-        hud_memory_db = HERE / "runtime" / "memory.sqlite"
         for suffix in ("", "-wal", "-shm"):
-            (Path(str(hud_memory_db) + suffix)).unlink(missing_ok=True)
+            Path(str(hud_memory_db) + suffix).unlink(missing_ok=True)
     MEM = memory_store.EvidenceMemoryStore(
-        HERE / "runtime" / "memory.sqlite",
-        sandbox_root=kernel_bridge.RUNTIME / "sandboxes")
+        hud_memory_db, sandbox_root=SRV.SANDBOXES_DIR)
     STATE["audit"] = audit_mod.build(fast=True)
     if not args.fast_audit:
         _run_audit(full=True, background=True)
@@ -598,7 +601,7 @@ def main() -> None:
     print(f"AI-2027 Unified Command HUD — http://{args.host}:{args.port}")
     print(f"kernel      : {kernel_bridge.ROOT / 'projects/agi-system'} (REAL, imported in place)")
     print(f"goals       : {', '.join(SRV.SUPPORTED_GOALS)}")
-    print(f"runtime     : {kernel_bridge.RUNTIME} (isolated evidence trail, gitignored)")
+    print(f"runtime     : {runtime_root} (isolated evidence trail)")
     print(f"runtime mode: {'fresh (explicit reset)' if args.fresh else 'preserving existing evidence/history'}")
     print("honest scope: deterministic planner, NO LLM. Kill switch gates HUD dispatch only.")
     ThreadingHTTPServer((args.host, args.port), Handler).serve_forever()
