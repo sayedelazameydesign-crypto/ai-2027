@@ -177,7 +177,7 @@ jobs:
         (github.event_name != 'workflow_dispatch' || inputs.run_live_providers)
       }}
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
         with:
@@ -241,3 +241,30 @@ jobs:
           name: python-2027-live-keys-${{ github.sha }}
           path: /tmp/live-2027.json
           if-no-files-found: ignore
+
+      - name: PAP-2027 live-connector gate · one real call, no key is a FAILURE
+        working-directory: python-2027
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          GEMINI_MODEL: ${{ vars.GEMINI_MODEL || 'gemini-2.5-flash' }}
+          NVIDIA_MODEL: ${{ vars.NVIDIA_MODEL || 'meta/llama-3.3-70b-instruct' }}
+          GROQ_MODEL: ${{ vars.GROQ_MODEL || 'openai/gpt-oss-20b' }}
+          OPENROUTER_MODEL: ${{ vars.OPENROUTER_MODEL || 'openrouter/free' }}
+          AI2027_MAX_SPEND_USD: "0"
+        run: |
+          set +x
+          set -euo pipefail
+          .venv/bin/python ../scripts/live_connector_gate.py --assert \
+            --python .venv/bin/python --timeout-s 25 \
+            --report /tmp/live-connector-gate.json
+
+      - name: Upload the live-connector evidence (id, time, sanitized response)
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        with:
+          name: pap-live-connector-${{ github.sha }}
+          path: /tmp/live-connector-gate.json
+          if-no-files-found: warn
