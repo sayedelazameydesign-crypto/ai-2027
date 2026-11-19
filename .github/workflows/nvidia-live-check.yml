@@ -60,6 +60,37 @@ jobs:
           result=$?
           set -e
           cat "$RUNNER_TEMP/nvidia-live.json"
+          python - "$RUNNER_TEMP/nvidia-live.json" "$result" <<'PY'
+          import json, os, pathlib, sys
+          raw = pathlib.Path(sys.argv[1]).read_text(encoding="utf-8").strip()
+          rc = int(sys.argv[2])
+          summary_path = os.environ.get("GITHUB_STEP_SUMMARY", "")
+          try:
+              d = json.loads(raw)
+          except ValueError:
+              print("::error title=NVIDIA NIM live check::Check produced invalid JSON")
+              raise SystemExit(0)
+          lines = [
+              "### 🧪 Live NVIDIA NIM call",
+              "",
+              f"- model: `{d.get('model')}` · credential: `{d.get('credential')}`",
+              f"- result: **{d.get('error_kind') or 'ok'}** · status `{d.get('status')}` · {d.get('latency_ms')} ms",
+              f"- claim: {d.get('claim')}",
+          ]
+          if summary_path:
+              with open(summary_path, "a", encoding="utf-8") as fh:
+                  fh.write("\n".join(lines) + "\n")
+          if rc == 0:
+              print(
+                  f"::notice title=NVIDIA NIM live check::ok model={d.get('model')} "
+                  f"status={d.get('status')} latency={d.get('latency_ms')}ms"
+              )
+          elif rc != 2:
+              print(
+                  f"::error title=NVIDIA NIM live check::model={d.get('model')} "
+                  f"status={d.get('status')} error_kind={d.get('error_kind')}"
+              )
+          PY
           if [ "$result" -eq 2 ]; then
             if [ "${REQUIRE_CREDENTIAL:-false}" = "true" ]; then
               echo "::error::NVIDIA_API_KEY is required for this explicitly requested provider check."

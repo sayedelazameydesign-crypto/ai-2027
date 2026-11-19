@@ -177,7 +177,7 @@ async def verify_live_providers(
     if target not in {"all", "auto"}:
         non_fallback = [p for p in non_fallback if p.kind.value == target]
 
-    req = PromptRequest(prompt=prompt, temperature=0.0, max_tokens=24, allow_remote=True)
+    req = PromptRequest(prompt=prompt, temperature=0.0, max_tokens=512, allow_remote=True)
     probe_results: list[dict[str, Any] | None] = [None] * len(non_fallback)
 
     async def _probe_one(idx: int, provider: AIProvider) -> None:
@@ -281,7 +281,7 @@ async def verify_live_providers(
         PromptRequest(
             prompt=prompt,
             temperature=0.0,
-            max_tokens=24,
+            max_tokens=512,
             allow_remote=True,
             preferred_providers=preferred,
         )

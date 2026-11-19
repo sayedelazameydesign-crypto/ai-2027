@@ -316,3 +316,36 @@ async def test_provider_payload_errors() -> None:
     with pytest.raises(ProviderError):
         await GeminiFreeProvider(api_key="").complete(req, timeout_s=1.0)
     assert json.loads(json.dumps({"ok": True})) == {"ok": True}
+
+
+async def test_openai_compatible_extracts_reasoning_fallback_only_when_content_empty() -> None:
+    responses: list[dict[str, Any]] = [
+        {"choices": [{"message": {"content": "primary", "reasoning": "hidden"}}]},
+        {"choices": [{"message": {"content": None, "reasoning_content": "via-rc"}}]},
+        {"choices": [{"message": {"content": "  ", "reasoning": "via-r"}}]},
+        {"choices": [{"message": {"content": None, "reasoning": "  "}}]},
+        {"choices": []},
+    ]
+
+    async def _responder(
+        _url: str, _headers: Mapping[str, str], _body: Mapping[str, Any], _timeout: float
+    ) -> HttpJsonResult:
+        return HttpJsonResult(200, responses.pop(0))
+
+    provider = OpenAICompatibleFreeProvider(
+        kind=ProviderKind.OPENROUTER,
+        endpoint_url="https://openrouter.ai/api/v1/chat/completions",
+        api_key="sk-or-v1-fixture",
+        model="openrouter/free",
+        transport=_FakeTransport(_responder),
+    )
+    req = PromptRequest(prompt="ping", max_tokens=512)
+    assert await provider.complete(req, timeout_s=1.0) == "primary"
+    assert await provider.complete(req, timeout_s=1.0) == "via-rc"
+    assert await provider.complete(req, timeout_s=1.0) == "via-r"
+    with pytest.raises(ProviderError) as empty_exc:
+        await provider.complete(req, timeout_s=1.0)
+    assert empty_exc.value.code == "invalid_payload"
+    with pytest.raises(ProviderError) as no_choices_exc:
+        await provider.complete(req, timeout_s=1.0)
+    assert no_choices_exc.value.code == "invalid_payload"
