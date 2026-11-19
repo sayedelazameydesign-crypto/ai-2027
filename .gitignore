@@ -57,3 +57,6 @@ browser-skill-audit*.json
 .ember-up/
 .ai2027_studio/
 .ai2027_work/
+
+# PR Lens writes its previews here. They are rebuilt on demand.
+.pr-lens/

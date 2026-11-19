@@ -16,9 +16,12 @@ from .ai_providers import describe_provider_readiness
 from .auditor import ProtocolAuditor, format_audit_markdown
 from .benchmark import run_benchmark_suite
 from .bridges import ConnectorsBridge
+from .celia_memory import CeliaMemoryStore, OllamaEmbeddingBackend
 from .compliance import build_compliance_registry, format_compliance_markdown
 from .contracts import PromptRequest, ProviderKind
 from .demo import run_one_command_demo, verify_live_providers
+from .ollama_layer import OllamaRuntimeClient
+from .ollama_readiness import verify_ollama_capabilities
 from .router import FreeFirstRouter
 from .server import create_app
 from .telemetry import ObservabilityRuntime
@@ -283,6 +286,47 @@ async def _run_cli_async(args: argparse.Namespace) -> int:
         print(decided.model_dump_json(indent=2))
         return 0
 
+    if args.command == "ollama-check":
+        ollama_client = OllamaRuntimeClient(base_url=args.base_url)
+        rep = await verify_ollama_capabilities(
+            client=ollama_client,
+            workspace_root=root,
+            run_live_inference=args.live,
+        )
+        if args.json:
+            print(rep.model_dump_json(indent=2))
+        else:
+            print(
+                f"[Ollama Phase-0/Verify] status={rep.verification_status} "
+                f"profile={rep.profile.name} chat_model={rep.host.recommended_chat_model} "
+                f"ram_gb={rep.host.total_ram_gb} free_disk_gb={rep.host.free_disk_gb}"
+            )
+            for chk in rep.checks:
+                print(
+                    f"  - {chk.check_id}: ok={chk.passed} live={chk.live_endpoint} ({chk.evidence})"
+                )
+            print(f"Note: {rep.honest_note}")
+        return 0 if rep.verification_status != "UNREACHABLE" else 1
+
+    if args.command == "celia-memory":
+        db_file = (args.db or CeliaMemoryStore.default_db_path(root)).resolve()
+        ollama_client = OllamaRuntimeClient()
+        backend = OllamaEmbeddingBackend(ollama_client) if ollama_client.is_configured() else None
+        mem_store = CeliaMemoryStore(db_file, backend=backend, allow_lexical_fallback=True)
+        if args.mem_cmd == "index":
+            idx_res = await mem_store.index_paths(root, args.paths)
+            print(idx_res.model_dump_json(indent=2))
+            return 0
+        if args.mem_cmd == "search":
+            hits = await mem_store.search(args.query, k=args.k)
+            print(
+                json.dumps([h.model_dump(mode="json") for h in hits], indent=2, ensure_ascii=False)
+            )
+            return 0
+        stats = await mem_store.stats()
+        print(stats.model_dump_json(indent=2))
+        return 0
+
     return 2  # pragma: no cover
 
 
@@ -391,6 +435,21 @@ def build_parser() -> argparse.ArgumentParser:
     appr_p.add_argument("--note", default=None)
     appr_p.add_argument("--studio-dir", type=Path, default=None)
     appr_p.add_argument("--json", action="store_true")
+
+    ol_p = sub.add_parser(
+        "ollama-check",
+        help="Run Phase-0 hardware check and independent Ollama readiness verification.",
+    )
+    ol_p.add_argument("--base-url", default=None, help="Optional loopback Ollama base URL.")
+    ol_p.add_argument("--live", action="store_true", help="Run live structured & tool probes.")
+    ol_p.add_argument("--json", action="store_true", help="Emit JSON report.")
+
+    cm_p = sub.add_parser("celia-memory", help="Manage Celia Memory persistent SQLite RAG.")
+    cm_p.add_argument("mem_cmd", choices=("index", "search", "stats"))
+    cm_p.add_argument("--db", type=Path, default=None, help="SQLite DB file path.")
+    cm_p.add_argument("--paths", nargs="+", default=["docs", "README.md"])
+    cm_p.add_argument("--query", default="Ollama 4GB profile")
+    cm_p.add_argument("--k", type=int, default=5)
 
     return parser
 

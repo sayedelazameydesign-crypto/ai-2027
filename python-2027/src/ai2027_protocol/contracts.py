@@ -239,6 +239,22 @@ class BatchPromptRequest(StrictModel):
     max_concurrency: int = Field(default=4, ge=1, le=8)
 
 
+class ToolSpec(StrictModel):
+    """Metadata descriptor advertised to the planner and Studio UI."""
+
+    name: str
+    description: str
+    read_only: bool
+    parameters_hint: str
+
+
+class ToolInvocation(StrictModel):
+    """Validated tool call issued by an autonomous planning step."""
+
+    tool: str = Field(min_length=2, max_length=64)
+    args: dict[str, Any] = Field(default_factory=dict)
+
+
 @runtime_checkable
 class AIProvider(Protocol):
     """Replaceable interface for any Free-First or fallback completion provider."""

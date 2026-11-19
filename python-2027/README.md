@@ -44,6 +44,12 @@ uv sync --locked --group dev
    - Scores all 48 `catalog.json` entries + core platform components across **Tier 1 (Production Python Standard)**, **Tier 2 (Lightweight / Edge Standard)**, and **Tier 3 (Legacy / Kernel Preservation — `ADR-0002`)** with AST verification that `projects/agi-system` remains pure `stdlib`.
 5. **Studio Visibility (`studio.py`, `static/studio.html`)**:
    - Surfaces real `MAX_SPEND=0` budget counters, per-attempt errors/blocks, SHA-256 artifact proofs, persistent OTel spans, and `/v1/studio/compliance` across EN/AR UI.
+6. **Ollama Local Intelligence Layer & Celia Memory RAG (`ollama_layer.py`, `celia_memory.py`, `ollama_readiness.py`)**:
+   - **4GB RAM safe defaults (`4gb-laptop`)**: `qwen3.5:0.8b` chat, `qwen2.5-coder:0.5b` coding, `embeddinggemma` RAG, `OLLAMA_NUM_CTX=2048`, and `keep_alive=0` unload discipline after embeddings.
+   - **Structured Outputs & Policy-Gated Tool Calling**: `/api/chat` JSON Schema verified by Pydantic V2 and tool proposals checked against `SandboxToolRuntime` allowlists (zero direct shell/GitHub access).
+   - **Celia Memory Intelligence**: Persistent SQLite chunked RAG (`ai2027-py27 celia-memory index/search/stats`) supporting Ollama `/api/embed` or honest bilingual lexical fallback.
+   - **Cloud Guard**: `OllamaCloudProvider` (`OLLAMA_API_KEY`) is separated from loopback Ollama and classified `UNKNOWN_COST` (blocked by `BudgetGuard` at `MAX_SPEND=0`).
+   - **Phase-0 Checks**: `ai2027-py27 ollama-check` and `python-2027/scripts/ollama_windows_check.ps1` measure RAM/disk/daemon state and refuse to claim `VERIFIED` offline.
 
 ---
 
