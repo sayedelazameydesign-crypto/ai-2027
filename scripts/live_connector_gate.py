@@ -332,7 +332,9 @@ def main(argv: list[str] | None = None) -> int:
         print(render(result))
         print(f"evidence: {args.report}")
 
-    if not result.ok and os.environ.get("GITHUB_ACTIONS") == "true":
+    # Opt-in: ``::error::`` marks the *step* as failed, which is right for a real
+    # gate run and wrong for the tests that deliberately provoke a FAIL verdict.
+    if not result.ok and os.environ.get("PAP_GATE_ANNOTATE") == "1":
         reason = result.error or "; ".join(
             f"{check.name}: {check.detail}" for check in result.checks if not check.ok
         )

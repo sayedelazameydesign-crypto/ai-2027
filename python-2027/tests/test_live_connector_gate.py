@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -55,7 +56,10 @@ def _worker(tmp_path: Path, report: dict[str, Any], *, rc: int = 0, name: str = 
     return path
 
 
-def _run(*args: str, cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
+def _run(
+    *args: str, cwd: Path | None = None, env_extra: dict[str, str] | None = None
+) -> subprocess.CompletedProcess[str]:
+    env = {**os.environ, **(env_extra or {})}
     return subprocess.run(  # noqa: S603 - fixed interpreter and repo-owned gate path
         [sys.executable, str(GATE), *args],
         capture_output=True,
@@ -63,6 +67,7 @@ def _run(*args: str, cwd: Path | None = None) -> subprocess.CompletedProcess[str
         timeout=300,
         check=False,
         cwd=str(cwd) if cwd else None,
+        env=env,
     )
 
 
@@ -351,3 +356,26 @@ def test_the_interpreter_path_is_not_resolved_through_its_symlink(
 
     assert resolved.endswith(".venv/bin/python")
     assert Path(resolved).is_file()
+
+
+def test_the_gate_does_not_annotate_under_a_test_run(tmp_path: Path) -> None:
+    """``::error::`` fails a GitHub step; only a real gate run may emit it."""
+    worker = _worker(
+        tmp_path,
+        {"attempts": [{"provider": "gemini", "status": "no_key", "evidence": None}]},
+        name="annot",
+    )
+    report_path = tmp_path / "evidence.json"
+
+    quiet = _run("--worker", str(worker), "--report", str(report_path), "--assert")
+    assert "::error" not in quiet.stdout
+
+    loud = _run(
+        "--worker",
+        str(worker),
+        "--report",
+        str(report_path),
+        "--assert",
+        env_extra={"PAP_GATE_ANNOTATE": "1"},
+    )
+    assert "::error title=PAP-2027 live-connector gate" in loud.stdout
