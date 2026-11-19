@@ -85,12 +85,13 @@ async def _run_cli_async(args: argparse.Namespace) -> int:
             "deterministic": "—",
         }
         for st in statuses:
-            guard = "ALLOW" if st["allowed_under_zero_budget"] else "BLOCK"
-            env_name = env_map.get(st["provider"], "—")
+            guard = "ALLOW" if bool(st["allowed_under_zero_budget"]) else "BLOCK"
+            env_name = env_map.get(str(st["provider"]), "—")
+            status_word = "configured" if bool(st["configured"]) else "absent"
             print(
-                f"{st['provider']:<12} | {str(st['configured']):<10} | "
+                f"{st['provider']:<12} | {str(bool(st['configured'])):<10} | "
                 f"{st['billing_tier']:<12} | {guard:<8} | {env_name:<18} | "
-                f"{st['credential_state']}"
+                f"{status_word}"
             )
         return 0
 
