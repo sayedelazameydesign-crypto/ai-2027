@@ -41,6 +41,12 @@ from .bridges import (
     MemoryStats,
     MemoryStorePort,
 )
+from .connector_hub_bridge import (
+    ConnectorReadOutcome,
+    ConnectorSearchItem,
+    ConnectorSearchOutcome,
+    LiveConnectorClient,
+)
 from .contracts import (
     AIProvider,
     CompletionResponse,
@@ -78,6 +84,9 @@ __all__ = [
     "CompletionResponse",
     "ConnectorBridgePort",
     "ConnectorDescriptor",
+    "ConnectorReadOutcome",
+    "ConnectorSearchItem",
+    "ConnectorSearchOutcome",
     "ConnectorsBridge",
     "DeterministicFallbackProvider",
     "FreeFirstRouter",
@@ -85,6 +94,7 @@ __all__ = [
     "KernelSandboxBridge",
     "KernelSandboxPort",
     "KernelWriteResult",
+    "LiveConnectorClient",
     "MemoryBridge",
     "MemoryHit",
     "MemoryStats",

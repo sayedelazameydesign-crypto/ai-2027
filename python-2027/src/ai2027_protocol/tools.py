@@ -4,11 +4,10 @@ from __future__ import annotations
 
 import asyncio
 import os
-import re
 import sys
 import time
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal, Protocol, runtime_checkable
 
@@ -17,8 +16,17 @@ from pydantic import Field
 from .auditor import ProtocolAuditor, format_audit_markdown
 from .auditor_ast import SKIP_DIRS
 from .bridges import ConnectorsBridge, KernelSandboxBridge, MemoryBridge
+from .connector_hub_bridge import LiveConnectorClient
 from .contracts import StrictModel
 from .security import SecurityValidationError, redact_secrets, resolve_safe_path
+from .tools_advanced import (
+    connector_read_tool,
+    connector_search_tool,
+    run_sandbox_tests,
+    verify_sandbox_artifact,
+    workspace_git_diff,
+    workspace_grep_tool,
+)
 
 _MAX_READ_BYTES = 48_000
 _MAX_PROCESS_OUTPUT_BYTES = 24_000
@@ -70,6 +78,7 @@ class ToolContext:
     memory_bridge: MemoryBridge
     connectors_bridge: ConnectorsBridge
     auditor: ProtocolAuditor
+    connector_client: LiveConnectorClient = field(default_factory=LiveConnectorClient)
     read_only: bool = False
 
 
@@ -149,6 +158,24 @@ _TOOL_SPECS: tuple[ToolSpec, ...] = (
         parameters_hint='{"path": "analyze.py", "code": "print(1+1)", "timeout_s": 5.0}',
     ),
     ToolSpec(
+        name="sandbox.run_tests",
+        description="Execute unittest tests inside the isolated sandbox with scrubbed env.",
+        read_only=False,
+        parameters_hint='{"path": ".", "pattern": "test_*.py", "timeout_s": 8.0}',
+    ),
+    ToolSpec(
+        name="sandbox.verify_artifact",
+        description="Independently re-read artifact bytes, SHA-256 hash, and L0 ledger chain.",
+        read_only=True,
+        parameters_hint='{"path": "deliverable.html"}',
+    ),
+    ToolSpec(
+        name="workspace.git_diff",
+        description="Inspect repository git status and diff --stat cleanly (read-only).",
+        read_only=True,
+        parameters_hint='{"path": "."}',
+    ),
+    ToolSpec(
         name="memory.search",
         description="Query L1 EvidenceMemoryStore for verified past findings.",
         read_only=True,
@@ -165,6 +192,18 @@ _TOOL_SPECS: tuple[ToolSpec, ...] = (
         description="List L5 workspace connectors and sanitized readiness without secrets.",
         read_only=True,
         parameters_hint="{}",
+    ),
+    ToolSpec(
+        name="connector.search",
+        description="Search a configured L5 connector (read-only, bounded).",
+        read_only=True,
+        parameters_hint='{"connector": "github", "query": "ai-2027", "limit": 5}',
+    ),
+    ToolSpec(
+        name="connector.read",
+        description="Read bounded UTF-8 metadata/content for one L5 connector resource.",
+        read_only=True,
+        parameters_hint='{"connector": "github", "resource_id": "owner/repo"}',
     ),
     ToolSpec(
         name="connector.propose_action",
@@ -236,19 +275,29 @@ class SandboxToolRuntime:
         if tool == "workspace.read_file":
             return await self._read_file(args, ctx)
         if tool == "workspace.grep":
-            return await self._grep(args, ctx)
+            return await workspace_grep_tool(args, ctx)
         if tool == "sandbox.write_artifact":
             return await self._write_artifact(args, ctx)
         if tool == "sandbox.edit_file":
             return await self._edit_file(args, ctx)
         if tool == "sandbox.run_python":
             return await self._run_python(args, ctx)
+        if tool == "sandbox.run_tests":
+            return await run_sandbox_tests(args, ctx)
+        if tool == "sandbox.verify_artifact":
+            return await verify_sandbox_artifact(args, ctx)
+        if tool == "workspace.git_diff":
+            return await workspace_git_diff(args, ctx)
         if tool == "memory.search":
             return await self._memory_search(args, ctx)
         if tool == "repo.audit":
             return await self._repo_audit(args, ctx)
         if tool == "connector.inspect":
             return await self._connector_inspect(ctx)
+        if tool == "connector.search":
+            return await connector_search_tool(args, ctx)
+        if tool == "connector.read":
+            return await connector_read_tool(args, ctx)
         if tool == "connector.propose_action":
             return await self._connector_propose(args, ctx)
         return ToolOutcome(
@@ -322,89 +371,6 @@ class SandboxToolRuntime:
             ok=True,
             summary=f"Read {rel} ({total_lines} total lines)",
             output=text,
-        )
-
-    async def _grep(self, args: Mapping[str, Any], ctx: ToolContext) -> ToolOutcome:
-        query = str(args.get("query", "")).strip()
-        if not query or len(query) > 120:
-            raise SecurityValidationError("workspace.grep requires query of 1..120 characters.")
-        rel = str(args.get("path", ".")).strip() or "."
-        base = self._select_base(args.get("scope"), ctx)
-        limit = max(1, min(int(args.get("limit", 25)), 60))
-        target = resolve_safe_path(base, rel)
-        pattern = re.compile(re.escape(query), re.IGNORECASE)
-
-        def _collect_files() -> list[Path]:
-            if target.is_file():
-                return [target]
-            if not target.is_dir():
-                return []
-            candidates: list[Path] = []
-            for root_str, dirs, files in os.walk(target):
-                dirs[:] = sorted(d for d in dirs if d not in SKIP_DIRS)
-                root_path = Path(root_str)
-                for fname in sorted(files):
-                    if fname in _SECRET_FILENAMES or fname.startswith(".env"):
-                        continue
-                    ext = Path(fname).suffix.lower()
-                    if ext in {
-                        ".py",
-                        ".md",
-                        ".js",
-                        ".mjs",
-                        ".ts",
-                        ".html",
-                        ".json",
-                        ".toml",
-                        ".yml",
-                    }:
-                        candidates.append(root_path / fname)
-                        if len(candidates) >= 250:
-                            return candidates
-            return candidates
-
-        files = await asyncio.to_thread(_collect_files)
-        matches: list[str] = []
-
-        def _scan_chunk(chunk: list[Path]) -> list[str]:
-            found_local: list[str] = []
-            for path in chunk:
-                try:
-                    raw = path.read_bytes()[:_MAX_READ_BYTES].decode("utf-8", errors="replace")
-                except OSError:
-                    continue
-                for lineno, line in enumerate(raw.splitlines(), start=1):
-                    if pattern.search(line):
-                        rel_file = str(path.relative_to(base))
-                        found_local.append(f"{rel_file}:{lineno}: {redact_secrets(line.strip())}")
-                        if len(found_local) >= limit:
-                            return found_local
-            return found_local
-
-        chunk_size = max(1, (len(files) + 3) // 4)
-        chunks = [files[i : i + chunk_size] for i in range(0, len(files), chunk_size)]
-        chunk_outputs: list[list[str]] = [[] for _ in chunks]
-
-        async def _run_chunk(idx: int, chunk: list[Path]) -> None:
-            chunk_outputs[idx] = await asyncio.to_thread(_scan_chunk, chunk)
-
-        async with asyncio.TaskGroup() as group:
-            for idx, chunk in enumerate(chunks):
-                group.create_task(_run_chunk(idx, chunk))
-
-        for out in chunk_outputs:
-            for line in out:
-                matches.append(line)
-                if len(matches) >= limit:
-                    break
-            if len(matches) >= limit:
-                break
-
-        return ToolOutcome(
-            tool="workspace.grep",
-            ok=True,
-            summary=f"Found {len(matches)} match(es) for {query!r}",
-            output="\n".join(matches),
         )
 
     async def _write_artifact(self, args: Mapping[str, Any], ctx: ToolContext) -> ToolOutcome:
