@@ -24,7 +24,7 @@
         { "file": "projects/agi-system/tests/test_vertical_slice.py", "marker": "def test_" },
         { "file": "python-2027/tests/test_agent.py", "marker": "def test_" }
       ],
-      "gap_ar": "تخطيط داخل وكيل واحد بخطوات متسلسلة؛ لا يوجد فريق وكلاء ولا تعلّم من نتائج الدورات السابقة داخل الحلقة نفسها."
+      "gap_ar": "التخطيط داخل وكيل واحد؛ الاستئناف بعد القطع مدعوم (checkpoint لكل خطوة)، لكن لا يوجد فريق وكلاء ولا تعلّم من نتائج الدورات السابقة."
     },
     {
       "id": "python-alchemy",
@@ -122,13 +122,18 @@
         "memory/store.py",
         "memory/retrieval.py",
         "memory/evaluate.py",
-        "python-2027/src/ai2027_protocol/celia_memory.py"
+        "python-2027/src/ai2027_protocol/celia_memory.py",
+        "python-2027/src/ai2027_protocol/agent.py",
+        "scripts/persistent_task_gate.py",
+        "python-2027/tests/resume_worker.py"
       ],
       "tests": [
         { "file": "memory/test_memory.py", "marker": "def test_" },
-        { "file": "python-2027/tests/test_ollama_celia.py", "marker": "def test_" }
+        { "file": "python-2027/tests/test_ollama_celia.py", "marker": "def test_" },
+        { "file": "python-2027/tests/test_agent_resume.py", "marker": "def test_" },
+        { "file": "python-2027/tests/test_persistent_task_gate.py", "marker": "def test_" }
       ],
-      "gap_ar": "الاسترجاع محلّي (SQLite) ولا يوجد فهرسة موزّعة أو مزامنة بين أجهزة متعددة."
+      "gap_ar": "الاسترجاع محلّي (SQLite) ولا مزامنة بين الأجهزة. استئناف مهمة مقطوعة من نقطة تحقق مُثبت الآن بقتل عملية حقيقية (SIGKILL) واستئناف من الخطوة التالية."
     },
     {
       "id": "automation-engine",

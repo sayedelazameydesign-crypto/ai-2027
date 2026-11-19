@@ -13,6 +13,30 @@ fail or when any GitHub Action is not pinned to a full-length SHA.
 
 ## [Unreleased]
 
+### Added — checkpoint/resume + the first live capability gate (2026-11-19)
+- **`python-2027/src/ai2027_protocol/agent.py`** — the autonomous loop now
+  checkpoints after **every completed step** (`checkpoint_step`,
+  `checkpoint_at`) and accepts `AgentTaskRequest(resume=True)`. Resume is
+  refused with `AgentResumeError` when the session is not `running`, when the
+  task text differs, or when no step was checkpointed: restarting from step 1 is
+  never silently reported as a resume. A `session_resumed` event reports
+  `resume_from_step`/`next_step`/`checkpoint_at`.
+- **`scripts/persistent_task_gate.py`** (stdlib) + **`python-2027/tests/resume_worker.py`**
+  — the first PAP-2027 "Live Capability Gate". It runs the real agent in a child
+  process, SIGKILLs it **inside step 3** after steps 1–2 were checkpointed
+  (phase-1 returncode `-9`), then resumes in a second process that must start at
+  step 3. Ten checks, all falsifiable: no step executed twice, every step
+  completed exactly once, artifacts match their journaled SHA-256, final session
+  `completed` with steps `[1,2,3,4]`. Evidence JSON is written on pass **and**
+  fail, and the report is uploaded as a CI artifact.
+- **Tests** — `tests/test_agent_resume.py` (7) and
+  `tests/test_persistent_task_gate.py` (4, including a tampered worker that must
+  not be able to produce a PASS). Wired into the `python-2027.yml` matrix job.
+- **`docs/PAP-2027-GAP-AUDIT.md` / `docs/pap-2027-engines.json`** — the
+  `persistent-task` gate is marked implemented, `memory-engine` gained the
+  resume evidence, and the engine table no longer copies counts that the audit
+  script owns.
+
 ### Added — PAP-2027 gap audit on real code (2026-11-19)
 - **`docs/pap-2027-engines.json`** + **`scripts/pap_gap_audit.py`** — the twelve
   proposed PAP-2027 engines are mapped to files that actually exist, each with
