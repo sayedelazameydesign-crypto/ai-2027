@@ -262,27 +262,37 @@ jobs:
           .venv/bin/ai2027-py27 live "${args[@]}" > /tmp/live-2027.json
           rc=$?
           set -e
-          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
-          import json, pathlib
+          python - <<'PY'
+          import json, os, pathlib
           raw = pathlib.Path("/tmp/live-2027.json").read_text(encoding="utf-8").strip()
+          summary_path = os.environ.get("GITHUB_STEP_SUMMARY", "")
           if not raw:
-              print("### ⚡ Python 2027 Live Actions Secrets Verification")
-              print()
-              print("- Live probe produced no JSON output (check step stderr).")
+              print("::error title=ai2027-py27 live::Live probe produced no JSON output")
+              if summary_path:
+                  with open(summary_path, "a", encoding="utf-8") as fh:
+                      fh.write("### ⚡ Python 2027 Live Actions Secrets Verification\n\n- Live probe produced no JSON output (check step stderr).\n")
               raise SystemExit(0)
           data = json.loads(raw)
-          print("### ⚡ Python 2027 Live Actions Secrets Verification")
-          print()
-          print(f"- target: `{data['target']}` · configured remote keys: **{data['configured_count']}** · live succeeded: **{data['live_succeeded']}** · trace: `{data['trace_id']}`")
           routed = data["routed"]
-          print(f"- Free-First route: `{routed['provider']}` (`{routed['model']}`) · tier=`{routed['billing_tier']}` · cost_known=`{routed['cost_known']}` · simulated=`{routed['simulated']}` · latency=`{routed['latency_ms']} ms`")
+          lines = [
+              "### ⚡ Python 2027 Live Actions Secrets Verification",
+              "",
+              f"- target: `{data['target']}` · configured remote keys: **{data['configured_count']}** · live succeeded: **{data['live_succeeded']}** · trace: `{data['trace_id']}`",
+              f"- Free-First route: `{routed['provider']}` (`{routed['model']}`) · tier=`{routed['billing_tier']}` · cost_known=`{routed['cost_known']}` · simulated=`{routed['simulated']}` · latency=`{routed['latency_ms']} ms`",
+          ]
           if data["probes"]:
-              print()
-              print("| Provider | Model | Credential | Status | Latency | Detail |")
-              print("|---|---|---|---|---:|---|")
+              lines += ["", "| Provider | Model | Credential | Status | Latency | Detail |", "|---|---|---|---|---:|---|"]
               for p in data["probes"]:
                   detail = str(p.get("error") or ("ok" if p.get("ok") else "")).replace("|", "/")[:120]
-                  print(f"| `{p['provider']}` | `{p['model']}` | `{p['credential_state']}` | `{p['status']}` | {p['latency_ms']} ms | {detail} |")
+                  lines.append(f"| `{p['provider']}` | `{p['model']}` | `{p['credential_state']}` | `{p['status']}` | {p['latency_ms']} ms | {detail} |")
+              compact = ", ".join(
+                  f"{p['provider']}={p['status']} ({p['credential_state']})" for p in data["probes"]
+              )
+              level = "error" if (os.environ.get("AI2027_REQUIRE_LIVE") == "true" and not data["live_succeeded"]) else "notice"
+              print(f"::{level} title=ai2027-py27 live::{compact} | routed={routed['provider']}")
+          if summary_path:
+              with open(summary_path, "a", encoding="utf-8") as fh:
+                  fh.write("\n".join(lines) + "\n")
           PY
           cat /tmp/live-2027.json
           exit "$rc"
@@ -296,6 +306,7 @@ jobs:
           if-no-files-found: ignore
 
       - name: PAP-2027 live-connector gate · one real call, no key is a FAILURE
+        id: live_connector
         working-directory: python-2027
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
@@ -316,7 +327,7 @@ jobs:
             --report "$RUNNER_TEMP/live-connector-gate.json"
 
       - name: Upload the live-connector evidence (id, time, sanitized response)
-        if: always()
+        if: ${{ always() && steps.live_connector.outcome != 'skipped' }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
         with:
           name: pap-live-connector-${{ github.sha }}
