@@ -152,9 +152,45 @@ it does not match.
 * **Cancellation cannot interrupt a handler already inside a C extension.**
   The lease expiry is the backstop; heartbeats are separate from timeouts.
 
+## LLM agents (A1)
+
+`fleet2027.llm` wraps any completion backend as a fleet agent whose output must
+still survive verification:
+
+```python
+from fleet2027.llm import LLMAgent, OllamaBackend
+
+agent = LLMAgent(backend=OllamaBackend(model="qwen3.5:0.8b"))
+registry.register(agent.spec(), agent.handler)
+
+step = PlanStep(
+    step_id="write", agent=agent.spec().name, action="generate",
+    inputs={"prompt": "write add(a, b)", "out": "app.py", "language": "python"},
+    verification=(EvidenceKind.ARTIFACT_SHA256.value, EvidenceKind.OUTPUT_NON_EMPTY.value),
+)
+```
+
+```bash
+# one model-backed step, verified (uses a local Ollama; or --backend scripted)
+python3 fleet-2027/cli.py llm --db /tmp/f.db --workspace /tmp/ws \
+    --prompt "write add(a, b)" --out app.py
+```
+
+| Backend | Use | Safety limit |
+|---|---|---|
+| `OllamaBackend` | default · Free-First · $0 | plain HTTP **loopback only** |
+| `OpenAICompatibleBackend` | any compatible vendor | HTTPS only; key from env, never logged |
+| `AsyncProviderBridge` | drive `python-2027` providers | provider is *injected*; no SDK import |
+| `ScriptedBackend` | tests and the gate | never touches a network |
+
+The model writes the file; the **verifier** re-hashes it from disk and decides.
+A refusal, an empty answer, a truncated file, an oversized output, a path
+outside the workspace, or a file changed after the digest was taken all fail the
+step — and fail it the same way any other agent fails.
+
 ## What was *not* built here
 
-An LLM-backed agent, an MCP server, a real browser under test, xlsx/pptx
-artifacts, and multi-node distribution. Each has a row and an acceptance
-criterion in
+An MCP server, a real browser under test, xlsx/pptx artifacts, adaptive
+quality-based retry, and multi-node distribution. Each has a row and an
+acceptance criterion in
 [`docs/AI-2027-COMPETITIVE-ARCHITECTURE.md`](../docs/AI-2027-COMPETITIVE-ARCHITECTURE.md) §4.

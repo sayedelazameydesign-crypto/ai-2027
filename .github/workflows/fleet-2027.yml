@@ -109,6 +109,14 @@ jobs:
           print(f"claimed={claimed}\nactual ={actual}")
           raise SystemExit(0 if claimed == actual else 1)
           PY
+      - name: LLM bridge · a real python-2027 provider must be refusable and injectable
+        run: |
+          # Installs only what python-2027 declares; fleet itself stays stdlib-only.
+          python3 -m pip install --disable-pip-version-check \
+            "pydantic>=2.9,<3" "httpx>=0.27,<1" "structlog>=24.4,<27" \
+            "opentelemetry-api>=1.27,<2" "opentelemetry-sdk>=1.27,<2" \
+            "fastapi>=0.115,<1" "uvicorn>=0.30,<1"
+          python3 scripts/fleet_llm_bridge_check.py --mode offline
       - name: Publish evidence artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
         if: always()
