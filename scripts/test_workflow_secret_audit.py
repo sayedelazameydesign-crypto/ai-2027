@@ -290,6 +290,15 @@ class RealRepositoryTests(unittest.TestCase):
         self.assertIn("inputs.run_live_gemini", live_job)
         self.assertIn("require_credential: ${{ inputs.run_live_gemini }}", live_job)
 
+    def test_33_windows_acl_job_uses_private_profile_and_reports_test_results(self):
+        text = (wsa.WORKFLOWS / "ci.yml").read_text(encoding="utf-8")
+        self.assertIn("Provision isolated owner-only test profile", text)
+        self.assertIn("SetAccessRuleProtection($true, $false)", text)
+        self.assertIn('"USERPROFILE=$testHome"', text)
+        self.assertIn('"TMP=$testTemp"', text)
+        self.assertIn("names == expected", text)
+        self.assertIn("Windows test traceback", text)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
