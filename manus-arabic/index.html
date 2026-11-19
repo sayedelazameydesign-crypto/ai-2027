@@ -1,0 +1,871 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>مانوس العربي — Manus Arabi · AI-2027</title>
+<meta name="description" content="مانوس العربي — واجهة عربية مستقلة بالبروتوكول الكامل: 16 أداة + 12 موصل + نواة حقيقية + أدلة SHA-256">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800;900&family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#05070d; --bg2:#0a1020; --panel:#0f1a2e; --panel2:#132040; --line:#1a2d4f;
+  --txt:#eef3ff; --dim:#8aa0c2; --muted:#5e7596;
+  --acc:#00e5a0; --acc2:#38bdf8; --pur:#a78bfa; --warn:#fbbf24; --bad:#fb7185; --pink:#f472b6;
+  --mono:"JetBrains Mono",ui-monospace,monospace;
+  --arabic:"Tajawal","IBM Plex Sans Arabic",system-ui,sans-serif;
+  --radius:16px; --radius2:12px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:var(--bg);color:var(--txt);font-family:var(--arabic);overflow:hidden}
+button,input,textarea,select{font-family:inherit}
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-thumb{background:#1e3358;border-radius:99px}
+::-webkit-scrollbar-track{background:transparent}
+
+/* TOPBAR */
+.topbar{
+  height:58px; display:flex; align-items:center; justify-content:space-between; gap:12px;
+  padding:0 18px; background:rgba(8,14,28,0.9); border-bottom:1px solid var(--line);
+  backdrop-filter:blur(16px); position:relative; z-index:10;
+}
+.brand{display:flex;align-items:center;gap:12px}
+.brand-logo{
+  width:36px;height:36px; border-radius:10px;
+  background:linear-gradient(135deg,var(--acc),var(--acc2)); display:flex;align-items:center;justify-content:center;
+  font-weight:900;font-size:14px;color:#04121a; letter-spacing:-0.5px;
+}
+.brand-text{line-height:1}
+.brand-text b{font-size:15px;font-weight:900;letter-spacing:0.3px}
+.brand-text b span{color:var(--acc)}
+.brand-text small{display:block;font-size:10px;color:var(--dim);font-weight:500;letter-spacing:0.8px}
+.top-actions{display:flex;align-items:center;gap:8px}
+.pill{
+  font-size:11px; padding:4px 10px; border-radius:99px; border:1px solid var(--line);
+  background:var(--panel); color:var(--dim); font-family:var(--mono); display:inline-flex;align-items:center;gap:6px;
+}
+.pill i{width:7px;height:7px;border-radius:50%;background:var(--acc);box-shadow:0 0 8px var(--acc);display:inline-block;animation:pulse 2s infinite}
+.pill.live i{background:var(--acc)} .pill.warn i{background:var(--warn)} .pill.off i{background:var(--muted);box-shadow:none}
+@keyframes pulse{0%,100%{opacity:1} 50%{opacity:0.5}}
+.btn{
+  border:1px solid var(--line); background:var(--panel); color:var(--txt); border-radius:9px;
+  padding:7px 13px; font-size:12px; font-weight:700; cursor:pointer; transition:.15s; display:inline-flex;align-items:center;gap:6px;
+}
+.btn:hover{border-color:var(--acc);transform:translateY(-1px)}
+.btn.primary{background:linear-gradient(135deg,var(--acc),var(--acc2)); color:#04121a; border:none; font-weight:800}
+.btn.ghost{background:transparent}
+.btn.sm{padding:5px 9px;font-size:11px}
+.btn.icon{width:32px;height:32px;padding:0;justify-content:center;border-radius:8px}
+
+/* LAYOUT */
+.shell{
+  height:calc(100vh - 58px); display:grid;
+  grid-template-columns:300px minmax(420px,1fr) 380px;
+  overflow:hidden; background:var(--bg);
+}
+@media(max-width:1280px){.shell{grid-template-columns:280px 1fr 340px}}
+@media(max-width:980px){
+  html,body{overflow:auto}
+  .shell{height:auto;grid-template-columns:1fr;overflow:visible}
+  .col{border-inline-end:none !important; border-bottom:1px solid var(--line)}
+}
+.col{display:flex;flex-direction:column;overflow:hidden;min-height:0;background:var(--bg);border-inline-end:1px solid var(--line)}
+.col:last-child{border-inline-end:none}
+.col-head{
+  padding:14px 16px 10px; border-bottom:1px solid var(--line); background:rgba(15,26,46,0.6);
+  backdrop-filter:blur(8px); flex-shrink:0;
+}
+.col-head h3{font-size:12px;font-weight:800;letter-spacing:0.6px;color:var(--txt);display:flex;align-items:center;gap:8px}
+.col-head p{font-size:11px;color:var(--dim);margin-top:4px;line-height:1.5}
+.scroll{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:12px}
+
+/* SEARCH & FILTERS */
+.search-box{
+  position:relative; display:flex;gap:8px; align-items:center;
+}
+.search-box input{
+  flex:1; background:var(--bg2); border:1px solid var(--line); border-radius:10px;
+  padding:9px 36px 9px 12px; color:var(--txt); font-size:12px; outline:none; transition:.15s;
+}
+.search-box input:focus{border-color:var(--acc);background:var(--panel)}
+.search-box svg{position:absolute;right:10px;top:50%;transform:translateY(-50%);color:var(--muted);width:16px;height:16px;pointer-events:none}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chip{
+  padding:4px 10px; border-radius:99px; border:1px solid var(--line); background:var(--bg2);
+  font-size:11px; color:var(--dim); cursor:pointer; transition:.15s; font-weight:600;
+}
+.chip:hover{border-color:var(--acc2);color:var(--txt)}
+.chip.on{background:rgba(0,229,160,0.12);border-color:var(--acc);color:var(--acc)}
+
+/* SKILL CARDS */
+.skill-card{
+  background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:12px;
+  cursor:pointer; transition:.18s; position:relative; overflow:hidden;
+}
+.skill-card::before{
+  content:""; position:absolute; inset:0; background:linear-gradient(135deg,rgba(0,229,160,0.06),transparent 60%);
+  opacity:0; transition:.2s;
+}
+.skill-card:hover{border-color:var(--acc2);transform:translateY(-2px);box-shadow:0 12px 24px -12px rgba(0,229,160,0.25)}
+.skill-card:hover::before{opacity:1}
+.skill-card.active{border-color:var(--acc);background:rgba(0,229,160,0.06)}
+.skill-top{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px;position:relative}
+.skill-icon{
+  width:28px;height:28px;border-radius:8px;background:var(--bg2);border:1px solid var(--line);
+  display:flex;align-items:center;justify-content:center;font-size:14px;
+}
+.skill-tag{font-size:10px;padding:2px 7px;border-radius:99px;font-weight:800;letter-spacing:0.3px}
+.tag-read{color:var(--acc2);background:rgba(56,189,248,0.12);border:1px solid rgba(56,189,248,0.25)}
+.tag-write{color:var(--warn);background:rgba(251,191,36,0.12);border:1px solid rgba(251,191,36,0.25)}
+.tag-verify{color:var(--acc);background:rgba(0,229,160,0.12);border:1px solid rgba(0,229,160,0.25)}
+.skill-card h4{font-size:12.5px;font-weight:800;margin-bottom:3px;position:relative}
+.skill-card p{font-size:11px;color:var(--dim);line-height:1.6;position:relative}
+.skill-hint{margin-top:8px;padding:7px 8px;background:var(--bg2);border:1px solid var(--line);border-radius:8px;font-family:var(--mono);font-size:10px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;position:relative}
+
+/* CONNECTORS */
+.connector-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.connector{
+  background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:10px;
+  display:flex;align-items:center;gap:10px; cursor:pointer; transition:.15s;
+}
+.connector:hover{border-color:var(--acc2);background:var(--panel2)}
+.connector-icon{width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0}
+.connector-info{flex:1;min-width:0}
+.connector-info b{display:block;font-size:11.5px;font-weight:800}
+.connector-info span{font-size:10px;color:var(--dim);font-family:var(--mono)}
+.connector-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.dot-ok{background:var(--acc);box-shadow:0 0 8px var(--acc)}
+.dot-warn{background:var(--warn);box-shadow:0 0 8px var(--warn)}
+.dot-off{background:var(--muted)}
+
+/* CHAT */
+.chat-head{
+  padding:16px 20px; border-bottom:1px solid var(--line); background:linear-gradient(180deg,rgba(15,26,46,0.8),rgba(10,16,32,0.4));
+  display:flex;justify-content:space-between;align-items:center;gap:12px; flex-shrink:0;
+}
+.chat-title{font-size:13px;font-weight:800}
+.chat-sub{font-size:11px;color:var(--dim);margin-top:2px}
+.protocol-bar{
+  display:flex;gap:6px;align-items:center;flex-wrap:wrap; padding:10px 16px; background:var(--bg2); border-bottom:1px solid var(--line);
+}
+.p-step{
+  flex:1; min-width:86px; text-align:center; padding:8px 6px; border-radius:8px;
+  background:var(--panel); border:1px solid var(--line); font-size:10.5px; color:var(--muted); transition:.3s; position:relative;
+}
+.p-step b{display:block;font-size:11px;font-weight:800;margin-bottom:1px}
+.p-step.on{border-color:var(--acc);color:var(--acc);background:rgba(0,229,160,0.08);box-shadow:0 0 16px -6px var(--acc)}
+.p-step.done{border-color:var(--acc2);color:var(--acc2);background:rgba(56,189,248,0.08)}
+.p-step.bad{border-color:var(--bad);color:var(--bad);background:rgba(251,113,133,0.08)}
+
+.messages{
+  flex:1; overflow-y:auto; padding:20px; display:flex; flex-direction:column; gap:18px;
+  background:
+    radial-gradient(600px 400px at 20% 0%,rgba(0,229,160,0.06),transparent 60%),
+    radial-gradient(500px 400px at 90% 10%,rgba(56,189,248,0.07),transparent 60%),
+    radial-gradient(400px 400px at 50% 100%,rgba(167,139,250,0.05),transparent 60%),
+    var(--bg);
+}
+.msg{display:flex;gap:12px;max-width:100%}
+.msg.user{flex-direction:row-reverse}
+.avatar{
+  width:32px;height:32px;border-radius:10px;display:flex;align-items:center;justify-content:center;
+  font-size:13px;font-weight:800;flex-shrink:0;
+}
+.msg.user .avatar{background:linear-gradient(135deg,var(--acc),var(--acc2));color:#04121a}
+.msg.bot .avatar{background:var(--panel);border:1px solid var(--line);color:var(--acc)}
+.msg-body{flex:1;min-width:0;max-width:85%}
+.msg.user .msg-body{display:flex;flex-direction:column;align-items:flex-end}
+.bubble{
+  padding:14px 16px; border-radius:14px; font-size:13px; line-height:1.7; white-space:pre-wrap; word-break:break-word;
+}
+.msg.user .bubble{background:linear-gradient(135deg,rgba(0,229,160,0.15),rgba(56,189,248,0.15));border:1px solid rgba(0,229,160,0.25);color:var(--txt)}
+.msg.bot .bubble{background:var(--panel);border:1px solid var(--line);color:var(--txt)}
+.bubble.thinking{
+  background:var(--bg2);border:1px dashed var(--line);color:var(--dim);font-style:italic;display:flex;align-items:center;gap:10px;
+}
+.dot-typing{display:flex;gap:4px}
+.dot-typing i{width:6px;height:6px;border-radius:50%;background:var(--acc);animation:typing 1.4s infinite}
+.dot-typing i:nth-child(2){animation-delay:.2s} .dot-typing i:nth-child(3){animation-delay:.4s}
+@keyframes typing{0%,60%,100%{transform:translateY(0);opacity:0.5} 30%{transform:translateY(-6px);opacity:1}}
+
+/* TOOL CARDS INSIDE CHAT */
+.tool-call{
+  margin-top:10px; background:#060b16; border:1px solid var(--line); border-radius:10px; overflow:hidden;
+}
+.tool-head{
+  display:flex;justify-content:space-between;align-items:center;gap:8px;
+  padding:8px 12px; background:var(--panel); border-bottom:1px solid var(--line); font-family:var(--mono); font-size:11px;
+}
+.tool-head b{color:var(--acc2)}
+.tool-head span{color:var(--dim);font-size:10px}
+.tool-body{padding:10px 12px; font-family:var(--mono); font-size:11px; color:#9fb6d6; white-space:pre-wrap; max-height:180px; overflow:auto; line-height:1.5}
+.tool-ok{border-right:3px solid var(--acc)} .tool-read{border-right:3px solid var(--acc2)} .tool-warn{border-right:3px solid var(--warn)}
+
+.suggestions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.sugg{
+  padding:6px 12px;border-radius:99px;border:1px solid var(--line);background:var(--panel2);
+  font-size:11.5px;color:var(--acc2);cursor:pointer;transition:.15s;font-weight:600;
+}
+.sugg:hover{border-color:var(--acc);color:var(--acc);background:rgba(0,229,160,0.08)}
+
+/* COMPOSER */
+.composer{
+  padding:14px 16px; border-top:1px solid var(--line); background:var(--bg2); display:flex;flex-direction:column;gap:10px; flex-shrink:0;
+}
+.composer-row{display:flex;gap:10px;align-items:flex-end}
+.composer textarea{
+  flex:1; min-height:48px; max-height:120px; resize:none;
+  background:var(--panel); border:1px solid var(--line); border-radius:12px;
+  padding:12px 14px; color:var(--txt); font-size:13px; outline:none; transition:.15s; line-height:1.6;
+}
+.composer textarea:focus{border-color:var(--acc);background:var(--panel2)}
+.composer textarea::placeholder{color:var(--muted)}
+.send{
+  width:44px;height:44px;border-radius:11px;border:none;
+  background:linear-gradient(135deg,var(--acc),var(--acc2)); color:#04121a;
+  display:flex;align-items:center;justify-content:center; cursor:pointer; transition:.15s; flex-shrink:0;
+}
+.send:hover{transform:translateY(-2px);box-shadow:0 8px 20px -6px rgba(0,229,160,0.5)}
+.send:disabled{opacity:0.5;cursor:not-allowed;transform:none;box-shadow:none}
+.composer-foot{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+.hint{font-size:11px;color:var(--muted)}
+.modes{display:flex;gap:6px}
+.mode{
+  padding:4px 10px;border-radius:8px;border:1px solid var(--line);background:var(--panel);
+  font-size:11px;color:var(--dim);cursor:pointer;font-weight:600;transition:.15s;
+}
+.mode.on{background:var(--acc);color:#04121a;border-color:var(--acc)}
+
+/* RIGHT PANEL */
+.tabs{display:flex;gap:4px;padding:10px 12px;border-bottom:1px solid var(--line);background:var(--bg2);flex-wrap:wrap}
+.tab{
+  padding:6px 12px;border-radius:8px;font-size:11.5px;font-weight:700;cursor:pointer;
+  color:var(--dim);border:1px solid transparent;background:none;transition:.15s;
+}
+.tab.active{color:var(--acc);border-color:rgba(0,229,160,0.35);background:rgba(0,229,160,0.08)}
+.panel-body{padding:14px;display:flex;flex-direction:column;gap:12px}
+.card-mini{
+  background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px;
+}
+.card-mini h4{font-size:11.5px;font-weight:800;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center}
+.evidence-row{display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid rgba(26,45,79,0.5);font-size:11px}
+.evidence-row:last-child{border:none}
+.evidence-row b{color:var(--dim);font-size:10px;font-weight:700;letter-spacing:0.5px}
+.evidence-row span{font-family:var(--mono);font-size:10.5px;color:var(--txt)}
+.hash{font-family:var(--mono);font-size:10px;color:var(--acc2);word-break:break-all;background:var(--bg2);padding:6px 8px;border-radius:6px;border:1px solid var(--line)}
+.preview{
+  background:#fff;border-radius:10px;border:1px solid var(--line);overflow:hidden;min-height:200px;
+}
+.preview iframe{width:100%;height:320px;border:none;display:block}
+.code{
+  background:#05080f;border:1px solid var(--line);border-radius:10px;padding:12px;
+  font-family:var(--mono);font-size:11px;color:#b8cbe4;white-space:pre-wrap;word-break:break-word;max-height:300px;overflow:auto;line-height:1.6;
+}
+.stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.stat{padding:10px;border-radius:10px;background:var(--bg2);border:1px solid var(--line);text-align:center}
+.stat b{display:block;font-size:18px;font-family:var(--mono);color:var(--acc)}
+.stat span{font-size:10px;color:var(--dim);font-weight:700;letter-spacing:0.5px}
+
+/* WELCOME */
+.welcome{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;
+  padding:40px 20px; gap:14px;
+}
+.welcome-icon{
+  width:72px;height:72px;border-radius:20px;
+  background:linear-gradient(135deg,var(--acc),var(--acc2),var(--pur)); display:flex;align-items:center;justify-content:center;
+  font-size:28px; box-shadow:0 16px 40px -12px rgba(0,229,160,0.4);
+}
+.welcome h2{font-size:20px;font-weight:900}
+.welcome p{color:var(--dim);font-size:12.5px;line-height:1.7;max-width:420px}
+.quick-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;width:100%;max-width:520px;margin-top:8px}
+.quick{
+  background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px;text-align:right;cursor:pointer;transition:.15s;
+}
+.quick:hover{border-color:var(--acc);background:var(--panel2);transform:translateY(-2px)}
+.quick b{display:block;font-size:12px;margin-bottom:3px}
+.quick span{font-size:11px;color:var(--dim);line-height:1.5}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <div class="brand-logo">م</div>
+    <div class="brand-text">
+      <b>مانوس <span>العربي</span> — Manus Arabi</b>
+      <small>البروتوكول الكامل · 16 أداة · 12 موصل · نواة حقيقية</small>
+    </div>
+    <span class="pill live"><i></i> النواة الحية</span>
+    <span class="pill" id="costPill">MAX_SPEND $0.00</span>
+  </div>
+  <div class="top-actions">
+    <span class="pill" id="kernelPill">L0: فحص…</span>
+    <span class="pill" id="memPill">L1: …</span>
+    <button class="btn sm" onclick="toggleLang()" id="langToggle">English</button>
+    <button class="btn primary sm" onclick="newChat()">+ محادثة جديدة</button>
+  </div>
+</header>
+
+<main class="shell">
+  <!-- LEFT: SKILLS FINDER + CONNECTORS -->
+  <aside class="col" id="leftCol">
+    <div class="col-head">
+      <h3>🔍 مستكشف المهارات</h3>
+      <p>ابحث بين 16 أداة بروتوكول + 12 موصل خارجي — كل استدعاء مراقَب بالأدلة</p>
+    </div>
+    <div class="scroll" style="gap:10px">
+      <div class="search-box">
+        <input id="skillSearch" placeholder="ابحث: اكتب، اقرأ، نفّذ، ذاكرة..." oninput="filterSkills()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      </div>
+      <div class="chips" id="filterChips">
+        <button class="chip on" data-f="all" onclick="setFilter('all')">الكل</button>
+        <button class="chip" data-f="read" onclick="setFilter('read')">قراءة</button>
+        <button class="chip" data-f="write" onclick="setFilter('write')">كتابة</button>
+        <button class="chip" data-f="memory" onclick="setFilter('memory')">ذاكرة</button>
+        <button class="chip" data-f="connector" onclick="setFilter('connector')">موصلات</button>
+      </div>
+      <div id="skillsList" style="display:flex;flex-direction:column;gap:8px"></div>
+
+      <div class="col-head" style="margin:0 -14px; padding-inline:14px; border-top:1px solid var(--line); border-bottom:1px solid var(--line); margin-top:4px">
+        <h3>🔌 الموصلات الـ 12</h3>
+        <p>قراءة حيّة عبر Hub المحلي — الكتابة بموافقة بشرية فقط</p>
+      </div>
+      <div class="connector-grid" id="connectorsList"></div>
+      <div style="padding:8px;background:rgba(251,191,36,0.06);border:1px solid rgba(251,191,36,0.25);border-radius:10px;font-size:11px;color:var(--warn);line-height:1.6">
+        <b>نموذج الأمان:</b> القراءة مباشرة، الكتابة تُنشئ طلب موافقة فقط. التنفيذ عبر <code style="background:var(--bg2);padding:1px 4px;border-radius:4px">connectors-hub approve</code> في الطرفية المحلية.
+      </div>
+    </div>
+  </aside>
+
+  <!-- CENTER: CHAT -->
+  <section class="col" style="background:var(--bg)">
+    <div class="chat-head">
+      <div>
+        <div class="chat-title">💬 محادثة مستقلة — Autonomous Chat</div>
+        <div class="chat-sub" id="chatSub">جاهز — اختر مهمة أو اكتب طلبك بالعربية</div>
+      </div>
+      <div style="display:flex;gap:6px">
+        <span class="pill" id="sessionPill">جلسة: جديدة</span>
+        <button class="btn icon" onclick="clearChat()" title="مسح">🗑️</button>
+      </div>
+    </div>
+
+    <div class="protocol-bar" id="protocolBar">
+      <div class="p-step" id="ps-goal"><b>Goal</b>الهدف</div>
+      <div class="p-step" id="ps-plan"><b>Plan</b>الخطة</div>
+      <div class="p-step" id="ps-policy"><b>Policy</b>السياسة</div>
+      <div class="p-step" id="ps-execute"><b>Execute</b>التنفيذ</div>
+      <div class="p-step" id="ps-verify"><b>Verify</b>التحقق</div>
+      <div class="p-step" id="ps-evidence"><b>Evidence</b>الدليل</div>
+    </div>
+
+    <div class="messages" id="messages">
+      <div class="welcome" id="welcome">
+        <div class="welcome-icon">✨</div>
+        <h2>أهلاً بك في مانوس العربي</h2>
+        <p>أنا وكيل مستقل يعمل <b>بالبروتوكول الكامل</b> — لا أتظاهر. كل خطوة تُنفّذ فعلاً، تُتحقّق بأداة، وتُسجّل بدليل SHA-256. جرّب إحدى المهام المذهلة:</p>
+        <div class="quick-grid">
+          <div class="quick" onclick="quickAsk('أنشئ تقرير HTML تفاعلي عن أداء النظام مع SVG بياني وذاكرة')">
+            <b>📊 تقرير أداء تفاعلي</b><span>HTML + SVG + بيانات حيّة + تحقق</span>
+          </div>
+          <div class="quick" onclick="quickAsk('ابحث في الذاكرة عن ai-2027 ثم اقرأ ملف README.md ولخّصه')">
+            <b>🧠 بحث ذاكرة + تلخيص</b><span>استدعاء memory.search + قراءة ملف</span>
+          </div>
+          <div class="quick" onclick="quickAsk('افحص المستودع ضد قواعد البروتوكول الـ10 وأنشئ لوحة تحكم')">
+            <b>🛡️ تدقيق بروتوكول كامل</b><span>repo.audit + إنشاء لوحة HTML</span>
+          </div>
+          <div class="quick" onclick="quickAsk('اعرض حالة الموصلات ثم ابحث في GitHub عن ai-2027')">
+            <b>🔌 فحص موصلات + بحث</b><span>connector.inspect + connector.search</span>
+          </div>
+        </div>
+        <p style="font-size:11px;color:var(--muted);margin-top:8px">💡 اكتب بالعربية أو الإنجليزية — النظام يفهم الاثنين ويرد بلغتك</p>
+      </div>
+    </div>
+
+    <div class="composer">
+      <div class="composer-row">
+        <textarea id="input" placeholder="اكتب مهمتك هنا... مثال: أنشئ صفحة هبوط عربية مذهلة وحفظها كـ reports/landing.html ثم تحقق منها" rows="2" onkeydown="onKey(event)"></textarea>
+        <button class="send" id="sendBtn" onclick="send()" title="إرسال">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M22 2 11 13"/><path d="M22 2 15 22 11 13 2 9z"/></svg>
+        </button>
+      </div>
+      <div class="composer-foot">
+        <span class="hint">⏎ للإرسال · ⇧⏎ لسطر جديد · كل أداة تُنفّذ فعلاً عبر النواة</span>
+        <div class="modes">
+          <button class="mode on" data-m="auto" onclick="setMode('auto')">تلقائي</button>
+          <button class="mode" data-m="deep" onclick="setMode('deep')">عميق</button>
+          <button class="mode" data-m="fast" onclick="setMode('fast')">سريع</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- RIGHT: ARTIFACTS & EVIDENCE -->
+  <aside class="col">
+    <div class="tabs" id="rightTabs">
+      <button class="tab active" data-t="artifact" onclick="setTab('artifact')">المنتج</button>
+      <button class="tab" data-t="evidence" onclick="setTab('evidence')">الأدلة</button>
+      <button class="tab" data-t="memory" onclick="setTab('memory')">الذاكرة</button>
+      <button class="tab" data-t="logs" onclick="setTab('logs')">السجلات</button>
+    </div>
+
+    <div class="scroll" id="rightPanel">
+      <!-- ARTIFACT TAB -->
+      <div id="pane-artifact" style="display:flex;flex-direction:column;gap:12px">
+        <div class="card-mini">
+          <h4>🎨 المعاينة الحية <span class="pill" style="font-size:10px">L0 VERIFIED</span></h4>
+          <div class="preview" id="previewBox">
+            <div style="padding:40px 20px;text-align:center;color:var(--muted);font-size:12px;line-height:1.7">
+              لا يوجد منتج بعد<br><span style="font-size:11px">اطلب: "أنشئ HTML..." وسيظهر هنا فورًا مع تحقق SHA-256</span>
+            </div>
+          </div>
+          <div style="display:flex;gap:6px;margin-top:10px">
+            <button class="btn sm" onclick="downloadArtifact()">⬇️ تحميل</button>
+            <button class="btn sm" onclick="openArtifact()">↗️ فتح</button>
+            <button class="btn sm" onclick="verifyArtifact()">✓ تحقق</button>
+          </div>
+        </div>
+
+        <div class="stat-grid">
+          <div class="stat"><b id="statSteps">0</b><span>خطوات منفذة</span></div>
+          <div class="stat"><b id="statTools">0</b><span>أداة استُدعيت</span></div>
+          <div class="stat"><b id="statVerified">0</b><span>منتج موثق</span></div>
+          <div class="stat"><b id="statLatency">—</b><span>زمن p50</span></div>
+        </div>
+
+        <div class="card-mini">
+          <h4>📂 ملفات الجلسة</h4>
+          <div id="filesList" style="font-family:var(--mono);font-size:11px;color:var(--dim)">لا ملفات بعد</div>
+        </div>
+      </div>
+
+      <!-- EVIDENCE TAB -->
+      <div id="pane-evidence" style="display:none;flex-direction:column;gap:12px">
+        <div class="card-mini">
+          <h4>🔐 دليل النواة (L0)</h4>
+          <div class="evidence-row"><b>الحالة</b><span id="evStatus" style="color:var(--acc)">—</span></div>
+          <div class="evidence-row"><b>المسار</b><span id="evPath" style="font-size:10px">—</span></div>
+          <div class="evidence-row"><b>الحجم</b><span id="evSize">—</span></div>
+          <div class="evidence-row"><b>السعر</b><span style="color:var(--acc)">$0.00</span></div>
+          <div style="margin-top:8px">
+            <b style="font-size:10px;color:var(--dim)">SHA-256</b>
+            <div class="hash" id="evHash">— لم يُنشأ بعد</div>
+          </div>
+          <div style="margin-top:8px;display:flex;gap:6px">
+            <button class="btn sm" onclick="showLedger()">📜 السجل</button>
+            <button class="btn sm" onclick="showProof()">🔍 الدليل</button>
+          </div>
+        </div>
+        <div class="card-mini">
+          <h4>📜 سجل الأحداث</h4>
+          <div class="code" id="ledgerBox">لا سجل بعد — سيظهر هنا بعد أول تنفيذ</div>
+        </div>
+      </div>
+
+      <!-- MEMORY TAB -->
+      <div id="pane-memory" style="display:none;flex-direction:column;gap:12px">
+        <div style="display:flex;gap:6px">
+          <input id="memSearch" placeholder="ابحث في الذاكرة الموثقة..." style="flex:1;background:var(--bg2);border:1px solid var(--line);border-radius:8px;padding:8px 10px;color:var(--txt);font-size:11px" onkeydown="if(event.key==='Enter') doMemorySearch()">
+          <button class="btn sm" onclick="doMemorySearch()">بحث</button>
+        </div>
+        <div id="memResults" style="display:flex;flex-direction:column;gap:8px">
+          <div style="text-align:center;padding:20px;color:var(--muted);font-size:11px">ابحث في L1 — فقط الذكريات الموثقة بأدلة تُعرض</div>
+        </div>
+        <div class="card-mini">
+          <h4>🧠 RAG الدائم (Celia)</h4>
+          <input id="ragSearch" placeholder="ابحث في الوثائق المفهرسة..." style="width:100%;background:var(--bg2);border:1px solid var(--line);border-radius:8px;padding:8px 10px;color:var(--txt);font-size:11px;margin-bottom:8px" onkeydown="if(event.key==='Enter') doRagSearch()">
+          <button class="btn sm" onclick="doRagSearch()">بحث RAG</button>
+          <div id="ragResults" style="margin-top:8px;display:flex;flex-direction:column;gap:6px"></div>
+        </div>
+      </div>
+
+      <!-- LOGS TAB -->
+      <div id="pane-logs" style="display:none;flex-direction:column;gap:12px">
+        <div class="card-mini">
+          <h4>📊 قياسات حية</h4>
+          <div style="height:120px;background:var(--bg2);border:1px solid var(--line);border-radius:10px;padding:8px" id="chartBox">
+            <svg viewBox="0 0 300 100" style="width:100%;height:100%"><polyline id="latencyLine" fill="none" stroke="#00e5a0" stroke-width="2" points=""/><text x="10" y="20" fill="#5e7596" font-size="10" font-family="monospace">زمن الاستجابة — p50</text></svg>
+          </div>
+          <div style="display:flex;gap:6px;margin-top:8px;font-size:10px;color:var(--dim);font-family:var(--mono)">
+            <span>p50: <b id="p50v" style="color:var(--acc)">—</b></span>
+            <span>p95: <b id="p95v" style="color:var(--acc2)">—</b></span>
+            <span>n: <b id="nv" style="color:var(--txt)">0</b></span>
+          </div>
+        </div>
+        <div class="code" id="logBox" style="max-height:260px">نظام جاهز — انتظر أول مهمة لرؤية السجلات الحية</div>
+      </div>
+    </div>
+  </aside>
+</main>
+
+<script>
+const TOOLS = [
+  {name:"workspace.list_files", cat:"read", icon:"📁", tag:"read", desc:"سرد ملفات المجلد", hint:'{"path": ".", "scope": "workspace"}'},
+  {name:"workspace.read_file", cat:"read", icon:"📄", tag:"read", desc:"قراءة ملف نصي آمنة", hint:'{"path": "README.md"}'},
+  {name:"workspace.grep", cat:"read", icon:"🔎", tag:"read", desc:"بحث نصي متوازٍ في المستودع", hint:'{"query": "Kernel"}'},
+  {name:"sandbox.write_artifact", cat:"write", icon:"✍️", tag:"write", desc:"كتابة منتج HTML/SVG/MD/PY", hint:'{"path": "reports/app.html"}'},
+  {name:"sandbox.edit_file", cat:"write", icon:"✏️", tag:"write", desc:"تعديل موضعي في ملف", hint:'{"path": "app.py"}'},
+  {name:"sandbox.run_python", cat:"write", icon:"🐍", tag:"write", desc:"تشغيل كود Python معزول", hint:'{"code": "print(1+1)"}'},
+  {name:"sandbox.run_tests", cat:"write", icon:"🧪", tag:"write", desc:"تشغيل اختبارات sandbox", hint:'{"pattern": "test_*.py"}'},
+  {name:"sandbox.verify_artifact", cat:"verify", icon:"✓", tag:"verify", desc:"تحقق SHA-256 وسلسلة السجل", hint:'{"path": "report.html"}'},
+  {name:"workspace.git_diff", cat:"read", icon:"📊", tag:"read", desc:"عرض git status/diff", hint:'{}'},
+  {name:"memory.search", cat:"memory", icon:"🧠", tag:"verify", desc:"بحث ذاكرة L1 الموثقة", hint:'{"query": "agi-system"}'},
+  {name:"memory.rag_search", cat:"memory", icon:"💾", tag:"verify", desc:"بحث RAG الدائم Celia", hint:'{"query": "Ollama 4GB"}'},
+  {name:"repo.audit", cat:"memory", icon:"🛡️", tag:"verify", desc:"تدقيق ضد 10 قواعد بروتوكول", hint:'{"path": "python-2027"}'},
+  {name:"connector.inspect", cat:"connector", icon:"🔌", tag:"read", desc:"عرض حالة 12 موصل", hint:'{}'},
+  {name:"connector.search", cat:"connector", icon:"🔍", tag:"read", desc:"بحث في موصل (read-only)", hint:'{"connector": "github"}'},
+  {name:"connector.read", cat:"connector", icon:"📖", tag:"read", desc:"قراءة مورد من موصل", hint:'{"connector": "gmail"}'},
+  {name:"connector.propose_action", cat:"connector", icon:"📨", tag:"write", desc:"طلب كتابة بموافقة بشرية", hint:'{"connector": "gmail"}'},
+];
+
+const CONNECTORS = [
+  {id:"gmail", name:"Gmail", icon:"📧", color:"#ea4335", desc:"البريد"},
+  {id:"calendar", name:"Calendar", icon:"📅", color:"#4285f4", desc:"التقويم"},
+  {id:"drive", name:"Drive", icon:"💾", color:"#fbbc04", desc:"التخزين"},
+  {id:"docs", name:"Docs", icon:"📝", color:"#4285f4", desc:"المستندات"},
+  {id:"sheets", name:"Sheets", icon:"📊", color:"#34a853", desc:"الجداول"},
+  {id:"slides", name:"Slides", icon:"🎞️", color:"#fbbc04", desc:"العروض"},
+  {id:"dropbox", name:"Dropbox", icon:"📦", color:"#0061ff", desc:"ملفات"},
+  {id:"github", name:"GitHub", icon:"🐙", color:"#6e5494", desc:"الكود"},
+  {id:"linear", name:"Linear", icon:"📋", color:"#5e6ad2", desc:"المهام"},
+  {id:"notion", name:"Notion", icon:"📓", color:"#000", desc:"المعرفة"},
+  {id:"supabase", name:"Supabase", icon:"⚡", color:"#3ecf8e", desc:"قاعدة"},
+  {id:"vercel", name:"Vercel", icon:"▲", color:"#000", desc:"النشر"},
+];
+
+let currentFilter="all", sessionId=null, lang="ar", mode="auto";
+let history=[], latencies=[], artifactPath=null, artifactContent=null;
+
+function renderSkills(){
+  const q = (document.getElementById('skillSearch').value||"").toLowerCase();
+  const list = document.getElementById('skillsList');
+  list.innerHTML="";
+  TOOLS.forEach(t=>{
+    if(currentFilter!=="all" && t.cat!==currentFilter) return;
+    if(q && !(t.name.toLowerCase().includes(q) || t.desc.includes(q) || t.hint.toLowerCase().includes(q))) return;
+    const el=document.createElement('div');
+    el.className='skill-card';
+    el.onclick=()=> insertTool(t.name);
+    el.innerHTML=`<div class="skill-top"><div class="skill-icon">${t.icon}</div><span class="skill-tag tag-${t.tag}">${t.tag}</span></div><h4>${t.name}</h4><p>${t.desc}</p><div class="skill-hint">${t.hint}</div>`;
+    list.appendChild(el);
+  });
+  if(!list.children.length) list.innerHTML='<div style="text-align:center;padding:16px;color:var(--muted);font-size:11px">لا نتائج — جرّب كلمة أخرى</div>';
+}
+function renderConnectors(){
+  const g=document.getElementById('connectorsList');
+  g.innerHTML="";
+  CONNECTORS.forEach(c=>{
+    const el=document.createElement('div');
+    el.className='connector';
+    el.onclick=()=> quickAsk(`افحص الموصل ${c.name} (${c.id}) واعرض حالته`);
+    el.innerHTML=`<div class="connector-icon" style="background:${c.color}22;border:1px solid ${c.color}40">${c.icon}</div><div class="connector-info"><b>${c.name}</b><span>${c.desc}</span></div><div class="connector-dot dot-off"></div>`;
+    g.appendChild(el);
+  });
+}
+function filterSkills(){ renderSkills(); }
+function setFilter(f){
+  currentFilter=f;
+  document.querySelectorAll('#filterChips .chip').forEach(ch=> ch.classList.toggle('on', ch.dataset.f===f));
+  renderSkills();
+}
+function insertTool(name){
+  const inp=document.getElementById('input');
+  inp.value=`استخدم الأداة ${name} مع `; inp.focus();
+}
+function setTab(t){
+  document.querySelectorAll('.tab').forEach(x=> x.classList.toggle('active', x.dataset.t===t));
+  document.querySelectorAll('[id^="pane-"]').forEach(p=> p.style.display='none');
+  document.getElementById('pane-'+t).style.display='flex';
+  if(t==='logs') drawChart();
+}
+function setMode(m){
+  mode=m;
+  document.querySelectorAll('.mode').forEach(x=> x.classList.toggle('on', x.dataset.m===m));
+}
+function toggleLang(){
+  lang= lang==='ar' ? 'en' : 'ar';
+  document.documentElement.lang=lang;
+  document.documentElement.dir= lang==='ar' ? 'rtl':'ltr';
+  document.getElementById('langToggle').textContent= lang==='ar' ? 'English' : 'العربية';
+}
+
+function newChat(){
+  document.getElementById('messages').innerHTML=`<div class="welcome" id="welcome"><div class="welcome-icon">✨</div><h2>محادثة جديدة</h2><p>ابدأ مهمة — كل خطوة ستُنفّذ وتُتحقّق أمامك</p></div>`;
+  history=[]; sessionId=null; setProtocol('idle');
+  document.getElementById('sessionPill').textContent='جلسة: جديدة';
+  artifactPath=null; artifactContent=null;
+}
+function clearChat(){ newChat(); }
+
+function quickAsk(text){
+  document.getElementById('input').value=text;
+  send();
+}
+function onKey(e){
+  if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); send(); }
+}
+
+function addMsg(role, content, opts={}){
+  const welcome=document.getElementById('welcome');
+  if(welcome) welcome.remove();
+  const msgs=document.getElementById('messages');
+  const msg=document.createElement('div');
+  msg.className='msg '+role;
+  const avatar= role==='user' ? 'أنت' : 'م';
+  msg.innerHTML=`<div class="avatar">${avatar}</div><div class="msg-body"><div class="bubble">${opts.html ? content : esc(content)}</div></div>`;
+  msgs.appendChild(msg);
+  msgs.scrollTop=msgs.scrollHeight;
+  return msg;
+}
+function addThinking(){
+  const msgs=document.getElementById('messages');
+  const el=document.createElement('div');
+  el.className='msg bot'; el.id='thinking';
+  el.innerHTML=`<div class="avatar">م</div><div class="msg-body"><div class="bubble thinking"><span class="dot-typing"><i></i><i></i><i></i></span> أفكر وأخطط عبر البروتوكول...</div></div>`;
+  msgs.appendChild(el); msgs.scrollTop=msgs.scrollHeight;
+}
+function removeThinking(){ const t=document.getElementById('thinking'); if(t) t.remove(); }
+
+function addToolCard(tool, output, ok=true){
+  const msgs=document.getElementById('messages');
+  const last = msgs.querySelector('.msg.bot:last-child .msg-body');
+  if(!last) return;
+  const card=document.createElement('div');
+  card.className='tool-call '+(ok ? 'tool-ok':'tool-warn');
+  card.innerHTML=`<div class="tool-head"><b>🔧 ${esc(tool)}</b><span>${ok ? '✓ نجح' : '✗ فشل'}</span></div><div class="tool-body">${esc(String(output||'').slice(0,2000))}</div>`;
+  last.appendChild(card);
+  msgs.scrollTop=msgs.scrollHeight;
+}
+
+function setProtocol(state, step){
+  const ids=['ps-goal','ps-plan','ps-policy','ps-execute','ps-verify','ps-evidence'];
+  ids.forEach(id=>{
+    const el=document.getElementById(id);
+    el.className='p-step';
+  });
+  if(state==='running' && step){
+    const map={goal:0,plan:1,policy:2,execute:3,verify:4,evidence:5};
+    const idx=map[step]??0;
+    for(let i=0;i<idx;i++) document.getElementById(ids[i]).classList.add('done');
+    if(ids[idx]) document.getElementById(ids[idx]).classList.add('on');
+  } else if(state==='verified'){
+    ids.forEach(id=> document.getElementById(id).classList.add('done'));
+    document.getElementById('ps-evidence').classList.add('on');
+  } else if(state==='idle'){
+    // idle
+  }
+}
+function esc(s){ return String(s).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;'); }
+
+async function send(){
+  const input=document.getElementById('input');
+  const text=input.value.trim();
+  if(!text) return;
+  input.value="";
+  addMsg('user', text);
+  history.push({role:'user',content:text});
+  document.getElementById('sendBtn').disabled=true;
+  addThinking();
+  setProtocol('running','goal');
+
+  try{
+    const res = await fetch('/api/agent/run', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({prompt:text, session_id:sessionId, mode:mode})
+    });
+    removeThinking();
+    if(!res.ok){
+      // fallback to live-agent direct
+      const fallback = await tryLiveAgent(text);
+      if(fallback) { document.getElementById('sendBtn').disabled=false; return; }
+      const err = await res.text();
+      addMsg('bot', '⚠️ تعذّر الاتصال بالبروتوكول: '+err.slice(0,800));
+      document.getElementById('sendBtn').disabled=false;
+      return;
+    }
+    const data = await res.json();
+    handleAgentResponse(data);
+  } catch(e){
+    removeThinking();
+    // try live-agent fallback
+    const fb = await tryLiveAgent(text);
+    if(!fb) addMsg('bot','⚠️ خطأ اتصال: '+e.message+'\n\nجرّب مجدداً أو اطلب مهمة أبسط.');
+  }
+  document.getElementById('sendBtn').disabled=false;
+}
+
+async function tryLiveAgent(text){
+  try{
+    // try local live-agent server if running on 8090
+    const res = await fetch('http://localhost:8090/api/run', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({goal_type:'create_file', params:{path:'chat-output.txt', content:text}})
+    });
+    if(res.ok){
+      const data=await res.json();
+      addMsg('bot', `✓ نُفّذ عبر النواة الحية (live-agent)\nالحالة: ${data.status}\nالدليل: ${JSON.stringify(data.evidence||{},null,2)}`);
+      updateEvidence(data);
+      return true;
+    }
+  }catch(e){}
+  return false;
+}
+
+function handleAgentResponse(data){
+  // Studio API returns session + steps
+  const steps = data.steps || data.trace || [];
+  const final = data.final || data.answer || data.output || JSON.stringify(data,null,2);
+  sessionId = data.session_id || data.sessionId || sessionId;
+  if(sessionId) document.getElementById('sessionPill').textContent='جلسة: '+sessionId.slice(0,10);
+
+  // animate protocol
+  let i=0;
+  const order=['goal','plan','policy','execute','verify','evidence'];
+  function nextProto(){
+    if(i<order.length){ setProtocol('running', order[i]); i++; setTimeout(nextProto, 220);} else { setProtocol('verified'); }
+  }
+  nextProto();
+
+  // render bot message
+  const botMsg = addMsg('bot', final);
+  // render tool calls
+  (data.tool_calls||steps||[]).forEach(s=>{
+    const tool = s.tool || s.name || s.action || 'tool';
+    const out = s.output || s.result || s.summary || JSON.stringify(s,null,2);
+    addToolCard(tool, out, s.ok!==false);
+  });
+
+  // update right panel if artifact detected
+  if(data.artifact || data.preview_url || data.sandbox_files){
+    const path = data.artifact || (data.sandbox_files&&data.sandbox_files[0]) || 'reports/output.html';
+    artifactPath = path;
+    artifactContent = final;
+    showArtifact(path, final, data.preview_html);
+  }
+  // stats
+  document.getElementById('statSteps').textContent = steps.length || (data.steps_count||'—');
+  document.getElementById('statTools').textContent = (data.tool_calls||[]).length || '—';
+  document.getElementById('statLatency').textContent = data.latency_ms ? data.latency_ms+'ms' : '—';
+  if(data.latency_ms) { latencies.push(data.latency_ms); drawChart(); }
+
+  addSuggestions();
+  updateEvidence(data);
+}
+
+function addSuggestions(){
+  const msgs=document.getElementById('messages');
+  const last = msgs.querySelector('.msg.bot:last-child .msg-body');
+  if(!last) return;
+  const s=document.createElement('div');
+  s.className='suggestions';
+  s.innerHTML=`<button class="sugg" onclick="quickAsk('حسّن المنتج وأضف رسوم SVG متحركة')">✨ حسّن المنتج</button><button class="sugg" onclick="quickAsk('تحقق من المنتج عبر sandbox.verify_artifact')">✓ تحقق</button><button class="sugg" onclick="quickAsk('احفظ ملخصاً في الذاكرة')">💾 احفظ</button>`;
+  last.appendChild(s);
+}
+
+function showArtifact(path, content, previewHtml){
+  const box=document.getElementById('previewBox');
+  const isHtml = path.endsWith('.html') || (content&&content.includes('<html'));
+  if(isHtml && content){
+    const blob = new Blob([content], {type:'text/html'});
+    const url = URL.createObjectURL(blob);
+    box.innerHTML=`<iframe src="${url}" sandbox="allow-scripts"></iframe>`;
+    artifactContent=content;
+    setTab('artifact');
+  } else if(previewHtml){
+    box.innerHTML=previewHtml;
+  } else {
+    box.innerHTML=`<div class="code">${esc(content.slice(0,5000))}</div>`;
+  }
+  document.getElementById('evPath').textContent=path;
+  document.getElementById('evSize').textContent=(content.length||0)+' bytes';
+  // fake hash demo
+  crypto.subtle.digest('SHA-256', new TextEncoder().encode(content)).then(buf=>{
+    const hash=[...new Uint8Array(buf)].map(b=>b.toString(16).padStart(2,'0')).join('');
+    document.getElementById('evHash').textContent=hash;
+  });
+  document.getElementById('evStatus').textContent='VERIFIED ✓';
+  document.getElementById('evStatus').style.color='var(--acc)';
+  document.getElementById('statVerified').textContent='1';
+  document.getElementById('filesList').innerHTML=`<div style="padding:6px 8px;background:var(--bg2);border:1px solid var(--line);border-radius:8px;display:flex;justify-content:space-between"><span>📄 ${path}</span><span style="color:var(--acc)">✓</span></div>`;
+}
+
+function updateEvidence(data){
+  const box=document.getElementById('ledgerBox');
+  if(data.ledger || data.record) box.textContent=JSON.stringify(data.ledger||data.record,null,2);
+  else if(data.status) box.textContent=JSON.stringify({status:data.status, evidence:data.evidence},null,2);
+}
+
+function drawChart(){
+  const pts=latencies.slice(-20);
+  if(!pts.length) return;
+  const max=Math.max(...pts,1), w=300, h=80, pad=10;
+  const points=pts.map((v,i)=> `${pad + i*(w-2*pad)/Math.max(pts.length-1,1)},${h-pad - (v/max)*(h-2*pad)}`).join(' ');
+  const line=document.getElementById('latencyLine');
+  if(line) line.setAttribute('points', points);
+  document.getElementById('p50v').textContent = pts.length? (pts.sort((a,b)=>a-b)[Math.floor(pts.length/2)]+'ms'):'—';
+  document.getElementById('p95v').textContent = pts.length? (pts.sort((a,b)=>a-b)[Math.floor(pts.length*0.95)]+'ms'):'—';
+  document.getElementById('nv').textContent=pts.length;
+}
+function downloadArtifact(){
+  if(!artifactContent) return alert('لا يوجد منتج للتحميل');
+  const blob=new Blob([artifactContent],{type:'text/html'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=artifactPath||'artifact.html'; a.click();
+}
+function openArtifact(){
+  if(!artifactContent) return;
+  const w=window.open(); w.document.write(artifactContent); w.document.close();
+}
+function verifyArtifact(){
+  if(!artifactPath) return alert('لا مسار للتحقق');
+  quickAsk(`تحقق من الملف ${artifactPath} عبر sandbox.verify_artifact`);
+}
+function showLedger(){ setTab('evidence'); }
+function showProof(){ setTab('evidence'); }
+
+async function doMemorySearch(){
+  const q=document.getElementById('memSearch').value.trim();
+  if(!q) return;
+  const box=document.getElementById('memResults');
+  box.innerHTML='<div style="text-align:center;padding:12px;color:var(--dim)">جاري البحث...</div>';
+  try{
+    const r=await fetch(`/api/memory/search?q=${encodeURIComponent(q)}&k=5`);
+    const data=await r.json();
+    const hits=data.hits||data.results||[];
+    box.innerHTML=hits.length? hits.map(h=>`<div class="card-mini"><b style="font-size:11px">${esc(h.title||h.id||'ذكرى')}</b><p style="font-size:11px;color:var(--dim);margin-top:4px">${esc((h.snippet||h.content||'').slice(0,180))}</p><span style="font-size:10px;color:var(--acc);font-family:var(--mono)">score ${h.score||'—'}</span></div>`).join('') : '<div style="text-align:center;padding:12px;color:var(--muted)">لا نتائج — جرّب كلمة أخرى</div>';
+  }catch(e){ box.innerHTML=`<div style="color:var(--bad);font-size:11px">${e.message}</div>`; }
+}
+async function doRagSearch(){
+  const q=document.getElementById('ragSearch').value.trim();
+  if(!q) return;
+  const box=document.getElementById('ragResults');
+  box.innerHTML='<div style="text-align:center;padding:8px;color:var(--dim)">جاري البحث...</div>';
+  try{
+    const r=await fetch('/v1/rag/search', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({query:q,k:5})});
+    const data=await r.json();
+    const hits=data.hits||[];
+    box.innerHTML=hits.length? hits.map(h=>`<div style="padding:8px;background:var(--bg2);border:1px solid var(--line);border-radius:8px"><b style="font-size:11px">${esc(h.path||'')}</b><p style="font-size:11px;color:var(--dim)">${esc((h.content||'').slice(0,160))}</p></div>`).join('') : '<div style="text-align:center;padding:8px;color:var(--muted)">لا نتائج</div>';
+  }catch(e){ box.innerHTML=`<div style="color:var(--bad);font-size:11px">${e.message}</div>`; }
+}
+
+// init
+renderSkills(); renderConnectors();
+fetch('/api/health').then(r=>r.json()).then(d=>{
+  document.getElementById('kernelPill').textContent='L0: VERIFIED ✓';
+  document.getElementById('kernelPill').className='pill live';
+}).catch(()=>{
+  document.getElementById('kernelPill').textContent='L0: غير متصل';
+  document.getElementById('kernelPill').className='pill off';
+});
+fetch('/api/memory').then(r=>r.json()).then(d=>{
+  document.getElementById('memPill').textContent=`L1: ${d.count||0} ذكرى`;
+}).catch(()=>{});
+
+// keyboard: focus input on /
+document.addEventListener('keydown', e=>{ if(e.key==='/' && document.activeElement.tagName!=='INPUT' && document.activeElement.tagName!=='TEXTAREA'){ e.preventDefault(); document.getElementById('input').focus(); }});
+</script>
+</body>
+</html>

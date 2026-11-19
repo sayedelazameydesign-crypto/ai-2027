@@ -38,6 +38,11 @@ launch/evidence/
 
 # L1 memory runtime artefacts
 memory/out/
+# Manus Arabi runtime (never commit sandboxes)
+manus-arabic/runs/
+manus-arabic/sandboxes/
+manus-arabic/memory.db
+manus-arabic/*.log
 memory/__pycache__/
 
 # Render Phase 0 audit output: contains real service IDs, owner IDs and repo
