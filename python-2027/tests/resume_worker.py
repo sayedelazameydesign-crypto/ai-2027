@@ -28,6 +28,9 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
+if __package__ in (None, ""):  # run as a script: make ``src`` importable
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+
 _SRC = Path(__file__).resolve().parents[1] / "src"
 sys.path.insert(0, str(_SRC))
 

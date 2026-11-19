@@ -30,6 +30,8 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -43,6 +45,26 @@ DEFAULT_REPORT = ROOT / "launch" / "evidence" / "persistent-task-gate.json"
 TASK = "PAP persistent-task gate run"
 MAX_STEPS = 4
 CRASH_ON_STEP = 3
+
+
+def resolve_interpreter(value: str) -> str:
+    """Resolve the worker interpreter against the caller's cwd, or leave it for the check.
+
+    ``--python .venv/bin/python`` is what a human types from ``python-2027/``; the
+    worker runs with ``cwd=repo root``, so a relative path has to be resolved here.
+    """
+    if os.sep in value or (os.altsep and os.altsep in value):
+        # ``absolute()``, never ``resolve()``: a venv's ``bin/python`` is a symlink
+        # to the base interpreter, and following it leaves the venv (and its
+        # site-packages) behind.
+        return str(Path(value).expanduser().absolute())
+    return shutil.which(value) or value
+
+
+def _missing_interpreter(python: str) -> str:
+    if os.sep in python and not Path(python).is_file():
+        return f"interpreter not found: {python}"
+    return ""
 
 
 @dataclass
@@ -144,6 +166,10 @@ def run_gate(*, python: str, worker: Path, work: Path) -> GateResult:
 
     if not worker.is_file():
         result.error = f"worker not found: {worker}"
+        return result
+    missing = _missing_interpreter(python)
+    if missing:
+        result.error = missing
         return result
     work.mkdir(parents=True, exist_ok=True)
 
@@ -328,7 +354,10 @@ def main(argv: list[str] | None = None) -> int:
 
     owned_temp = args.work_dir is None
     work = args.work_dir or Path(tempfile.mkdtemp(prefix="pap-persistent-task-"))
-    result = run_gate(python=args.python, worker=args.worker, work=work)
+    try:
+        result = run_gate(python=resolve_interpreter(args.python), worker=args.worker, work=work)
+    except Exception as exc:  # noqa: BLE001 - a crash must still leave evidence
+        result = GateResult(error=f"{type(exc).__name__}: {exc}")
 
     try:
         write_report(result, args.report)
@@ -344,6 +373,14 @@ def main(argv: list[str] | None = None) -> int:
 
     if owned_temp and not args.json:
         print(f"run directory kept for inspection: {work}")
+
+    # Opt-in: ``::error::`` marks the *step* as failed, which is right for a real
+    # gate run and wrong for the tests that deliberately provoke a FAIL verdict.
+    if not result.ok and os.environ.get("PAP_GATE_ANNOTATE") == "1":
+        reason = result.error or "; ".join(
+            f"{check.name}: {check.detail}" for check in result.checks if not check.ok
+        )
+        print(f"::error title=PAP-2027 persistent-task gate::{reason[:900]}")
 
     if args.assert_ok and not result.ok:
         return 1
