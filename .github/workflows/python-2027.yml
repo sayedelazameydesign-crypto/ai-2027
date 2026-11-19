@@ -285,11 +285,16 @@ jobs:
               for p in data["probes"]:
                   detail = str(p.get("error") or ("ok" if p.get("ok") else "")).replace("|", "/")[:120]
                   lines.append(f"| `{p['provider']}` | `{p['model']}` | `{p['credential_state']}` | `{p['status']}` | {p['latency_ms']} ms | {detail} |")
-              compact = ", ".join(
-                  f"{p['provider']}={p['status']} ({p['credential_state']})" for p in data["probes"]
-              )
+              compact_parts = []
+              for p in data["probes"]:
+                  item = f"{p['provider']}({p['model']})={p['status']} ({p['credential_state']})"
+                  if not p.get("ok") and p.get("error"):
+                      err = " ".join(str(p["error"]).split())[:80]
+                      item += f" [{err}]"
+                  compact_parts.append(item)
+              compact = "; ".join(compact_parts)
               level = "error" if (os.environ.get("AI2027_REQUIRE_LIVE") == "true" and not data["live_succeeded"]) else "notice"
-              print(f"::{level} title=ai2027-py27 live::{compact} | routed={routed['provider']}")
+              print(f"::{level} title=ai2027-py27 live::{compact} | routed={routed['provider']}"[:950])
           if summary_path:
               with open(summary_path, "a", encoding="utf-8") as fh:
                   fh.write("\n".join(lines) + "\n")
@@ -314,7 +319,7 @@ jobs:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           GEMINI_MODEL: ${{ vars.GEMINI_MODEL || 'gemini-2.5-flash' }}
-          NVIDIA_MODEL: ${{ vars.NVIDIA_MODEL || 'meta/llama-3.3-70b-instruct' }}
+          NVIDIA_MODEL: ${{ inputs.nvidia_model || vars.NVIDIA_MODEL || 'meta/llama-3.3-70b-instruct' }}
           GROQ_MODEL: ${{ vars.GROQ_MODEL || 'openai/gpt-oss-20b' }}
           OPENROUTER_MODEL: ${{ vars.OPENROUTER_MODEL || 'openrouter/free' }}
           AI2027_MAX_SPEND_USD: "0"

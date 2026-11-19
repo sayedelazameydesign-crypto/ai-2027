@@ -86,6 +86,8 @@ def _classify(status: int | None, error: str | None) -> str:
         return "auth_or_permission"
     if status == 404:
         return "model_not_found"
+    if status == 410:
+        return "model_retired"
     if status == 429:
         return "quota_or_rate_limit"
     if status == 400:
@@ -106,7 +108,13 @@ def _parse_text(raw: bytes) -> tuple[str | None, dict[str, int]]:
     if not isinstance(choices, list) or not choices or not isinstance(choices[0], dict):
         return None, {}
     message = choices[0].get("message")
-    text = message.get("content") if isinstance(message, dict) else None
+    text: str | None = None
+    if isinstance(message, dict):
+        for key in ("content", "reasoning_content", "reasoning"):
+            candidate = message.get(key)
+            if isinstance(candidate, str) and candidate.strip():
+                text = candidate
+                break
     usage_data = data.get("usage")
     usage = (
         {
@@ -117,7 +125,7 @@ def _parse_text(raw: bytes) -> tuple[str | None, dict[str, int]]:
         if isinstance(usage_data, dict)
         else {}
     )
-    return (text if isinstance(text, str) and text.strip() else None), usage
+    return text, usage
 
 
 def check(

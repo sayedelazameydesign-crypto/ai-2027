@@ -392,3 +392,42 @@ def test_the_gate_does_not_annotate_under_a_test_run(tmp_path: Path) -> None:
         env_extra={"PAP_GATE_ANNOTATE": "1"},
     )
     assert "::error title=PAP-2027 live-connector gate" in loud.stdout
+
+    ok_worker = _worker(
+        tmp_path,
+        {
+            "attempts": [
+                {
+                    "provider": "gemini",
+                    "model": "gemini-2.5-flash",
+                    "status": "ok",
+                    "evidence": _evidence(),
+                }
+            ]
+        },
+        name="annot_ok",
+    )
+    ok_loud = _run(
+        "--worker",
+        str(ok_worker),
+        "--report",
+        str(report_path),
+        "--assert",
+        env_extra={"PAP_GATE_ANNOTATE": "1"},
+    )
+    assert (
+        "::notice title=PAP-2027 live-connector gate::PASS via gemini:gemini-2.5-flash"
+        in ok_loud.stdout
+    )
+
+    ok_json = _run(
+        "--worker",
+        str(ok_worker),
+        "--report",
+        str(report_path),
+        "--json",
+        "--assert",
+        env_extra={"PAP_GATE_ANNOTATE": "1"},
+    )
+    assert "::notice" not in ok_json.stdout
+    assert json.loads(ok_json.stdout)["verdict"] == "PASS"
