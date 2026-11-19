@@ -2,10 +2,7 @@
 
 from __future__ import annotations
 
-import asyncio
-import re
 import time
-import uuid
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from pathlib import Path
@@ -18,13 +15,13 @@ from .bridges import ConnectorsBridge, KernelSandboxBridge, MemoryBridge
 from .connector_hub_bridge import LiveConnectorClient
 from .contracts import (
     BillingTier,
-    BudgetSnapshot,
     CostStatus,
     ProviderAttempt,
     ProviderKind,
     StrictModel,
     TelemetrySink,
 )
+from .lease import Lease
 from .planner_engine import (
     AgentPlannerProtocol,
     FreeFirstAgentPlanner,
@@ -33,22 +30,26 @@ from .planner_engine import (
 )
 from .router import FreeFirstRouter
 from .security import (
-    SecurityValidationError,
     redact_secrets,
     resolve_safe_path,
     sanitize_prompt_text,
 )
+from .session_state import (
+    AgentEvent,
+    AgentSessionState,
+    AgentStepTrace,
+    ArtifactRecord,
+    PlanStep,
+)
+from .session_store import SessionBusyError as SessionBusyError  # re-exported
+from .session_store import SessionStore
 from .telemetry import ObservabilityRuntime
 from .tools import (
     SandboxToolRuntime,
     ToolContext,
     ToolExecutor,
-    ToolInvocation,
-    ToolOutcome,
     infer_artifact_kind,
 )
-
-_SESSION_ID_RE = re.compile(r"^[a-z0-9_-]{8,48}$")
 
 
 class AgentResumeError(RuntimeError):
@@ -74,193 +75,6 @@ class AgentTaskRequest(StrictModel):
     def sanitize(cls, raw_task: str) -> str:
         """Sanitize raw user task text before storage or prompting."""
         return sanitize_prompt_text(raw_task, max_length=16_000)
-
-
-class PlanStep(StrictModel):
-    """One trackable step in the agent's execution checklist."""
-
-    step_id: int = Field(ge=1)
-    title: str
-    status: Literal["pending", "running", "completed", "failed"] = "pending"
-
-
-class AgentStepTrace(StrictModel):
-    """Recorded thought, tool calls, and verified observations for one loop step."""
-
-    step: int = Field(ge=1)
-    thought: str
-    invocations: tuple[ToolInvocation, ...] = ()
-    outcomes: tuple[ToolOutcome, ...] = ()
-    latency_ms: float = Field(default=0.0, ge=0.0)
-    provider: str = "deterministic"
-    model: str = "offline-planner-v1"
-
-
-class ArtifactRecord(StrictModel):
-    """Verified deliverable stored in a session's isolated L0 sandbox."""
-
-    path: str
-    kind: str
-    sha256: str | None = None
-    byte_size: int = 0
-    verified: bool = False
-    preview_url: str
-
-
-class AgentEvent(StrictModel):
-    """Real-time SSE event emitted during an autonomous agent execution."""
-
-    event: Literal[
-        "session_started",
-        "session_resumed",
-        "plan",
-        "step_start",
-        "tool_result",
-        "artifact",
-        "approval_required",
-        "final",
-        "error",
-        "aborted",
-    ]
-    session_id: str
-    step: int = 0
-    message: str = ""
-    data: dict[str, Any] = Field(default_factory=dict)
-    timestamp: str
-
-
-class AgentSessionState(StrictModel):
-    """Full persisted snapshot for one interactive Studio/CLI agent session."""
-
-    session_id: str
-    title: str
-    created_at: str
-    updated_at: str
-    status: Literal["idle", "running", "completed", "aborted", "failed"] = "idle"
-    mode: Literal["live-llm", "offline-deterministic"] = "offline-deterministic"
-    provider: str = "deterministic"
-    model: str = "offline-planner-v1"
-    simulated_llm: bool = True
-    cost_usd: float | None = Field(default=0.0, ge=0.0)
-    billing_tier: BillingTier = BillingTier.LOCAL
-    cost_status: CostStatus = CostStatus.PROVEN_ZERO_LOCAL
-    cost_known: bool = True
-    budget_snapshot: BudgetSnapshot | None = None
-    router_attempts: tuple[ProviderAttempt, ...] = ()
-    trace_id: str = ""
-    task: str = ""
-    plan: tuple[PlanStep, ...] = ()
-    steps: tuple[AgentStepTrace, ...] = ()
-    artifacts: tuple[ArtifactRecord, ...] = ()
-    approvals: tuple[str, ...] = ()
-    final_answer: str = ""
-    checkpoint_step: int = Field(default=0, ge=0)
-    checkpoint_at: str = ""
-
-
-class SessionStore:
-    """Thread-safe filesystem store managing isolated session sandboxes and cancel flags."""
-
-    def __init__(self, studio_dir: Path) -> None:
-        """Create session directories under studio_dir/sessions safely."""
-        self._studio_dir = studio_dir.resolve()
-        self._sessions_root = self._studio_dir / "sessions"
-        self._sessions_root.mkdir(parents=True, exist_ok=True)
-        self._cancel_flags: dict[str, asyncio.Event] = {}
-
-    @property
-    def sessions_root(self) -> Path:
-        """Return base directory housing all per-session sandboxes."""
-        return self._sessions_root
-
-    def _validate_session_id(self, session_id: str) -> str:
-        clean = session_id.strip()
-        if not _SESSION_ID_RE.fullmatch(clean):
-            raise SecurityValidationError("Invalid session_id format.")
-        return clean
-
-    def session_dir(self, session_id: str) -> Path:
-        """Return path-contained directory for an existing or newly created session."""
-        clean = self._validate_session_id(session_id)
-        return resolve_safe_path(self._sessions_root, clean)
-
-    def create_session(self, *, title: str = "New Agent Session") -> AgentSessionState:
-        """Allocate a fresh session with isolated sandbox directory and initial state."""
-        session_id = f"sess_{uuid.uuid4().hex[:12]}"
-        sdir = self.session_dir(session_id)
-        (sdir / "sandbox").mkdir(parents=True, exist_ok=True)
-        now = datetime.now(UTC).isoformat()
-        state = AgentSessionState(
-            session_id=session_id,
-            title=redact_secrets(title.strip())[:100] or "Agent Session",
-            created_at=now,
-            updated_at=now,
-        )
-        self.save_sync(state)
-        return state
-
-    def save_sync(self, state: AgentSessionState) -> None:
-        """Atomically persist session.json inside the session folder."""
-        sdir = self.session_dir(state.session_id)
-        sdir.mkdir(parents=True, exist_ok=True)
-        (sdir / "sandbox").mkdir(parents=True, exist_ok=True)
-        target = sdir / "session.json"
-        tmp = sdir / "session.tmp"
-        tmp.write_text(state.model_dump_json(indent=2), encoding="utf-8")
-        tmp.replace(target)
-
-    async def save(self, state: AgentSessionState) -> None:
-        """Persist session state asynchronously without blocking the event loop."""
-        await asyncio.to_thread(self.save_sync, state)
-
-    def load_sync(self, session_id: str) -> AgentSessionState:
-        """Load an existing session snapshot or raise FileNotFoundError."""
-        sdir = self.session_dir(session_id)
-        target = sdir / "session.json"
-        if not target.is_file():
-            raise FileNotFoundError(f"Session {session_id!r} not found.")
-        return AgentSessionState.model_validate_json(target.read_text(encoding="utf-8"))
-
-    async def load(self, session_id: str) -> AgentSessionState:
-        """Load session snapshot asynchronously."""
-        return await asyncio.to_thread(self.load_sync, session_id)
-
-    async def list_sessions(self, *, limit: int = 25) -> list[AgentSessionState]:
-        """List stored sessions ordered most recently updated first."""
-
-        def _scan() -> list[AgentSessionState]:
-            items: list[AgentSessionState] = []
-            if not self._sessions_root.is_dir():
-                return items
-            for child in self._sessions_root.iterdir():
-                meta = child / "session.json"
-                if child.is_dir() and meta.is_file():
-                    try:
-                        raw_meta = meta.read_text(encoding="utf-8")
-                        items.append(AgentSessionState.model_validate_json(raw_meta))
-                    except (OSError, ValueError):
-                        continue
-            items.sort(key=lambda s: s.updated_at, reverse=True)
-            return items[:limit]
-
-        return await asyncio.to_thread(_scan)
-
-    def get_cancel_flag(self, session_id: str) -> asyncio.Event:
-        """Return or initialize the cooperative cancellation Event for session_id."""
-        clean = self._validate_session_id(session_id)
-        flag = self._cancel_flags.get(clean)
-        if flag is None:
-            flag = asyncio.Event()
-            self._cancel_flags[clean] = flag
-        return flag
-
-    def request_abort(self, session_id: str) -> None:
-        """Trigger cooperative cancellation for a running session."""
-        self.get_cancel_flag(session_id).set()
-
-    def clear_abort(self, session_id: str) -> None:
-        """Reset cancellation before starting a new run on an existing session."""
-        self.get_cancel_flag(session_id).clear()
 
 
 class AutonomousAgent:
@@ -298,7 +112,27 @@ class AutonomousAgent:
         self.auditor = ProtocolAuditor(workspace_root=self.workspace_root, telemetry=self.telemetry)
 
     async def stream_run(
-        self, session_id: str, request: AgentTaskRequest
+        self, session_id: str, request: AgentTaskRequest, *, lease: Lease | None = None
+    ) -> AsyncIterator[AgentEvent]:
+        """Execute an autonomous task under the session lease and stream events.
+
+        The endpoint may pass a lease it already acquired (so an SSE response can
+        answer 409 before streaming); otherwise the lease is taken here and
+        released when the stream ends, however it ends.
+        """
+        owned = lease is None and self.session_store.lease_enabled
+        held = lease
+        if owned:
+            held = self.session_store.acquire_lease(session_id)
+        try:
+            async for event in self._stream_run_leased(session_id, request, held):
+                yield event
+        finally:
+            if owned:
+                self.session_store.release_lease(held)
+
+    async def _stream_run_leased(
+        self, session_id: str, request: AgentTaskRequest, lease: Lease | None
     ) -> AsyncIterator[AgentEvent]:
         """Execute an autonomous task and stream live typed AgentEvent updates."""
         clean_task = AgentTaskRequest.sanitize(request.task)
@@ -340,7 +174,7 @@ class AutonomousAgent:
                     "updated_at": datetime.now(UTC).isoformat(),
                 }
             )
-            await self.session_store.save(state)
+            await self.session_store.save(state, lease=lease)
             yield self._evt(
                 "session_started", session_id, 0, "Agent started", {"trace_id": trace_id}
             )
@@ -385,7 +219,7 @@ class AutonomousAgent:
                             "updated_at": datetime.now(UTC).isoformat(),
                         }
                     )
-                    await self.session_store.save(state)
+                    await self.session_store.save(state, lease=lease)
                     yield self._evt("aborted", session_id, step_num, "Run aborted by user")
                     return
 
@@ -516,7 +350,7 @@ class AutonomousAgent:
                         "updated_at": checkpoint_at,
                     }
                 )
-                await self.session_store.save(state)
+                await self.session_store.save(state, lease=lease)
                 if decision.final_answer:
                     final_answer = decision.final_answer
                     break
@@ -559,7 +393,7 @@ class AutonomousAgent:
                     "updated_at": datetime.now(UTC).isoformat(),
                 }
             )
-            await self.session_store.save(final_state)
+            await self.session_store.save(final_state, lease=lease)
             self.telemetry.log(
                 "info",
                 "agent.session.completed",
