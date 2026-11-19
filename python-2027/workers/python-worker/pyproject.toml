@@ -1,0 +1,6 @@
+[project]
+name = "ai2027-python-worker"
+version = "0.1.0"
+description = "Cloudflare Python Worker ($0 free tier) for Free-First AI routing."
+requires-python = ">=3.11"
+dependencies = []

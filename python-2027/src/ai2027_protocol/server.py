@@ -1,0 +1,153 @@
+"""Async FastAPI service exposing Free-First AI routing, auditing, and traces."""
+
+from __future__ import annotations
+
+import os
+import sys
+from pathlib import Path
+from typing import Any
+
+from fastapi import FastAPI, HTTPException, Response
+
+from .ai_providers import describe_provider_readiness
+from .auditor import ProtocolAuditor
+from .benchmark import run_benchmark_suite
+from .contracts import (
+    AuditRequest,
+    BatchPromptRequest,
+    BenchmarkReport,
+    CompletionResponse,
+    PromptRequest,
+    ProtocolAuditReport,
+    ProviderStatus,
+    SpanRecord,
+    TelemetrySink,
+)
+from .router import AllProvidersFailedError, FreeFirstRouter
+from .security import SecurityValidationError
+from .telemetry import ObservabilityRuntime
+
+_DEFAULT_ROOT = Path(__file__).resolve().parents[3]
+
+PROTOCOL_RULES: tuple[dict[str, str | int], ...] = (
+    {"id": 1, "title": "Foundation", "spec": "Python 3.13+ target, uv, ruff, strict Pydantic V2"},
+    {"id": 2, "title": "Architecture", "spec": "Small units, Protocol contracts, swappable parts"},
+    {"id": 3, "title": "Concurrency", "spec": "asyncio + TaskGroup, non-blocking event loop"},
+    {"id": 4, "title": "Performance", "spec": "Measure with perf_counter_ns before optimizing"},
+    {"id": 5, "title": "Testing", "spec": "pytest + hypothesis, >90% branch coverage gate"},
+    {"id": 6, "title": "Security", "spec": "Zero hardcoded secrets, scrub logs, strict inputs"},
+    {"id": 7, "title": "Observability", "spec": "structlog structured logs + OpenTelemetry spans"},
+    {"id": 8, "title": "AI Resilience", "spec": "Free-First routing, fallback, timeout, retry"},
+    {"id": 9, "title": "Delivery", "spec": "Automated CI + $0 Workers & Google Colab targets"},
+    {"id": 10, "title": "Excellence", "spec": "First-run ready, 1-command demo, 1-line docstrings"},
+)
+
+
+def create_app(
+    *,
+    workspace_root: Path | None = None,
+    router: FreeFirstRouter | None = None,
+    telemetry: TelemetrySink | None = None,
+    read_only: bool | None = None,
+) -> FastAPI:
+    """Build a configured FastAPI application with replaceable router and telemetry."""
+    root = (workspace_root or _DEFAULT_ROOT).resolve()
+    runtime: TelemetrySink = telemetry or ObservabilityRuntime(json_logs=True)
+    ai_router = router or FreeFirstRouter(telemetry=runtime)
+    auditor = ProtocolAuditor(workspace_root=root, telemetry=runtime)
+    is_read_only = (
+        os.environ.get("AI2027_READ_ONLY", "0") == "1" if read_only is None else read_only
+    )
+
+    app = FastAPI(
+        title="AI-2027 Python 2027 Protocol API",
+        version="0.1.0",
+        description="Free-First AI routing, TaskGroup concurrency, auditing, and telemetry.",
+    )
+
+    @app.get("/health")
+    async def health() -> dict[str, Any]:
+        """Return service health, Python runtime, and read-only guard state."""
+        return {
+            "ok": True,
+            "service": "ai2027-python-2027",
+            "python": sys.version.split()[0],
+            "read_only": is_read_only,
+            "cost_usd": 0.0,
+        }
+
+    @app.get("/v1/protocol")
+    async def protocol_info() -> dict[str, Any]:
+        """Describe the 10 Python 2027 protocol rules and $0 deployment targets."""
+        return {
+            "protocol": "Python 2027 Software Excellence Protocol",
+            "rules": list(PROTOCOL_RULES),
+            "platforms": [
+                "local-uv",
+                "cloudflare-python-worker",
+                "cloudflare-edge-gateway",
+                "google-colab",
+            ],
+            "providers": [p.kind.value for p in ai_router.providers],
+        }
+
+    @app.get("/v1/providers", response_model=list[ProviderStatus])
+    async def list_providers() -> list[ProviderStatus]:
+        """Report configured provider readiness without exposing secret values."""
+        return list(describe_provider_readiness(ai_router.providers))
+
+    @app.post("/v1/route", response_model=CompletionResponse)
+    async def route_prompt(request: PromptRequest, response: Response) -> CompletionResponse:
+        """Route one validated prompt across the Free-First fallback chain."""
+        if is_read_only:
+            raise HTTPException(
+                status_code=403, detail="Service is running in AI2027_READ_ONLY mode."
+            )
+        try:
+            completion = await ai_router.route(request)
+        except AllProvidersFailedError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        response.headers["X-Trace-Id"] = completion.trace_id
+        return completion
+
+    @app.post("/v1/route/batch", response_model=list[CompletionResponse])
+    async def route_batch(request: BatchPromptRequest) -> list[CompletionResponse]:
+        """Execute a bounded batch of prompts concurrently with asyncio.TaskGroup."""
+        if is_read_only:
+            raise HTTPException(
+                status_code=403, detail="Service is running in AI2027_READ_ONLY mode."
+            )
+        batch_error: str | None = None
+        try:
+            return await ai_router.route_batch(
+                request.requests, max_concurrency=request.max_concurrency
+            )
+        except* AllProvidersFailedError as exc_group:
+            batch_error = f"Batch failed ({len(exc_group.exceptions)} error(s))."
+        raise HTTPException(status_code=503, detail=batch_error)
+
+    @app.post("/v1/audit", response_model=ProtocolAuditReport)
+    async def audit_project(request: AuditRequest, response: Response) -> ProtocolAuditReport:
+        """Audit a validated relative repository path against the 10 protocol rules."""
+        try:
+            report = await auditor.audit_projects([request.target_path])
+        except SecurityValidationError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        response.headers["X-Trace-Id"] = report.trace_id
+        return report
+
+    @app.get("/v1/traces", response_model=list[SpanRecord])
+    async def list_traces() -> list[SpanRecord]:
+        """Return recent sanitized OpenTelemetry spans captured by the runtime."""
+        return runtime.exported_spans()[-50:]
+
+    @app.get("/v1/bench", response_model=BenchmarkReport)
+    async def run_bench(response: Response) -> BenchmarkReport:
+        """Execute a lightweight live benchmark suite and return measured timings."""
+        report = await run_benchmark_suite(iterations=8, telemetry=runtime)
+        response.headers["X-Trace-Id"] = report.trace_id
+        return report
+
+    return app
