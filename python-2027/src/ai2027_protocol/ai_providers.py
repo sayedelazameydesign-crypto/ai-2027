@@ -181,10 +181,12 @@ def _extract_openai_text(payload: Mapping[str, Any]) -> str:
     if not isinstance(choices, list) or not choices or not isinstance(choices[0], dict):
         raise ProviderError("invalid_payload", "Missing choices in provider response")
     message = choices[0].get("message")
-    text = message.get("content") if isinstance(message, dict) else None
-    if not isinstance(text, str) or not text.strip():
-        raise ProviderError("invalid_payload", "Completion text missing in provider response")
-    return text.strip()
+    if isinstance(message, dict):
+        for key in ("content", "reasoning_content", "reasoning"):
+            text = message.get(key)
+            if isinstance(text, str) and text.strip():
+                return text.strip()
+    raise ProviderError("invalid_payload", "Completion text missing in provider response")
 
 
 class OllamaLocalProvider:

@@ -140,6 +140,40 @@ class NvidiaLiveCheckTests(unittest.TestCase):
         self.assertNotIn(key, output.getvalue())
         self.assertTrue(json.loads(output.getvalue())["ok"])
 
+    def test_http_410_is_classified_as_model_retired(self) -> None:
+        key = "unit-test-nvidia-key"
+
+        def opener(request, *, timeout):
+            raise urllib.error.HTTPError(
+                nlc.ENDPOINT,
+                410,
+                "Gone",
+                Message(),
+                io.BytesIO(b"gone"),
+            )
+
+        result = nlc.check(model="meta/example-instruct", key=key, opener=opener)
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["status"], 410)
+        self.assertEqual(result["error_kind"], "model_retired")
+
+    def test_reasoning_content_fallback_when_content_empty(self) -> None:
+        def opener(request, *, timeout):
+            return FakeResponse(
+                200,
+                json.dumps(
+                    {"choices": [{"message": {"content": None, "reasoning_content": "pong"}}]}
+                ).encode(),
+            )
+
+        result = nlc.check(
+            model="meta/example-instruct",
+            key="unit-test-nvidia-key",
+            opener=opener,
+        )
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["response_chars"], 4)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

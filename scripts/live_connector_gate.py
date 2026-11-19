@@ -332,13 +332,25 @@ def main(argv: list[str] | None = None) -> int:
         print(render(result))
         print(f"evidence: {args.report}")
 
-    # Opt-in: ``::error::`` marks the *step* as failed, which is right for a real
-    # gate run and wrong for the tests that deliberately provoke a FAIL verdict.
-    if not result.ok and os.environ.get("PAP_GATE_ANNOTATE") == "1":
-        reason = result.error or "; ".join(
-            f"{check.name}: {check.detail}" for check in result.checks if not check.ok
-        )
-        print(f"::error title=PAP-2027 live-connector gate::{reason[:900]}")
+    # Opt-in: ``::error::`` / ``::notice::`` marks the GitHub step, which is right
+    # for a real gate run and wrong for tests that deliberately provoke a verdict.
+    if not args.json and os.environ.get("PAP_GATE_ANNOTATE") == "1":
+        if result.ok:
+            statuses = ", ".join(
+                f"{a.get('provider')}({a.get('model')})={a.get('status')}"
+                for a in result.attempts
+            )
+            ev = result.evidence or {}
+            print(
+                f"::notice title=PAP-2027 live-connector gate::PASS via "
+                f"{ev.get('provider')}:{ev.get('model')} ({ev.get('latency_ms')} ms) | "
+                f"{statuses}"[:900]
+            )
+        else:
+            reason = result.error or "; ".join(
+                f"{check.name}: {check.detail}" for check in result.checks if not check.ok
+            )
+            print(f"::error title=PAP-2027 live-connector gate::{reason[:900]}")
 
     if result.error:
         return 2
