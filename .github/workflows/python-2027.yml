@@ -87,6 +87,8 @@ jobs:
 
       - name: PAP persistent-task gate · real SIGKILL, resume from checkpoint (evidence artifact)
         working-directory: python-2027
+        env:
+          PAP_GATE_ANNOTATE: "1"
         run: |
           .venv/bin/python ../scripts/persistent_task_gate.py --assert \
             --report "$RUNNER_TEMP/persistent-task-gate-${{ matrix.python-version }}.json"
@@ -254,6 +256,7 @@ jobs:
           GROQ_MODEL: ${{ vars.GROQ_MODEL || 'openai/gpt-oss-20b' }}
           OPENROUTER_MODEL: ${{ vars.OPENROUTER_MODEL || 'openrouter/free' }}
           AI2027_MAX_SPEND_USD: "0"
+          PAP_GATE_ANNOTATE: "1"
         run: |
           set +x
           set -euo pipefail
