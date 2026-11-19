@@ -13,6 +13,31 @@ fail or when any GitHub Action is not pinned to a full-length SHA.
 
 ## [Unreleased]
 
+### Added — the `live-connector` gate: one real call, judged as evidence (2026-11-19)
+- **`python-2027/src/ai2027_protocol/live_probe.py`** — probes a provider with the
+  production transport and records the exchange: endpoint host, request/response
+  timestamps, latency, HTTP status, response headers, `request_id` (payload or
+  header, else `server_model_version`), token usage, response SHA-256 and a
+  redacted excerpt. A provider whose billing tier is not `FREE_TIER`/`LOCAL` is
+  **never called**, so `MAX_SPEND = $0` is enforced before the request instead of
+  asserted afterwards.
+- **`scripts/live_connector_gate.py`** (stdlib) — judges the worker report. Per
+  the audit's stricter rule, `skipped_no_key` is a **failure**, not a skip; a
+  simulated (`mock`) answer fails; a missing marker fails; a credential-shaped
+  string anywhere in the evidence fails *and* is redacted from the artifact.
+  Evidence JSON on pass and fail; `--assert` exits 1 on FAIL, 2 when the worker
+  could not run (so a broken interpreter can never look like a pass).
+- **`tests/live_connector_worker.py`** — thin JSON worker; `--provider` selects
+  candidates, exits 3 only when it cannot run at all.
+- **Tests** — `test_live_probe.py` (9: free-tier refusal without a call, missing
+  key, end-to-end evidence against a mocked HTTP transport, header-id fallback,
+  410/503 error paths, key redaction) and `test_live_connector_gate.py` (11:
+  clean pass, no-key failure, mock failure, marker failure, unknown-cost failure,
+  missing id/time, leaked credential, non-object JSON, missing worker, crashing
+  worker, broken interpreter).
+- **CI** — the gate runs in the main-only `live-actions-keys` job with the
+  existing secrets and uploads its evidence artifact; PRs stay offline.
+
 ### Added — checkpoint/resume + the first live capability gate (2026-11-19)
 - **`python-2027/src/ai2027_protocol/agent.py`** — the autonomous loop now
   checkpoints after **every completed step** (`checkpoint_step`,

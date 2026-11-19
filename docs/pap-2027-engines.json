@@ -50,14 +50,19 @@
         "python-2027/src/ai2027_protocol/router.py",
         "python-2027/src/ai2027_protocol/budget.py",
         "python-2027/src/ai2027_protocol/ai_providers.py",
-        "python-2027/src/ai2027_protocol/model_catalog.py"
+        "python-2027/src/ai2027_protocol/model_catalog.py",
+        "python-2027/src/ai2027_protocol/live_probe.py",
+        "scripts/live_connector_gate.py",
+        "python-2027/tests/live_connector_worker.py"
       ],
       "tests": [
         { "file": "python-2027/tests/test_router.py", "marker": "def test_" },
         { "file": "python-2027/tests/test_model_catalog.py", "marker": "def test_" },
-        { "file": "python-2027/tests/test_hardening.py", "marker": "def test_" }
+        { "file": "python-2027/tests/test_hardening.py", "marker": "def test_" },
+        { "file": "python-2027/tests/test_live_probe.py", "marker": "def test_" },
+        { "file": "python-2027/tests/test_live_connector_gate.py", "marker": "def test_" }
       ],
-      "gap_ar": "التوجيه يقوم على التكلفة والتوافر لا على جودة الإجابة؛ لا تصنيف للمهام (برمجة/بحث/تحليل) يوجّه النموذج المناسب."
+      "gap_ar": "يوجّه بالتكلفة/التوافر لا بجودة الإجابة أو نوع المهمة. الاتصال الحي بمزوّد مجاني صار مُثبتًا بأثر (id + وقت + استجابة منقّحة)، لكنه يثبت مزوّدًا واحدًا لا كلهم."
     },
     {
       "id": "agent-fleet",
