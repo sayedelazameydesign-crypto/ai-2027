@@ -191,6 +191,28 @@ class RouterBackendTests(unittest.TestCase):
         self.assertEqual(backend.routing_evidence(), {"routed": False})
 
 
+class GateSkipHonestyTests(unittest.TestCase):
+    """A2 needs python-2027. When it is missing the gate must skip, not pass."""
+
+    def test_the_gate_declares_its_dependency_explicitly(self) -> None:
+        from gate import gate_router_failover
+
+        result = gate_router_failover(Path(tempfile.mkdtemp()))
+        try:
+            import ai2027_protocol  # noqa: F401
+        except ImportError:
+            self.assertFalse(result.passed)
+            self.assertEqual(
+                result.measured.get("status"), "skipped_missing_dependency"
+            )
+            self.assertTrue(
+                any("not a pass" in failure for failure in result.failures)
+            )
+        else:
+            # Dependency present: the gate must have actually measured something.
+            self.assertIn("simulated", result.measured)
+
+
 class DeterministicBackendTests(unittest.TestCase):
     def test_the_label_cannot_be_mistaken_for_a_model(self) -> None:
         backend = DeterministicRouterBackend()

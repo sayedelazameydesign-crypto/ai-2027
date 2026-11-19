@@ -844,6 +844,24 @@ def gate_router_failover(base: Path) -> GateResult:
     bridge = Path(__file__).resolve().parent.parent / "scripts" / "fleet_router_bridge_check.py"
     if not bridge.is_file():  # pragma: no cover - packaging guard
         return GateResult("router-failover", False, "bridge missing", {}, [f"no {bridge}"])
+    # A2 depends on python-2027 being importable. When it is not, the honest
+    # outcome is a *measured skip*, never a pass — "I could not run it" must not
+    # be able to masquerade as "it works".
+    probe = subprocess.run(  # noqa: S603 - fixed argv, no shell
+        [sys.executable, "-c", "import ai2027_protocol"],
+        capture_output=True, text=True, timeout=60, check=False,
+    )
+    if probe.returncode != 0:
+        return GateResult(
+            "router-failover",
+            False,
+            "requires python-2027 to be importable (pip install -e python-2027)",
+            {"status": "skipped_missing_dependency",
+             "stderr": (probe.stderr or "").strip().splitlines()[-1:]},
+            ["skipped: python-2027 is not importable, so the A2 path could not be "
+             "attempted (this is not a pass)"],
+            (time.perf_counter() - started) * 1000,
+        )
     work = base / "router"
     work.mkdir(parents=True, exist_ok=True)
     failures: list[str] = []

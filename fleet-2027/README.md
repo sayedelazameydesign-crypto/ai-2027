@@ -3,7 +3,7 @@
 # ⚙️ fleet-2027 — محرك مهام دائم لأسطول وكلاء يثبت عمله
 
 **الوضع:** 🟢 مستقل · صفر اعتماديات خارجية (stdlib فقط) · Python 3.10+
-**الاختبارات:** 173 اختبارًا · **البوابات:** 12/12 · **الأثر:** `launch/evidence/fleet-2027-gate.json`
+**الاختبارات:** 174 اختبارًا · **البوابات:** 12/12 · **الأثر:** `launch/evidence/fleet-2027-gate.json`
 
 </div>
 
@@ -268,7 +268,14 @@ exit=3
 Honest scope: the router is exercised for real (`FreeFirstRouter`, its budget
 guard, its circuit breaker), but the *providers* in the `simulated` mode are
 stubs; only the `live` mode talks to a real provider, and it needs a local
-Ollama or a key. A measured live run is in `launch/evidence/fleet-router-live.json`
+Ollama or a key.
+
+**When the dependency is missing, the gate skips — it never passes.**
+`router-failover` needs `pip install -e python-2027`; without it the gate returns
+`status=skipped_missing_dependency` with the reason "this is not a pass", so an
+unrun A2 can never look like a working A2. CI installs python-2027 explicitly
+before running the gate (the fleet *package* still imports nothing external —
+`Guards` proves that on every run). A measured live run is in `launch/evidence/fleet-router-live.json`
 (gitignored by design — regenerate it, never quote it as live proof).
 
 ## What was *not* built here
