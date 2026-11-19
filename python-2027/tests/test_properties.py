@@ -11,7 +11,7 @@ from pydantic import ValidationError
 
 from ai2027_protocol.ai_providers import DeterministicFallbackProvider, ProviderError
 from ai2027_protocol.benchmark import summarize_nanoseconds
-from ai2027_protocol.contracts import AIProvider, PromptRequest, ProviderKind
+from ai2027_protocol.contracts import AIProvider, BillingTier, PromptRequest, ProviderKind
 from ai2027_protocol.router import FreeFirstRouter, RouterConfig
 from ai2027_protocol.security import (
     SecurityValidationError,
@@ -97,8 +97,11 @@ async def test_property_router_always_resolves_to_first_healthy_backup(
     class _ToggleProvider:
         def __init__(self, kind: ProviderKind, should_fail: bool) -> None:
             self.kind = kind
-            self.model = f"model-{kind.value}"
+            self.model = (
+                "gemini-2.5-flash" if kind == ProviderKind.GEMINI else "llama-3.3-70b-versatile"
+            )
             self.is_remote = True
+            self.billing_tier = BillingTier.FREE_TIER
             self._should_fail = should_fail
 
         def is_configured(self) -> bool:

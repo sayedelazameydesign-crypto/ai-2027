@@ -41,6 +41,15 @@ from .bridges import (
     MemoryStats,
     MemoryStorePort,
 )
+from .budget import BudgetDecision, BudgetGuard, BudgetPolicy, classify_billing_tier
+from .compliance import (
+    ComplianceEntry,
+    ComplianceRegistryReport,
+    ProjectTier,
+    build_compliance_registry,
+    format_compliance_markdown,
+    verify_adr_0002_preserved,
+)
 from .connector_hub_bridge import (
     ConnectorReadOutcome,
     ConnectorSearchItem,
@@ -49,7 +58,10 @@ from .connector_hub_bridge import (
 )
 from .contracts import (
     AIProvider,
+    BillingTier,
+    BudgetSnapshot,
     CompletionResponse,
+    CostStatus,
     PromptRequest,
     ProtocolAuditReport,
     ProviderKind,
@@ -60,7 +72,7 @@ from .contracts import (
 from .router import AllProvidersFailedError, FreeFirstRouter, RouterConfig
 from .server import create_app
 from .studio import build_studio_router
-from .telemetry import ObservabilityRuntime
+from .telemetry import ObservabilityConfig, ObservabilityMode, ObservabilityRuntime
 from .tools import (
     SandboxToolRuntime,
     ToolContext,
@@ -81,6 +93,13 @@ __all__ = [
     "ApprovalProposal",
     "ArtifactRecord",
     "AutonomousAgent",
+    "BillingTier",
+    "BudgetDecision",
+    "BudgetGuard",
+    "BudgetPolicy",
+    "BudgetSnapshot",
+    "ComplianceEntry",
+    "ComplianceRegistryReport",
     "CompletionResponse",
     "ConnectorBridgePort",
     "ConnectorDescriptor",
@@ -88,6 +107,7 @@ __all__ = [
     "ConnectorSearchItem",
     "ConnectorSearchOutcome",
     "ConnectorsBridge",
+    "CostStatus",
     "DeterministicFallbackProvider",
     "FreeFirstRouter",
     "GeminiFreeProvider",
@@ -99,10 +119,13 @@ __all__ = [
     "MemoryHit",
     "MemoryStats",
     "MemoryStorePort",
+    "ObservabilityConfig",
+    "ObservabilityMode",
     "ObservabilityRuntime",
     "OllamaLocalProvider",
     "OpenAICompatibleFreeProvider",
     "PlanStep",
+    "ProjectTier",
     "PromptRequest",
     "ProtocolAuditReport",
     "ProtocolAuditor",
@@ -119,8 +142,10 @@ __all__ = [
     "ToolInvocation",
     "ToolOutcome",
     "ToolSpec",
+    "build_compliance_registry",
     "build_default_providers",
     "build_studio_router",
+    "classify_billing_tier",
     "create_app",
     "create_groq_free_provider",
     "create_nvidia_nim_provider",
@@ -128,6 +153,8 @@ __all__ = [
     "credential_label",
     "describe_provider_readiness",
     "format_audit_markdown",
+    "format_compliance_markdown",
     "run_benchmark_suite",
     "summarize_nanoseconds",
+    "verify_adr_0002_preserved",
 ]

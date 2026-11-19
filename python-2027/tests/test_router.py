@@ -22,7 +22,7 @@ from ai2027_protocol.ai_providers import (
     create_nvidia_nim_provider,
     create_openrouter_free_provider,
 )
-from ai2027_protocol.contracts import PromptRequest, ProviderKind
+from ai2027_protocol.contracts import BillingTier, PromptRequest, ProviderKind
 from ai2027_protocol.router import AllProvidersFailedError, FreeFirstRouter, RouterConfig
 from ai2027_protocol.telemetry import ObservabilityRuntime
 
@@ -55,12 +55,18 @@ class _ScriptedProvider:
         *,
         remote: bool = True,
         configured: bool = True,
+        billing_tier: BillingTier | None = None,
     ) -> None:
         self.kind = kind
         self.model = model
         self._outcomes = list(outcomes)
         self.is_remote = remote
         self._configured = configured
+        self.billing_tier = (
+            billing_tier
+            if billing_tier is not None
+            else (BillingTier.LOCAL if not remote else BillingTier.FREE_TIER)
+        )
         self.calls = 0
 
     def is_configured(self) -> bool:
@@ -229,8 +235,9 @@ async def test_router_circuit_breaker_and_allow_remote_and_preferred_order() -> 
 async def test_router_timeout_and_all_providers_failed() -> None:
     class _SlowProvider:
         kind = ProviderKind.GROQ
-        model = "slow"
+        model = "llama-3.3-70b-versatile"
         is_remote = True
+        billing_tier = BillingTier.FREE_TIER
 
         def is_configured(self) -> bool:
             return True

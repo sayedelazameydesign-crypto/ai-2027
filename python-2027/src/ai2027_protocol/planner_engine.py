@@ -8,7 +8,7 @@ from collections.abc import Sequence
 from html import escape as html_escape
 from typing import Any, Protocol, runtime_checkable
 
-from .contracts import PromptRequest, ProviderKind, StrictModel
+from .contracts import BillingTier, PromptRequest, ProviderAttempt, ProviderKind, StrictModel
 from .router import AllProvidersFailedError, FreeFirstRouter
 from .security import redact_secrets
 from .tools import ToolExecutor, ToolInvocation, ToolOutcome
@@ -21,6 +21,10 @@ class PlannerDecision(StrictModel):
     plan: tuple[str, ...] = ()
     actions: tuple[ToolInvocation, ...] = ()
     final_answer: str | None = None
+    billing_tier: BillingTier = BillingTier.LOCAL
+    cost_known: bool = True
+    cost_usd: float | None = 0.0
+    router_attempts: tuple[ProviderAttempt, ...] = ()
 
 
 @runtime_checkable
@@ -408,11 +412,26 @@ class FreeFirstAgentPlanner:
                 )
             parsed = extract_json_object(resp.text)
             if parsed is not None:
-                decision = PlannerDecision.model_validate(parsed)
+                decision = PlannerDecision.model_validate(
+                    {
+                        **parsed,
+                        "billing_tier": resp.billing_tier,
+                        "cost_known": resp.cost_known,
+                        "cost_usd": resp.cost_usd,
+                        "router_attempts": resp.attempts,
+                    }
+                )
                 return decision, resp.provider.value, resp.model, False
             clean_text = redact_secrets(resp.text.strip())
             return (
-                PlannerDecision(thought="Synthesized direct response.", final_answer=clean_text),
+                PlannerDecision(
+                    thought="Synthesized direct response.",
+                    final_answer=clean_text,
+                    billing_tier=resp.billing_tier,
+                    cost_known=resp.cost_known,
+                    cost_usd=resp.cost_usd,
+                    router_attempts=resp.attempts,
+                ),
                 resp.provider.value,
                 resp.model,
                 False,

@@ -15,6 +15,7 @@ from .ai_providers import DeterministicFallbackProvider
 from .contracts import (
     AIProvider,
     BenchmarkReport,
+    BillingTier,
     ComparisonResult,
     PromptRequest,
     ProviderKind,
@@ -32,6 +33,7 @@ class _SimulatedLatencyProvider:
 
     kind = ProviderKind.GEMINI
     is_remote = True
+    billing_tier = BillingTier.FREE_TIER
 
     def __init__(self, delay_s: float = 0.005) -> None:
         self._delay_s = delay_s

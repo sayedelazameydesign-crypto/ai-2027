@@ -16,7 +16,15 @@ from pydantic import Field
 from .auditor import ProtocolAuditor
 from .bridges import ConnectorsBridge, KernelSandboxBridge, MemoryBridge
 from .connector_hub_bridge import LiveConnectorClient
-from .contracts import ProviderKind, StrictModel, TelemetrySink
+from .contracts import (
+    BillingTier,
+    BudgetSnapshot,
+    CostStatus,
+    ProviderAttempt,
+    ProviderKind,
+    StrictModel,
+    TelemetrySink,
+)
 from .planner_engine import (
     AgentPlannerProtocol,
     FreeFirstAgentPlanner,
@@ -122,7 +130,12 @@ class AgentSessionState(StrictModel):
     provider: str = "deterministic"
     model: str = "offline-planner-v1"
     simulated_llm: bool = True
-    cost_usd: float = Field(default=0.0, ge=0.0, le=0.0)
+    cost_usd: float | None = Field(default=0.0, ge=0.0)
+    billing_tier: BillingTier = BillingTier.LOCAL
+    cost_status: CostStatus = CostStatus.PROVEN_ZERO_LOCAL
+    cost_known: bool = True
+    budget_snapshot: BudgetSnapshot | None = None
+    router_attempts: tuple[ProviderAttempt, ...] = ()
     trace_id: str = ""
     task: str = ""
     plan: tuple[PlanStep, ...] = ()
@@ -328,6 +341,10 @@ class AutonomousAgent:
             last_provider = ProviderKind.DETERMINISTIC.value
             last_model = "offline-planner-v1"
             simulated_llm = True
+            last_billing_tier = BillingTier.LOCAL
+            last_cost_known = True
+            last_cost_usd: float | None = 0.0
+            router_attempts: list[ProviderAttempt] = []
             final_answer = ""
 
             for step_num in range(1, request.max_steps + 1):
@@ -358,6 +375,11 @@ class AutonomousAgent:
                     allow_remote=request.allow_remote,
                 )
                 last_provider, last_model, simulated_llm = prov_name, model_name, is_sim
+                last_billing_tier = decision.billing_tier
+                last_cost_known = decision.cost_known
+                last_cost_usd = decision.cost_usd
+                if decision.router_attempts:
+                    router_attempts.extend(decision.router_attempts)
                 mode = "offline-deterministic" if is_sim else "live-llm"
 
                 if decision.plan and not plan_steps:
@@ -464,6 +486,14 @@ class AutonomousAgent:
                 if ps.status in {"pending", "running"}:
                     plan_steps[idx] = ps.model_copy(update={"status": "completed"})
 
+            snap = self.router.budget_snapshot()
+            cost_stat = (
+                CostStatus.PROVEN_ZERO_LOCAL
+                if last_billing_tier == BillingTier.LOCAL
+                else CostStatus.DECLARED_FREE_TIER_UNBILLED
+                if last_billing_tier == BillingTier.FREE_TIER
+                else CostStatus.ALLOWED_WITHIN_BUDGET
+            )
             final_state = state.model_copy(
                 update={
                     "status": "completed",
@@ -471,7 +501,12 @@ class AutonomousAgent:
                     "provider": last_provider,
                     "model": last_model,
                     "simulated_llm": simulated_llm,
-                    "cost_usd": 0.0,
+                    "cost_usd": last_cost_usd,
+                    "billing_tier": last_billing_tier,
+                    "cost_status": cost_stat,
+                    "cost_known": last_cost_known,
+                    "budget_snapshot": snap,
+                    "router_attempts": tuple(router_attempts),
                     "plan": tuple(plan_steps),
                     "steps": tuple(history),
                     "artifacts": tuple(artifacts.values()),

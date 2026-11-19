@@ -29,8 +29,40 @@ class ProviderKind(StrEnum):
     DETERMINISTIC = "deterministic"
 
 
+class BillingTier(StrEnum):
+    """Explicit provider/model billing classification used by BudgetGuard."""
+
+    LOCAL = "local"
+    FREE_TIER = "free_tier"
+    UNKNOWN_COST = "unknown_cost"
+    PAID = "paid"
+
+
+class CostStatus(StrEnum):
+    """Audit trail explaining how cost_usd was proven or guarded."""
+
+    PROVEN_ZERO_LOCAL = "proven_zero_local"
+    DECLARED_FREE_TIER_UNBILLED = "declared_free_tier_unbilled"
+    UNKNOWN_COST_BLOCKED = "unknown_cost_blocked"
+    PAID_BLOCKED = "paid_blocked"
+    ALLOWED_WITHIN_BUDGET = "allowed_within_budget"
+
+
+class BudgetSnapshot(StrictModel):
+    """Measured runtime ledger of known-zero, free-tier, and blocked attempts."""
+
+    max_spend_usd: float = Field(default=0.0, ge=0.0)
+    spent_usd: float = Field(default=0.0, ge=0.0)
+    allow_unknown_cost: bool = False
+    known_zero_local_calls: int = Field(default=0, ge=0)
+    declared_free_tier_calls: int = Field(default=0, ge=0)
+    unknown_cost_blocked: int = Field(default=0, ge=0)
+    paid_blocked: int = Field(default=0, ge=0)
+    api_key_never_implies_free: bool = True
+
+
 class ProviderStatus(StrictModel):
-    """Sanitized readiness report for one configured or fallback provider."""
+    """Sanitized readiness and budget-classification report for one provider."""
 
     provider: ProviderKind
     model: str = Field(min_length=1, max_length=160)
@@ -38,6 +70,10 @@ class ProviderStatus(StrictModel):
     is_remote: bool
     env_var: str
     credential_state: str
+    billing_tier: BillingTier = BillingTier.UNKNOWN_COST
+    cost_status: CostStatus = CostStatus.UNKNOWN_COST_BLOCKED
+    allowed_under_zero_budget: bool = False
+    budget_reason: str = ""
 
 
 class RuleStatus(StrEnum):
@@ -73,13 +109,17 @@ class PromptRequest(StrictModel):
 
 
 class ProviderAttempt(StrictModel):
-    """Recorded execution trace for a single provider call or retry."""
+    """Recorded execution trace for a single provider call, block, or retry."""
 
     provider: ProviderKind
     model: str = Field(min_length=1, max_length=160)
     attempt: int = Field(ge=1)
     ok: bool
     latency_ms: float = Field(ge=0.0)
+    billing_tier: BillingTier = BillingTier.UNKNOWN_COST
+    cost_known: bool = False
+    cost_status: CostStatus = CostStatus.UNKNOWN_COST_BLOCKED
+    estimated_cost_usd: float | None = Field(default=None, ge=0.0)
     error_code: str | None = None
     detail: str | None = None
 
@@ -90,13 +130,18 @@ class ProviderAttempt(StrictModel):
 
 
 class CompletionResponse(StrictModel):
-    """Normalized output from Free-First routing with cost and trace metadata."""
+    """Normalized output from Free-First routing with verified cost and trace metadata."""
 
     provider: ProviderKind
     model: str = Field(min_length=1, max_length=160)
     text: str
     simulated: bool = False
-    cost_usd: float = Field(default=0.0, ge=0.0, le=0.0)
+    cost_usd: float | None = Field(default=0.0, ge=0.0)
+    billing_tier: BillingTier = BillingTier.LOCAL
+    cost_status: CostStatus = CostStatus.PROVEN_ZERO_LOCAL
+    cost_known: bool = True
+    cost_verified_by_invoice: bool = False
+    max_spend_usd: float = Field(default=0.0, ge=0.0)
     trace_id: str = Field(min_length=8, max_length=64)
     attempts: tuple[ProviderAttempt, ...]
     latency_ms: float = Field(ge=0.0)
