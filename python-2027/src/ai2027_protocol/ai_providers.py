@@ -119,11 +119,12 @@ class HttpxJsonTransport:
         json_body: Mapping[str, Any],
         timeout_s: float,
     ) -> HttpJsonResult:
+        merged_headers = {"User-Agent": "ai2027-protocol/1.0", **dict(headers)}
         try:
             async with asyncio.timeout(timeout_s):
                 response = await client.post(
                     url,
-                    headers=dict(headers),
+                    headers=merged_headers,
                     json=dict(json_body),
                     timeout=timeout_s,
                     follow_redirects=False,
@@ -394,6 +395,7 @@ class OpenAICompatibleFreeProvider:
         api_key: str,
         model: str,
         env_var: str = "API_KEY",
+        extra_headers: Mapping[str, str] | None = None,
         transport: AsyncHttpTransport | None = None,
         billing_tier: BillingTier | None = None,
     ) -> None:
@@ -405,6 +407,7 @@ class OpenAICompatibleFreeProvider:
         self._api_key = api_key.strip()
         self._model = model.strip()
         self.env_var = env_var
+        self._extra_headers = dict(extra_headers or {})
         self._transport = transport or HttpxJsonTransport()
         self._retired = find_retired_model(self._kind, self._model)
         self._billing_tier, self._billing_reason = classify_billing_tier(
@@ -461,6 +464,7 @@ class OpenAICompatibleFreeProvider:
         result = await self._transport.post_json(
             self._endpoint_url,
             headers={
+                **self._extra_headers,
                 "Accept": "application/json",
                 "Content-Type": "application/json",
                 "Authorization": f"Bearer {self._api_key}",
@@ -476,6 +480,12 @@ class OpenAICompatibleFreeProvider:
         return _extract_openai_text(result.payload)
 
 
+def _choose_openai_model(kind: ProviderKind, model: str | None) -> str:
+    if model and model.strip():
+        return model.strip()
+    return _env_or_default(MODEL_ENV_VARS[kind], DEFAULT_MODELS[kind])
+
+
 def create_nvidia_nim_provider(
     *,
     api_key: str | None = None,
@@ -484,18 +494,11 @@ def create_nvidia_nim_provider(
     billing_tier: BillingTier | None = None,
 ) -> OpenAICompatibleFreeProvider:
     """Build an NVIDIA NIM provider reading NVIDIA_API_KEY and NVIDIA_MODEL from env."""
-    chosen_model = (
-        model.strip()
-        if model and model.strip()
-        else _env_or_default(
-            MODEL_ENV_VARS[ProviderKind.NVIDIA], DEFAULT_MODELS[ProviderKind.NVIDIA]
-        )
-    )
     return OpenAICompatibleFreeProvider(
         kind=ProviderKind.NVIDIA,
         endpoint_url="https://integrate.api.nvidia.com/v1/chat/completions",
         api_key=api_key if api_key is not None else os.environ.get("NVIDIA_API_KEY", ""),
-        model=chosen_model,
+        model=_choose_openai_model(ProviderKind.NVIDIA, model),
         env_var="NVIDIA_API_KEY",
         transport=transport,
         billing_tier=billing_tier,
@@ -510,16 +513,11 @@ def create_groq_free_provider(
     billing_tier: BillingTier | None = None,
 ) -> OpenAICompatibleFreeProvider:
     """Build a Groq provider; the default replacement model is not claimed as free."""
-    chosen_model = (
-        model.strip()
-        if model and model.strip()
-        else _env_or_default(MODEL_ENV_VARS[ProviderKind.GROQ], DEFAULT_MODELS[ProviderKind.GROQ])
-    )
     return OpenAICompatibleFreeProvider(
         kind=ProviderKind.GROQ,
         endpoint_url="https://api.groq.com/openai/v1/chat/completions",
         api_key=api_key if api_key is not None else os.environ.get("GROQ_API_KEY", ""),
-        model=chosen_model,
+        model=_choose_openai_model(ProviderKind.GROQ, model),
         env_var="GROQ_API_KEY",
         transport=transport,
         billing_tier=billing_tier,
@@ -534,19 +532,16 @@ def create_openrouter_free_provider(
     billing_tier: BillingTier | None = None,
 ) -> OpenAICompatibleFreeProvider:
     """Build an OpenRouter provider; ':free' or 'openrouter/free' pass MAX_SPEND=0."""
-    chosen_model = (
-        model.strip()
-        if model and model.strip()
-        else _env_or_default(
-            MODEL_ENV_VARS[ProviderKind.OPENROUTER], DEFAULT_MODELS[ProviderKind.OPENROUTER]
-        )
-    )
     return OpenAICompatibleFreeProvider(
         kind=ProviderKind.OPENROUTER,
         endpoint_url="https://openrouter.ai/api/v1/chat/completions",
-        api_key=(api_key if api_key is not None else os.environ.get("OPENROUTER_API_KEY", "")),
-        model=chosen_model,
+        api_key=api_key if api_key is not None else os.environ.get("OPENROUTER_API_KEY", ""),
+        model=_choose_openai_model(ProviderKind.OPENROUTER, model),
         env_var="OPENROUTER_API_KEY",
+        extra_headers={
+            "HTTP-Referer": "https://github.com/sayedelazameydesign-crypto/ai-2027",
+            "X-Title": "AI-2027 Protocol",
+        },
         transport=transport,
         billing_tier=billing_tier,
     )
