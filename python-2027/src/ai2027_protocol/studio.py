@@ -18,10 +18,12 @@ from pydantic import Field
 from .agent import AgentSessionState, AgentTaskRequest, AutonomousAgent, SessionStore
 from .ai_providers import describe_provider_readiness
 from .bridges import ApprovalProposal, ConnectorDescriptor, MemoryHit, MemoryStats
+from .compliance import ComplianceRegistryReport, build_compliance_registry
 from .connector_hub_bridge import ConnectorReadOutcome, ConnectorSearchOutcome
-from .contracts import StrictModel, TelemetrySink
+from .contracts import BudgetSnapshot, StrictModel, TelemetrySink
 from .router import FreeFirstRouter
 from .security import SecurityValidationError, resolve_safe_path
+from .telemetry import ObservabilityRuntime
 
 _STATIC_STUDIO_HTML = Path(__file__).resolve().parent / "static" / "studio.html"
 
@@ -54,13 +56,15 @@ class ConnectorReadRequest(StrictModel):
 
 
 class StudioStatusResponse(StrictModel):
-    """Unified readiness overview spanning L0, L1, L4 Free-First LLMs, and L5."""
+    """Unified readiness overview spanning L0, L1, BudgetGuard, OTel, and L5."""
 
     service: str = "ai2027-agent-studio"
     read_only: bool
     cost_usd: float = 0.0
     kernel_available: bool
     memory: MemoryStats
+    budget: BudgetSnapshot
+    observability: dict[str, Any] = Field(default_factory=dict)
     providers: tuple[dict[str, Any], ...]
     connectors: tuple[ConnectorDescriptor, ...]
     sessions_count: int
@@ -110,12 +114,22 @@ def build_studio_router(
         approvals = await agent.connectors_bridge.list_approvals()
         pending = sum(1 for item in approvals if item.status == "pending")
         providers = tuple(
-            s.model_dump(mode="json") for s in describe_provider_readiness(router.providers)
+            s.model_dump(mode="json")
+            for s in describe_provider_readiness(
+                router.providers, budget_policy=router.budget_guard.policy
+            )
+        )
+        obs_info = (
+            telemetry.status_summary()
+            if isinstance(telemetry, ObservabilityRuntime)
+            else {"mode": "custom"}
         )
         return StudioStatusResponse(
             read_only=read_only,
             kernel_available=agent.kernel_bridge.is_available,
             memory=mem_stats,
+            budget=router.budget_snapshot(),
+            observability=obs_info,
             providers=providers,
             connectors=tuple(connectors),
             sessions_count=len(sessions),
@@ -382,6 +396,10 @@ def build_studio_router(
                 "mode": state.mode,
                 "provider": state.provider,
                 "cost_usd": state.cost_usd,
+                "billing_tier": state.billing_tier.value,
+                "cost_status": state.cost_status.value,
+                "cost_known": state.cost_known,
+                "router_attempts": [a.model_dump(mode="json") for a in state.router_attempts],
                 "verified_all_artifacts": all_match and len(checked_artifacts) > 0,
                 "artifacts": checked_artifacts,
                 "ledger": fsck or {"exists": ledger_path.is_file(), "chain_valid": True},
@@ -432,5 +450,10 @@ def build_studio_router(
             return await agent.connector_client.read(payload.connector, payload.resource_id)
         except SecurityValidationError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @api.get("/v1/studio/compliance", response_model=ComplianceRegistryReport)
+    async def get_compliance_registry() -> ComplianceRegistryReport:
+        """Return three-tier compliance registry across all 48 catalog projects."""
+        return await build_compliance_registry(workspace_root, telemetry=telemetry)
 
     return api, agent, store

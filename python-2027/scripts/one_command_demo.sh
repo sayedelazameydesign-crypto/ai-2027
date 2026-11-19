@@ -5,6 +5,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
 PYTHON_BIN="${PYTHON_BIN:-python3}"
+UV_VERSION="${UV_VERSION:-0.13.9}"
 VERIFY_ALL=0
 LIVE_KEYS="${AI2027_LIVE_KEYS:-0}"
 
@@ -19,21 +20,15 @@ for arg in "$@"; do
   esac
 done
 
-if ! command -v uv >/dev/null 2>&1; then
-  if [ ! -x ".venv/bin/uv" ]; then
-    "$PYTHON_BIN" -m venv .venv
-    .venv/bin/pip install -q --upgrade pip uv
-  fi
-  UV=".venv/bin/uv"
-else
-  UV="uv"
-fi
-
 if [ ! -d ".venv" ]; then
-  "$UV" venv .venv --python "$PYTHON_BIN"
+  "$PYTHON_BIN" -m venv .venv
 fi
+if [ ! -x ".venv/bin/uv" ]; then
+  .venv/bin/pip install -q --upgrade pip "uv==${UV_VERSION}"
+fi
+UV=".venv/bin/uv"
 
-"$UV" pip install --python .venv/bin/python -q -e . --group dev
+"$UV" sync --locked --python .venv/bin/python --group dev
 
 if [ "$VERIFY_ALL" -eq 1 ]; then
   .venv/bin/ruff check src tests workers/python-worker/src

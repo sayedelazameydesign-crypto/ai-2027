@@ -16,7 +16,7 @@ from ai2027_protocol.agent import (
     PlannerDecision,
     SessionStore,
 )
-from ai2027_protocol.contracts import AIProvider, PromptRequest, ProviderKind
+from ai2027_protocol.contracts import AIProvider, BillingTier, PromptRequest, ProviderKind
 from ai2027_protocol.planner_engine import FreeFirstAgentPlanner
 from ai2027_protocol.router import FreeFirstRouter
 from ai2027_protocol.security import SecurityValidationError
@@ -28,8 +28,9 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 
 class _ScriptedJsonLlmProvider:
     kind = ProviderKind.GEMINI
-    model = "gemini-scripted-agent"
+    model = "gemini-2.5-flash"
     is_remote = True
+    billing_tier = BillingTier.FREE_TIER
 
     def __init__(self, responses: list[str]) -> None:
         self._responses = list(responses)
