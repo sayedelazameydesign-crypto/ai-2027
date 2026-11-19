@@ -21,8 +21,14 @@
         "python-2027/src/ai2027_protocol/agent.py"
       ],
       "tests": [
-        { "file": "projects/agi-system/tests/test_vertical_slice.py", "marker": "def test_" },
-        { "file": "python-2027/tests/test_agent.py", "marker": "def test_" }
+        {
+          "file": "projects/agi-system/tests/test_vertical_slice.py",
+          "marker": "def test_"
+        },
+        {
+          "file": "python-2027/tests/test_agent.py",
+          "marker": "def test_"
+        }
       ],
       "gap_ar": "التخطيط داخل وكيل واحد؛ الاستئناف بعد القطع مدعوم (checkpoint لكل خطوة)، لكن لا يوجد فريق وكلاء ولا تعلّم من نتائج الدورات السابقة."
     },
@@ -37,8 +43,14 @@
         "python-2027/src/ai2027_protocol/server.py"
       ],
       "tests": [
-        { "file": "python-2027/tests/test_contracts_security.py", "marker": "def test_" },
-        { "file": "python-2027/tests/test_tools.py", "marker": "def test_" }
+        {
+          "file": "python-2027/tests/test_contracts_security.py",
+          "marker": "def test_"
+        },
+        {
+          "file": "python-2027/tests/test_tools.py",
+          "marker": "def test_"
+        }
       ],
       "gap_ar": "يستخدم Protocols وPydantic وAsync وTaskGroup وContext Managers، لكنه لا يولّد كودًا (Metaprogramming) ولا يحمّل إضافات ديناميكيًا — وهذا قرار أمني مقصود لا نقص عرضي."
     },
@@ -56,21 +68,77 @@
         "python-2027/tests/live_connector_worker.py"
       ],
       "tests": [
-        { "file": "python-2027/tests/test_router.py", "marker": "def test_" },
-        { "file": "python-2027/tests/test_model_catalog.py", "marker": "def test_" },
-        { "file": "python-2027/tests/test_hardening.py", "marker": "def test_" },
-        { "file": "python-2027/tests/test_live_probe.py", "marker": "def test_" },
-        { "file": "python-2027/tests/test_live_connector_gate.py", "marker": "def test_" }
+        {
+          "file": "python-2027/tests/test_router.py",
+          "marker": "def test_"
+        },
+        {
+          "file": "python-2027/tests/test_model_catalog.py",
+          "marker": "def test_"
+        },
+        {
+          "file": "python-2027/tests/test_hardening.py",
+          "marker": "def test_"
+        },
+        {
+          "file": "python-2027/tests/test_live_probe.py",
+          "marker": "def test_"
+        },
+        {
+          "file": "python-2027/tests/test_live_connector_gate.py",
+          "marker": "def test_"
+        }
       ],
       "gap_ar": "يوجّه بالتكلفة/التوافر لا بجودة الإجابة أو نوع المهمة. الاتصال الحي بمزوّد مجاني صار مُثبتًا بأثر (id + وقت + استجابة منقّحة)، لكنه يثبت مزوّدًا واحدًا لا كلهم."
     },
     {
       "id": "agent-fleet",
       "title_ar": "Agent Fleet — فريق وكلاء متعاون",
-      "status": "absent",
-      "evidence": [],
-      "tests": [],
-      "gap_ar": "لا توجد طبقة Fleet: AutonomousAgent ينفّذ خطة لوكيل واحد، والجلسات تُحفظ للاستعادة لا للتنسيق بين وكلاء متزامنين."
+      "status": "partial",
+      "evidence": [
+        "fleet-2027/fleet2027/contracts.py",
+        "fleet-2027/fleet2027/store.py",
+        "fleet-2027/fleet2027/runner.py",
+        "fleet-2027/fleet2027/registry.py",
+        "fleet-2027/fleet2027/verifier.py",
+        "fleet-2027/fleet2027/examples.py",
+        "fleet-2027/cli.py",
+        "fleet-2027/crash_worker.py",
+        "fleet-2027/gate.py",
+        "scripts/fleet_guard.py"
+      ],
+      "tests": [
+        {
+          "file": "fleet-2027/tests/test_contracts.py",
+          "marker": "def test_"
+        },
+        {
+          "file": "fleet-2027/tests/test_store.py",
+          "marker": "def test_"
+        },
+        {
+          "file": "fleet-2027/tests/test_runner.py",
+          "marker": "def test_"
+        },
+        {
+          "file": "fleet-2027/tests/test_verifier.py",
+          "marker": "def test_"
+        },
+        {
+          "file": "fleet-2027/tests/test_registry.py",
+          "marker": "def test_"
+        },
+        {
+          "file": "fleet-2027/tests/test_crash.py",
+          "marker": "def test_"
+        },
+        {
+          "file": "fleet-2027/tests/test_cli.py",
+          "marker": "def test_"
+        }
+      ],
+      "gap_ar": "الطبقة موجودة الآن: تخطيط DAG، تنفيذ موجات متوازية، حفظ حالة في SQLite مع WAL+synchronous=FULL، استئناف مُثبت بقتل عملية حقيقية بـSIGKILL، طابور رسائل ميتة، مفاتيح idempotency، تحقق مستقل من البصمات على القرص، وسلسلة تدقيق مُجزّأة. الفجوة المتبقية: المحرّك لا يزال داخل العملية (threads) لا موزّعًا عبر عدة عُقد، ولا يزوّد وكلاء LLM حقيقيين — الوكلاء التجريبيون برامج محلية حتمية.",
+      "evidence_gate": "launch/evidence/fleet-2027-gate.json"
     },
     {
       "id": "browser-engine",
@@ -83,8 +151,14 @@
         "browser_skill_adapter/windows_acl.py"
       ],
       "tests": [
-        { "file": "browser_skill_adapter/test_adapter.py", "marker": "def test_" },
-        { "file": "browser_skill_adapter/test_verified_handoff.py", "marker": "def test_" }
+        {
+          "file": "browser_skill_adapter/test_adapter.py",
+          "marker": "def test_"
+        },
+        {
+          "file": "browser_skill_adapter/test_verified_handoff.py",
+          "marker": "def test_"
+        }
       ],
       "gap_ar": "الوضع المحلي فقط، وCI يشغّل متصفحًا محاكى؛ الوضعان skill_mcp وremote_wss يرفعان ModeNotEnabledError، ولا يوجد إثبات تحكم بمتصفح حقيقي في CI."
     },
@@ -98,8 +172,14 @@
         ".github/workflows/e2b-live-check.yml"
       ],
       "tests": [
-        { "file": "python-2027/tests/test_tools_advanced.py", "marker": "def test_" },
-        { "file": "scripts/test_policy_hardening.py", "marker": "def test_" }
+        {
+          "file": "python-2027/tests/test_tools_advanced.py",
+          "marker": "def test_"
+        },
+        {
+          "file": "scripts/test_policy_hardening.py",
+          "marker": "def test_"
+        }
       ],
       "gap_ar": "التنفيذ محلي داخل subprocess مقيّد بمسار مسموح؛ E2B موجود لكنه يدوي فقط ولا يُشغَّل في CI، ولا يوجد تحكم ببرامج سطح مكتب أو بيئة سطح مكتب كاملة."
     },
@@ -114,8 +194,14 @@
         "python-2027/src/ai2027_protocol/connector_hub_bridge.py"
       ],
       "tests": [
-        { "file": "connectors-hub/tests/test_hub.py", "marker": "def test_" },
-        { "file": "python-2027/tests/test_bridges.py", "marker": "def test_" }
+        {
+          "file": "connectors-hub/tests/test_hub.py",
+          "marker": "def test_"
+        },
+        {
+          "file": "python-2027/tests/test_bridges.py",
+          "marker": "def test_"
+        }
       ],
       "gap_ar": "العقود والموافقات مُثبتة، لكن مزوّدي Connectors Hub في CI محاكاة فقط؛ لا يوجد اتصال حي بـGitHub/Drive/Gmail مُثبت بفحص آلي."
     },
@@ -133,10 +219,22 @@
         "python-2027/tests/resume_worker.py"
       ],
       "tests": [
-        { "file": "memory/test_memory.py", "marker": "def test_" },
-        { "file": "python-2027/tests/test_ollama_celia.py", "marker": "def test_" },
-        { "file": "python-2027/tests/test_agent_resume.py", "marker": "def test_" },
-        { "file": "python-2027/tests/test_persistent_task_gate.py", "marker": "def test_" }
+        {
+          "file": "memory/test_memory.py",
+          "marker": "def test_"
+        },
+        {
+          "file": "python-2027/tests/test_ollama_celia.py",
+          "marker": "def test_"
+        },
+        {
+          "file": "python-2027/tests/test_agent_resume.py",
+          "marker": "def test_"
+        },
+        {
+          "file": "python-2027/tests/test_persistent_task_gate.py",
+          "marker": "def test_"
+        }
       ],
       "gap_ar": "الاسترجاع محلّي (SQLite) ولا مزامنة بين الأجهزة. استئناف مهمة مقطوعة من نقطة تحقق مُثبت الآن بقتل عملية حقيقية (SIGKILL) واستئناف من الخطوة التالية."
     },
@@ -151,9 +249,18 @@
         "scripts/ember_up.sh"
       ],
       "tests": [
-        { "file": "scripts/test_render_deploy.py", "marker": "def test_" },
-        { "file": "scripts/test_run_task.py", "marker": "def test_" },
-        { "file": "scripts/test_ember_beat.py", "marker": "def test_" }
+        {
+          "file": "scripts/test_render_deploy.py",
+          "marker": "def test_"
+        },
+        {
+          "file": "scripts/test_run_task.py",
+          "marker": "def test_"
+        },
+        {
+          "file": "scripts/test_ember_beat.py",
+          "marker": "def test_"
+        }
       ],
       "gap_ar": "الأتمتة تعتمد على GitHub Actions وأوامر يدوية؛ لا مجدول داخلي دائم يعمل بعد إغلاق الـrunner."
     },
@@ -168,9 +275,18 @@
         "deployment/live_server.py"
       ],
       "tests": [
-        { "file": "python-2027/tests/test_python_worker.py", "marker": "def test_" },
-        { "file": "python-2027/workers/edge-gateway/tests/gateway.test.mjs", "marker": "test(" },
-        { "file": "deployment/test_deployment.py", "marker": "def test_" }
+        {
+          "file": "python-2027/tests/test_python_worker.py",
+          "marker": "def test_"
+        },
+        {
+          "file": "python-2027/workers/edge-gateway/tests/gateway.test.mjs",
+          "marker": "test("
+        },
+        {
+          "file": "deployment/test_deployment.py",
+          "marker": "def test_"
+        }
       ],
       "gap_ar": "كل ما هو مُثبت هو local + wrangler dry-run؛ لا يوجد نشر حي مُتحقَّق منه بفحص HTTP بعد النشر، ولا استمرارية مهام عبر إعادة تشغيل الـWorker."
     },
@@ -187,10 +303,22 @@
         "command-hud/redteam.py"
       ],
       "tests": [
-        { "file": "python-2027/tests/test_contracts_security.py", "marker": "def test_" },
-        { "file": "scripts/test_secret_scan.py", "marker": "def test_" },
-        { "file": "scripts/test_ci_guard.py", "marker": "def test_" },
-        { "file": "scripts/test_policy_hardening.py", "marker": "def test_" }
+        {
+          "file": "python-2027/tests/test_contracts_security.py",
+          "marker": "def test_"
+        },
+        {
+          "file": "scripts/test_secret_scan.py",
+          "marker": "def test_"
+        },
+        {
+          "file": "scripts/test_ci_guard.py",
+          "marker": "def test_"
+        },
+        {
+          "file": "scripts/test_policy_hardening.py",
+          "marker": "def test_"
+        }
       ],
       "gap_ar": "الأمان مُثبت للوكلاء المحليين والأسرار؛ لا يوجد عزل شبكي على مستوى العملية (sandbox OS) ولا تدقيق صلاحيات موزّع."
     },
@@ -206,9 +334,18 @@
         "launch/test_launch_claims.py"
       ],
       "tests": [
-        { "file": "python-2027/tests/test_auditor.py", "marker": "def test_" },
-        { "file": "python-2027/tests/test_telemetry.py", "marker": "def test_" },
-        { "file": "launch/test_launch_claims.py", "marker": "def test_" }
+        {
+          "file": "python-2027/tests/test_auditor.py",
+          "marker": "def test_"
+        },
+        {
+          "file": "python-2027/tests/test_telemetry.py",
+          "marker": "def test_"
+        },
+        {
+          "file": "launch/test_launch_claims.py",
+          "marker": "def test_"
+        }
       ],
       "gap_ar": "الأدلة تغطي الاختبارات والأرقام المُعلنة؛ لا تغطي بعد «مهمة مستخدم كاملة من البداية إلى النهاية» كمقياس مقارن مع منتج آخر."
     }
