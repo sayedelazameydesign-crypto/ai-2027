@@ -52,6 +52,11 @@ def _normalize_model_id(raw_model: str) -> str:
     return raw_model.strip().lower().split(" ", 1)[0]
 
 
+def _is_openrouter_free_model(raw_model: str) -> bool:
+    norm = _normalize_model_id(raw_model)
+    return norm.endswith(":free") or norm == "openrouter/free"
+
+
 def classify_billing_tier(
     *,
     kind: ProviderKind,
@@ -62,7 +67,7 @@ def classify_billing_tier(
     """Classify provider billing tier; an API key alone NEVER proves free usage."""
     if explicit_tier is not None:
         if explicit_tier == BillingTier.FREE_TIER and kind == ProviderKind.OPENROUTER:
-            if not _normalize_model_id(model).endswith(":free"):
+            if not _is_openrouter_free_model(model):
                 return (
                     BillingTier.UNKNOWN_COST,
                     "OpenRouter models without ':free' suffix cannot be claimed as FREE_TIER.",
@@ -79,7 +84,7 @@ def classify_billing_tier(
 
     norm_model = _normalize_model_id(model)
     if kind == ProviderKind.OPENROUTER:
-        if norm_model.endswith(":free") or norm_model == "openrouter/free":
+        if _is_openrouter_free_model(model):
             return (
                 BillingTier.FREE_TIER,
                 "OpenRouter ':free' model explicitly designated free-tier (no live invoice).",

@@ -190,7 +190,7 @@ jobs:
           GEMINI_MODEL: ${{ vars.GEMINI_MODEL || 'gemini-2.5-flash' }}
           NVIDIA_MODEL: ${{ inputs.nvidia_model || vars.NVIDIA_MODEL || 'meta/llama-3.1-8b-instruct' }}
           GROQ_MODEL: ${{ vars.GROQ_MODEL || 'llama-3.1-8b-instant' }}
-          OPENROUTER_MODEL: ${{ vars.OPENROUTER_MODEL || 'meta-llama/llama-3.2-3b-instruct:free' }}
+          OPENROUTER_MODEL: ${{ vars.OPENROUTER_MODEL || 'openrouter/free' }}
           AI2027_MAX_SPEND_USD: "0"
           AI2027_LIVE_PROVIDER: ${{ inputs.provider || 'all' }}
           AI2027_REQUIRE_LIVE: ${{ inputs.require_live_credential || false }}
@@ -202,10 +202,19 @@ jobs:
           if [ "$AI2027_REQUIRE_LIVE" = "true" ]; then
             args+=(--require-any)
           fi
+          set +e
           .venv/bin/ai2027-py27 live "${args[@]}" > /tmp/live-2027.json
+          rc=$?
+          set -e
           python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
           import json, pathlib
-          data = json.loads(pathlib.Path("/tmp/live-2027.json").read_text(encoding="utf-8"))
+          raw = pathlib.Path("/tmp/live-2027.json").read_text(encoding="utf-8").strip()
+          if not raw:
+              print("### ⚡ Python 2027 Live Actions Secrets Verification")
+              print()
+              print("- Live probe produced no JSON output (check step stderr).")
+              raise SystemExit(0)
+          data = json.loads(raw)
           print("### ⚡ Python 2027 Live Actions Secrets Verification")
           print()
           print(f"- target: `{data['target']}` · configured remote keys: **{data['configured_count']}** · live succeeded: **{data['live_succeeded']}** · trace: `{data['trace_id']}`")
@@ -213,12 +222,14 @@ jobs:
           print(f"- Free-First route: `{routed['provider']}` (`{routed['model']}`) · tier=`{routed['billing_tier']}` · cost_known=`{routed['cost_known']}` · simulated=`{routed['simulated']}` · latency=`{routed['latency_ms']} ms`")
           if data["probes"]:
               print()
-              print("| Provider | Model | Credential | Status | Latency |")
-              print("|---|---|---|---|---:|")
+              print("| Provider | Model | Credential | Status | Latency | Detail |")
+              print("|---|---|---|---|---:|---|")
               for p in data["probes"]:
-                  print(f"| `{p['provider']}` | `{p['model']}` | `{p['credential_state']}` | `{p['status']}` | {p['latency_ms']} ms |")
+                  detail = str(p.get("error") or ("ok" if p.get("ok") else "")).replace("|", "/")[:120]
+                  print(f"| `{p['provider']}` | `{p['model']}` | `{p['credential_state']}` | `{p['status']}` | {p['latency_ms']} ms | {detail} |")
           PY
           cat /tmp/live-2027.json
+          exit "$rc"
 
       - name: Upload sanitized live verification report
         if: always()

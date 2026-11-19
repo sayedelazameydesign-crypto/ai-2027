@@ -285,7 +285,7 @@ def _provider_specs(
     gem_model = env_get(env, "GEMINI_MODEL", "gemini-2.5-flash")
     nv_model = env_get(env, "NVIDIA_MODEL", "meta/llama-3.1-8b-instruct")
     groq_model = env_get(env, "GROQ_MODEL", "llama-3.3-70b-versatile")
-    or_model = env_get(env, "OPENROUTER_MODEL", "meta-llama/llama-3.3-70b-instruct:free")
+    or_model = env_get(env, "OPENROUTER_MODEL", "openrouter/free")
 
     return [
         (
