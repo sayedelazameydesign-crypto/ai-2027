@@ -15,7 +15,12 @@ from fastapi import APIRouter, HTTPException, Query, Response
 from fastapi.responses import HTMLResponse, StreamingResponse
 from pydantic import Field
 
-from .agent import AgentSessionState, AgentTaskRequest, AutonomousAgent, SessionStore
+from .agent import (
+    AgentSessionState,
+    AgentTaskRequest,
+    AutonomousAgent,
+    SessionStore,
+)
 from .ai_providers import describe_provider_readiness
 from .bridges import ApprovalProposal, ConnectorDescriptor, MemoryHit, MemoryStats
 from .compliance import ComplianceRegistryReport, build_compliance_registry
@@ -23,6 +28,7 @@ from .connector_hub_bridge import ConnectorReadOutcome, ConnectorSearchOutcome
 from .contracts import BudgetSnapshot, StrictModel, TelemetrySink
 from .router import FreeFirstRouter
 from .security import SecurityValidationError, resolve_safe_path
+from .session_store import SessionBusyError
 from .telemetry import ObservabilityRuntime
 
 _STATIC_STUDIO_HTML = Path(__file__).resolve().parent / "static" / "studio.html"
@@ -167,6 +173,8 @@ def build_studio_router(
             raise HTTPException(status_code=403, detail="Service is in AI2027_READ_ONLY mode.")
         try:
             state = await agent.run(session_id, payload)
+        except SessionBusyError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
         except SecurityValidationError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         except FileNotFoundError as exc:
@@ -186,14 +194,23 @@ def build_studio_router(
         except FileNotFoundError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
+        # Acquire before the 200 goes out: a busy session must answer 409, not open
+        # a stream that immediately dies. The agent releases it when the stream ends.
+        try:
+            lease = store.acquire_lease(session_id) if store.lease_enabled else None
+        except SessionBusyError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
         async def _event_gen() -> AsyncIterator[str]:
             try:
-                async for evt in agent.stream_run(session_id, payload):
+                async for evt in agent.stream_run(session_id, payload, lease=lease):
                     data_json = evt.model_dump_json()
                     yield f"event: {evt.event}\ndata: {data_json}\n\n"
             except Exception as exc:  # noqa: BLE001 - stream error cleanly instead of silent EOF
                 err_payload = json.dumps({"message": str(exc)})
                 yield f"event: error\ndata: {err_payload}\n\n"
+            finally:
+                store.release_lease(lease)
 
         return StreamingResponse(
             _event_gen(),

@@ -13,6 +13,43 @@ fail or when any GitHub Action is not pinned to a full-length SHA.
 
 ## [Unreleased]
 
+### Fixed — P0.1: one writer per session, ordered by a fencing token (2026-11-19)
+- **Gap R1 closed.** The audit measured the defect: four writers saving one
+  session lost **59–67 of 240 writes** per run (previously 23–61 by a different
+  counter), because `session.tmp` was one fixed filename and nothing owned the
+  session. Re-running the same harness with the lease gives **0 lost writes,
+  0 torn reads, 240/240 accepted** (`tests/session_race_demo.py --mode lease --assert`).
+- **`lease.py`** (new) — `LeaseStore` protocol and `SqliteLeaseStore`: one row per
+  session, acquired inside `BEGIN IMMEDIATE`, carrying `owner`, `fence` and
+  `expires_at`; WAL and a bounded busy timeout. Leases expire, so a crashed
+  process cannot lock a session forever — the next writer takes over and the
+  fence moves.
+- **Every write is atomic.** The temp file is now unique per write
+  (`.session.{pid}.{hex8}.tmp`), so one writer can no longer publish another's
+  half-finished JSON — the torn reads in the audit came from exactly that.
+- **`session_store.py` / `session_state.py`** (new) — `SessionStore` and the
+  session models moved out of `agent.py` (778 → 478 lines, back under the
+  auditor's 650-line ceiling) so persistence can be tested on its own; the public
+  names `ai2027_protocol.agent.SessionStore` and `ai2027_protocol.SessionStore`
+  are unchanged.
+- **Refusals are explicit.** Three modes via `AI2027_SESSION_LEASE`: `off`
+  (default, historical behaviour), `warn` (logs the refusal, still writes),
+  `enforce` (refuses). Under `enforce` a writer that lost its lease gets
+  `LeaseLostError` instead of silently overwriting newer state; the first write
+  of a brand-new session is exempt because a fresh uuid cannot be contended.
+- **Studio answers 409, not a dead stream.** `/v1/studio/sessions/{id}/run` and
+  `/stream` acquire the lease *before* the 200, return `409` naming the holder
+  when the session is busy, and release it in `finally`. The CLI maps
+  `SessionBusyError` to exit code 2 with a readable message.
+- **Fence stays monotonic across release.** Releasing a lease invalidates the row
+  (`expires_at = 0`) instead of deleting it: a deleted row would restart the fence
+  at 1 and hand a stale writer a token that looks current. Found by
+  `tests/test_session_lease.py`, which now pins it.
+- **`tests/test_session_lease.py`** (new, 10 tests) — cross-process contention,
+  live-lease refusal, takeover after expiry with a higher fence, stale-writer
+  write refused, first-write exemption, `warn` logging, `409` on both Studio
+  paths, and no lease left behind after a finished run.
+
 ### Added — Phase A resilience audit: what breaks, and what already holds (2026-11-19)
 - **`docs/PAP-2027-RESILIENCE-AUDIT.md`** — read-only audit of the execution and
   failure paths (architecture, dependency graph, failure propagation, protection

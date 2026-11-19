@@ -12,7 +12,12 @@ from typing import Any
 
 import uvicorn
 
-from .agent import AgentResumeError, AgentTaskRequest, AutonomousAgent, SessionStore
+from .agent import (
+    AgentResumeError,
+    AgentTaskRequest,
+    AutonomousAgent,
+    SessionStore,
+)
 from .ai_providers import describe_provider_readiness
 from .auditor import ProtocolAuditor, format_audit_markdown
 from .benchmark import run_benchmark_suite
@@ -31,6 +36,7 @@ from .ollama_layer import OllamaRuntimeClient
 from .ollama_readiness import verify_ollama_capabilities
 from .router import FreeFirstRouter
 from .server import create_app
+from .session_store import SessionBusyError
 from .telemetry import ObservabilityRuntime
 
 
@@ -305,7 +311,7 @@ async def _run_cli_async(args: argparse.Namespace) -> int:
                 resume=bool(args.resume),
             )
             state = await agent.run(session_id, req)
-        except (AgentResumeError, FileNotFoundError) as exc:
+        except (AgentResumeError, SessionBusyError, FileNotFoundError) as exc:
             print(f"agent: {exc}", file=sys.stderr)
             runtime.shutdown()
             return 2
