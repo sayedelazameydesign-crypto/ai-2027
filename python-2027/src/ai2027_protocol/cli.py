@@ -12,7 +12,7 @@ from typing import Any
 
 import uvicorn
 
-from .agent import AgentTaskRequest, AutonomousAgent, SessionStore
+from .agent import AgentResumeError, AgentTaskRequest, AutonomousAgent, SessionStore
 from .ai_providers import describe_provider_readiness
 from .auditor import ProtocolAuditor, format_audit_markdown
 from .benchmark import run_benchmark_suite
@@ -283,14 +283,32 @@ async def _run_cli_async(args: argparse.Namespace) -> int:
             router=router,
             telemetry=runtime,
         )
-        session = store.create_session(title=args.task[:64])
-        req = AgentTaskRequest(
-            task=args.task,
-            max_steps=args.max_steps,
-            preferred_provider=ProviderKind(args.provider) if args.provider else None,
-            allow_remote=not args.offline_only,
-        )
-        state = await agent.run(session.session_id, req)
+        try:
+            if args.resume:
+                existing = await store.load(args.resume)
+                session_id = existing.session_id
+                task_text = args.task.strip() or existing.task
+            else:
+                if not args.task.strip():
+                    print(
+                        "agent: a task is required unless --resume names a session", file=sys.stderr
+                    )
+                    runtime.shutdown()
+                    return 2
+                session_id = store.create_session(title=args.task[:64]).session_id
+                task_text = args.task
+            req = AgentTaskRequest(
+                task=task_text,
+                max_steps=args.max_steps,
+                preferred_provider=ProviderKind(args.provider) if args.provider else None,
+                allow_remote=not args.offline_only,
+                resume=bool(args.resume),
+            )
+            state = await agent.run(session_id, req)
+        except (AgentResumeError, FileNotFoundError) as exc:
+            print(f"agent: {exc}", file=sys.stderr)
+            runtime.shutdown()
+            return 2
         runtime.shutdown()
         if args.json:
             print(state.model_dump_json(indent=2))
@@ -476,7 +494,12 @@ def build_parser() -> argparse.ArgumentParser:
     studio_p.add_argument("--studio-dir", type=Path, default=None)
 
     agent_p = sub.add_parser("agent", help="Run a multi-step autonomous task from the CLI.")
-    agent_p.add_argument("task", help="Goal or instruction for the autonomous agent.")
+    agent_p.add_argument(
+        "task",
+        nargs="?",
+        default="",
+        help="Goal or instruction; optional when --resume names a checkpointed session.",
+    )
     agent_p.add_argument("--max-steps", type=int, default=5)
     agent_p.add_argument(
         "--provider",
@@ -485,6 +508,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     agent_p.add_argument("--offline-only", action="store_true")
     agent_p.add_argument("--studio-dir", type=Path, default=None)
+    agent_p.add_argument(
+        "--resume",
+        metavar="SESSION_ID",
+        default="",
+        help="Continue an interrupted session from its last checkpointed step.",
+    )
     agent_p.add_argument("--json", action="store_true")
 
     appr_p = sub.add_parser("approvals", help="Inspect or approve/reject queued L5 actions.")
