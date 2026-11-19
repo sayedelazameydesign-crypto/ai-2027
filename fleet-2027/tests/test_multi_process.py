@@ -411,7 +411,7 @@ class GateRegistrationTests(unittest.TestCase):
         names = [gate.__name__ for gate in GATES]
         self.assertIn("gate_multi_process", names)
         # The workflow and README quote this count; a silent change is a lie.
-        self.assertEqual(len(GATES), 11)
+        self.assertEqual(len(GATES), 12)
 
     def test_opt_in_gates_are_never_in_the_default_list(self) -> None:
         from gate import GATES, OPT_IN_GATES

@@ -831,6 +831,85 @@ def gate_multi_process(base: Path) -> GateResult:
     )
 
 
+def gate_router_failover(base: Path) -> GateResult:
+    """A2 — a dead provider must fail over *inside* the step, and say so.
+
+    Deliberately not a mock: the real ``FreeFirstRouter`` from ``python-2027`` runs
+    the real BudgetGuard and circuit breaker, with two stub providers standing in
+    for the network. What is proven is the coordination — the file is written and
+    verified, the failover is visible in step evidence, and it is persisted in
+    the store rather than living only in a log.
+    """
+    started = time.perf_counter()
+    bridge = Path(__file__).resolve().parent.parent / "scripts" / "fleet_router_bridge_check.py"
+    if not bridge.is_file():  # pragma: no cover - packaging guard
+        return GateResult("router-failover", False, "bridge missing", {}, [f"no {bridge}"])
+    work = base / "router"
+    work.mkdir(parents=True, exist_ok=True)
+    failures: list[str] = []
+    measured: dict[str, Any] = {}
+
+    def run(mode: str, *extra: str) -> tuple[int, dict[str, Any]]:
+        completed = subprocess.run(  # noqa: S603 - fixed argv, no shell
+            [sys.executable, str(bridge), "--mode", mode, *extra],
+            capture_output=True, text=True, timeout=300, check=False,
+        )
+        payload: dict[str, Any] = {}
+        start = completed.stdout.find("{")
+        if start != -1:
+            try:
+                payload, _ = json.JSONDecoder().raw_decode(completed.stdout[start:])
+            except json.JSONDecodeError:  # pragma: no cover - bridge bug
+                payload = {}
+        return completed.returncode, payload
+
+    code, payload = run("simulated", "--workspace", str(work))
+    measured["simulated"] = {
+        "exit": code,
+        "status": payload.get("status"),
+        "provider": payload.get("provider"),
+        "failovers": payload.get("failovers"),
+        "verification_ok": payload.get("verification_ok"),
+        "events": [event["kind"] for event in payload.get("events", [])],
+    }
+    if code != 0 or not payload.get("verification_ok"):
+        failures.append(f"failover step did not verify (exit={code})")
+    if (payload.get("failovers") or 0) < 1:
+        failures.append("no failover was recorded — the first provider was not tried")
+    kinds = measured["simulated"]["events"]
+    if "step.failover" not in kinds:
+        failures.append("the failover was not persisted as an event")
+    # The honesty rule: the deterministic provider must be labelled, not passed
+    # off as a real model.
+    if payload.get("provider") == "deterministic" and "step.simulated" not in kinds:
+        failures.append("a simulated answer was not labelled as simulated")
+
+    code, payload = run("exhausted", "--workspace", str(work / "exhausted"))
+    reasons = " ".join(str(row.get("reason", "")) for row in payload.get("dead_letters", []))
+    measured["exhausted"] = {
+        "exit": code,
+        "status": payload.get("status"),
+        "artifact_exists": payload.get("artifact_exists"),
+        "dead_letter_reason": reasons[:300],
+    }
+    if payload.get("artifact_exists"):
+        failures.append("an exhausted router still produced an artifact")
+    if payload.get("status") not in {"failed", "dead_letter"}:
+        failures.append(f"exhausted router reported {payload.get('status')!r}")
+    if "every provider failed" not in reasons:
+        failures.append("the dead-letter reason does not carry the provider trail")
+
+    return GateResult(
+        "router-failover",
+        not failures,
+        "a dead provider fails over inside the step (verified file + persisted "
+        "step.failover), and total exhaustion dead-letters with the full trail",
+        measured,
+        failures,
+        (time.perf_counter() - started) * 1000,
+    )
+
+
 GATES: list[Callable[[Path], GateResult]] = [
     gate_parallel_wave,
     gate_verification_refuses,
@@ -842,6 +921,7 @@ GATES: list[Callable[[Path], GateResult]] = [
     gate_audit_chain,
     gate_sigkill_resume,
     gate_multi_process,
+    gate_router_failover,
     gate_llm_verified_artifact,
 ]
 

@@ -96,19 +96,21 @@
       "title_ar": "Agent Fleet — فريق وكلاء متعاون",
       "status": "partial",
       "evidence": [
-        "fleet-2027/fleet2027/contracts.py",
-        "fleet-2027/fleet2027/store.py",
-        "fleet-2027/fleet2027/runner.py",
-        "fleet-2027/fleet2027/registry.py",
-        "fleet-2027/fleet2027/verifier.py",
-        "fleet-2027/fleet2027/examples.py",
-        "fleet-2027/fleet2027/llm.py",
         "fleet-2027/cli.py",
         "fleet-2027/crash_worker.py",
+        "fleet-2027/fleet2027/contracts.py",
+        "fleet-2027/fleet2027/examples.py",
+        "fleet-2027/fleet2027/llm.py",
+        "fleet-2027/fleet2027/registry.py",
+        "fleet-2027/fleet2027/routing.py",
+        "fleet-2027/fleet2027/runner.py",
+        "fleet-2027/fleet2027/store.py",
+        "fleet-2027/fleet2027/verifier.py",
         "fleet-2027/gate.py",
         "fleet-2027/scripts/multi_process_probe.py",
         "scripts/fleet_guard.py",
-        "scripts/fleet_llm_bridge_check.py"
+        "scripts/fleet_llm_bridge_check.py",
+        "scripts/fleet_router_bridge_check.py"
       ],
       "tests": [
         {
@@ -146,9 +148,13 @@
         {
           "file": "fleet-2027/tests/test_multi_process.py",
           "marker": "def test_"
+        },
+        {
+          "file": "fleet-2027/tests/test_routing.py",
+          "marker": "def test_"
         }
       ],
-      "gap_ar": "الطبقة موجودة: تخطيط DAG، موجات متوازية، حالة دائمة في SQLite (WAL+synchronous=FULL)، استئناف مُثبت بقتل عملية حقيقية بـSIGKILL، DLQ، Idempotency، تحقق مستقل من البصمات على القرص، سلسلة تدقيق مُجزّأة، ووكيل LLM حقيقي (A1) عبر واجهة حقن بلا أي SDK داخل النواة. A3 منفّذ: سجل عمال دائم (schema v3)، أمر `cli.py worker`، وعدة عمليات على ملف قاعدة واحد — موجة محسوبة بقدرة الـbulkhead (لا استهلاك محاولات زائد)، تحرير خطوات المالك الميّت فقط، وآثار write-ahead (intent → complete) تمنع تكرار الأثر الخارجي بعد SIGKILL. البوابة `multi-process` تُثبت ذلك بعمليتين حقيقيتين. الفجوة المتبقية: التوزيع عبر آلات (multi-node) غير منفّذ — SQLite على قرص محلي تنسّق عمليات فقط؛ والوكيل الحقيقي يحتاج نقطة Ollama محلية لتشغيله الحيّ.",
+      "gap_ar": "الطبقة موجودة: تخطيط DAG، موجات متوازية، حالة دائمة في SQLite (WAL+synchronous=FULL)، استئناف مُثبت بقتل عملية حقيقية بـSIGKILL، DLQ، Idempotency، تحقق مستقل من البصمات على القرص، سلسلة تدقيق مُجزّأة، ووكيل LLM حقيقي (A1) عبر واجهة حقن بلا أي SDK داخل النواة. A3 منفّذ: سجل عمال دائم (schema v3)، أمر `cli.py worker`، وعدة عمليات على ملف قاعدة واحد، مع آثار write-ahead (intent → complete) تمنع تكرار الأثر الخارجي بعد SIGKILL. A2 منفّذ: `fleet2027/routing.py` يحقن `FreeFirstRouter` في الخطوة — سقوط مزوّد يُنتج بديلًا داخل نفس الخطوة مع حدث `step.failover` مُثبَّت ومسجَّل في سلسلة التدقيق، واستنفاد كل المزوّدين يُدخل الخطوة DLQ بمسار المحاولات كاملًا؛ والحتمي يُوسَم `step.simulated` صراحةً. الفجوة المتبقية: التوزيع عبر آلات (multi-node) غير منفّذ، وA4 (إعادة المحاولة التكيفية بالجودة) لم يبدأ، وتشغيل A2 الحيّ يحتاج مزوّدًا حقيقيًا (Ollama محلي أو مفتاح).",
       "evidence_gate": "launch/evidence/fleet-2027-gate.json"
     },
     {
