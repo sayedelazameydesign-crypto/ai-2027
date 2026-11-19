@@ -203,3 +203,46 @@ async def test_verify_live_providers_with_mocked_actions_keys(
     serialized = json.dumps(report)
     assert _FAKE_GEMINI not in serialized
     assert _FAKE_NVIDIA not in serialized
+
+
+async def test_verify_live_providers_gives_reasoning_models_512_tokens(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ai2027_protocol.ai_providers import create_openrouter_free_provider
+
+    monkeypatch.setenv("OPENROUTER_MODEL", "")
+    seen_max_tokens: list[int] = []
+
+    class _ReasoningFreeRouterTransport:
+        async def post_json(
+            self,
+            url: str,
+            *,
+            headers: Mapping[str, str],
+            json_body: Mapping[str, Any],
+            timeout_s: float,
+        ) -> HttpJsonResult:
+            max_tok = int(json_body["max_tokens"])
+            seen_max_tokens.append(max_tok)
+            if max_tok < 512:
+                return HttpJsonResult(
+                    200,
+                    {"choices": [{"message": {"content": None, "reasoning": ""}}]},
+                )
+            return HttpJsonResult(200, {"choices": [{"message": {"content": "pong"}}]})
+
+    report = await verify_live_providers(
+        providers=(
+            create_openrouter_free_provider(
+                api_key="sk-or-fixture",
+                transport=_ReasoningFreeRouterTransport(),
+            ),
+            DeterministicFallbackProvider(),
+        ),
+        target="openrouter",
+    )
+    assert seen_max_tokens == [512, 512]
+    assert report["live_succeeded"] is True
+    assert report["probes"][0]["status"] == "ok"
+    assert report["routed"]["provider"] == "openrouter"
+    assert report["routed"]["simulated"] is False
