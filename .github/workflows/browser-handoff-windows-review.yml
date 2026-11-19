@@ -1,0 +1,496 @@
+# Branch-only harness for the Windows tests in ci.yml. Do not merge this trigger.
+name: Browser Handoff · Windows Review
+
+on:
+  push:
+    branches: ["arena/678b3548-ai-2027"]
+
+permissions:
+  contents: read
+
+jobs:
+  browser-handoff-windows:
+    name: BrowserSkill local handoff · Windows ACL and process lock (simulated browser)
+    runs-on: windows-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
+        with:
+          python-version: "3.11"
+      - name: Materialize verified adapter files from commit blobs
+        shell: python
+        env:
+          GIT_TERMINAL_PROMPT: "0"
+        run: |
+          import hashlib
+          import os
+          from pathlib import Path
+          import re
+          import subprocess
+          from tempfile import TemporaryDirectory
+
+          # Full and sparse Windows checkouts reject an unrelated path ending
+          # in a dot. Read only the reviewed tree's blobs, without a Git index.
+          review_tree = b"03c9ee239e55c0f322cdd830826e51951fa848d3"
+          revision = os.environ["GITHUB_SHA"]
+          url = f"{os.environ['GITHUB_SERVER_URL']}/{os.environ['GITHUB_REPOSITORY']}.git"
+          workspace = Path(os.environ["GITHUB_WORKSPACE"])
+          entry_pattern = re.compile(rb"100(?:644|755) blob ([0-9a-f]{40})\t(browser_skill_adapter/[A-Za-z0-9_-]+(?:[./][A-Za-z0-9_-]+)*)")
+
+          with TemporaryDirectory(dir=os.environ["RUNNER_TEMP"]) as store:
+              def git(*args):
+                  return subprocess.check_output(["git", "-C", store, *args], stdin=subprocess.DEVNULL)
+
+              stage = "Initialize bare object store"
+              try:
+                  git("init", "--bare", "--quiet")
+                  stage = "Fetch the run commit from the public repository"
+                  git("-c", "credential.helper=", "fetch", "--quiet", "--no-tags", "--depth=1", url, revision)
+                  stage = "Match the fetched commit and reviewed adapter tree"
+                  if git("rev-parse", "--verify", "FETCH_HEAD^{commit}").strip().decode("ascii") != revision:
+                      raise ValueError("Fetched commit differs from the run commit")
+                  if git("rev-parse", "--verify", f"{revision}:browser_skill_adapter").strip() != review_tree:
+                      raise ValueError("Adapter tree differs from the reviewed v2 bytes")
+
+                  stage = "Materialize and verify the exact adapter blobs"
+                  entries = git("ls-tree", "-r", revision, "--", "browser_skill_adapter").splitlines()
+                  if not entries:
+                      raise ValueError("Adapter tree is empty")
+                  for entry in entries:
+                      match = entry_pattern.fullmatch(entry)
+                      if match is None:
+                          raise ValueError("Unexpected adapter tree entry")
+                      blob_id, path = (field.decode("ascii") for field in match.groups())
+                      data = git("cat-file", "blob", blob_id)
+                      output = workspace / path
+                      output.parent.mkdir(parents=True, exist_ok=True)
+                      with output.open("xb") as handle:
+                          handle.write(data)
+                      written = output.read_bytes()
+                      digest = hashlib.sha1(f"blob {len(written)}\0".encode("ascii") + written).hexdigest()
+                      if digest != blob_id:
+                          raise ValueError("Written bytes do not match the Git blob")
+              except (OSError, subprocess.CalledProcessError, ValueError) as exc:
+                  print(f"::error title=Review source::{stage} failed ({type(exc).__name__})", flush=True)
+                  raise
+          print(f"::notice title=Review source::Verified {len(entries)} adapter files match commit {revision}")
+      - name: Native NTFS ACLs, exclusive creation and process restart
+        id: native_tests
+        shell: python
+        run: |
+          import os
+          from pathlib import Path
+          import re
+          import subprocess
+          import sys
+
+          # Identical test selection to browser-handoff-windows in ci.yml.
+          result = subprocess.run(
+              [sys.executable, "browser_skill_adapter/test_verified_handoff.py",
+               "WindowsAclTest",
+               "HandoffTest.test_exclusive_create_race_has_one_winner_across_processes",
+               "HandoffTest.test_spawned_attempts_and_fresh_process_replay",
+               "HandoffTest.test_abrupt_exit_retains_reservation_and_replay_is_still_blocked"],
+              stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace",
+          )
+          print(result.stdout, end="", flush=True)
+          lines = result.stdout.splitlines()
+          pattern = re.compile(r"test_\w+ \(__main__\.((?:WindowsAclTest|HandoffTest)\.test_\w+)\) \.\.\. (ok|FAIL|ERROR|skipped)\b")
+          cases = [match.groups() for line in lines if (match := pattern.match(line))]
+          for name, status in cases:
+              print(f"::notice title=Windows review test::{name} ... {status}")
+          if (result.returncode or len(cases) != 6 or len({name for name, _ in cases}) != 6
+                  or any(status != "ok" for _, status in cases) or "OK" not in lines):
+              capture = Path(os.environ["RUNNER_TEMP"]) / "browser-handoff-unittest.log"
+              capture.write_text(result.stdout, encoding="utf-8")
+              print("::error title=Windows review::Expected six distinct passing tests with no skips.")
+              raise SystemExit(result.returncode or 1)
+      - name: Annotate the two Windows process test tracebacks
+        id: process_tracebacks
+        if: ${{ failure() && steps.native_tests.outcome == 'failure' }}
+        shell: python
+        run: |
+          import os
+          from pathlib import Path
+          import re
+
+          capture = Path(os.environ["RUNNER_TEMP"]) / "browser-handoff-unittest.log"
+          targets = (
+              "test_spawned_attempts_and_fresh_process_replay",
+              "test_abrupt_exit_retains_reservation_and_replay_is_still_blocked",
+          )
+          pattern = re.compile(
+              r"^={6,}\n(?:FAIL|ERROR): "
+              rf"(?P<test>{'|'.join(targets)}) \(__main__\.HandoffTest\.(?P=test)\)\n"
+              r"-{6,}\n(?P<trace>.*?)(?=^={6,}\n|^-{6,}\nRan \d+ tests?|\Z)",
+              re.MULTILINE | re.DOTALL,
+          )
+          text = capture.read_text(encoding="utf-8") if capture.is_file() else ""
+          failures = list(pattern.finditer(text))
+          for failure in failures:
+              trace = failure["trace"].strip()
+              for key in ("GITHUB_WORKSPACE", "RUNNER_TEMP", "USERPROFILE"):
+                  path = os.environ.get(key)
+                  if path:
+                      for form in (path, path.replace("\\", "/"), path.replace("\\", "\\\\")):
+                          trace = re.sub(re.escape(form), f"<{key}>", trace, flags=re.IGNORECASE)
+              trace = re.sub(r"(?i)https?://\S+|\b(?:synthetic-[\w-]+-do-not-export|lab-device-not-for-export)\b", "<redacted>", trace)
+              escaped = trace.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+              print(f"::error title=Windows traceback {failure['test']}::{escaped}")
+          with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as output:
+              names = dict.fromkeys(failure["test"] for failure in failures)
+              output.write(f"probe_cases={','.join(names)}\n")
+      - name: Probe the failed Windows workers through their existing Pipe
+        id: worker_probe
+        if: ${{ failure() && steps.native_tests.outcome == 'failure' && steps.process_tracebacks.outputs.probe_cases != '' }}
+        shell: python
+        env:
+          HANDOFF_PROBE_CASES: ${{ steps.process_tracebacks.outputs.probe_cases }}
+        run: |
+          import json
+          import multiprocessing
+          import os
+          from pathlib import Path
+          import subprocess
+          import sys
+          from tempfile import TemporaryDirectory
+          import time
+
+          CRASH = "test_abrupt_exit_retains_reservation_and_replay_is_still_blocked"
+          NAVIGATION = "test_spawned_attempts_and_fresh_process_replay"
+          CASES = (CRASH, NAVIGATION)
+          WORKER_REASONS = {
+              "verified", "private_replay_directory_required", "local_replay_state_unavailable",
+              "local_lab_lock_exists", "request_already_consumed", "local_fixture_unavailable",
+              "request_digest_mismatch", "request_outside_approval_window", "output_already_exists",
+              "output_directory_required", "output_not_writable", "local_popup_instance_id_required",
+              "browser_command_failed", "invalid_browser_reply", "session_admission_not_confirmed",
+              "isolated_window_not_confirmed", "fixture_navigation_not_confirmed", "no_fixture_http_observation",
+              "cleanup_not_confirmed", "fixture_marker_not_observed",
+          }
+          PROBE_REASONS = {
+              "probe_no_message", "probe_timeout", "probe_invalid_report", "probe_unlisted_reason", "probe_failed",
+          }
+          # Return/raise sites in the exact v2 adapter tree verified above.
+          PATH_FAILURES = {
+              141: ("invalid_local_path", "path"),
+              144: ("outside_profile", "path"),
+              147: ("not_fixed_ntfs_with_persistent_acls", "volume"),
+              154: ("not_directory", "entry"),
+          }
+          PATH_ERRORS = {
+              142: ("profile_unavailable", "runner_profile"),
+              145: ("windows_security_api_unavailable", "path"),
+              146: ("volume_unreadable", "volume"),
+              148: ("process_identity_unreadable", "runner_profile"),
+              153: ("attributes_unreadable", "entry"),
+              156: ("descriptor_unreadable", "entry"),
+              162: ("subtree_unreadable", "replay_state"),
+              163: ("subtree_unreadable", "replay_state"),
+              165: ("attributes_unreadable", "entry"),
+              166: ("descriptor_unreadable", "entry"),
+          }
+          DESCRIPTOR_FAILURES = {38: "invalid_descriptor_or_null_dacl", 46: "invalid_dacl_header", 57: "descriptor_parse_error"}
+          ACL_CHECKS = {
+              "not_reproduced", "unclassified_refusal", "diagnostic_error", "reparse_point", "attributes_unreadable",
+              "untrusted_owner", "owner_not_current_user", "unsupported_ace_type", "invalid_ace_bounds",
+              "invalid_ace_size", "untrusted_allow_ace",
+              *DESCRIPTOR_FAILURES.values(), *(name for name, _ in (*PATH_FAILURES.values(), *PATH_ERRORS.values())),
+          }
+          ACL_COMPONENTS = {
+              "path", "volume", "runner_profile", "above_profile", "under_profile", "lab_fixture", "replay_state", "state_descendant",
+          }
+
+          def record(case, reason=None, exitcode=None, sim_calls=None, starts=None, acl=None):
+              return dict(case=case, exitcode=exitcode, reason=reason, sim_calls=sim_calls, starts=starts, acl=acl)
+
+          def acl_detail(check, component, flags=None):
+              return dict(check=check, component=component,
+                          ace_origin=None if flags is None else ("inherited" if flags & 0x10 else "explicit"),
+                          inherit_only=None if flags is None else bool(flags & 0x08))
+
+          def diagnose_acl(state):
+              import windows_acl as acl
+
+              gate = acl.is_private_windows_dir.__code__
+              descriptor = acl._private_descriptor.__code__
+              attributes = acl._WindowsSecurity.attributes.__code__
+              first = None
+              path_error = None
+
+              def component(frame):
+                  entry = frame.f_locals.get("entry")
+                  profile = frame.f_locals.get("profile")
+                  if entry is None:
+                      return "path"
+                  if entry == profile:
+                      return "runner_profile"
+                  if entry == state:
+                      return "replay_state"
+                  if entry == state.parent:
+                      return "lab_fixture"
+                  if state in entry.parents:
+                      return "state_descendant"
+                  return "above_profile" if profile is not None and entry in profile.parents else "under_profile"
+
+              def observe(frame, event, value):
+                  nonlocal first, path_error
+                  code, line = frame.f_code, frame.f_lineno
+                  if code not in (gate, descriptor, attributes):
+                      return None
+                  if first is not None:
+                      return observe
+                  if code is descriptor and event == "return" and value is False:
+                      local = frame.f_locals
+                      check = DESCRIPTOR_FAILURES.get(line, "unclassified_refusal")
+                      flags = None
+                      if line == 41:
+                          check = "untrusted_owner" if local["owner_sid"] not in local["trusted"] else "owner_not_current_user"
+                      elif line == 51:
+                          check = "unsupported_ace_type" if local["kind"] not in (0, 1) else "invalid_ace_bounds"
+                      elif line == 54:
+                          check = "invalid_ace_size" if len(local["who"]) + 8 != local["length"] else "untrusted_allow_ace"
+                      if line in (51, 54):
+                          flags = local["data"][local["offset"] + 1]
+                      first = acl_detail(check, component(frame.f_back), flags)
+                  elif code is attributes and event == "exception" and line == 124:
+                      check = "attributes_unreadable" if frame.f_locals["attrs"] == 0xffffffff else "reparse_point"
+                      first = acl_detail(check, component(frame.f_back))
+                  elif code is gate:
+                      if event == "exception" and line in PATH_ERRORS:
+                          check, place = PATH_ERRORS[line]
+                          path_error = acl_detail(check, component(frame) if place == "entry" else place)
+                      elif event == "return" and value is False:
+                          check, place = PATH_FAILURES.get(line, ("unclassified_refusal", "replay_state"))
+                          first = path_error if line == 172 and path_error else acl_detail(check, component(frame) if place == "entry" else place)
+                  return observe
+
+              # Observe the production checker without patching its inputs,
+              # result, Win32 calls, or any permissions. No raw locals leave it.
+              previous = sys.gettrace()
+              try:
+                  sys.settrace(observe)
+                  allowed = acl.is_private_windows_dir(state)
+              except Exception:
+                  return acl_detail("diagnostic_error", "replay_state")
+              finally:
+                  sys.settrace(previous)
+              if allowed:
+                  return acl_detail("not_reproduced", "replay_state")
+              return first or acl_detail("unclassified_refusal", "replay_state")
+
+          def valid_acl(detail):
+              return (type(detail) is dict and detail.keys() == acl_detail("", "").keys()
+                      and type(detail["check"]) is str and detail["check"] in ACL_CHECKS
+                      and type(detail["component"]) is str and detail["component"] in ACL_COMPONENTS
+                      and (detail["ace_origin"] is None and detail["inherit_only"] is None
+                           or detail["ace_origin"] in ("inherited", "explicit") and type(detail["inherit_only"]) is bool))
+
+          def valid_counts(calls, starts):
+              return type(calls) is type(starts) is int and 0 <= starts <= calls <= 1024
+
+          def collect(case, process, reader, hold, resume, timeout, crash_exit):
+              deadline = time.monotonic() + timeout
+              message = None
+              received = False
+              while time.monotonic() < deadline:
+                  if hold is not None and hold.is_set() and not resume.is_set():
+                      resume.set()
+                      deadline = time.monotonic() + timeout
+                  remaining = max(0, deadline - time.monotonic())
+                  if reader.poll(min(0.05, remaining)):
+                      try:
+                          message = reader.recv()
+                          received = True
+                      except EOFError:
+                          pass
+                      break
+              process.join(timeout=max(0, deadline - time.monotonic()))
+              exitcode = process.exitcode
+              if exitcode is None:
+                  return record(case, "probe_timeout")
+              if not received:
+                  reason = None if case == CRASH and exitcode == crash_exit else "probe_no_message"
+                  return record(case, reason, exitcode)
+              if (type(message) is not tuple or len(message) != 4 or type(message[0]) is not int
+                      or message[0] != process.pid or type(message[1]) is not str
+                      or not valid_counts(message[2], message[3])):
+                  return record(case, "probe_invalid_report", exitcode)
+              _, raw_reason, calls, starts = message
+              reason = raw_reason if raw_reason in WORKER_REASONS else "probe_unlisted_reason"
+              return record(case, reason, exitcode, calls, starts)
+
+          def probe(case):
+              sys.path.insert(0, str(Path(os.environ["GITHUB_WORKSPACE"]) / "browser_skill_adapter"))
+              from test_verified_handoff import HandoffTest, _CRASH_EXIT, _PROCESS_TIMEOUT
+
+              fixture = HandoffTest(case)
+              resume = None
+              try:
+                  fixture.setUp()
+                  context = multiprocessing.get_context("spawn")
+                  hold = context.Event() if case == NAVIGATION else None
+                  resume = context.Event() if hold is not None else None
+                  process, reader = fixture.start_attempt(
+                      context, fixture.out, hold=hold, resume=resume, crash=case == CRASH,
+                  )
+                  result = collect(case, process, reader, hold, resume, _PROCESS_TIMEOUT, _CRASH_EXIT)
+                  if os.name == "nt" and result["reason"] == "private_replay_directory_required":
+                      result["acl"] = diagnose_acl(fixture.state)
+                  return result
+              finally:
+                  if resume is not None:
+                      resume.set()
+                  if not fixture.doCleanups():
+                      raise RuntimeError("Probe fixture cleanup failed")
+
+          def report_for(case):
+              # Use a real script entrypoint for spawn. Keep unexpected child
+              # output out of the public job log; only accept the typed record.
+              try:
+                  with TemporaryDirectory(dir=os.environ["RUNNER_TEMP"]) as directory:
+                      path = Path(directory) / "probe.json"
+                      subprocess.run(
+                          [sys.executable, __file__, "--probe-case", case, str(path)],
+                          stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                          timeout=120, check=True,
+                      )
+                      result = json.loads(path.read_text(encoding="ascii"))
+              except subprocess.TimeoutExpired:
+                  return record(case, "probe_timeout")
+              except (OSError, ValueError, subprocess.CalledProcessError):
+                  return record(case, "probe_failed")
+              if type(result) is not dict or result.keys() != record(case).keys() or result["case"] != case:
+                  return record(case, "probe_invalid_report")
+              reason, exitcode = result["reason"], result["exitcode"]
+              calls, starts = result["sim_calls"], result["starts"]
+              detail = result["acl"]
+              if (reason is not None and (type(reason) is not str or reason not in WORKER_REASONS | PROBE_REASONS)
+                      or exitcode is not None and type(exitcode) is not int
+                      or not (calls is None and starts is None or valid_counts(calls, starts))
+                      or detail is not None and (reason != "private_replay_directory_required" or not valid_acl(detail))):
+                  return record(case, "probe_invalid_report")
+              return record(case, reason, exitcode, calls, starts, detail)
+
+          if __name__ == "__main__":
+              if len(sys.argv) == 4 and sys.argv[1] == "--probe-case" and sys.argv[2] in CASES:
+                  with Path(sys.argv[3]).open("x", encoding="ascii") as output:
+                      json.dump(probe(sys.argv[2]), output, ensure_ascii=True)
+              else:
+                  selected = os.environ.get("HANDOFF_PROBE_CASES", "").split(",")
+                  profile_refused = False
+                  for case in CASES:
+                      if case in selected:
+                          result = report_for(case)
+                          detail = result.pop("acl")
+                          print(f"::notice title=Windows worker probe::{json.dumps(result)}", flush=True)
+                          if detail is not None:
+                              print(f"::notice title=Windows ACL first failure::{json.dumps(dict(case=case, **detail))}", flush=True)
+                              profile_refused |= (detail["check"] == "untrusted_allow_ace"
+                                                  and detail["component"] == "runner_profile"
+                                                  and detail["ace_origin"] == "explicit")
+                  if profile_refused:
+                      with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as output:
+                          output.write("profile_explicit_allow=true\n")
+      - name: Read explicit allow ACEs on the Windows runner profile
+        if: ${{ failure() && steps.native_tests.outcome == 'failure' && steps.worker_probe.outputs.profile_explicit_allow == 'true' }}
+        shell: python
+        run: |
+          import json
+          import os
+          from pathlib import Path
+          import re
+          import subprocess
+
+          PUBLIC_SIDS = {
+              "S-1-1-0": "Everyone", "S-1-5-11": "Authenticated Users",
+              "S-1-5-18": "SYSTEM", "S-1-5-19": "LOCAL SERVICE", "S-1-5-20": "NETWORK SERVICE",
+              "S-1-5-32-544": "Administrators", "S-1-5-32-545": "Users", "S-1-5-32-546": "Guests",
+              "S-1-5-4": "INTERACTIVE", "S-1-5-6": "SERVICE",
+              "S-1-3-0": "CREATOR OWNER", "S-1-3-4": "OWNER RIGHTS",
+              "S-1-15-2-1": "ALL APPLICATION PACKAGES", "S-1-15-2-2": "ALL RESTRICTED APPLICATION PACKAGES",
+          }
+          RIGHTS = {
+              "AppendData", "ChangePermissions", "CreateDirectories", "CreateFiles", "Delete",
+              "DeleteSubdirectoriesAndFiles", "ExecuteFile", "FullControl", "ListDirectory", "Modify",
+              "Read", "ReadAndExecute", "ReadAttributes", "ReadData", "ReadExtendedAttributes", "ReadPermissions",
+              "Synchronize", "TakeOwnership", "Traverse", "Write", "WriteAttributes", "WriteData", "WriteExtendedAttributes",
+          }
+          QUERY = r"""
+          $ErrorActionPreference = 'Stop'
+          $acl = Get-Acl -LiteralPath $env:HANDOFF_ACL_PROFILE_PATH
+          $user = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+          $entries = @(
+            foreach ($rule in $acl.GetAccessRules($true, $false, [Security.Principal.SecurityIdentifier])) {
+              if ($rule.AccessControlType -eq 'Allow' -and -not $rule.IsInherited) {
+                $sid = $rule.IdentityReference.Value
+                [pscustomobject]@{
+                  sid = $sid
+                  current_user = ($sid -eq $user)
+                  rights = $rule.FileSystemRights.ToString()
+                  mask = [int]$rule.FileSystemRights
+                  inheritance = [int]$rule.InheritanceFlags
+                  propagation = [int]$rule.PropagationFlags
+                }
+              }
+            }
+          )
+          ConvertTo-Json -InputObject $entries -Compress
+          """
+
+          def sanitized_rules(entries):
+              if type(entries) is not list or len(entries) > 64:
+                  raise ValueError("Unexpected ACL inventory shape")
+              rows = []
+              for entry in entries:
+                  if type(entry) is not dict or entry.keys() != {"sid", "current_user", "rights", "mask", "inheritance", "propagation"}:
+                      raise ValueError("Unexpected rule shape")
+                  sid, current, rights = entry["sid"], entry["current_user"], entry["rights"]
+                  mask, inheritance, propagation = entry["mask"], entry["inheritance"], entry["propagation"]
+                  if (type(sid) is not str or len(sid) > 192 or not re.fullmatch(r"S-1-[0-9]+(?:-[0-9]+)+", sid)
+                          or type(current) is not bool or type(rights) is not str or len(rights) > 240
+                          or type(mask) is not int or not -(1 << 31) <= mask < (1 << 31)
+                          or type(inheritance) is not int or inheritance not in range(4)
+                          or type(propagation) is not int or propagation not in range(4)):
+                      raise ValueError("Unexpected ACL field")
+                  if sid in PUBLIC_SIDS:
+                      principal, public_sid = PUBLIC_SIDS[sid], sid
+                  else:
+                      public_sid = None
+                      if current:
+                          principal = "current_user"
+                      elif sid.startswith(("S-1-5-80-", "S-1-5-82-")):
+                          principal = "service_or_virtual_account"
+                      elif sid.startswith(("S-1-15-2-", "S-1-15-3-")):
+                          principal = "application_or_capability"
+                      elif sid.startswith("S-1-5-21-"):
+                          principal = "local_or_domain_principal"
+                      else:
+                          principal = "other_principal"
+                  names = [name.strip() for name in rights.split(",")]
+                  rows.append(dict(
+                      principal=principal, sid=public_sid,
+                      trusted=current or sid in ("S-1-5-18", "S-1-5-32-544"),
+                      rights=", ".join(names) if all(name in RIGHTS for name in names) else None,
+                      access_mask=f"0x{mask & 0xffffffff:08x}",
+                      inheritance=[name for bit, name in ((1, "ContainerInherit"), (2, "ObjectInherit")) if inheritance & bit],
+                      propagation=[name for bit, name in ((1, "NoPropagateInherit"), (2, "InheritOnly")) if propagation & bit],
+                  ))
+              return rows
+
+          if __name__ == "__main__":
+              try:
+                  exe = Path(os.environ["SystemRoot"]) / "System32/WindowsPowerShell/v1.0/powershell.exe"
+                  raw = subprocess.check_output(
+                      [str(exe), "-NoProfile", "-NonInteractive", "-Command", QUERY],
+                      env=os.environ | {"HANDOFF_ACL_PROFILE_PATH": str(Path.home())},
+                      stdin=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=20,
+                  )
+                  if len(raw) > 64 * 1024:
+                      raise ValueError("Unexpected ACL inventory size")
+                  rows = sanitized_rules(json.loads(raw.decode("ascii").strip()))
+              except (KeyError, OSError, ValueError, subprocess.SubprocessError):
+                  report = {"status": "unavailable"}
+              else:
+                  report = {"status": "ok", "explicit_allow": rows}
+              print(f"::notice title=Windows profile explicit allows::{json.dumps(report, ensure_ascii=True)}")

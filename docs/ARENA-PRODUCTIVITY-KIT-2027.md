@@ -39,7 +39,7 @@ python3 -m http.server 8787 --bind 127.0.0.1 --directory website
 | [uBlock Origin Lite](https://chromewebstore.google.com/detail/ublock-origin-lite/ddkjiahejlhfcafbddmgiahcphecmpfh) · Manifest V3 | أوقف أي حاجب آخر. افتح أدوات المطوّر ← Network، عطّل الكاش فيها، وحمّل [عينتَي التصفية](http://127.0.0.1:8787/productivity-kit/lab.html#filtering) مع الإضافة معطّلة ثم فعّلها بالقوائم الافتراضية وأعد التحميل. ينبغي أن تُحمَّل الصورتان في الأساس، ثم تبقى العادية ويظهر `ERR_BLOCKED_BY_CLIENT` للمرشّحة. العلامة `NOT_LOADED` وحدها ليست دليل حجب. | لا شيء تلقائيًا. النتيجة تخص العينة ولا تقيس نسبة حجب المتتبعات. |
 | [Bitwarden](https://bitwarden.com/download/#downloads-web-browser-extensions) · [خطة شخصية مجانية](https://bitwarden.com/pricing/) | افتح مولّد الإضافة واضبط طولًا تجريبيًا مثل 20. إذا طلب تسجيل الدخول، استخدم حساب اختبار فارغًا أو تجاوز الفحص. تحقّق من ظهور قيمة بهذا الطول ثم أغلق النافذة بلا نسخ أو حفظ أو تصوير. | نتيجة اختبار مثل «الطول مطابق» فقط، دون القيمة أو الخزنة. |
 | [Vimium](https://github.com/philc/vimium) · مجاني | افتح المختبر واضغط `Esc` ثم `f` بلوحة إنجليزية. اختر تلميح رابط «انتقل إلى العلامة المرجعية». وصولك إلى `#reference` يثبت التنقل في هذا المثال. | لا شيء؛ اختصارات للمتصفح المحلي. |
-| [BrowserSkill](https://github.com/Tencent/BrowserSkill) · اختياري متقدّم | اتبع القسم أدناه. `READY` دليل جاهزية، و`VERIFIED` مع البصمة وإغلاق الجلسة دليل على تنفيذ مثال واحد محليًا. | ملخص منقّح تختار مشاركته؛ لا يوجد في الحزمة جسر من Arena إلى Chrome. |
+| [BrowserSkill](https://github.com/Tencent/BrowserSkill) · اختياري متقدّم | اتبع [دليل تنفيذ طلب واحد بموافقتك](VERIFIED-BROWSER-INTEGRATION.md). `READY_LOCAL` فحص جاهزية، وليس إثبات تنفيذ. | إيصال مراجَع تختار مشاركته يدويًا؛ لا تحكّم من Arena في Chrome. |
 
 عينة التصفية ليست إعلانًا: المسار المحلي `ads/banners/demo.svg` يطابق نمط `/ads/banners/*$image` في [EasyList](https://github.com/easylist/easylist/blob/master/easylist/easylist_general_block.txt). قد تختلف نسخة القوائم ووضع التصفية؛ إذا لم يظهر فرق واضح، سجّل «تعذّر الاختبار» ولا ترفع الصلاحيات لإجبار النتيجة.
 
@@ -51,19 +51,9 @@ python3 -m http.server 8787 --bind 127.0.0.1 --directory website
 
 ### BrowserSkill: جرّب المرحلة المحلية فقط عند الحاجة
 
-اتبع [دليل المحوّل المحلي المثبّت الإصدار](../browser_skill_adapter/README.md) على الجهاز الذي يحمل ملف المختبر. لا تقرن ملف العمل، ولا تكشف المنفذ أو رابط الاقتران، ولا تفعّل المرحلتين غير المتاحتين `skill_mcp` و`remote_wss`. إن احتاجت جلسة الفحص المتخفّية إلى إذن Chrome للإضافة، امنحه مؤقتًا في ملف المختبر فقط ثم اسحبه. افحص الحالة أولًا:
+اتبع [دليل Verified Browser Integration](VERIFIED-BROWSER-INTEGRATION.md) لتجهيز ملف Chrome جديد باقتران محلي إلزامي. يُعدّ Arena طلبًا مؤقتًا لقراءة علامة من صفحة اصطناعية على جهازك. أنت توافق في طرفيتك المحلية، ثم تُراجع الإيصال قبل إرساله. لا تقرن ملف العمل ولا تشارك رابط الاقتران أو التقارير الخام، ولا تفعّل `skill_mcp` أو `remote_wss`.
 
-```bash
-python3 browser_skill_adapter/probe.py --json
-```
-
-إذا ظهر `READY` مع رمز خروج `0` و`mutations_performed: 0`، نفّذ الاختبار المحلي على الموقع العام الثابت:
-
-```bash
-python3 browser_skill_adapter/run_local_task.py --url https://example.com --incognito --json
-```
-
-لا تسجّل نجاحًا إلا إذا كان رمز الخروج `0` ومعه `status: VERIFIED` و`session_closed: true` و`artifact.hash_verified: true`. `SKIPPED` أو `BLOCKED` لا تعني أن الإضافة معطّلة، و`INCONCLUSIVE` ليست نجاحًا ولا سببًا لإعادة تشغيل إجراء غير معلوم الأثر. بعد الفحص أوقف الـ daemon المحلي وعطّل الإضافة في المختبر. لا تُشارك تقارير خامًا أو مسارات جهازك أو بيانات الاقتران.
+اختبارات [المحوّل العام](../browser_skill_adapter/README.md) ليست طلبًا صادرًا من Arena. لا تسجّل نجاحًا حيًا حتى تنفّذ الطلب بنفسك وتتحقق من انغلاق النافذة ويطابق الإيصال الطلب الأصلي.
 
 ## ٤. سلّم نتيجة قابلة للمراجعة للوكيل
 
