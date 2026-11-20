@@ -13,6 +13,7 @@ import re
 import shutil
 import struct
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -22,6 +23,17 @@ from dataclasses import fields
 from pathlib import Path, PureWindowsPath
 from unittest import mock
 from urllib.parse import urlsplit
+
+# Make this file runnable from any working directory and on any OS. It imports
+# `adapter` flat, and `adapter` builds on the shared kernel in ../kernel-2027;
+# neither resolves from sys.path alone when the runner's cwd differs from the
+# repository root (which is exactly what a Windows job with `shell: python`
+# does). Resolving from __file__ rather than from cwd keeps it deterministic.
+_HERE = Path(__file__).resolve().parent
+for _entry in (str(_HERE), str(_HERE.parent / "kernel-2027")):
+    if _entry not in sys.path:
+        sys.path.insert(0, _entry)
+
 
 from adapter import BskCommandError
 from handoff_contract import (CHECKS, MAX_JSON_BYTES, SIGN_NAMESPACE, SIGN_PRINCIPAL, HandoffError, Request,
