@@ -50,6 +50,10 @@ CLI
 
 from __future__ import annotations
 
+# Must run before any submodule imports the kernel: makes a bare checkout work
+# (`python3 fleet-2027/cli.py`, subprocess gates) without a pip install.
+from . import _kernel_path  # noqa: F401  isort: skip
+
 from .contracts import (
     BLOCKING_STEP_STATUSES,
     RESOLVED_STEP_STATUSES,

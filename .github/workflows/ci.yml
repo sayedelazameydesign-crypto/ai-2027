@@ -701,7 +701,10 @@ jobs:
           stdlib = set(sys.stdlib_module_names) | {"tomllib"}
           bad = {}
           files = sorted(Path("render_control_adapter").glob("*.py"))
-          siblings = {p.stem for p in files}
+          # kernel2027 is in-repo and stdlib-only by construction: its own test
+          # suite (kernel-2027/tests/test_kernel.py) asserts that, so allowing it
+          # here cannot smuggle in a third-party dependency.
+          siblings = {p.stem for p in files} | {"kernel2027", "_kernel_path"}
           for p in files:
               tree = ast.parse(p.read_text(encoding="utf-8"))
               for n in ast.walk(tree):

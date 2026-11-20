@@ -30,12 +30,25 @@ def _catalog(engine: dict) -> dict:
     return {"protocol": "PAP-2027", "engines": [engine]}
 
 
+#: The catalogue may grow but must never fall below this — one engine vanishing
+#: from the disk audit is the failure this protects against.
+MIN_ENGINES = 12
+
+
 class CatalogueShapeTests(unittest.TestCase):
-    def test_shipped_catalogue_has_twelve_unique_engines(self) -> None:
+    def test_shipped_catalogue_has_unique_engines_and_never_shrinks(self) -> None:
+        """The count is a floor, not a ceiling.
+
+        It was pinned to exactly 12, which made adding an engine look like a
+        regression and left two choices: stop growing the catalogue, or treat a
+        red test as noise. A floor keeps the protection that matters — an engine
+        silently disappearing from the catalogue — without punishing growth.
+        Bump ``MIN_ENGINES`` only when an engine is intentionally removed.
+        """
         catalog = audit_mod.load_catalog(audit_mod.CATALOG)
         ids = [entry["id"] for entry in catalog["engines"]]
-        self.assertEqual(len(ids), 12)
-        self.assertEqual(len(set(ids)), 12)
+        self.assertGreaterEqual(len(ids), MIN_ENGINES)
+        self.assertEqual(len(set(ids)), len(ids), "engine ids must be unique")
         self.assertIn("agent-fleet", ids)
 
     def test_statuses_are_from_the_published_legend(self) -> None:
@@ -174,7 +187,7 @@ class CommandLineTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0)
         payload = json.loads(result.stdout)
         self.assertTrue(payload["ok"])
-        self.assertEqual(len(payload["engines"]), 12)
+        self.assertGreaterEqual(len(payload["engines"]), MIN_ENGINES)
         self.assertEqual(payload["problems"], [])
 
     def test_assert_fails_on_a_broken_catalogue(self) -> None:

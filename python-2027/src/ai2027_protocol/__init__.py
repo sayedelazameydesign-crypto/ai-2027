@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+# Before any submodule imports the shared kernel (works from a bare checkout).
+from . import _kernel_path  # noqa: F401  isort: skip
+
 from .agent import (
     AgentEvent,
     AgentPlannerProtocol,
