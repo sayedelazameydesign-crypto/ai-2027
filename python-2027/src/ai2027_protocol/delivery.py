@@ -141,6 +141,8 @@ def _widget_for(described: DocumentIR) -> str:
         return "video"
     if described.family.value == "pdf":
         return "pdf"
+    if described.family.value == "ole":
+        return "ole"
     if described.family.value == "database":
         return "table"
     if described.family.value == "columnar":

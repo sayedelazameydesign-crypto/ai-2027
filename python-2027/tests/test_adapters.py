@@ -189,17 +189,21 @@ class ShippedAdapterTests(unittest.TestCase):
 
     def test_geometry_routes_to_the_geometry_adapter(self) -> None:
         # This test used to assert that NO adapter claimed geometry. The reader
-        # now exists, so the assertion moved to `ole` -- which is still empty --
+        # now exists, so the remaining empty-family assertion moved to `ole`
         # rather than being deleted. The rule survives; the stale claim does not.
         adapter = self.registry.for_probe(probe_bytes(b"glTF" + b"\x00" * 20))
         assert adapter is not None
         self.assertEqual(adapter.name, "geometry")
 
-    def test_ole_has_no_adapter_and_that_is_visible(self) -> None:
-        # A family with signatures and no reader must stay queryable rather than
-        # silently falling through to text.
+    def test_ole_routes_to_the_directory_reader(self) -> None:
+        # The empty family now has a bounded directory reader. It inspects names
+        # and declared sizes only; it must not claim to read stream payloads.
         ole_magic = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"
-        self.assertIsNone(self.registry.for_probe(probe_bytes(ole_magic + b"\x00" * 20)))
+        adapter = self.registry.for_probe(probe_bytes(ole_magic + b"\x00" * 20))
+        self.assertIsNotNone(adapter)
+        assert adapter is not None
+        self.assertEqual(adapter.name, "ole")
+        self.assertEqual(adapter.operations, frozenset({Operation.INSPECT}))
 
     def test_csv_provider_declares_compile(self) -> None:
         # Measured: coverage() reported compile: 0 because no adapter declared
