@@ -142,6 +142,63 @@ jobs:
             echo "::warning::${line}"
           done < /tmp/diag.txt
 
+      # One call per tap, before the benchmark. A provider can pass a models
+      # listing and still refuse a chat completion (wrong model id, no quota,
+      # region block). This asks each one to answer, so a dead tap is named
+      # with its status instead of being inferred from 24 failed sentences.
+      - name: Ask each tap to answer one word
+        id: smoke
+        if: steps.gate.outputs.available == 'true'
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+        run: |
+          python3 - <<'SMOKE' | tee /tmp/smoke.txt
+          import json
+          import os
+          import urllib.error
+          import urllib.request
+
+          TAPS = [
+              ("openrouter", "OPENROUTER_API_KEY", "openrouter/free",
+               "https://openrouter.ai/api/v1/chat/completions"),
+              ("gemini", "GEMINI_API_KEY", "gemini-2.5-flash",
+               "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"),
+              ("nvidia", "NVIDIA_API_KEY", "meta/llama-3.3-70b-instruct",
+               "https://integrate.api.nvidia.com/v1/chat/completions"),
+          ]
+          for name, key_env, model, url in TAPS:
+              key = os.environ.get(key_env, "")
+              if not key:
+                  print(f"[{name}] skipped (no {key_env})")
+                  continue
+              body = json.dumps({
+                  "model": model,
+                  "messages": [{"role": "user", "content": "Reply with one word: ready"}],
+                  "max_tokens": 512,
+                  "temperature": 0,
+              }).encode()
+              req = urllib.request.Request(
+                  url, data=body, method="POST",
+                  headers={"Authorization": f"Bearer {key}",
+                           "Content-Type": "application/json"},
+              )
+              try:
+                  with urllib.request.urlopen(req, timeout=60) as resp:
+                      payload = json.loads(resp.read())
+                  msg = payload.get("choices", [{}])[0].get("message", {})
+                  text = (msg.get("content") or msg.get("reasoning") or "").strip()
+                  print(f"[{name}] http {resp.status} · answered={bool(text)} "
+                        f"· model={payload.get('model')}")
+              except urllib.error.HTTPError as exc:
+                  detail = exc.read(300).decode("utf-8", "replace")
+                  print(f"[{name}] http {exc.code} · {detail[:200]}")
+              except Exception as exc:  # noqa: BLE001 - diagnostic must not crash
+                  print(f"[{name}] FAILED {type(exc).__name__}: {exc}")
+          SMOKE
+          while IFS= read -r line; do echo "::warning::${line}"; done < /tmp/smoke.txt
+
       # Rotate the three free taps, one per sentence, so the full 24-sentence
       # corpus is measured instead of truncated to what one quota allows.
       # A tap that refuses is simply skipped for its sentences: the number is
