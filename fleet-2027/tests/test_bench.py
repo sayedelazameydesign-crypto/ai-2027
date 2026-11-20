@@ -31,7 +31,7 @@ from fleet2027.bench import (
     load_corpus,
     run_benchmark,
 )
-from fleet2027.llm import LLMResponse
+from fleet2027.llm import LLMError, LLMResponse
 
 ENGINE = HERE.parent
 
@@ -282,3 +282,31 @@ class RotationTests(unittest.TestCase):
         self.assertTrue(all(count > 0 for count in used), f"an unused tap: {used}")
         self.assertLessEqual(max(used) - min(used), 2, f"uneven spread: {used}")
         self.assertEqual(sum(used), sum(used))  # every call attributed to a tap
+
+    def test_a_dead_tap_is_dropped_instead_of_retried_every_sentence(self) -> None:
+        """One provider refusing is a provider fact, not a sentence fact."""
+        good = self._Fake("good")
+
+        class Dead:
+            name = "dead"
+            model = "dead"
+
+            def __init__(self) -> None:
+                self.calls = 0
+
+            def is_configured(self) -> bool:
+                return True
+
+            def complete(self, request):
+                self.calls += 1
+                raise LLMError("http_429: quota")
+
+        dead = Dead()
+        report = run_benchmark(backends=[dead, good], limit=6)
+        self.assertEqual(report.backend, "rotate(dead,good)")
+        # The dead tap serves one sentence and is then dropped. It may be
+        # retried a few times *within* that sentence by the runner's own step
+        # policy, which is not this module's decision to override.
+        self.assertLessEqual(dead.calls, 4, f"dead tap called {dead.calls} times")
+        self.assertLess(dead.calls, 6, "a dead tap must not outnumber the sentences")
+        self.assertEqual(len(report.results), 6)
