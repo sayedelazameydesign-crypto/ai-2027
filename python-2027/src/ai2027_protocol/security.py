@@ -2,27 +2,16 @@
 
 from __future__ import annotations
 
-import ipaddress
 import os
 import re
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from urllib.parse import unquote, urlparse
 
-_SECRET_PATTERNS: tuple[re.Pattern[str], ...] = (
-    re.compile(r"AIza[0-9A-Za-z_\-]{20,}"),
-    re.compile(r"nvapi-[0-9A-Za-z_\-]{20,}"),
-    re.compile(r"sk-(?:proj-|or-v1-)?[0-9A-Za-z_\-]{20,}"),
-    re.compile(r"gsk_[0-9A-Za-z_\-]{20,}"),
-    re.compile(r"e2b_[0-9A-Za-z_\-]{20,}"),
-    re.compile(r"rnd_[0-9A-Za-z_\-]{20,}"),
-    re.compile(r"gh[pousr]_[0-9A-Za-z_\-]{20,}"),
-    re.compile(r"(?:AKIA|ASIA|AROA)[0-9A-Z]{16}"),
-    re.compile(r"eyJ[0-9A-Za-z_\-]{10,}\.eyJ[0-9A-Za-z_\-]{10,}\.[0-9A-Za-z_\-]+"),
-    re.compile(r"(?i)bearer\s+[0-9A-Za-z._\-]{12,}"),
-    re.compile(r"(?i)([?&](?:key|api_key|token|secret)=)[^&\s]+"),
-)
+from kernel2027.contracts import UnsafeValueError
+from kernel2027.endpoint import validate_endpoint
+from kernel2027.redaction import redact as kernel_redact
 
 _SENSITIVE_KEY_WORDS = (
     "secret",
@@ -53,14 +42,12 @@ class SecurityValidationError(ValueError):
 
 
 def redact_secrets(text: str) -> str:
-    """Mask credential-shaped substrings before logging or returning diagnostics."""
-    scrubbed = text
-    for pattern in _SECRET_PATTERNS:
-        if pattern.groups:
-            scrubbed = pattern.sub(r"\1[REDACTED]", scrubbed)
-        else:
-            scrubbed = pattern.sub("[REDACTED]", scrubbed)
-    return scrubbed
+    """Mask credential-shaped substrings before logging or returning diagnostics.
+
+    Delegates to :mod:`kernel2027` so the pattern list cannot drift between the
+    engines that log provider errors — this was one of 24 copies of the same idea.
+    """
+    return cast(str, kernel_redact(text))
 
 
 def scrub_mapping(data: Mapping[str, Any]) -> dict[str, Any]:
@@ -121,24 +108,12 @@ def validate_provider_url(raw_url: str, *, allow_local_http: bool = True) -> str
     if not host:
         raise SecurityValidationError("Provider URL must specify a hostname.")
 
-    is_loopback = host in {"127.0.0.1", "localhost", "::1"}
-    if parsed.scheme == "http":
-        if not (allow_local_http and is_loopback):
-            raise SecurityValidationError("Plain HTTP is allowed only for local loopback hosts.")
-    elif parsed.scheme != "https":
-        raise SecurityValidationError("Provider URL must use https or loopback http.")
-
-    if not is_loopback:
-        try:
-            ip = ipaddress.ip_address(host)
-        except ValueError:
-            ip = None
-        if ip is not None and (
-            ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast
-        ):
-            raise SecurityValidationError("Provider URL cannot target private or link-local IPs.")
-
-    return candidate.rstrip("/")
+    # The rule itself lives in kernel2027 so every engine enforces the same one;
+    # this wrapper only translates the error type callers already expect.
+    try:
+        return validate_endpoint(candidate, allow_loopback_http=allow_local_http)
+    except UnsafeValueError as exc:
+        raise SecurityValidationError(str(exc)) from exc
 
 
 def resolve_safe_path(base_dir: Path, untrusted_path: str) -> Path:

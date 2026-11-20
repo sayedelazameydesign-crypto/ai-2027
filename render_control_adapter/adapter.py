@@ -52,6 +52,15 @@ Stdlib only.
 """
 from __future__ import annotations
 
+# Make the sibling kernel importable from a bare checkout before it is used.
+# Make the sibling kernel importable before it is used, whether this module is
+# imported flat (`import adapter`, script dir on sys.path) or as part of its
+# package. A bare `import _kernel_path` only resolves in the first case.
+try:  # pragma: no cover - the two branches differ only by import style
+    from . import _kernel_path  # noqa: F401
+except ImportError:  # pragma: no cover
+    import _kernel_path  # type: ignore  # noqa: F401
+
 import hashlib
 import hmac
 import json
@@ -228,6 +237,15 @@ class LocalRateLimiter:
 # --------------------------------------------------------------------------- #
 # Redaction
 # --------------------------------------------------------------------------- #
+# This adapter's masked marker appears in generated reports consumed downstream,
+# so the spelling is pinned here rather than silently becoming the kernel default.
+MARKER = "***REDACTED***"
+
+from kernel2027.redaction import (  # noqa: E402 - kernel is stdlib-only
+    redact as kernel_redact,
+    redact_mapping as kernel_redact_mapping,
+)
+
 SECRET_KEY_RE = re.compile(r"(key|token|secret|password|passwd|pwd|credential|auth)",
                            re.IGNORECASE)
 
@@ -235,27 +253,16 @@ SECRET_KEY_RE = re.compile(r"(key|token|secret|password|passwd|pwd|credential|au
 def redact(value, secrets: list[str] | None = None):
     """Mask anything that looks like a secret, recursively.
 
-    Two independent mechanisms, because each misses what the other catches:
-      * key-name heuristics (``apiKey``, ``DATABASE_PASSWORD``),
-      * literal value matching (a secret that leaked into a log line under an
-        innocent key name).
+    Delegates to :func:`kernel2027.redact_mapping` so this adapter, the protocol
+    package and the fleet all apply the *same* key heuristics and pattern list.
+    Key-name masking and literal-value scrubbing both live in the kernel now.
     """
     if isinstance(value, dict):
-        out = {}
-        for k, v in value.items():
-            if isinstance(k, str) and SECRET_KEY_RE.search(k) and not isinstance(v, (dict, list)):
-                out[k] = "***REDACTED***"
-            else:
-                out[k] = redact(v, secrets)
-        return out
+        return kernel_redact_mapping(value, secrets=secrets, marker=MARKER)
     if isinstance(value, list):
         return [redact(v, secrets) for v in value]
-    if isinstance(value, str) and secrets:
-        s = value
-        for secret in secrets:
-            if secret and len(secret) >= MIN_SECRET_LEN:
-                s = s.replace(secret, "***REDACTED***")
-        return s
+    if isinstance(value, str):
+        return kernel_redact(value, secrets, marker=MARKER)
     return value
 
 

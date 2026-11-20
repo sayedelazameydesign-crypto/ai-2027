@@ -24,10 +24,11 @@ import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Any, Literal, Protocol, runtime_checkable
+from typing import Any, Literal, Protocol, cast, runtime_checkable
 from urllib.parse import urlsplit
 
 import httpx
+from kernel2027.redaction import redact as kernel_redact
 
 from .ai_providers import HttpJsonResult, HttpxJsonTransport, ProviderError
 from .contracts import BillingTier, PromptRequest, ProviderKind
@@ -248,14 +249,13 @@ class RecordingTransport:
 
 
 def redact(text: str, secrets: list[str] | None = None) -> str:
-    """Remove anything that looks like a provider credential from ``text``."""
-    cleaned = text
-    for secret in [*_env_secrets(), *(secrets or [])]:
-        if len(secret) >= 8:
-            cleaned = cleaned.replace(secret, "[redacted]")
-    for pattern in _SECRET_PATTERNS:
-        cleaned = pattern.sub("[redacted]", cleaned)
-    return cleaned
+    """Remove anything that looks like a provider credential from ``text``.
+
+    Environment-derived secrets are collected here (this module owns that
+    knowledge) and the scrubbing itself is the kernel's, so the pattern list
+    cannot drift from the rest of the repository.
+    """
+    return cast(str, kernel_redact(text, [*_env_secrets(), *(secrets or [])]))
 
 
 def _env_secrets() -> list[str]:

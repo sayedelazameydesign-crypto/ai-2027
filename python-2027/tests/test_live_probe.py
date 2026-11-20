@@ -208,7 +208,10 @@ async def test_a_provider_that_echoes_the_key_is_redacted_in_the_evidence(
 
     assert attempt.status == "ok"
     assert attempt.evidence is not None
-    assert "[redacted]" in attempt.evidence.response_excerpt
+    # Marker unified by kernel-2027: this module used to emit lowercase
+    # "[redacted]" while security.py emitted "[REDACTED]" for the same secret, so
+    # an alerting rule could match one path and miss the other. One marker now.
+    assert "[REDACTED]" in attempt.evidence.response_excerpt
     assert key not in json.dumps(attempt.as_dict())
 
 

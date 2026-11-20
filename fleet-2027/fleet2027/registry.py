@@ -17,80 +17,9 @@ from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
 from .contracts import AgentSpec, ContractError, CostTier, StepResult
-
-
-@dataclass(frozen=True)
-class HandlerContext:
-    """Everything a handler is allowed to know about the step it is running."""
-
-    task_id: str
-    step_id: str
-    action: str
-    goal: str
-    agent: AgentSpec
-    attempt: int
-    workspace_root: Path
-    idempotency_key: str
-    inputs: Mapping[str, Any] = field(default_factory=dict)
-    store: Any = None
-    deadline_ts: float | None = None
-    scratch_dir: Path | None = None
-
-
-@runtime_checkable
-class StepHandler(Protocol):
-    """Contract every agent handler satisfies."""
-
-    def __call__(self, ctx: HandlerContext) -> StepResult:
-        """Execute one step and return a claimed result (verified separately)."""
-        ...
-
-
-Handler = Callable[[HandlerContext], StepResult]
-
-
-class AgentRegistrationError(ContractError):
-    """Raised when an agent would make routing ambiguous or is malformed."""
-
-
-@dataclass
-class CircuitBreaker:
-    """Per-agent breaker: stop hammering an adapter that is clearly unhealthy.
-
-    States are implicit and time-based (``closed`` → ``open`` → ``half_open``)
-    so a restarted process cannot inherit a stale in-memory "open forever".
-    """
-
-    failure_threshold: int = 3
-    cooldown_s: float = 30.0
-    failures: int = 0
-    opened_at: float | None = None
-    successes: int = 0
-
-    def is_available(self, now: float) -> bool:
-        """Return whether a call may be attempted now."""
-        if self.opened_at is None:
-            return True
-        return (now - self.opened_at) >= self.cooldown_s
-
-    def record_success(self) -> None:
-        """Close the breaker."""
-        self.failures = 0
-        self.opened_at = None
-        self.successes += 1
-
-    def record_failure(self, now: float) -> None:
-        """Count a failure and open the breaker once the threshold is reached."""
-        self.failures += 1
-        if self.failures >= self.failure_threshold and self.opened_at is None:
-            self.opened_at = now
-
-    @property
-    def state(self) -> str:
-        """Human-readable state for dashboards."""
-        if self.opened_at is None:
-            return "closed"
-        return "open"
+# The breaker comes from the shared kernel so a fix there reaches every engine.
+# Imported under its original name: no call site changes.
+from kernel2027.circuit import CircuitBreaker  # noqa: E402 - kernel is stdlib-only
 
 
 class Bulkhead:
@@ -133,6 +62,40 @@ class Bulkhead:
         """Current occupancy — used by the observability report."""
         with self._cond:
             return self._in_flight
+
+@dataclass(frozen=True)
+class HandlerContext:
+    """Everything a handler is allowed to know about the step it is running."""
+
+    task_id: str
+    step_id: str
+    action: str
+    goal: str
+    agent: AgentSpec
+    attempt: int
+    workspace_root: Path
+    idempotency_key: str
+    inputs: Mapping[str, Any] = field(default_factory=dict)
+    store: Any = None
+    deadline_ts: float | None = None
+    scratch_dir: Path | None = None
+
+
+@runtime_checkable
+class StepHandler(Protocol):
+    """Contract every agent handler satisfies."""
+
+    def __call__(self, ctx: HandlerContext) -> StepResult:
+        """Execute one step and return a claimed result (verified separately)."""
+        ...
+
+
+Handler = Callable[[HandlerContext], StepResult]
+
+
+class AgentRegistrationError(ContractError):
+    """Raised when an agent would make routing ambiguous or is malformed."""
+
 
 @dataclass
 class AgentEntry:
