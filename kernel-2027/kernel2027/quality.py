@@ -101,10 +101,18 @@ _FILLER = (
 #: Text that addresses the *reader of the template*, not the reader of the
 #: product. A file containing any of these is admitting it is unfinished, and
 #: no amount of correct markup compensates for that.
+#: Phrases that mean "the author did not write this yet". Each must be a
+#: *sentence an unfilled template would contain*, never a single vocabulary
+#: word. `placeholder` and `insert ` were on this list and rejected a real
+#: lesson about CSS placeholders — the artifact was penalised for using the
+#: term it was explaining. A criterion that fires on correct work is worse
+#: than one that misses: it teaches the writer to avoid accurate words.
 _PLACEHOLDERS = (
     "استبدل هذا", "استبدل النص", "اكتب هنا", "ضع النص هنا", "محتواك الحقيقي",
     "replace this", "replace the text", "write here", "your content here",
-    "placeholder", "lorem ipsum", "todo:", "tbd", "insert ", "متجرك هنا",
+    "lorem ipsum", "todo:", "tbd", "متجرك هنا",
+    # Template instructions, phrased as instructions rather than as nouns.
+    "insert your ", "insert the text", "[insert", "<insert", "your text here",
 )
 
 #: Claims that need evidence. A number with a currency or a percentage, and a
