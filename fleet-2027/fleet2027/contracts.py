@@ -16,13 +16,11 @@ Python 3.10+ · stdlib only.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import re
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
 from enum import Enum
 from typing import Any
 
@@ -131,43 +129,31 @@ class CostTier(str, Enum):
 # Small helpers
 # --------------------------------------------------------------------------- #
 
-_SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,126}$")
-
-
-def utc_now() -> str:
-    """Return the current UTC instant as an ISO-8601 string with ``Z``."""
-    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+# The hashing/time/identifier primitives now live in ``kernel2027`` so every
+# engine shares one definition. They are re-exported under their old names, so
+# no call site changes. ``require_safe_id`` is wrapped (not re-exported verbatim)
+# because fleet callers catch ``ContractError`` and that contract must hold.
+from kernel2027.contracts import (  # noqa: E402 - kernel is stdlib-only too
+    canonical_json,
+    sha256_bytes,
+    sha256_file,
+    sha256_text,
+    utc_now,
+)
+from kernel2027.contracts import require_safe_id as _kernel_require_safe_id
+from kernel2027.contracts import UnsafeValueError as _KernelUnsafeValueError
 
 
 def require_safe_id(value: str, *, where: str) -> str:
-    """Validate an identifier that will be used as a filename or SQL key."""
-    if not isinstance(value, str) or not _SAFE_ID.match(value):
-        raise ContractError(f"{where}: unsafe identifier {value!r}")
-    return value
+    """Validate an identifier that will be used as a filename or SQL key.
 
-
-def canonical_json(payload: Any) -> str:
-    """Serialise ``payload`` deterministically so hashes are reproducible."""
-    return json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-
-
-def sha256_bytes(raw: bytes) -> str:
-    """Return the hex sha256 of ``raw``."""
-    return hashlib.sha256(raw).hexdigest()
-
-
-def sha256_text(text: str) -> str:
-    """Return the hex sha256 of the UTF-8 encoding of ``text``."""
-    return sha256_bytes(text.encode("utf-8"))
-
-
-def sha256_file(path: str) -> str:
-    """Return the hex sha256 of a file, streaming so large files stay cheap."""
-    digest = hashlib.sha256()
-    with open(path, "rb") as handle:  # noqa: PTH123 - explicit for clarity
-        for chunk in iter(lambda: handle.read(1 << 20), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
+    Delegates to the kernel and re-raises as :class:`ContractError` so existing
+    callers keep their exception contract while sharing one validation rule.
+    """
+    try:
+        return _kernel_require_safe_id(value, where=where)
+    except _KernelUnsafeValueError as exc:
+        raise ContractError(str(exc)) from exc
 
 
 def strict_object(

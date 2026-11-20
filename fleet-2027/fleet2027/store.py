@@ -484,6 +484,10 @@ class DurableTaskStore:
         return True
 
     @staticmethod
+    # kernel-exempt: the digest input is a persisted row format ("task::step"),
+    # not the kernel's canonical-JSON effect_key shape. Changing it would strand
+    # every key already written to the ledger, so the kernel's *hash function* is
+    # used (via sha256_text, itself kernel-backed) and the format is kept.
     def idempotency_key(task_id: str, step_id: str) -> str:
         """Deterministic key: re-running a step can never double-apply an effect."""
         return sha256_text(f"{task_id}::{step_id}")

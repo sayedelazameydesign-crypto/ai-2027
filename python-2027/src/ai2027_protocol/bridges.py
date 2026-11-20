@@ -587,6 +587,10 @@ class ConnectorsBridge:
 
         return await asyncio.to_thread(_read)
 
+    # kernel-exempt: this is the persistence layer for a human decision that has
+    # already been made — it writes the proposal and its audit row. The *policy*
+    # (what may be auto-approved, what must never be) is kernel2027.decide, called
+    # by the approval service; re-implementing it here would be the bug.
     async def decide_approval(
         self,
         *,

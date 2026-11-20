@@ -24,6 +24,10 @@ classifiers = [
   "Typing :: Typed",
 ]
 dependencies = [
+  # Shared reliability primitives (stdlib-only, in-repo at ../kernel-2027).
+  # Installed via `pip install -e kernel-2027`; declared here so the
+  # relationship is explicit rather than a hidden sys.path trick.
+  "kernel-2027>=1.0,<2",
   "fastapi>=0.115,<1",
   "httpx>=0.27,<1",
   "opentelemetry-api>=1.27,<2",
