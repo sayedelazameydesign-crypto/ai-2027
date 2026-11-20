@@ -142,9 +142,20 @@ python3 scripts/compare_benchmarks.py \
 لذلك الطريق العملي هو **workflow** لا صدفة:
 
 ```bash
-gh workflow run real-model.yml -f model=openrouter/free      # يدويًا
+gh workflow run real-model.yml                                # يدويًا (ثلاثة مصارف)
+gh workflow run real-model.yml -f model=gemini-2.5-flash      # مصرف محدد
 # أو تلقائيًا عند تغيّر bench/** أو السكربت على main
 ```
+
+**ثلاثة مصارف مجانية مستقلة، بالترتيب:**
+
+| # | المصرف | المفتاح | النموذج الافتراضي | لماذا مجاني (إثبات) |
+|---|--------|---------|-------------------|---------------------|
+| 1 | OpenRouter | `OPENROUTER_API_KEY` | `openrouter/free` | موجّه مجاني أو معرّف `:free` |
+| 2 | Gemini (OpenAI shim) | `GEMINI_API_KEY` | `gemini-2.5-flash` | `FREE_TIER` في `docs/MODEL-CATALOG.md` |
+| 3 | NVIDIA NIM | `NVIDIA_API_KEY` | `meta/llama-3.3-70b-instruct` | `FREE_TIER` في `docs/MODEL-CATALOG.md` |
+
+كل مصرف يُجرَّب بالتناوب حتى ينجح أحدها. نجاح واحد = رقم. فشل الثلاثة = فشل الوظيفة بصوت عالٍ.
 
 **ما يفرضه الملف، لا ما يوعده:**
 

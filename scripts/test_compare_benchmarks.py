@@ -170,5 +170,35 @@ class FreeModelPolicyTest(unittest.TestCase):
                 runner.main(["--free", "openrouter", "--model", "openai/gpt-4o-mini"]), 2
             )
 
+    def test_each_declared_free_provider_passes_its_default(self) -> None:
+        """A free tap is only usable if its own default clears the policy."""
+        runner = _load_runner()
+        for name, spec in runner.FREE_PROVIDERS.items():
+            with self.subTest(provider=name):
+                self.assertTrue(
+                    runner.is_free_model(spec["default_model"], name),
+                    f"{name} default {spec['default_model']!r} must be free",
+                )
+                self.assertTrue(spec["endpoint"].startswith("https://"))
+
+    def test_a_free_list_does_not_leak_across_providers(self) -> None:
+        """Being free on Gemini does not make an id free on OpenRouter."""
+        runner = _load_runner()
+        self.assertFalse(runner.is_free_model("gemini-2.5-flash", "openrouter"))
+        self.assertFalse(runner.is_free_model("openrouter/free", "gemini"))
+        self.assertFalse(runner.is_free_model("gemini-2.5-pro", "gemini"))
+        self.assertFalse(runner.is_free_model("meta/llama-3.1-8b-instruct", "nvidia"))
+
+    def test_every_provider_has_the_four_declared_keys(self) -> None:
+        """A half-declared provider fails at run time, not at review time."""
+        runner = _load_runner()
+        self.assertGreaterEqual(len(runner.FREE_PROVIDERS), 3)
+        for name, spec in runner.FREE_PROVIDERS.items():
+            with self.subTest(provider=name):
+                for key in ("endpoint", "key_env", "model_env", "default_model"):
+                    self.assertIn(key, spec)
+                self.assertTrue(spec["key_env"].endswith("_API_KEY"))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
