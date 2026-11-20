@@ -17,6 +17,7 @@ from .auditor import ProtocolAuditor, format_audit_markdown
 from .auditor_ast import SKIP_DIRS
 from .bridges import ConnectorsBridge, KernelSandboxBridge, MemoryBridge
 from .connector_hub_bridge import LiveConnectorClient
+from .containers import inspect_zip
 from .contracts import (
     StrictModel as StrictModel,
 )
@@ -26,7 +27,7 @@ from .contracts import (
 from .contracts import (
     ToolSpec as ToolSpec,
 )
-from .ingest import probe_bytes
+from .ingest import Family, probe_bytes
 from .security import SecurityValidationError, redact_secrets, resolve_safe_path
 from .tools_advanced import (
     connector_read_tool,
@@ -377,9 +378,22 @@ class SandboxToolRuntime:
             # what the file actually is, which is the useful answer.
             probe = probe_bytes(head)
             if not probe.is_textual:
+                detail = ""
+                if probe.family is Family.ZIP:
+                    # A zip that cannot be opened safely is a security refusal,
+                    # not merely "not text": the reason travels with it so the
+                    # user learns which limit was hit.
+                    report = inspect_zip(target.read_bytes(), name_hint=rel)
+                    if not report.is_safe_to_open:
+                        raise SecurityValidationError(f"{rel} refused: {report.refusal}")
+                    detail = (
+                        f" It is a {report.format} container with "
+                        f"{len(report.entries)} entries; read a member, not the file."
+                    )
                 raise SecurityValidationError(
                     f"{rel} is not text ({probe.format}); refusing to decode it "
                     f"as text. Use a reader for the {probe.family.value} family."
+                    f"{detail}"
                 )
             raw = head.decode("utf-8", errors="replace")
             lines = raw.splitlines()

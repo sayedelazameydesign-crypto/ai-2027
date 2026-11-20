@@ -104,9 +104,7 @@ class DisagreementTests(unittest.TestCase):
 
     def test_an_honest_name_is_silent(self) -> None:
         self.assertIsNone(extension_disagrees("a.md", probe_bytes(b"# hi\n")))
-        self.assertIsNone(
-            extension_disagrees("a.png", probe_bytes(b"\x89PNG\r\n\x1a\n"))
-        )
+        self.assertIsNone(extension_disagrees("a.png", probe_bytes(b"\x89PNG\r\n\x1a\n")))
 
 
 class ReadFileRefusalTests(unittest.TestCase):
