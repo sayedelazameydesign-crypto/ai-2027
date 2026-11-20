@@ -85,6 +85,9 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
         run: |
+          # `python | tee` returns tee's status. Without pipefail a diagnostic
+          # that crashed halfway would read as a diagnostic that ran.
+          set -o pipefail
           echo "### Reachability diagnostic" >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
           python3 - <<'TAPS' | tee /tmp/diag.txt
@@ -154,6 +157,8 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
         run: |
+          # Same reason: a traceback piped through tee is a zero exit code.
+          set -o pipefail
           python3 - <<'SMOKE' | tee /tmp/smoke.txt
           import json
           import os
@@ -165,7 +170,7 @@ jobs:
                "https://openrouter.ai/api/v1/chat/completions"),
               ("gemini", "GEMINI_API_KEY", "gemini-2.5-flash",
                "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"),
-              ("nvidia", "NVIDIA_API_KEY", "meta/llama-3.3-70b-instruct",
+              ("nvidia", "NVIDIA_API_KEY", "z-ai/glm-5.3-flash",
                "https://integrate.api.nvidia.com/v1/chat/completions"),
           ]
           for name, key_env, model, url in TAPS:

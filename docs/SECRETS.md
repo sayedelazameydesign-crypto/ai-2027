@@ -29,7 +29,7 @@
 | `RENDER_SERVICE_ID` | يختار خدمة Render مباشرة في النشر اليدوي أو لوحة دورة الحياة بدل البحث بالاسم | فارغ ⇒ البحث بالاسم |
 | `RENDER_SERVICE_NAME` | اسم الخدمة المستعمل في البحث والتأكيد؛ قيمة الإدخال اليدوي تتجاوز المتغيّر | `ai-2027-live-agent` |
 | `GEMINI_MODEL` | النموذج المستعمل في فحص Gemini الحي | `gemini-2.5-flash` |
-| `NVIDIA_MODEL` | معرّف نموذج NVIDIA غير السري؛ `meta/llama-3.1-8b-instruct` تقاعد (HTTP 410 منذ 2026-08-26) ويُحجب كـ`model_retired`. يمكن تجاوزه بمدخل التشغيل | `meta/llama-3.3-70b-instruct` |
+| `NVIDIA_MODEL` | معرّف نموذج NVIDIA غير السري؛ `meta/llama-3.1-8b-instruct` و`meta/llama-3.3-70b-instruct` تقاعدا (HTTP 410 منذ 2026-08-26) ويُحجبان كـ`model_retired`. يمكن تجاوزه بمدخل التشغيل | `z-ai/glm-5.3-flash` |
 | `GROQ_MODEL` | معرّف نموذج Groq. المعرّفان `llama-3.1-8b-instant` و`llama-3.3-70b-versatile` تقاعدا (2026-08-16) ويُحجبان كـ`model_retired`. البديل الرسمي `openai/gpt-oss-20b` مسعّر لكل توكن، لذا يبقى `UNKNOWN_COST` حتى تصرّح به في `AI2027_FREE_MODELS` | `openai/gpt-oss-20b` |
 | `OPENROUTER_MODEL` | معرّف نموذج OpenRouter؛ يجب أن يكون `openrouter/free` أو منتهيًا بـ`:free` تحت سياسة `$0` | `openrouter/free` |
 | `AI2027_FREE_MODELS` | قائمة مفصولة بفواصل تعلن نماذج إضافية مجانية على خطة المزوّد المعدّلة. لا تتجاوز تقاعد معرّف، ولا تُثبت `$0` | فارغة |

@@ -97,6 +97,38 @@ jobs:
       - name: CI guard self-tests (keeps the gates honest)
         run: python scripts/test_ci_guard.py -v
 
+      # `cmd | tee log` reports tee's status, so a failed step can read as a
+      # pass. This gate was written after finding one in ci.yml itself and two
+      # in real-model.yml's diagnostics. Its own tests are run first: a gate
+      # that has never been shown to fail is decoration.
+      - name: Workflow pipe guard self-tests — must catch a real case (5)
+        run: python scripts/test_workflow_pipe_guard.py -v
+
+      - name: Workflow pipe guard — no tee pipeline can hide a failure
+        run: python scripts/workflow_pipe_guard.py --assert
+
+      # scripts/ holds gates whose tests were not all wired into CI. One
+      # (test_nvidia_live_check) could not even be imported. This step runs
+      # every scripts/test_*.py from the repo root, so a test that only worked
+      # from its own directory fails here instead of never running.
+      - name: Every scripts/ test suite runs from the repository root
+        run: |
+          set -euo pipefail
+          failed=""
+          for f in scripts/test_*.py; do
+            module="scripts.$(basename "${f%.py}")"
+            if ! python -m unittest "${module}" > "/tmp/${module}.log" 2>&1; then
+              echo "::error::${module} failed; log follows"
+              tail -25 "/tmp/${module}.log"
+              failed="${failed} ${module}"
+            fi
+          done
+          if [ -n "${failed}" ]; then
+            echo "::error::failed suites:${failed}"
+            exit 1
+          fi
+          echo "every scripts/ suite passed from the repository root"
+
       - name: Secret gate tests — catch keys, spare fixtures (17)
         run: python scripts/test_secret_scan.py -v
 
@@ -376,7 +408,11 @@ jobs:
           python-version: "3.11"
 
       - name: Boot the whole ember with one command (boot + real smoke + shutdown)
-        run: ./scripts/ember_up.sh --check --no-browser --json | tee /tmp/up.json
+        run: |
+          # Without pipefail this step reports 0 whenever `tee` succeeds, even if
+          # the boot failed. Proven: `false | tee f; echo $?` prints 0 in bash.
+          set -euo pipefail
+          ./scripts/ember_up.sh --check --no-browser --json | tee /tmp/up.json
 
       - name: Run one real task and measure it end-to-end
         run: |

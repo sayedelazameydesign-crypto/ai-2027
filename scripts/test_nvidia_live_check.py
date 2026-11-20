@@ -6,10 +6,20 @@ from __future__ import annotations
 import contextlib
 import io
 import json
+import sys
 import unittest
 import urllib.error
 from email.message import Message
-from typing import Self
+from pathlib import Path
+from typing import TYPE_CHECKING
+
+# The sibling gemini test already did this; this one was forgotten, so the
+# module could only be imported when the working directory happened to be
+# scripts/ — which no CI job guarantees.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    from typing import Self
 
 import nvidia_live_check as nlc
 

@@ -16,7 +16,7 @@ cd python-2027
 | المزوّد | المتغيّر | الافتراضي | التصنيف تحت `MAX_SPEND=0` |
 |---|---|---|---|
 | Gemini | `GEMINI_MODEL` | `gemini-2.5-flash` | `FREE_TIER` (قائمة مسموحة معلنة) |
-| NVIDIA NIM | `NVIDIA_MODEL` | `meta/llama-3.3-70b-instruct` | `FREE_TIER` (قائمة مسموحة معلنة) |
+| NVIDIA NIM | `NVIDIA_MODEL` | `z-ai/glm-5.3-flash` | `FREE_TIER` (قائمة مسموحة معلنة) |
 | Groq | `GROQ_MODEL` | `openai/gpt-oss-20b` | `UNKNOWN_COST` ⟵ **محجوب افتراضيًا** |
 | OpenRouter | `OPENROUTER_MODEL` | `openrouter/free` | `FREE_TIER` (موجّه مجاني ديناميكي) |
 
@@ -37,7 +37,8 @@ AI2027_FREE_MODELS=openai/gpt-oss-20b
 
 | المزوّد | المعرّف المتقاعد | تاريخ التقاعد | البديل الموصى به | الدليل |
 |---|---|---|---|---|
-| NVIDIA NIM | `meta/llama-3.1-8b-instruct` | 2026-08-26 | `meta/llama-3.3-70b-instruct` | النقطة تُجيب `HTTP 410 Gone` |
+| NVIDIA NIM | `meta/llama-3.1-8b-instruct` | 2026-08-26 | `z-ai/glm-5.3-flash` | النقطة تُجيب `HTTP 410 Gone` |
+| NVIDIA NIM | `meta/llama-3.3-70b-instruct` | 2026-08-26 | `z-ai/glm-5.3-flash` | `HTTP 410`: «reached its end of life on 2026-08-26» |
 | Groq | `llama-3.1-8b-instant` | 2026-08-16 | `openai/gpt-oss-20b` | متقاعد للخطط المجانية وDeveloper؛ مفتاح مجاني يعيد `HTTP 404` |
 | Groq | `llama-3.3-70b-versatile` | 2026-08-16 | `openai/gpt-oss-120b` | كما أعلاه |
 | Groq | `meta-llama/llama-4-scout-17b-16e-instruct` | 2026-07-17 | `openai/gpt-oss-120b` | نموذج معاينة مسحوب |
