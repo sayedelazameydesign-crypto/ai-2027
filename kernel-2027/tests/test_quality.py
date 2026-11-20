@@ -12,6 +12,7 @@ Everything here is deterministic and offline: same bytes, same score, forever.
 from __future__ import annotations
 
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -211,3 +212,44 @@ class ShapeTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+class PlaceholderVocabularyTests(unittest.TestCase):
+    """A real word must not be mistaken for an unfilled template.
+
+    `placeholder` was in _PLACEHOLDERS as a bare word, so a lesson *about*
+    CSS placeholders scored substance=0.05 and was judged unusable. The
+    artifact was penalised for using the term it explained.
+    """
+
+    SUBSTANTIAL = (
+        "<html><body><h1>CSS Placeholder Styling</h1>"
+        "<p>The placeholder attribute styles hint text inside an input field. "
+        "Learners should understand that a placeholder is not a label: screen "
+        "readers may skip it, and a form that relies on one is inaccessible. "
+        "This lesson explains the difference with examples, then walks through "
+        "styling it with ::placeholder and the browser support table.</p>"
+        "<h2>Why it matters</h2>"
+        "<p>A placeholder disappears the moment a user types, so instructions "
+        "placed there are lost exactly when they are needed. Write a real "
+        "label, and use the placeholder only for an example format.</p>"
+        "</body></html>"
+    )
+
+    def _score(self, body: str) -> object:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "a.html"
+            path.write_text(body, encoding="utf-8")
+            return score_file("learn", str(path))
+
+    def test_a_real_lesson_about_placeholders_is_not_a_stub(self) -> None:
+        result = self._score(self.SUBSTANTIAL)
+        substance = next(c for c in result.criteria if c.name == "substance")
+        self.assertGreaterEqual(substance.score, 0.9, substance.reason)
+
+    def test_an_unfilled_template_is_still_rejected(self) -> None:
+        result = self._score(
+            "<html><body><h1>Store</h1>"
+            "<p>replace this text with your real content</p></body></html>"
+        )
+        substance = next(c for c in result.criteria if c.name == "substance")
+        self.assertLessEqual(substance.score, 0.1, substance.reason)
