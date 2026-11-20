@@ -30,12 +30,13 @@ import argparse
 import json
 import os
 import sys
+import time
 from pathlib import Path
 
 if __package__ in (None, ""):  # pragma: no cover - direct script execution
     sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from fleet2027 import (  # noqa: E402
+from fleet2027 import (
     TERMINAL_TASK_STATUSES,
     AgentRegistry,
     DurableTaskStore,
@@ -51,7 +52,7 @@ from fleet2027 import (  # noqa: E402
     TaskStatus,
     build_llm_registry,
     build_reviewer,
-    examples,  # noqa: E402
+    examples,
     summarize_snapshot,
     utc_now,
 )
@@ -139,6 +140,79 @@ def cmd_demo(args: argparse.Namespace) -> int:
         integrity = store.verify_integrity()
         print(f"integrity: ok={integrity['ok']} audit_rows={integrity['audit_rows']}")
         return _exit_for(report.status)
+
+
+def cmd_ask(args: argparse.Namespace) -> int:
+    """Turn one plain-language sentence into a persisted, executable task.
+
+    This is the command that removes the last piece of programming knowledge the
+    fleet used to require. ``plan`` needs a hand-written JSON spec with step ids
+    and a dependency graph; ``ask`` needs a sentence. Everything the system
+    decides on the user's behalf is printed *before* the task is queued, so a
+    wrong reading is visible while it is still free to correct.
+
+    With ``--dry-run`` nothing is stored at all: the reading and the plan are
+    shown and the process exits. That is the honest default for a first run,
+    because seeing the plan is how someone learns to trust (or distrust) it.
+    """
+    from kernel2027.intent import IntentError, resolve, to_task_spec
+
+    from fleet2027.contracts import PlanStep, TaskSpec
+
+    utterance = " ".join(args.request)
+    try:
+        resolution = resolve(utterance, task_key=args.task or "intent")
+    except IntentError as exc:
+        print(f"could not understand the request: {exc}", file=sys.stderr)
+        return EXIT_USAGE
+
+    print(resolution.explain())
+    for step in resolution.steps:
+        waits = f" <- {', '.join(step.depends_on)}" if step.depends_on else ""
+        print(f"  {step.step_id:<24} {step.agent:<10} {step.action}{waits}")
+
+    if args.dry_run:
+        print("dry run: nothing was stored")
+        return EXIT_OK
+
+    task_id = args.task or f"ask-{resolution.domain}-{int(time.time())}"
+    spec = to_task_spec(
+        resolution,
+        task_id=task_id,
+        build_step=PlanStep,
+        build_spec=TaskSpec,
+        created_by="ask",
+    )
+    with DurableTaskStore(args.db) as store:
+        created = store.submit(spec)
+        print(
+            f"{'created' if created else 'already present (identical spec)'}: "
+            f"{spec.task_id} · {len(spec.steps)} step(s) · "
+            f"spec_sha256={spec.spec_hash()[:16]}…"
+        )
+        if args.run:
+            from fleet2027.generalist import build_generalist_registry
+
+            report = FleetRunner(
+                store=store,
+                registry=build_generalist_registry(),
+                workspace_root=args.workspace,
+                announce=False,
+            ).run(spec.task_id)
+            print(f"result: {report.status.value}")
+            if report.status.value != "succeeded":
+                return EXIT_FAILED
+            produced = Path(args.workspace) / "intent" / spec.task_id
+            if produced.exists():
+                for path in sorted(produced.iterdir()):
+                    print(f"  {path.name} ({path.stat().st_size} bytes)")
+    if not resolution.can_start:
+        print(
+            "note: this task must be approved before it runs "
+            "(it acts outward under your name).",
+            file=sys.stderr,
+        )
+    return EXIT_OK
 
 
 def cmd_plan(args: argparse.Namespace) -> int:
@@ -431,6 +505,25 @@ def build_parser() -> argparse.ArgumentParser:
     demo = sub.add_parser("demo", parents=[common], help="run the deterministic demo fleet")
     demo.add_argument("--task", default=None, help="task id (defaults to a timestamp)")
     demo.set_defaults(func=cmd_demo)
+
+    ask = sub.add_parser(
+        "ask",
+        parents=[common],
+        help="turn a plain-language sentence into a persisted task",
+    )
+    ask.add_argument("request", nargs="+", help="what you want, in your own words")
+    ask.add_argument("--task", default=None, help="task id (defaults to a generated one)")
+    ask.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="show what was understood and the plan, store nothing",
+    )
+    ask.add_argument(
+        "--run",
+        action="store_true",
+        help="execute immediately with the local generalist fleet",
+    )
+    ask.set_defaults(func=cmd_ask)
 
     plan = sub.add_parser("plan", parents=[common], help="persist a task spec from JSON")
     plan.add_argument("--spec", required=True)

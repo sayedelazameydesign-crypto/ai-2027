@@ -459,7 +459,7 @@ class PackageShapeTests(unittest.TestCase):
         allowed = {
             "__future__", "ast", "collections", "dataclasses", "datetime", "enum",
             "hashlib", "ipaddress", "json", "random", "re", "time", "typing",
-            "urllib",
+            "unicodedata", "urllib",
         }
         root = Path(__file__).resolve().parent.parent / "kernel2027"
         for path in root.glob("*.py"):
