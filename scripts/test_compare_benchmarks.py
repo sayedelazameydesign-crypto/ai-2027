@@ -202,3 +202,37 @@ class FreeModelPolicyTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+class TapOrderTest(unittest.TestCase):
+    """--taps must control the order, not merely filter.
+
+    The first version filtered but iterated the provider dict, so
+    `--taps gemini,openrouter` still started with openrouter. A run that
+    starts with an exhausted quota loses every sentence that depends on it,
+    which is exactly what the option exists to prevent.
+    """
+
+    def _order(self, taps: str) -> list[str]:
+        import importlib
+
+        module = importlib.import_module("run_real_model")
+        with unittest.mock.patch.dict(
+            os.environ,
+            {"OPENROUTER_API_KEY": "x", "GEMINI_API_KEY": "y", "NVIDIA_API_KEY": "z"},
+        ), unittest.mock.patch("sys.stdout", new_callable=__import__("io").StringIO) as out:
+            try:
+                module.main(["--rotate", "--taps", taps, "--limit", "0", "--out", "/tmp/x.json"])
+            except SystemExit:
+                pass
+        line = next(l for l in out.getvalue().splitlines() if "rotation: order=" in l)
+        raw = line.split("order=", 1)[1]
+        return [part.split(":")[0].strip(" []'") for part in raw.split(",")]
+
+    def test_the_requested_order_is_the_rotation_order(self) -> None:
+        self.assertEqual(self._order("gemini,openrouter"), ["gemini", "openrouter"])
+
+    def test_reversing_the_request_reverses_the_rotation(self) -> None:
+        self.assertEqual(self._order("openrouter,gemini"), ["openrouter", "gemini"])
+
+    def test_a_single_tap_does_not_rotate(self) -> None:
+        self.assertEqual(self._order("gemini"), ["gemini"])

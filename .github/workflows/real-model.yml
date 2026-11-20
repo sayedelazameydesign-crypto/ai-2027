@@ -203,6 +203,14 @@ jobs:
                   print(f"[{name}] FAILED {type(exc).__name__}: {exc}")
           SMOKE
           while IFS= read -r line; do echo "::warning::${line}"; done < /tmp/smoke.txt
+          # A tap that just answered a real call is the one worth starting
+          # from: OpenRouter's exhausted quota does not fail one sentence, it
+          # fails every sentence that depends on it. Expose the live taps so
+          # the measure step can start from a healthy one.
+          live=$(grep -oE '^\[[a-z]+\] http 2[0-9][0-9]' /tmp/smoke.txt \
+                 | sed 's/^\[//; s/\] http.*//' | paste -sd, -)
+          echo "live_taps=${live}" >> "$GITHUB_OUTPUT"
+          echo "live taps: ${live:-none}"
 
       # Rotate the three free taps, one per sentence, so the full 24-sentence
       # corpus is measured instead of truncated to what one quota allows.
@@ -217,10 +225,17 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
           PYTHONDONTWRITEBYTECODE: "1"
+          # Empty when nothing answered, so the runner still tries every tap
+          # rather than refusing to measure at all.
+          TAPS: ${{ steps.smoke.outputs.live_taps }}
         run: |
           set -o pipefail
           set +e
+          # Start from the taps that answered the smoke call, in that order.
+          # OpenRouter's quota is exhausted, and handing it the first sentence
+          # costs every sentence downstream of it.
           python3 scripts/run_real_model.py --rotate \
+            ${TAPS:+--taps "$TAPS"} \
             --out "fleet-2027/bench/model.json" 2>&1 | tee /tmp/real_model.log
           status=${PIPESTATUS[0]}
           set -e
