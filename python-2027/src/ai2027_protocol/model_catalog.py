@@ -62,7 +62,7 @@ RETIRED_MODELS: tuple[RetiredModel, ...] = (
         retired_on="2026-08-26",
         replacement="z-ai/glm-5.3-flash",
         evidence="NVIDIA NIM answers HTTP 410 Gone: 'reached its end of life on "
-                 "2026-08-26T09:00:00Z and is no longer available'",
+        "2026-08-26T09:00:00Z and is no longer available'",
     ),
     RetiredModel(
         kind=ProviderKind.NVIDIA,

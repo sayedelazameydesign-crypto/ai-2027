@@ -241,6 +241,7 @@ def test_cli_models_command_lists_defaults_and_retirements(
     assert "openrouter/free" in text
     assert "retired 2026-08-16" in text
 
+
 def test_no_retirement_points_at_another_retired_model() -> None:
     """The registry must not send a caller from one dead model to another.
 
