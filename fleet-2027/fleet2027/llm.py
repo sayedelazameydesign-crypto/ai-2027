@@ -618,7 +618,12 @@ class LLMAgent:
     )
     default_language: str = ""
     capability: str = "llm-write"
-    max_tokens: int = 1024
+    #: A reasoning model spends this budget before it writes `content`: the
+    #: first 1,024-token budget came back with finish_reason='length' and an
+    #: empty answer, and the runner retried the identical request, which
+    #: produced the identical truncation. 2,048 leaves room for a short
+    #: reasoning trace plus the file the step was asked to write.
+    max_tokens: int = 2048
     temperature: float = 0.2
     timeout_s: float = 120.0
     max_output_bytes: int = MAX_OUTPUT_BYTES
@@ -666,6 +671,16 @@ class LLMAgent:
             timeout_s=min(float(ctx.inputs.get("timeout_s", self.timeout_s)), MAX_TIMEOUT_S),
         )
 
+        # The same request with headroom for a model that reasons before it
+        # writes. `LLMRequest` validates the cap, so the doubling is clamped.
+        doubled = LLMRequest(
+            prompt=request.prompt,
+            system=request.system,
+            temperature=request.temperature,
+            max_tokens=min(4096, request.max_tokens * 2),
+            timeout_s=request.timeout_s,
+        )
+
         target = (ctx.workspace_root / relative_out).resolve()
         root = ctx.workspace_root.resolve()
         if target != root and root not in target.parents:
@@ -674,15 +689,28 @@ class LLMAgent:
         try:
             response = self.backend.complete(request)
         except LLMError as exc:
-            # A retry is only worth a free-tier request when the next reply
-            # could differ. A spent daily quota, a retired model and a rejected
-            # credential will answer the same way; retrying them costs three
-            # calls where one would do. Measured with a backend that always
-            # answers 429: 3 calls for a single sentence.
-            raise StepFailure(
-                f"{self.backend.name} failed: {exc}",
-                permanent=_is_permanent(exc),
-            ) from exc
+            # Truncation is the one failure a bigger budget can fix, so it is
+            # retried once with one. Retrying it unchanged is what made a
+            # reasoning model return the same truncated answer and burn the
+            # free-tier calls that A0 exists to protect.
+            if str(exc).startswith("truncated") and doubled.max_tokens > request.max_tokens:
+                try:
+                    response = self.backend.complete(doubled)
+                except LLMError as retry_exc:
+                    raise StepFailure(
+                        f"{self.backend.name} failed: {retry_exc}",
+                        permanent=False,
+                    ) from retry_exc
+            else:
+                # A retry is only worth a free-tier request when the next reply
+                # could differ. A spent daily quota, a retired model and a
+                # rejected credential will answer the same way; retrying them
+                # costs three calls where one would do. Measured with a backend
+                # that always answers 429: 3 calls for a single sentence.
+                raise StepFailure(
+                    f"{self.backend.name} failed: {exc}",
+                    permanent=_is_permanent(exc),
+                ) from exc
         self.calls += 1
 
         content = _extract_code(response.text, language)

@@ -113,6 +113,23 @@ def _write_report(report, out: str):
     return write_report(report, out)
 
 
+#: Enough for a provider error code and its message, without a wall of text.
+_CAUSE_WIDTH = 160
+
+
+def _short_cause(text: str) -> str:
+    """Keep a failure cause readable: the prefix is the part that names it.
+
+    Truncating from the left was tried and is wrong — `no artifact at
+    document.md; step said: ...` is the useful shape, so the cause lives at
+    the end and the whole line is kept up to a width that fits a report.
+    """
+    flat = " ".join(str(text).split())
+    if len(flat) <= _CAUSE_WIDTH:
+        return flat
+    return flat[: _CAUSE_WIDTH - 1] + "…"
+
+
 def _report(report, out: str) -> int:
     """Write the report and state the verdict. One place, three outcomes."""
     if not report.model_called:
@@ -154,13 +171,17 @@ def _report(report, out: str) -> int:
         print(f"failures: {len(incomplete)} of {len(report.results)} sentences")
         causes: dict[str, int] = {}
         for item in incomplete:
+            # A fixed cut at 70 characters landed mid-word in the part that
+            # names the cause: the line read "groq:... failed: ht" and the
+            # whole run became undiagnosable. The provider's reason is the
+            # most useful text in a failed benchmark, so it is kept whole.
             if item.error:
-                cause = item.error[:70]
+                cause = _short_cause(item.error)
             elif item.status != "succeeded":
                 cause = f"status={item.status}"
             else:
                 got = ", ".join(item.failures[:2]) if item.failures else "scored below floor"
-                cause = f"unusable: {got}"[:70]
+                cause = _short_cause(f"unusable: {got}")
             causes[cause] = causes.get(cause, 0) + 1
         for cause, count in sorted(causes.items(), key=lambda kv: -kv[1])[:5]:
             print(f"  {count:02d}x {cause}")
