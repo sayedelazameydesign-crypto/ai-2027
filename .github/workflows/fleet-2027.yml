@@ -24,7 +24,16 @@ on:
       - "fleet-2027/**"
       - "scripts/fleet_guard.py"
       - "scripts/fleet_router_bridge_check.py"
+      # The comparison contract and the real-model runner both live in
+      # scripts/. Without them here, editing either one changes a gate that
+      # the gate itself never re-runs — which is how a broken verdict ships.
+      - "scripts/compare_benchmarks.py"
+      - "scripts/test_compare_benchmarks.py"
+      - "scripts/run_real_model.py"
+      - "scripts/bench_gate.py"
+      - "fleet-2027/bench/**"
       - ".github/workflows/fleet-2027.yml"
+      - ".github/workflows/real-model.yml"
       - "docs/pap-2027-engines.json"
   pull_request:
     branches: [main]
@@ -32,7 +41,16 @@ on:
       - "fleet-2027/**"
       - "scripts/fleet_guard.py"
       - "scripts/fleet_router_bridge_check.py"
+      # The comparison contract and the real-model runner both live in
+      # scripts/. Without them here, editing either one changes a gate that
+      # the gate itself never re-runs — which is how a broken verdict ships.
+      - "scripts/compare_benchmarks.py"
+      - "scripts/test_compare_benchmarks.py"
+      - "scripts/run_real_model.py"
+      - "scripts/bench_gate.py"
+      - "fleet-2027/bench/**"
       - ".github/workflows/fleet-2027.yml"
+      - ".github/workflows/real-model.yml"
       - "docs/pap-2027-engines.json"
   workflow_dispatch:
 
