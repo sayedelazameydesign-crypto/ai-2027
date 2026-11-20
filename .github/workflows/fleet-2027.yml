@@ -118,7 +118,7 @@ jobs:
           PYTHONDONTWRITEBYTECODE: "1"
       # The comparison tool can report a winner, so it gets its own tests: a
       # verdict built on two non-comparable numbers is worse than no verdict.
-      - name: Benchmark comparison contract (13 tests)
+      - name: Benchmark comparison contract (16 tests)
         run: python scripts/test_compare_benchmarks.py
         env:
           PYTHONDONTWRITEBYTECODE: "1"
