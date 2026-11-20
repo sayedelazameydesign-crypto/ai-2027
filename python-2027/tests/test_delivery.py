@@ -311,3 +311,42 @@ class WidgetFamilyTests(unittest.TestCase):
         path.write_text("# عنوان\n" + "سطر طويل هنا. " * 40_000, encoding="utf-8")
         plan = plan_delivery(describe_file(str(path)))
         self.assertIn("slice", plan.primary.reason)
+
+
+class ReportWidgetTests(unittest.TestCase):
+    """A report must never be handed to a viewer that expects the real format.
+
+    Measured in an end-to-end run: a corrupted docx planned as REPORT still
+    carried `widget='text'`, so a UI reading the widget would have rendered a
+    failed document as text -- the same class of mistake this layer exists to
+    prevent, one level up.
+    """
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.tmp = Path(self._tmp.name)
+
+    def tearDown(self) -> None:
+        self._tmp.cleanup()
+
+    def test_failed_artifact_reports_as_a_report(self) -> None:
+        described = describe_file(str(_docx(self.tmp / "r.docx")))
+        failed = Verification(
+            path="r.docx", kind="docx", checks=(Check("member CRCs", False, "x"),)
+        )
+        plan = plan_delivery(described, verification=failed)
+        self.assertEqual(plan.primary.widget, "report")
+
+    def test_missing_file_reports_as_a_report(self) -> None:
+        plan = plan_delivery(describe_file(str(self.tmp / "gone.docx")))
+        self.assertEqual(plan.primary.widget, "report")
+
+    def test_unknown_family_reports_as_a_report(self) -> None:
+        path = self.tmp / "thing.xyz"
+        path.write_bytes(bytes(range(256)) * 2)
+        self.assertEqual(plan_delivery(describe_file(str(path))).primary.widget, "report")
+
+    def test_default_step_is_a_report_too(self) -> None:
+        from ai2027_protocol.delivery import DeliveryPlan
+
+        self.assertEqual(DeliveryPlan(path="x").primary.widget, "report")
