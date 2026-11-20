@@ -57,7 +57,23 @@ _IMAGE_MAGIC = re.compile(rb"\A(\x89PNG\r\n\x1a\n|\xff\xd8|GIF8[79]a|BM)")
 #: without the signature is a mislabel, and a mislabel must fail rather than
 #: fall through to a weaker check that happens to pass.
 _STRUCTURED_KINDS = frozenset(
-    {"docx", "xlsx", "pptx", "zip", "parquet", "sqlite", "pdf", "mp4", "wav", "mov", "m4a"}
+    {
+        "docx",
+        "xlsx",
+        "pptx",
+        "zip",
+        "parquet",
+        "sqlite",
+        "pdf",
+        "mp4",
+        "wav",
+        "mov",
+        "m4a",
+        "glb",
+        "step",
+        "stl",
+        "stl-binary",
+    }
 )
 
 #: Above this size a ZIP-shaped artifact is not re-read for CRC verification.
@@ -264,6 +280,32 @@ def _check_media(path: Path) -> list[Check]:
     return [Check("media container", True, info.render().splitlines()[0])]
 
 
+def _check_geometry(path: Path, kind: str) -> list[Check]:
+    """A geometry file is valid when its declared counts match its bytes.
+
+    Re-uses `geometry.read_geometry`, so the counts the system reports are the
+    counts this check saw. The failure it must catch: a GLB whose header
+    declares a length the file does not have, and an STL whose triangle count
+    does not match its size -- both are truncated files that would otherwise be
+    described happily.
+    """
+    from .geometry import read_geometry
+
+    # A GLB's JSON chunk follows its header, and a STEP header is the first
+    # block; 16 MB is the same budget ir.py uses and is far past either.
+    with path.open("rb") as handle:
+        data = handle.read(16 * 1024 * 1024)
+    info = read_geometry(data, kind)
+    if not info.readable:
+        detail = "; ".join(info.notes) or "the header declares no objects"
+        return [Check("geometry header", False, detail)]
+    detail = info.render().splitlines()[0]
+    worse = [note for note in info.notes if "truncat" in note or "declares" in note]
+    if worse:
+        return [Check("geometry header", False, "; ".join(worse))]
+    return [Check("geometry header", True, detail)]
+
+
 def _check_sqlite(path: Path) -> list[Check]:
     """Open read-only and run SQLite's own integrity check.
 
@@ -352,6 +394,15 @@ def verify_file(
                 checks.extend(_check_ooxml(archive, kind))
         except zipfile.BadZipFile as exc:
             checks.append(Check("archive readable", False, str(exc)))
+    elif head[:4] == b"glTF" or head[:20].lstrip().startswith(b"ISO-10303-21"):
+        checks.extend(_check_geometry(real_path, kind))
+    elif kind in {"stl", "stl-binary"}:
+        # Binary STL has no magic at all -- its first 80 bytes are free text, so
+        # no header test can route it. Measured: it fell through to the
+        # STRUCTURED_KINDS mislabel check and a valid mesh was reported INVALID.
+        # The declared kind is the only signal there is, and verify_file is given
+        # it; using it here is not trust, because the check below re-counts.
+        checks.extend(_check_geometry(real_path, kind))
     elif head[4:8] == b"ftyp" or head[:4] == b"RIFF":
         checks.extend(_check_media(real_path))
     elif head.startswith(b"%PDF-"):
