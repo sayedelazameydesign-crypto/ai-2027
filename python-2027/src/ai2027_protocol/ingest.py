@@ -179,9 +179,10 @@ def probe_bytes(data: bytes) -> Probe:
             )
 
     ftyp_offset, ftyp = _ISO_BMFF_FTYP
-    if len(prefix) >= ftyp_offset + len(ftyp) and prefix[
-        ftyp_offset : ftyp_offset + len(ftyp)
-    ] == ftyp:
+    if (
+        len(prefix) >= ftyp_offset + len(ftyp)
+        and prefix[ftyp_offset : ftyp_offset + len(ftyp)] == ftyp
+    ):
         return Probe(
             family=Family.VIDEO,
             format="mp4",
@@ -219,8 +220,21 @@ def extension_disagrees(rel_path: str, probe: Probe) -> str | None:
     lowered = rel_path.lower().rsplit(".", 1)
     suffix = f".{lowered[1]}" if len(lowered) == 2 else ""
     claims_text = suffix in {
-        ".txt", ".md", ".markdown", ".csv", ".json", ".html", ".htm",
-        ".css", ".js", ".mjs", ".py", ".svg", ".xml", ".yaml", ".yml",
+        ".txt",
+        ".md",
+        ".markdown",
+        ".csv",
+        ".json",
+        ".html",
+        ".htm",
+        ".css",
+        ".js",
+        ".mjs",
+        ".py",
+        ".svg",
+        ".xml",
+        ".yaml",
+        ".yml",
     }
     if claims_text and not probe.is_textual:
         return f"name says text ({suffix or 'no extension'}) but bytes are {probe.format}"
