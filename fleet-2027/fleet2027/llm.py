@@ -366,9 +366,17 @@ class OpenAICompatibleBackend:
             # State which of the many shapes actually came back. "invalid
             # payload" alone sent a whole debugging round down the wrong path.
             keys = sorted(payload) if isinstance(payload, Mapping) else []
+            used = payload.get("usage") if isinstance(payload, Mapping) else None
+            if finish_reason == "length":
+                # Truncated, not malformed. The caller can raise the budget;
+                # calling this "invalid payload" hides an actionable cause.
+                raise LLMError(
+                    "truncated: finish_reason='length' and no content was written; "
+                    f"usage={used}"
+                )
             raise LLMError(
                 f"invalid_payload: {detail}; finish_reason={finish_reason!r}; "
-                f"top_level_keys={keys}"
+                f"top_level_keys={keys}; usage={used}"
             )
         return LLMResponse(
             text=text,
