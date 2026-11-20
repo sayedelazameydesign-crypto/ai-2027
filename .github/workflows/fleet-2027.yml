@@ -98,6 +98,12 @@ jobs:
         run: python scripts/bench_gate.py
         env:
           PYTHONDONTWRITEBYTECODE: "1"
+      # The comparison tool can report a winner, so it gets its own tests: a
+      # verdict built on two non-comparable numbers is worse than no verdict.
+      - name: Benchmark comparison contract (9 tests)
+        run: python scripts/test_compare_benchmarks.py
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
 
   gate:
     name: Evidence gate · 12 gates incl. SIGKILL, two-process, router failover
