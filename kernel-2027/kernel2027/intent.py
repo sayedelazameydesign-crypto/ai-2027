@@ -124,17 +124,20 @@ _URGENT_SIGNALS = (
     "urgent", "asap", "quickly", "today", "tomorrow", "deadline", "fast",
 )
 
-#: Domains that produce a *file* the user keeps, and what to call it.
-_ARTIFACT_DOMAINS = {
-    "website": ("static site", ("index.html",)),
-    "document": ("document", ("document.md",)),
-    "research": ("report", ("report.md",)),
-    "organize": ("plan", ("plan.md",)),
-    "learn": ("explanation", ("explanation.md",)),
-    "travel": ("itinerary", ("itinerary.md",)),
-    "business": ("business plan", ("plan.md",)),
-    "code": ("code change", ("change.diff",)),
-    "email": ("draft", ("draft.txt",)),
+#: Domains that produce a *file* the user keeps: what to call it, and which file
+#: it is. ONE table, because two tables for the same filename will disagree —
+#: this one previously said ``plan.md`` for business while a second one said
+#: ``business-plan.md``, and the writer would have honoured whichever won.
+_ARTIFACT_DOMAINS: dict[str, tuple[str, str, str]] = {
+    "website": ("static site", "index.html", "html"),
+    "document": ("document", "document.md", "markdown"),
+    "research": ("report", "report.md", "markdown"),
+    "organize": ("plan", "plan.md", "markdown"),
+    "learn": ("explanation", "explanation.md", "markdown"),
+    "travel": ("itinerary", "itinerary.md", "markdown"),
+    "business": ("business plan", "business-plan.md", "markdown"),
+    "code": ("code change", "change.md", "markdown"),
+    "email": ("draft", "draft.txt", "text"),
 }
 
 #: Per-domain plan templates: (step suffix, agent, action, depends_on_suffixes).
@@ -299,6 +302,11 @@ class Step:
     depends_on: tuple[str, ...] = ()
     critical: bool = True
     verification: tuple[str, ...] = ()
+    inputs: tuple[tuple[str, str], ...] = ()
+
+    def inputs_map(self) -> dict[str, str]:
+        """The step's inputs as a plain mapping (tuples keep the value object hashable)."""
+        return dict(self.inputs)
 
 
 @dataclass(frozen=True)
@@ -630,13 +638,127 @@ _VERIFICATION: dict[str, tuple[str, ...]] = {
 }
 
 
-def _build_steps(domain: str, task_key: str) -> tuple[Step, ...]:
-    """Materialise the domain's plan template into concrete, ordered steps."""
+#: Where a task's deliverables live, relative to the workspace root. Declared in
+#: the kernel because the plan and the executor must agree on it: the writer
+#: writes here and the verifier looks here, and a disagreement between them is
+#: invisible until a user opens an empty folder.
+WORKSPACE_SUBDIR = "intent"
+
+#: Hard cap on a generated prompt. A plan travels through a database, an audit
+#: log and an event stream; an unbounded prompt would bloat all three.
+MAX_PROMPT_CHARS = 2000
+
+#: What the deliverable must be, per domain, in words an executor can act on.
+#: Kept next to `_ARTIFACT_DOMAINS` so the two cannot drift: one names the file,
+#: this one says what belongs inside it.
+_PURPOSE: dict[str, str] = {
+    "website": "a single self-contained HTML page with inline CSS, "
+               "no external requests, no build step",
+    "document": "a structured markdown document, about two pages",
+    "research": "a markdown report that separates what is known from what is "
+                "assumed, with sources named where they exist",
+    "organize": "a markdown plan with concrete, ordered, checkable actions",
+    "learn": "a markdown explanation that starts from zero and uses no jargon "
+             "it does not first define",
+    "travel": "a markdown itinerary with days, costs where known, and one "
+              "fallback per day",
+    "business": "a markdown one-page plan: the idea, the customer, the first "
+                "three steps, and the main risk",
+    "code": "the smallest change that addresses the request, with a one-line "
+            "rationale and no unrelated edits",
+    "email": "a plain-text draft that the user will review before it is sent",
+}
+
+#: Sentence appended for people who said they do not know where to start.
+_NOVICE_NOTE = (
+    "The person asking has said they are not technical and do not know where "
+    "to begin. Write for them: plain words, no jargon unless you define it in "
+    "the same sentence, and no assumption that they can read code."
+)
+
+
+def build_prompt(domain: str, goal: str, settings: dict[str, str]) -> str:
+    """Compose the instruction an executor follows to produce the deliverable.
+
+    Deliberately in the *kernel* and not in the engine. The wording of "what a
+    good website for this user means" is a product decision that every engine
+    must make identically — that is the same argument that put the hash and the
+    approval policy here. It also keeps the prompt out of the executor: swapping
+    a scaffold for a real model must not change what was asked for.
+
+    It returns text and nothing else. No provider, no network, no client.
+    """
+    purpose = _PURPOSE.get(domain, "a clearly structured markdown document")
+    lines = [
+        f"Task: {goal}",
+        "",
+        f"Produce {purpose}.",
+        "",
+        "Requirements:",
+        "1. Return ONLY the file content. No preamble, no explanation, no apologies.",
+        (
+            "2. Do not invent facts, names, prices or sources. Where something "
+            "must be decided and no value was given, choose the simplest "
+            "defensible option and state the choice in one line."
+        ),
+        "3. Write in the language the request was made in.",
+    ]
+    if settings.get("explain_level"):
+        lines.append(f"4. {_NOVICE_NOTE}")
+    if settings.get("deadline"):
+        lines.append(f"Deadline given: {settings['deadline']}. Prefer a smaller "
+                     "finished result over a larger unfinished one.")
+    if settings.get("budget_usd"):
+        lines.append(f"Budget given: {settings['budget_usd']}. Do not propose "
+                     "anything that assumes more.")
+    audience = settings.get("audience")
+    if audience and audience != "general":
+        lines.append(f"Audience: {audience}.")
+    prompt = "\n".join(lines)
+    if len(prompt) > MAX_PROMPT_CHARS:
+        prompt = prompt[: MAX_PROMPT_CHARS - 3].rstrip() + "..."
+    return prompt
+
+
+def _build_steps(
+    domain: str,
+    task_key: str,
+    *,
+    goal: str,
+    settings: dict[str, str],
+    artifact: str,
+) -> tuple[Step, ...]:
+    """Materialise the domain's plan template into concrete, ordered steps.
+
+    A step that *writes* carries the instruction an executor needs (``prompt``)
+    and the file it must produce (``out``). A step that only clarifies carries
+    neither — inventing a prompt for it would be pretending it does work it
+    does not do.
+    """
     template = _DOMAIN_PLANS.get(domain)
     if template is None:
         raise IntentError(f"no plan template for domain {domain!r}")
+    write_prompt = build_prompt(domain, goal, settings)
+    _artifact, filename, _kind = _ARTIFACT_DOMAINS[domain]
     steps: list[Step] = []
     for suffix, agent, action, deps in template:
+        inputs: tuple[tuple[str, str], ...] = ()
+        if action == "write_artifact":
+            target = (
+                f"{WORKSPACE_SUBDIR}/{task_key}/{filename}"
+                if task_key != WORKSPACE_SUBDIR
+                else f"{WORKSPACE_SUBDIR}/{filename}"
+            )
+            # `language` tells the executor this is a real file with a real
+            # format, so a refusal or an apology cannot be mistaken for content.
+            inputs = (
+                ("prompt", write_prompt),
+                ("out", target),
+                ("language", _kind if _kind != "text" else "text"),
+                ("artifact", artifact),
+            )
+        elif action == "collect_sources":
+            inputs = (("prompt", write_prompt),)
         steps.append(
             Step(
                 step_id=f"{task_key}_{suffix}",
@@ -645,6 +767,7 @@ def _build_steps(domain: str, task_key: str) -> tuple[Step, ...]:
                 depends_on=tuple(f"{task_key}_{dep}" for dep in deps),
                 critical=suffix != "approve",
                 verification=_VERIFICATION.get(action, ()),
+                inputs=inputs,
             )
         )
     return tuple(steps)
@@ -725,15 +848,22 @@ def resolve(utterance: str, *, task_key: str = "intent") -> Resolution:
         if not any(existing.key == item.key for existing in settings):
             settings.append(item)
 
-    artifact, _files = _ARTIFACT_DOMAINS[domain]
+    artifact, _filename, _kind = _ARTIFACT_DOMAINS[domain]
+    goal = _make_goal(cleaned, domain)
 
     return Resolution(
         utterance=cleaned,
         domain=domain,
         confidence=confidence,
-        goal=_make_goal(cleaned, domain),
+        goal=goal,
         artifact=artifact,
-        steps=_build_steps(domain, task_key),
+        steps=_build_steps(
+            domain,
+            task_key,
+            goal=goal,
+            settings={item.key: item.value for item in settings},
+            artifact=artifact,
+        ),
         settings=tuple(settings),
         questions=tuple(_questions_for(domain, settings)),
         alternatives=tuple(ranked[:3]),
@@ -800,7 +930,7 @@ def to_task_spec(
             agent=step.agent,
             action=step.action,
             depends_on=step.depends_on,
-            inputs={"settings": settings},
+            inputs={**step.inputs_map(), "settings": settings},
             critical=step.critical,
             verification=step.verification,
         )

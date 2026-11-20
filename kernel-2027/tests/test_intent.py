@@ -17,9 +17,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from kernel2027.intent import (
     CONFIDENCE_FLOOR,
+    MAX_PROMPT_CHARS,
     IntentError,
     Question,
     Setting,
+    build_prompt,
     normalise,
     resolve,
 )
@@ -310,6 +312,97 @@ class PlanShapeTests(unittest.TestCase):
         round_tripped = json.loads(json.dumps(payload))
         self.assertEqual(round_tripped["domain"], "website")
         self.assertIn("assumed", round_tripped)
+
+
+class PromptTests(unittest.TestCase):
+    """A plan an executor cannot follow is a plan that only looks finished.
+
+    The intent layer used to produce steps naming an agent and an action, and
+    nothing an agent could actually act on: no instruction, no filename. These
+    tests pin the missing half.
+    """
+
+    def test_a_writing_step_carries_the_instruction_and_the_filename(self) -> None:
+        for utterance, filename in (
+            ("اعمل لي موقع", "index.html"),
+            ("اكتب لي تقرير", "document.md"),
+            ("خطط رحلة", "itinerary.md"),
+        ):
+            with self.subTest(utterance=utterance):
+                steps = resolve(utterance).steps
+                writers = [s for s in steps if s.action == "write_artifact"]
+                self.assertTrue(writers, "no writing step in the plan")
+                payload = writers[0].inputs_map()
+                self.assertTrue(payload["prompt"].strip())
+                # `out` is workspace-relative and must end in the right filename;
+                # the exact directory is pinned separately below.
+                self.assertTrue(payload["out"].endswith(f"/{filename}"))
+
+    def test_the_target_path_is_inside_the_task_folder_and_not_duplicated(self) -> None:
+        """The subdirectory and the task key are different names for different
+        things. Sharing a default collapsed the path to ``intent/intent/...``;
+        a user would then find a nested empty-looking folder.
+        """
+        for key in ("intent", "site", "a"):
+            with self.subTest(task_key=key):
+                writer = next(
+                    s for s in resolve("اعمل لي موقع", task_key=key).steps
+                    if s.action == "write_artifact"
+                )
+                out = writer.inputs_map()["out"]
+                self.assertNotIn("intent/intent", out)
+                self.assertTrue(out.startswith("intent/"))
+                self.assertTrue(out.endswith("index.html"))
+
+    def test_a_clarifying_step_does_not_pretend_to_write(self) -> None:
+        """Inventing a prompt for a step that writes nothing would be a lie."""
+        for step in resolve("اعمل لي موقع").steps:
+            if step.action != "write_artifact":
+                self.assertEqual(step.inputs_map().get("out"), None)
+                self.assertNotIn("prompt", step.inputs_map())
+
+    def test_the_prompt_names_the_goal(self) -> None:
+        resolution = resolve("اعمل لي موقع لمشروعي")
+        writer = next(s for s in resolution.steps if s.action == "write_artifact")
+        self.assertIn("موقع", writer.inputs_map()["prompt"])
+
+    def test_the_prompt_forbids_invention(self) -> None:
+        """The cheapest way for a model to look useful is to make things up."""
+        prompt = build_prompt("research", "بحث", {})
+        self.assertIn("Do not invent", prompt)
+
+    def test_a_novice_request_reaches_the_model_as_an_instruction(self) -> None:
+        """'I don't know where to start' must shape the prompt, not just a log line."""
+        resolution = resolve("عايز أعمل موقع ومش عارف أبدأ منين")
+        writer = next(s for s in resolution.steps if s.action == "write_artifact")
+        self.assertIn("not technical", writer.inputs_map()["prompt"])
+
+    def test_prompts_are_bounded(self) -> None:
+        """A prompt travels through a database, an audit log and an event stream."""
+        prompt = build_prompt(
+            "website", "x" * 5000, {"audience": "y" * 5000, "deadline": "z" * 5000}
+        )
+        self.assertLessEqual(len(prompt), MAX_PROMPT_CHARS)
+
+    def test_prompt_construction_touches_no_network(self) -> None:
+        """Prove it from the import graph, not from prose about it.
+
+        A text search cannot tell an import from a sentence in a docstring that
+        says the module never imports one — which is exactly how this test
+        failed when it was first written.
+        """
+        import ast
+
+        source = (Path(__file__).resolve().parent.parent /
+                  "kernel2027" / "intent.py").read_text(encoding="utf-8")
+        imported: set[str] = set()
+        for node in ast.walk(ast.parse(source)):
+            if isinstance(node, ast.Import):
+                imported.update(alias.name.split(".")[0] for alias in node.names)
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                imported.add(node.module.split(".")[0])
+        for forbidden in ("httpx", "requests", "socket", "urllib", "http"):
+            self.assertNotIn(forbidden, imported, f"intent.py imports {forbidden}")
 
 
 class FleetIntegrationTests(unittest.TestCase):

@@ -73,6 +73,28 @@ def _safe_dir(ctx: HandlerContext) -> Path:
     return target
 
 
+def _target(ctx: HandlerContext) -> tuple[Path, str]:
+    """Resolve where this step must write, from the plan rather than from a guess.
+
+    ``Step.inputs["out"]`` is authoritative: it is the path the intent layer put
+    in the plan, and the verifier looks there. A handler that recomputes its own
+    path is a handler that can disagree with the verifier — and when it did, the
+    task reported success while the workspace held an empty folder.
+    """
+    root: Path = ctx.workspace_root.resolve()
+    declared = str(ctx.inputs.get("out", "")).strip()
+    if declared:
+        target = (root / declared).resolve()
+        if target != root and root not in target.parents:
+            raise ValueError(f"refused to write outside the workspace: {declared}")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        return target, Path(declared).name
+    # No declared path: fall back to the conventional location so a hand-written
+    # plan still works. Never a different directory than the verifier's.
+    fallback_dir = (_safe_dir(ctx) / _TARGETS.get(_domain(ctx), ("notes.md", "markdown"))[0])
+    return fallback_dir, fallback_dir.name
+
+
 def _domain(ctx: HandlerContext) -> str:
     """Read the domain the intent layer recorded, defaulting to a safe value."""
     settings = ctx.inputs.get("settings")
@@ -178,9 +200,9 @@ def writer_agent(ctx: HandlerContext) -> StepResult:
     should never have to search for the thing they asked for.
     """
     domain = _domain(ctx)
-    filename, kind = _TARGETS.get(domain, ("notes.md", "markdown"))
+    _fallback_name, kind = _TARGETS.get(domain, ("notes.md", "markdown"))
     text = _render(domain, ctx.goal, _settings(ctx))
-    path = _safe_dir(ctx) / filename
+    path, filename = _target(ctx)
     path.write_text(text, encoding="utf-8")
     return StepResult(
         ok=True,
@@ -255,15 +277,31 @@ def _producer_step(ctx: HandlerContext) -> str:
 # --------------------------------------------------------------------------- #
 
 
-def build_generalist_registry() -> AgentRegistry:
+def build_generalist_registry(backend: Any = None) -> AgentRegistry:
     """A registry whose agents answer to the intent layer's role names.
 
-    Every agent is ``LOCAL`` cost tier with a single attempt: these are pure
-    functions of their inputs, so retrying them is pointless. A real model-backed
-    fleet would set ``max_attempts`` higher and let the kernel's retry/breaker
-    decide — the surrounding plan does not change.
+    ``backend`` decides whether the writing agents think or fill a template:
+
+    * ``backend=None`` (the default) — deterministic scaffolding. No provider, no
+      key, no network, no spend. This is what every existing test exercises.
+    * ``backend=<a configured LLMBackend>`` — ``builder``/``writer``/``researcher``/
+      ``teacher`` delegate to :class:`fleet2027.llm.LLMAgent`, which calls the
+      model, writes the file, and reports what *actually* happened.
+
+    The delegation is deliberately narrow. ``planner`` still only records the
+    assumptions it was given, and ``verifier`` still only re-hashes bytes from
+    disk: letting a model grade its own work would destroy the independence the
+    whole design rests on.
+
+    Two things never change between the two modes: the plan, and the
+    verification. Swapping the brain must not change what was asked for.
     """
     registry = AgentRegistry()
+    if backend is not None:
+        # Choose the brain before choosing the writers, not after: registering a
+        # template writer and then replacing it would leave whichever ran second
+        # deciding the outcome, which is not a decision at all.
+        _register_llm_writers(registry, backend)
     registry.register(
         AgentSpec(
             name="planner",
@@ -276,54 +314,58 @@ def build_generalist_registry() -> AgentRegistry:
         ),
         clarify_agent,
     )
-    registry.register(
-        AgentSpec(
-            name="builder",
-            role="writes the deliverable into the workspace",
-            capabilities=("write",),
-            produces=("artifact",),
-            cost_tier=CostTier.LOCAL,
-            requires_evidence=(EvidenceKind.ARTIFACT_SHA256.value,),
-            max_attempts=1,
-        ),
-        writer_agent,
-    )
-    registry.register(
-        AgentSpec(
-            name="writer",
-            role="writes documents and drafts",
-            capabilities=("draft",),
-            produces=("artifact",),
-            cost_tier=CostTier.LOCAL,
-            requires_evidence=(EvidenceKind.ARTIFACT_SHA256.value,),
-            max_attempts=1,
-        ),
-        writer_agent,
-    )
-    registry.register(
-        AgentSpec(
-            name="researcher",
-            role="writes a report from locally available material",
-            capabilities=("research",),
-            produces=("artifact",),
-            cost_tier=CostTier.LOCAL,
-            requires_evidence=(EvidenceKind.ARTIFACT_SHA256.value,),
-            max_attempts=1,
-        ),
-        writer_agent,
-    )
-    registry.register(
-        AgentSpec(
-            name="teacher",
-            role="writes an explanation",
-            capabilities=("explain",),
-            produces=("artifact",),
-            cost_tier=CostTier.LOCAL,
-            requires_evidence=(EvidenceKind.ARTIFACT_SHA256.value,),
-            max_attempts=1,
-        ),
-        writer_agent,
-    )
+    # Only when no model is available: with a backend these roles are
+    # registered by _register_llm_writers above, and registering both would
+    # be a silent race over which body runs.
+    if backend is None:
+        registry.register(
+            AgentSpec(
+                name="builder",
+                role="writes the deliverable into the workspace",
+                capabilities=("write",),
+                produces=("artifact",),
+                cost_tier=CostTier.LOCAL,
+                requires_evidence=(EvidenceKind.ARTIFACT_SHA256.value,),
+                max_attempts=1,
+            ),
+            writer_agent,
+        )
+        registry.register(
+            AgentSpec(
+                name="writer",
+                role="writes documents and drafts",
+                capabilities=("draft",),
+                produces=("artifact",),
+                cost_tier=CostTier.LOCAL,
+                requires_evidence=(EvidenceKind.ARTIFACT_SHA256.value,),
+                max_attempts=1,
+            ),
+            writer_agent,
+        )
+        registry.register(
+            AgentSpec(
+                name="researcher",
+                role="writes a report from locally available material",
+                capabilities=("research",),
+                produces=("artifact",),
+                cost_tier=CostTier.LOCAL,
+                requires_evidence=(EvidenceKind.ARTIFACT_SHA256.value,),
+                max_attempts=1,
+            ),
+            writer_agent,
+        )
+        registry.register(
+            AgentSpec(
+                name="teacher",
+                role="writes an explanation",
+                capabilities=("explain",),
+                produces=("artifact",),
+                cost_tier=CostTier.LOCAL,
+                requires_evidence=(EvidenceKind.ARTIFACT_SHA256.value,),
+                max_attempts=1,
+            ),
+            writer_agent,
+        )
     registry.register(
         AgentSpec(
             name="verifier",
@@ -341,6 +383,59 @@ def build_generalist_registry() -> AgentRegistry:
         verify_agent,
     )
     return registry
+
+
+#: Which writing agent each role maps to when a model is available. Kept as a
+#: table so the mapping is one edit, not three scattered branches.
+_LLM_ROLES: dict[str, str] = {
+    "builder": "builder",
+    "writer": "writer",
+    "researcher": "researcher",
+    "teacher": "teacher",
+}
+
+#: The capability each role advertises, and the artifact kind it produces.
+_LLM_META: dict[str, tuple[str, str, str]] = {
+    "builder": ("write", "a file written from a model completion", "file"),
+    "writer": ("draft", "a draft written from a model completion", "document"),
+    "researcher": ("research", "a report written from a model completion", "document"),
+    "teacher": ("explain", "an explanation written from a model completion", "document"),
+}
+
+
+def _register_llm_writers(registry: AgentRegistry, backend: Any) -> None:
+    """Replace the template writers with model-backed ones, same role names.
+
+    The role *names* are unchanged on purpose: the plan names them, the verifier
+    verifies them, and the tests assert them. Only the body behind each name
+    changes, which is the entire point of the architecture — the brain is the
+    cheapest thing in the system to replace.
+    """
+    from .llm import LLMAgent
+
+    for role, agent_name in _LLM_ROLES.items():
+        capability, role_text, _kind = _LLM_META[role]
+        writer = LLMAgent(
+            backend=backend,
+            agent_name=agent_name,
+            capability=capability,
+            cost_tier=CostTier.LOCAL,
+            max_tokens=2048,
+        )
+        spec = writer.spec()
+        registry.register(
+            AgentSpec(
+                name=agent_name,
+                role=role_text,
+                capabilities=(capability,),
+                produces=("artifact",),
+                cost_tier=CostTier.LOCAL,
+                requires_evidence=spec.requires_evidence,
+                max_attempts=2,
+                timeout_s=spec.timeout_s,
+            ),
+            writer.handler,
+        )
 
 
 def registry_index() -> dict[str, Any]:
