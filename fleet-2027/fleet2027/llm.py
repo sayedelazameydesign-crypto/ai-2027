@@ -485,6 +485,34 @@ def call_async_sync(factory: Callable[[], Awaitable[Any]]) -> Any:
         loop.close()
 
 
+def _describe_provider_failure(exc: BaseException) -> str:
+    """Turn a provider exception into one sentence that names the cause.
+
+    A bare `LLMError()` — raised by a provider that has no message — used to
+    reach the report as `gemini-2.5-flash failed: ` and the run looked like a
+    model problem. The code, the message and the attempts are all available on
+    the exception; a failure that hides them costs a debugging round.
+    """
+    parts: list[str] = []
+    code = getattr(exc, "code", None)
+    if isinstance(code, str) and code:
+        parts.append(code)
+    text = str(exc).strip()
+    if text and text not in parts:
+        parts.append(text)
+    attempts = getattr(exc, "attempts", None)
+    if isinstance(attempts, (list, tuple)) and attempts:
+        named = []
+        for attempt in attempts:
+            provider = getattr(attempt, "provider", None) or getattr(attempt, "name", None)
+            error = getattr(attempt, "error", None) or getattr(attempt, "code", None)
+            named.append(f"{provider}:{error}" if provider else str(attempt)[:80])
+        parts.append("attempts=" + ", ".join(str(n) for n in named[:4]))
+    if not parts:
+        parts.append(type(exc).__name__)
+    return ": ".join(parts[:1]) + ((" — " + "; ".join(parts[1:])) if len(parts) > 1 else "")
+
+
 @dataclass
 class AsyncProviderBridge:
     """Adapt a ``python-2027`` ``AIProvider`` (async ``complete``) to a backend.
@@ -512,9 +540,18 @@ class AsyncProviderBridge:
         """Await the provider's async completion on a private loop."""
         started = time.perf_counter()
         native = self.prompt_builder(request)
-        text = call_async_sync(
-            lambda: self.provider.complete(native, timeout_s=request.timeout_s)
-        )
+        try:
+            text = call_async_sync(
+                lambda: self.provider.complete(native, timeout_s=request.timeout_s)
+            )
+        except Exception as exc:  # noqa: BLE001 - provider errors are opaque to the fleet
+            # The provider raises its own exception type (ProviderError with a
+            # `.code`, AllProvidersFailedError carrying every attempt). Letting
+            # it through unchanged produced `gemini-2.5-flash failed:` with
+            # nothing after the colon — the class name survived and the reason
+            # was thrown away. Both halves are kept here, so a failed sentence
+            # says which code failed and why.
+            raise LLMError(_describe_provider_failure(exc)) from exc
         latency = (time.perf_counter() - started) * 1000.0
         if not isinstance(text, str):
             raise LLMError("provider returned a non-string completion")

@@ -304,12 +304,46 @@ class RotationTests(unittest.TestCase):
         dead = Dead()
         report = run_benchmark(backends=[dead, good], limit=6)
         self.assertEqual(report.backend, "rotate(dead,good)")
-        # The dead tap serves one sentence and is then dropped. It may be
-        # retried a few times *within* that sentence by the runner's own step
-        # policy, which is not this module's decision to override.
-        self.assertLessEqual(dead.calls, 4, f"dead tap called {dead.calls} times")
-        self.assertLess(dead.calls, 6, "a dead tap must not outnumber the sentences")
+        # Exactly one call proves a tap cannot answer: the quota is spent for
+        # the day, not for this sentence. The old assertion allowed 4 calls and
+        # passed even when nothing was dropped at all — 6 sentences over 2 taps
+        # assigns 3 to the dead one, so `< 6` was satisfied by the scheduler
+        # alone and the test never exercised the drop it claimed to guard.
+        self.assertEqual(dead.calls, 1, f"dead tap called {dead.calls} times")
         self.assertEqual(len(report.results), 6)
+        # The sentences the dead tap would have taken must still be measured,
+        # by the tap that works. Without this the drop could "work" by silently
+        # discarding work.
+        self.assertEqual(len([r for r in report.results if r.sentence_id]), 6)
+
+    def test_the_drop_survives_the_parallel_path(self) -> None:
+        """The speed path must not resurrect the wasted calls the drop removed.
+
+        `workers > 1` schedules a batch at once. A batch sized by sentence
+        count alone gave the dead tap four calls before its first failure even
+        returned, undoing the saving. The first wave is one sentence per tap
+        for exactly this reason.
+        """
+        good = self._Fake("good")
+
+        class Dead:
+            name = "dead"
+            model = "dead"
+
+            def __init__(self) -> None:
+                self.calls = 0
+
+            def is_configured(self) -> bool:
+                return True
+
+            def complete(self, request):
+                self.calls += 1
+                raise LLMError("http_429: quota")
+
+        dead = Dead()
+        report = run_benchmark(backends=[dead, good], limit=8, workers=4)
+        self.assertEqual(dead.calls, 1, f"parallel run spent {dead.calls} calls on a dead tap")
+        self.assertEqual(len(report.results), 8)
 
 
 class FailureDiagnosisTests(unittest.TestCase):
