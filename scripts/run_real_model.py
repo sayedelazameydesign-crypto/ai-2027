@@ -203,6 +203,11 @@ def main(argv: list[str] | None = None) -> int:
         help="measure only the first N sentences (free quotas may not cover all 24)",
     )
     parser.add_argument(
+        "--taps",
+        default="",
+        help="comma-separated free providers to rotate over, in order (default: all)",
+    )
+    parser.add_argument(
         "--rotate",
         action="store_true",
         help="rotate every free provider with a key, one per sentence "
@@ -231,7 +236,24 @@ def main(argv: list[str] | None = None) -> int:
         # than any single one allows. Rotation keeps every sentence measured by
         # a real model instead of truncating the corpus.
         backends = []
-        for name, spec in FREE_PROVIDERS.items():
+        # `--taps a,b` limits and orders the rotation. The workflow fills it
+        # from the smoke step, so a tap that cannot answer is never handed a
+        # sentence — its dependants would fail with "blocked by a failed
+        # dependency" and the run would blame the model for a dead provider.
+        wanted = [t.strip() for t in (args.taps or "").split(",") if t.strip()]
+        unknown = [t for t in wanted if t not in FREE_PROVIDERS]
+        if unknown:
+            parser.error(f"unknown tap(s) {unknown}; choose from {sorted(FREE_PROVIDERS)}")
+        # Iterate in the caller's order, not the dict's: the whole point of
+        # --taps is to put a tap that just answered at the front. Iterating
+        # FREE_PROVIDERS.items() silently ignored that order, which my own
+        # check caught only because I printed `order=`.
+        order = wanted or list(FREE_PROVIDERS)
+        for name in order:
+            spec = FREE_PROVIDERS[name]
+            if wanted and name not in wanted:
+                print(f"rotation: {name} skipped (not in --taps)")
+                continue
             key = os.environ.get(spec["key_env"], "").strip()
             if not key:
                 print(f"rotation: {name} skipped (no {spec['key_env']})")
@@ -249,6 +271,13 @@ def main(argv: list[str] | None = None) -> int:
                 )
             )
             print(f"rotation: {name} -> {model}")
+        # Order matters. A tap with an exhausted quota does not just fail its
+        # own sentence: its dependants die with "blocked by a failed
+        # dependency", so one dead tap at the front of the list costs far more
+        # than one sentence. The taps are ordered by the last thing we actually
+        # observed — a provider that answered a probe goes first. The rotation
+        # also drops a tap the moment it fails, so this only decides the start.
+        print(f"rotation: order={[b.name for b in backends]}")
         if not backends:
             print(
                 "refusing to run: no free provider has a usable credential.",
