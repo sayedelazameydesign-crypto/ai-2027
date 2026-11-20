@@ -524,6 +524,25 @@ class AsyncProviderBridge:
 # --------------------------------------------------------------------------- #
 
 
+#: Status codes where a retry cannot produce a different answer.
+_PERMANENT_HTTP = ("http_400", "http_401", "http_403", "http_404", "http_410", "http_429")
+
+
+def _is_permanent(exc: LLMError) -> bool:
+    """Whether the same request will fail the same way, so a retry is waste.
+
+    429 is included on purpose: the daily free quota does not refill within a
+    retry backoff, and spending two more requests to confirm it is how a
+    50-request day disappears.
+
+    `truncated` is not permanent — a larger budget can fix it.
+    """
+    text = str(exc)
+    if text.startswith("truncated"):
+        return False
+    return any(code in text for code in _PERMANENT_HTTP)
+
+
 @dataclass
 class LLMAgent:
     """Wraps one LLM backend as a fleet agent whose output must survive verification."""
@@ -592,7 +611,15 @@ class LLMAgent:
         try:
             response = self.backend.complete(request)
         except LLMError as exc:
-            raise StepFailure(f"{self.backend.name} failed: {exc}") from exc
+            # A retry is only worth a free-tier request when the next reply
+            # could differ. A spent daily quota, a retired model and a rejected
+            # credential will answer the same way; retrying them costs three
+            # calls where one would do. Measured with a backend that always
+            # answers 429: 3 calls for a single sentence.
+            raise StepFailure(
+                f"{self.backend.name} failed: {exc}",
+                permanent=_is_permanent(exc),
+            ) from exc
         self.calls += 1
 
         content = _extract_code(response.text, language)
