@@ -93,13 +93,19 @@ class DisagreementTests(unittest.TestCase):
     def test_a_png_named_txt_is_reported(self) -> None:
         probe = probe_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00" * 40)
         message = extension_disagrees("photo.txt", probe)
-        self.assertIsNotNone(message)
+        # assertIsNotNone does not narrow the type for mypy, so the value is
+        # asserted directly: a str | None cannot be passed to assertIn without
+        # strict mode rejecting it, and turning the check off would be the
+        # sort of "fix" that weakens the gate.
+        self.assertIsInstance(message, str)
+        assert isinstance(message, str)  # noqa: S101 - narrowing for mypy
         self.assertIn("png", message)
 
     def test_a_markdown_file_named_png_is_reported(self) -> None:
         probe = probe_bytes(b"# real content\n")
         message = extension_disagrees("page.png", probe)
-        self.assertIsNotNone(message)
+        self.assertIsInstance(message, str)
+        assert isinstance(message, str)  # noqa: S101 - narrowing for mypy
         self.assertIn("text", message)
 
     def test_an_honest_name_is_silent(self) -> None:
