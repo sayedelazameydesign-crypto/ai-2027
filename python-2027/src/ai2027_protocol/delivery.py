@@ -96,7 +96,9 @@ class DeliveryPlan:
     @property
     def primary(self) -> DeliveryStep:
         """The best form available. The plan always has at least one."""
-        return self.steps[0] if self.steps else DeliveryStep(DeliveryForm.REPORT, "no plan")
+        return (
+            self.steps[0] if self.steps else DeliveryStep(DeliveryForm.REPORT, "no plan", "report")
+        )
 
     @property
     def is_deliverable(self) -> bool:
@@ -164,6 +166,7 @@ def plan_delivery(
                     DeliveryForm.REPORT,
                     f"the artifact failed validation ({failed}); delivering it would "
                     f"present a broken file as a finished one",
+                    "report",
                 ),
             ),
             notes=tuple(notes),
@@ -172,7 +175,7 @@ def plan_delivery(
     if described.kind == "missing":
         return DeliveryPlan(
             path=described.path,
-            steps=(DeliveryStep(DeliveryForm.REPORT, "there is no file to deliver"),),
+            steps=(DeliveryStep(DeliveryForm.REPORT, "there is no file to deliver", "report"),),
             notes=tuple(notes),
         )
 
@@ -222,6 +225,7 @@ def plan_delivery(
             DeliveryStep(
                 DeliveryForm.REPORT,
                 f"no delivery path is known for the {family} family yet",
+                "report",
             )
         )
         notes.append(f"the {family} family has no delivery form; report only")
