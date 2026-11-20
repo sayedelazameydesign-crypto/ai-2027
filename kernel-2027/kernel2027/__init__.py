@@ -87,6 +87,11 @@ from .intent import (
     resolve,
     to_task_spec,
 )
+from .quality import (
+    QualityReport,
+    score,
+    score_file,
+)
 from .redaction import SENSITIVE_KEYWORDS, redact, redact_mapping
 from .retry import RetryPolicy, backoff_delay, with_retry
 
@@ -102,6 +107,7 @@ __all__ = [
     "IdempotencyKey",
     "IntentError",
     "KernelError",
+    "QualityReport",
     "Question",
     "Resolution",
     "RetryPolicy",
@@ -120,6 +126,8 @@ __all__ = [
     "require_approval",
     "require_safe_id",
     "resolve",
+    "score",
+    "score_file",
     "sha256_bytes",
     "sha256_file",
     "sha256_text",

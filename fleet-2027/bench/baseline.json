@@ -1,0 +1,374 @@
+{
+  "backend": "none",
+  "model_called": false,
+  "corpus_sha256": "73c67afb8b0efc327fedb371d4f52276dd74e5e384a4b63678a552a66ea2195e",
+  "generated_at": "2026-11-20T02:48:43Z",
+  "usable_floor": 0.7,
+  "summary": {
+    "sentences": 24,
+    "mean_score": 0.5783,
+    "usable_rate": 0.0,
+    "completion_rate": 1.0,
+    "by_domain": {
+      "business": 0.5091,
+      "code": 0.525,
+      "document": 0.659,
+      "learn": 0.5071,
+      "organize": 0.6202,
+      "research": 0.5601,
+      "travel": 0.509,
+      "website": 0.6552
+    }
+  },
+  "results": [
+    {
+      "id": "website-1",
+      "domain": "website",
+      "text": "اعمل لي موقع لمشروعي",
+      "status": "succeeded",
+      "score": 0.6506,
+      "usable": false,
+      "chars": 670,
+      "model_called": false,
+      "failures": [
+        "substance"
+      ],
+      "error": ""
+    },
+    {
+      "id": "website-2",
+      "domain": "website",
+      "text": "أريد صفحة تعريفية لمتجر عسل بلدي",
+      "status": "succeeded",
+      "score": 0.6551,
+      "usable": false,
+      "chars": 694,
+      "model_called": false,
+      "failures": [
+        "substance"
+      ],
+      "error": ""
+    },
+    {
+      "id": "website-3",
+      "domain": "website",
+      "text": "build me a website for my consulting practice",
+      "status": "succeeded",
+      "score": 0.66,
+      "usable": false,
+      "chars": 720,
+      "model_called": false,
+      "failures": [
+        "substance"
+      ],
+      "error": ""
+    },
+    {
+      "id": "document-1",
+      "domain": "document",
+      "text": "اكتب لي تقرير عن السوق",
+      "status": "succeeded",
+      "score": 0.6566,
+      "usable": false,
+      "chars": 351,
+      "model_called": false,
+      "failures": [
+        "substance"
+      ],
+      "error": ""
+    },
+    {
+      "id": "document-2",
+      "domain": "document",
+      "text": "محتاج مستند فيه سيرتي الذاتية",
+      "status": "succeeded",
+      "score": 0.6592,
+      "usable": false,
+      "chars": 358,
+      "model_called": false,
+      "failures": [
+        "substance"
+      ],
+      "error": ""
+    },
+    {
+      "id": "document-3",
+      "domain": "document",
+      "text": "write a one-page report on remote work",
+      "status": "succeeded",
+      "score": 0.6626,
+      "usable": false,
+      "chars": 367,
+      "model_called": false,
+      "failures": [
+        "substance"
+      ],
+      "error": ""
+    },
+    {
+      "id": "research-1",
+      "domain": "research",
+      "text": "ابحث عن أفضل لابتوب للمبرمجين",
+      "status": "succeeded",
+      "score": 0.5585,
+      "usable": false,
+      "chars": 356,
+      "model_called": false,
+      "failures": [
+        "substance",
+        "relevance"
+      ],
+      "error": ""
+    },
+    {
+      "id": "research-2",
+      "domain": "research",
+      "text": "قارن بين البطاريات القابلة للشحن",
+      "status": "succeeded",
+      "score": 0.5596,
+      "usable": false,
+      "chars": 359,
+      "model_called": false,
+      "failures": [
+        "substance",
+        "relevance"
+      ],
+      "error": ""
+    },
+    {
+      "id": "research-3",
+      "domain": "research",
+      "text": "compare these two approaches to caching",
+      "status": "succeeded",
+      "score": 0.5622,
+      "usable": false,
+      "chars": 366,
+      "model_called": false,
+      "failures": [
+        "substance",
+        "relevance"
+      ],
+      "error": ""
+    },
+    {
+      "id": "organize-1",
+      "domain": "organize",
+      "text": "نظم اسبوعي",
+      "status": "succeeded",
+      "score": 0.6014,
+      "usable": false,
+      "chars": 337,
+      "model_called": false,
+      "failures": [
+        "substance"
+      ],
+      "error": ""
+    },
+    {
+      "id": "organize-2",
+      "domain": "organize",
+      "text": "عايز خطة لتنظيم مهامي اليومية",
+      "status": "succeeded",
+      "score": 0.6585,
+      "usable": false,
+      "chars": 356,
+      "model_called": false,
+      "failures": [
+        "substance"
+      ],
+      "error": ""
+    },
+    {
+      "id": "organize-3",
+      "domain": "organize",
+      "text": "organize my week around three projects",
+      "status": "succeeded",
+      "score": 0.6119,
+      "usable": false,
+      "chars": 365,
+      "model_called": false,
+      "failures": [
+        "substance"
+      ],
+      "error": ""
+    },
+    {
+      "id": "learn-1",
+      "domain": "learn",
+      "text": "اشرح لي البلوكشين",
+      "status": "succeeded",
+      "score": 0.504,
+      "usable": false,
+      "chars": 344,
+      "model_called": false,
+      "failures": [
+        "relevance",
+        "substance"
+      ],
+      "error": ""
+    },
+    {
+      "id": "learn-2",
+      "domain": "learn",
+      "text": "علمني كيف تعمل الشفرة الوراثية",
+      "status": "succeeded",
+      "score": 0.5089,
+      "usable": false,
+      "chars": 357,
+      "model_called": false,
+      "failures": [
+        "relevance",
+        "substance"
+      ],
+      "error": ""
+    },
+    {
+      "id": "learn-3",
+      "domain": "learn",
+      "text": "explain how transformers work",
+      "status": "succeeded",
+      "score": 0.5085,
+      "usable": false,
+      "chars": 356,
+      "model_called": false,
+      "failures": [
+        "relevance",
+        "substance"
+      ],
+      "error": ""
+    },
+    {
+      "id": "travel-1",
+      "domain": "travel",
+      "text": "خطط رحلة إلى اليابان",
+      "status": "succeeded",
+      "score": 0.5055,
+      "usable": false,
+      "chars": 348,
+      "model_called": false,
+      "failures": [
+        "relevance",
+        "substance"
+      ],
+      "error": ""
+    },
+    {
+      "id": "travel-2",
+      "domain": "travel",
+      "text": "عايز برنامج سياحي لأسوان ثلاثة أيام",
+      "status": "succeeded",
+      "score": 0.5111,
+      "usable": false,
+      "chars": 363,
+      "model_called": false,
+      "failures": [
+        "relevance",
+        "substance"
+      ],
+      "error": ""
+    },
+    {
+      "id": "travel-3",
+      "domain": "travel",
+      "text": "plan a week in Turkey on a budget",
+      "status": "succeeded",
+      "score": 0.5104,
+      "usable": false,
+      "chars": 361,
+      "model_called": false,
+      "failures": [
+        "relevance",
+        "substance"
+      ],
+      "error": ""
+    },
+    {
+      "id": "business-1",
+      "domain": "business",
+      "text": "حلل مشروعي",
+      "status": "succeeded",
+      "score": 0.5029,
+      "usable": false,
+      "chars": 341,
+      "model_called": false,
+      "failures": [
+        "relevance",
+        "substance"
+      ],
+      "error": ""
+    },
+    {
+      "id": "business-2",
+      "domain": "organize",
+      "text": "عندي فكرة تطبيق ومحتاج خطة عمل",
+      "status": "succeeded",
+      "score": 0.6089,
+      "usable": false,
+      "chars": 357,
+      "model_called": false,
+      "failures": [
+        "substance"
+      ],
+      "error": ""
+    },
+    {
+      "id": "business-3",
+      "domain": "business",
+      "text": "help me think through a small business idea",
+      "status": "succeeded",
+      "score": 0.5152,
+      "usable": false,
+      "chars": 374,
+      "model_called": false,
+      "failures": [
+        "relevance",
+        "substance"
+      ],
+      "error": ""
+    },
+    {
+      "id": "code-1",
+      "domain": "code",
+      "text": "اصلح كود فيه خطأ",
+      "status": "succeeded",
+      "score": 0.525,
+      "usable": false,
+      "chars": 350,
+      "model_called": false,
+      "failures": [
+        "relevance",
+        "substance"
+      ],
+      "error": ""
+    },
+    {
+      "id": "code-2",
+      "domain": "document",
+      "text": "اكتب لي دالة تجمع الأرقام",
+      "status": "succeeded",
+      "score": 0.6578,
+      "usable": false,
+      "chars": 354,
+      "model_called": false,
+      "failures": [
+        "substance"
+      ],
+      "error": ""
+    },
+    {
+      "id": "code-3",
+      "domain": "code",
+      "text": "fix a bug in my script",
+      "status": "succeeded",
+      "score": 0.525,
+      "usable": false,
+      "chars": 356,
+      "model_called": false,
+      "failures": [
+        "relevance",
+        "substance"
+      ],
+      "error": ""
+    }
+  ]
+}

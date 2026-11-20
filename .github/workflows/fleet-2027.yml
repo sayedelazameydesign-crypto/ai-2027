@@ -91,6 +91,13 @@ jobs:
         run: python -m pytest tests -q -p no:cacheprovider
         env:
           PYTHONDONTWRITEBYTECODE: "1"
+      # The quality ratchet: the measured score over a fixed 24-sentence corpus
+      # may not go down. Deliberately in the matrix, so a scoring regression
+      # shows up on every supported Python rather than only one.
+      - name: Quality ratchet (fixed corpus, may not regress)
+        run: python scripts/bench_gate.py
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
 
   gate:
     name: Evidence gate · 12 gates incl. SIGKILL, two-process, router failover
