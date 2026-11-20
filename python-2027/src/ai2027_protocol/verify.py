@@ -73,6 +73,10 @@ _STRUCTURED_KINDS = frozenset(
         "step",
         "stl",
         "stl-binary",
+        "ole",
+        "doc",
+        "xls",
+        "ppt",
     }
 )
 
@@ -280,6 +284,43 @@ def _check_media(path: Path) -> list[Check]:
     return [Check("media container", True, info.render().splitlines()[0])]
 
 
+def _check_ole(path: Path, claimed_kind: str) -> list[Check]:
+    """Check the header, FAT/DIFAT and a complete directory walk.
+
+    Re-uses `ole.read_ole_handle`, so the document kind the system reports is
+    the kind this check saw. Unknown stream names are allowed; an empty or
+    partial directory is not. The parser seeks only to metadata sectors and
+    does not certify or interpret stream payloads.
+    """
+    from .ole import read_ole_handle
+
+    # The directory lives in arbitrary sectors, not beside the 512-byte header.
+    # Seek to the exact FAT/directory sectors; never read a sequential prefix.
+    with path.open("rb") as handle:
+        info = read_ole_handle(handle)
+    if not info.directory_complete:
+        detail = "; ".join(info.notes) or "the directory chain did not complete"
+        return [Check("ole directory", False, detail)]
+    detail = f"{len(info.streams)} entries"
+    if info.document_kind:
+        detail += f", {info.document_kind}"
+    else:
+        detail += ", unknown document kind"
+    if info.encrypted:
+        detail += ", encrypted"
+    checks = [Check("ole directory", True, detail)]
+    if claimed_kind and claimed_kind not in {"ole", "unknown"}:
+        actual_kind = info.document_kind or "unidentified"
+        matches = info.document_kind == claimed_kind
+        check_detail = (
+            f"directory identifies {actual_kind}; caller claimed {claimed_kind}"
+            if not matches
+            else f"directory identifies {actual_kind}"
+        )
+        checks.append(Check("ole document kind", matches, check_detail))
+    return checks
+
+
 def _check_geometry(path: Path, kind: str) -> list[Check]:
     """A geometry file is valid when its declared counts match its bytes.
 
@@ -394,6 +435,12 @@ def verify_file(
                 checks.extend(_check_ooxml(archive, kind))
         except zipfile.BadZipFile as exc:
             checks.append(Check("archive readable", False, str(exc)))
+    elif head.startswith(b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"):
+        checks.extend(_check_ole(real_path, kind))
+        notes.append(
+            "OLE verification covers the header, FAT/DIFAT and directory only; "
+            "stream payloads were not parsed (SHA-256 lineage still scans the file)"
+        )
     elif head[:4] == b"glTF" or head[:20].lstrip().startswith(b"ISO-10303-21"):
         checks.extend(_check_geometry(real_path, kind))
     elif kind in {"stl", "stl-binary"}:

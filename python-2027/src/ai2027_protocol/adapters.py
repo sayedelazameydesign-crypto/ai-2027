@@ -211,6 +211,15 @@ def _csv_adapter() -> Adapter:
     )
 
 
+def _ole_adapter() -> Adapter:
+    """OLE2 compound files: inspect the directory, but never claim payload slicing."""
+    return Adapter(
+        name="ole",
+        families=frozenset({Family.OLE}),
+        operations=frozenset({Operation.INSPECT}),
+    )
+
+
 def _geometry_adapter() -> Adapter:
     """glTF/GLB, STEP and STL: counted from headers, never tessellated."""
     return Adapter(
@@ -255,6 +264,7 @@ def default_registry() -> Registry:
         _media_adapter,
         _text_adapter,
         _csv_adapter,
+        _ole_adapter,
         _geometry_adapter,
         _zip_adapter,
         _archive_adapter,

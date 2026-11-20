@@ -34,13 +34,14 @@ import struct
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import BinaryIO
+from typing import BinaryIO, cast
 
 from .geometry import GeometryInfo, read_geometry
 from .images import ImageInfo, read_image
 from .index import DocumentIndex, build_index
 from .ingest import Family, Probe
 from .media import MediaInfo, read_media
+from .ole import OleInfo, read_ole_handle
 from .pdf import MAX_SCAN_BYTES, PdfInfo, read_pdf
 
 #: A family reader: (path, probe, text, size, real_path, handle) -> IR.
@@ -105,6 +106,8 @@ class DocumentIR:
     media_info: MediaInfo | None = None
     #: Geometry files declare their object and vertex counts in a header.
     geometry: GeometryInfo | None = None
+    #: OLE2 compound files carry a directory that names the document format.
+    ole: OleInfo | None = None
     #: Everything the reader could not determine, named explicitly.
     notes: tuple[str, ...] = field(default_factory=tuple)
 
@@ -147,6 +150,10 @@ class DocumentIR:
             geometry_lines = self.geometry.render().splitlines()
             lines.extend("  " + line for line in geometry_lines)
 
+        if self.ole is not None:
+            ole_lines = self.ole.render().splitlines()
+            lines.extend("  " + line for line in ole_lines)
+
         lines.extend(f"  note: {note}" for note in self.notes)
         return "\n".join(lines)
 
@@ -162,6 +169,7 @@ class DocumentIR:
             or (self.pdf is not None and self.pdf.readable)
             or (self.media_info is not None and self.media_info.readable)
             or (self.geometry is not None and self.geometry.readable)
+            or (self.ole is not None and self.ole.readable)
         )
 
 
@@ -365,6 +373,32 @@ def _read_sqlite(
     return _sqlite_ir(path, real, size)
 
 
+def _read_ole(
+    path: str, probe: Probe, _text: str | None, size: int, _real: Path | None, handle: object
+) -> DocumentIR:
+    """Walk the compound-file directory; never open the ministream.
+
+    `OleInfo.render()` prints its own notes, so the IR's note list stays empty
+    here -- measured, adding them again printed every caveat twice.
+    """
+    notes: tuple[str, ...] = ()
+    if handle is None:
+        info = OleInfo(notes=("the compound file needs a seekable handle",))
+        notes = ("the compound file needs an open handle; none was given",)
+    else:
+        # Unlike a sequential 1 MB prefix read, this seeks only to the exact
+        # header, FAT and directory sectors. Stream payloads are never loaded.
+        info = read_ole_handle(cast(BinaryIO, handle))
+    return DocumentIR(
+        path=path,
+        kind=info.document_kind or "ole",
+        family=probe.family,
+        bytes_on_disk=size,
+        ole=info,
+        notes=notes,
+    )
+
+
 def _read_geometry(
     path: str, probe: Probe, _text: str | None, size: int, _real: Path | None, handle: object
 ) -> DocumentIR:
@@ -519,6 +553,7 @@ _READERS: dict[str, Reader] = {
     "sqlite": _read_sqlite,
     "parquet": _read_parquet,
     "geometry": _read_geometry,
+    "ole": _read_ole,
     "zip": _read_archive,
     "archive": _read_archive,
     "image": _read_image,
