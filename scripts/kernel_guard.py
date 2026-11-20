@@ -167,6 +167,15 @@ PRIMITIVES: tuple[Primitive, ...] = (
         "kernel2027.validate_endpoint",
         names=("validate_endpoint", "check_endpoint", "validate_provider_url",),
     ),
+    Primitive(
+        "intent resolution",
+        re.compile(r"^def\s+(resolve_intent|understand_request|classify_intent)\s*\("),
+        "kernel2027.resolve",
+        note="understanding the user must be identical everywhere, or two "
+             "engines read the same sentence differently",
+        names=("resolve_intent", "understand_request", "classify_intent"),
+        scope="any",
+    ),
 )
 
 #: Files that may legitimately define a primitive: the kernel itself, adapter

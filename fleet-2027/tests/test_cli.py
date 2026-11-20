@@ -30,6 +30,85 @@ class CliTestCase(unittest.TestCase):
     def tearDown(self) -> None:
         self.tmp.cleanup()
 
+class AskCommandTests(CliTestCase):
+    """The command that removes the need to write a spec by hand.
+
+    These tests exist because this is the layer the product is promised on: a
+    person who has never written JSON types a sentence and gets a real task.
+    """
+
+    def test_a_plain_sentence_becomes_a_stored_task(self) -> None:
+        code = cli.main(
+            [
+                "ask", "اعمل لي موقع لمشروعي",
+                "--db", self.db, "--workspace", self.ws, "--task", "ask-1",
+            ]
+        )
+        self.assertEqual(code, 0)
+        with DurableTaskStore(self.db) as store:
+            spec = store.spec("ask-1")
+        self.assertIn("موقع", spec.goal)
+        self.assertGreaterEqual(len(spec.steps), 2)
+        self.assertEqual(spec.created_by, "ask")
+        self.assertEqual(spec.metadata["domain"], "website")
+
+    def test_dry_run_stores_nothing(self) -> None:
+        """Looking at the plan must be free, or nobody will ever check it."""
+        code = cli.main(
+            ["ask", "اعمل لي موقع", "--db", self.db, "--workspace", self.ws, "--dry-run"]
+        )
+        self.assertEqual(code, 0)
+        with DurableTaskStore(self.db) as store:
+            self.assertEqual(store.list_tasks(), ())
+
+    def test_an_unreadable_request_fails_without_storing(self) -> None:
+        code = cli.main(
+            ["ask", "ززززز", "--db", self.db, "--workspace", self.ws, "--task", "bad-1"]
+        )
+        self.assertNotEqual(code, 0, "an unreadable request must not exit 0")
+        with DurableTaskStore(self.db) as store:
+            self.assertEqual(store.list_tasks(), ())
+
+    def test_ask_run_produces_a_verified_file_in_one_command(self) -> None:
+        """The whole product in one invocation: sentence in, file out, exit 0."""
+        code = cli.main(
+            [
+                "ask", "اعمل لي موقع لمشروعي",
+                "--db", self.db, "--workspace", self.ws,
+                "--task", "one-shot", "--run",
+            ]
+        )
+        self.assertEqual(code, 0)
+        produced = Path(self.ws) / "intent" / "one-shot" / "index.html"
+        self.assertTrue(produced.exists(), "no website was produced")
+        self.assertIn("No language model was called", produced.read_text(encoding="utf-8"))
+
+    def test_a_failed_run_does_not_exit_zero(self) -> None:
+        """A CLI that reports success on a dead-lettered task makes green a lie."""
+        code = cli.main(
+            ["ask", "ابحث عن شيء", "--db", self.db, "--workspace", self.ws,
+             "--task", "will-fail", "--run"]
+        )
+        with DurableTaskStore(self.db) as store:
+            status = store.get_task("will-fail").status.value
+        if status != "succeeded":
+            self.assertNotEqual(code, 0)
+
+    def test_the_generated_plan_is_executable_by_the_runner(self) -> None:
+        """An intent plan is only worth anything if the fleet can actually run it.
+
+        The demo registry provides planner/builder/verifier, so a task derived
+        from a sentence must clear the same bar as a hand-written one.
+        """
+        cli.main(
+            ["ask", "نظم اسبوعي", "--db", self.db, "--workspace", self.ws, "--task", "run-1"]
+        )
+        with DurableTaskStore(self.db) as store:
+            spec = store.spec("run-1")
+        self.assertEqual(spec.metadata["domain"], "organize")
+        for step in spec.steps:
+            self.assertIn(step.agent, {"planner", "builder", "verifier"})
+
 
 class DemoCommandTests(CliTestCase):
     def test_demo_runs_and_returns_zero_when_the_task_succeeds(self) -> None:

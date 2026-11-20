@@ -25,6 +25,22 @@ Design rules (deliberately narrow)
 4. **Enforced, not advisory.** ``scripts/kernel_guard.py`` fails CI when an
    engine re-implements a promoted primitive. An unenforced rule is a wish.
 
+Two layers, both shared
+-----------------------
+The package answers two different questions, and keeping them separate is
+deliberate:
+
+* **Reliability** (``contracts``, ``redaction``, ``retry``, ``circuit``,
+  ``approvals``, ``idempotency``, ``audit``, ``endpoint``) — "can this work be
+  trusted?"
+* **Understanding** (``intent``) — "did we understand what the user asked for?"
+
+The second exists because the first is useless if it reliably executes the wrong
+thing. ``intent`` turns one plain-language sentence into an ordered, verifiable
+plan with every assumption declared, so the person using the system never has to
+learn prompts, context engineering or tool names. It is deterministic and needs
+no provider — understanding the user is not a good place to start spending.
+
 What belongs here, and what does not
 ------------------------------------
 Belongs: identifier/time/hash helpers, redaction, retry policy, circuit breaker,
@@ -61,6 +77,16 @@ from .contracts import (
 )
 from .endpoint import validate_endpoint
 from .idempotency import IdempotencyKey, effect_key
+from .intent import (
+    IntentError,
+    Question,
+    Resolution,
+    Setting,
+    Step,
+    normalise,
+    resolve,
+    to_task_spec,
+)
 from .redaction import SENSITIVE_KEYWORDS, redact, redact_mapping
 from .retry import RetryPolicy, backoff_delay, with_retry
 
@@ -74,8 +100,13 @@ __all__ = [
     "CircuitBreaker",
     "CircuitOpenError",
     "IdempotencyKey",
+    "IntentError",
     "KernelError",
+    "Question",
+    "Resolution",
     "RetryPolicy",
+    "Setting",
+    "Step",
     "UnsafeValueError",
     "audit_link",
     "backoff_delay",
@@ -83,14 +114,17 @@ __all__ = [
     "clamp",
     "decide",
     "effect_key",
+    "normalise",
     "redact",
     "redact_mapping",
     "require_approval",
     "require_safe_id",
+    "resolve",
     "sha256_bytes",
     "sha256_file",
     "sha256_text",
     "stable_id",
+    "to_task_spec",
     "utc_now",
     "validate_endpoint",
     "verify_chain",
