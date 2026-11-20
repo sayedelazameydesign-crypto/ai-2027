@@ -65,6 +65,7 @@ Understand → Plan → Policy → Execute → Verify → Evidence → Report
 | **[CeliaOS · 12pro](projects/12pro)** | 12-layer Agent OS control plane: benchmarks (latency/memory/planning/tool-use), certification gates G0–G15, attestations, monorepo (api + web + agent-ui) |
 | **[agi-system](projects/agi-system)** | Pure-Python AGI kernel, zero dependencies: full cognitive loop with independent Verifier + EventLedger, 86 unit tests |
 | **[🧪 Live Agent Experience](live-agent)** | **Runnable now (Phase 1):** zero-dependency web app on the real agi-system kernel — submit a goal, watch Plan→Policy→Execute→Verify→Evidence, try a sandbox escape (DENIED), download the evidence JSON. Honest scope: deterministic planner, no LLM yet |
+| **[✨ AI-2027 Workspace UI](workspace-ui)** | **First UI slice:** Arabic-first RTL React workspace over the real Live Agent API — bounded file operations, run history, safe artifact preview and DecisionRecord evidence. Deterministic kernel, no LLM; not a general-purpose agent yet. See its README to run. |
 | **[🚀 AI-2027 Agent Studio](python-2027)** | **Unified Manus + Claude Workspace:** bridges L0 Kernel + L1 Memory + L4 Free-First LLMs (`Ollama`, `Gemini`, `NVIDIA NIM`, `Groq`, `OpenRouter`, honest offline fallback) + L5 Connectors Approval Gate into a streaming web Studio (`./scripts/studio_up.sh`) and CLI agent (`ai2027-py27 agent`) |
 
 ## 🗂️ The Ecosystem
