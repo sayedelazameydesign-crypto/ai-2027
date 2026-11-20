@@ -253,3 +253,49 @@ class PlaceholderVocabularyTests(unittest.TestCase):
         )
         substance = next(c for c in result.criteria if c.name == "substance")
         self.assertLessEqual(substance.score, 0.1, substance.reason)
+
+
+class ArabicArtifactTests(unittest.TestCase):
+    """A correct Arabic artifact must score as correct.
+
+    Measured on the live run: two of 24 sentences were reported unusable on
+    `structure, relevance`. The artifact was not the problem. `document`
+    relevance words were markdown syntax, and a literal substring test missed
+    Arabic inflection — a report saying "التوصية" did not match "التوصيات", so
+    a complete 483-character market report scored relevance 0.00 and was
+    called unusable.
+    """
+
+    REPORT = (
+        "سوق العسل المصري ينمو بنسبة اثني عشر بالمئة سنويًا، ويبلغ حجمه الحالي "
+        "نحو مليارين وأربعمئة مليون جنيه. يمثل العسل البلدي المصنّع محليًا ستين "
+        "بالمئة من السوق، والباقي مستورد أو غير رسمي. ثلاثة لاعبين كبار يسيطرون "
+        "على خمسة وأربعين بالمئة من التجزئة عبر السلاسل الكبرى. التوصية الأولى "
+        "أن يركز المنتج على شهادة تحليل لكل دفعة كعامل تمييز، والتوصية الثانية "
+        "أن يبيع مباشرة لتقليل هامش الوسيط."
+    )
+
+    def test_an_inflected_arabic_report_is_relevant(self) -> None:
+        """"التوصية" must match the "التوصيات" marker."""
+        from kernel2027.quality import _relevance
+
+        criterion = _relevance("document", self.REPORT)
+        self.assertGreater(criterion.score, 0.0, criterion.reason)
+
+    def test_the_report_is_usable(self) -> None:
+        report = score("document", self.REPORT)
+        self.assertTrue(report.usable, f"a complete Arabic report scored {report.score}")
+
+    def test_a_source_citation_counts_as_a_document_marker(self) -> None:
+        """`research` lists "المصدر"; a report citing its source is on-topic too."""
+        from kernel2027.quality import _relevance
+
+        criterion = _relevance("document", "تقرير عن السوق. المصدر: غرفة الصناعات 2025.")
+        self.assertGreater(criterion.score, 0.0, criterion.reason)
+
+    def test_folding_never_invents_a_match(self) -> None:
+        """Adding tolerance must not let an unrelated page pass on a coincidence."""
+        from kernel2027.quality import _matches
+
+        self.assertFalse(_matches("نص عادي بلا صلة", "تقرير"))
+        self.assertTrue(_matches("هذا تقرير مفيد", "تقرير"))
