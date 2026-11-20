@@ -78,6 +78,13 @@ def main(argv: list[str] | None = None) -> int:
         "--out", default=str(OUTPUT), help="where to write the report"
     )
     parser.add_argument(
+        "--limit",
+        type=int,
+        default=None,
+        metavar="N",
+        help="measure only the first N sentences (free quotas may not cover all 24)",
+    )
+    parser.add_argument(
         "--spend-ok",
         action="store_true",
         help="explicitly allow a model that is not provably free (never in CI)",
@@ -157,6 +164,14 @@ def main(argv: list[str] | None = None) -> int:
             kind = "replied but ran out of tokens before answering"
         elif "invalid_payload" in text:
             kind = "replied but the payload was unusable"
+        elif "http_429" in text:
+            # A quota is not an outage: the endpoint is healthy and the
+            # credential is valid, there is simply nothing left to spend today.
+            kind = "is reachable but the free quota is exhausted"
+        elif "http_401" in text or "http_403" in text:
+            kind = "rejected the credential"
+        elif "http_" in text:
+            kind = "replied with an error status"
         else:
             kind = "is not reachable"
         print(f"refusing to run: {backend.name} {kind}: {exc}", file=sys.stderr)
@@ -169,7 +184,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     print(f"connected · model={probe.model} · {probe.latency_ms:.0f} ms")
 
-    report = run_benchmark(backend=backend)
+    report = run_benchmark(backend=backend, limit=args.limit)
     if not report.model_called:
         # The step evidence says no model ran. Reporting a score now would be a
         # scaffold result wearing a model's name.

@@ -171,6 +171,7 @@ def run_benchmark(
     backend: Any = None,
     corpus: Path | str = DEFAULT_CORPUS,
     keep_workspace: str | None = None,
+    limit: int | None = None,
 ) -> BenchReport:
     """Run every fixed sentence end to end and score the artifact that resulted.
 
@@ -178,8 +179,15 @@ def run_benchmark(
     real model must beat. ``keep_workspace`` retains the artifacts for
     inspection; without it everything is written to a temporary directory and
     discarded, so a benchmark run cannot pollute the repository.
+
+    ``limit`` runs only the first N sentences. A free provider can cap daily
+    requests below what the full corpus costs; a short run that records
+    ``sentences`` still produces a comparable number for that subset, and the
+    report says how many it measured. It is not a substitute for the full run.
     """
     sentences = load_corpus(corpus)
+    if limit is not None and limit < len(sentences):
+        sentences = sentences[:limit]
     fingerprint = corpus_fingerprint(corpus)
     backend_name = getattr(backend, "name", "none") if backend is not None else "none"
     called_any = False
