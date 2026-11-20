@@ -19,6 +19,8 @@ explicitly free, so an unattended run can never spend money.
 
 Usage:
     python3 scripts/run_real_model.py --free openrouter
+    python3 scripts/run_real_model.py --free gemini      # GEMINI_API_KEY
+    python3 scripts/run_real_model.py --free nvidia      # NVIDIA_API_KEY
     python3 scripts/run_real_model.py --ollama http://127.0.0.1:11434
     python3 scripts/run_real_model.py --ollama http://127.0.0.1:11434 --model qwen3.5
     python3 scripts/run_real_model.py --openai https://api.example.com/v1 --model gpt-x
@@ -48,13 +50,45 @@ FREE_PROVIDERS = {
         "key_env": "OPENROUTER_API_KEY",
         "model_env": "OPENROUTER_MODEL",
         "default_model": "openrouter/free",
+        # `free_models` is the proof used by `is_free_model`: these three
+        # providers declare their model free, and there is no paid variant of
+        # the id. OpenRouter instead marks free ids with a `:free` suffix.
+        "free_models": (),
+    },
+    "gemini": {
+        # Google's official OpenAI-compatibility shim, same key as the native
+        # API. Free tier, declared in docs/MODEL-CATALOG.md.
+        "endpoint": "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+        "key_env": "GEMINI_API_KEY",
+        "model_env": "GEMINI_MODEL",
+        "default_model": "gemini-2.5-flash",
+        "free_models": ("gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.0-flash"),
+    },
+    "nvidia": {
+        # NIM is OpenAI-compatible at /v1. Free tier, declared in
+        # docs/MODEL-CATALOG.md.
+        "endpoint": "https://integrate.api.nvidia.com/v1/chat/completions",
+        "key_env": "NVIDIA_API_KEY",
+        "model_env": "NVIDIA_MODEL",
+        "default_model": "meta/llama-3.3-70b-instruct",
+        "free_models": ("meta/llama-3.3-70b-instruct",),
     },
 }
 
 
-def is_free_model(model: str) -> bool:
-    """Return whether ``model`` is provably zero-cost under the repo policy."""
+def is_free_model(model: str, provider: str = "openrouter") -> bool:
+    """Return whether ``model`` is provably zero-cost under the repo policy.
+
+    Two proofs are accepted: an OpenRouter id that is the free router or ends
+    in ``:free``, and a provider whose declared free list contains the id —
+    those ids have no paid variant, so there is no bill to run up.
+    """
     name = (model or "").strip()
+    spec = FREE_PROVIDERS.get(provider, {})
+    if name in spec.get("free_models", ()):
+        return True
+    if provider != "openrouter":
+        return False
     return name == "openrouter/free" or name.endswith(":free")
 OUTPUT = ROOT / "fleet-2027" / "bench" / "model.json"
 
@@ -107,7 +141,7 @@ def main(argv: list[str] | None = None) -> int:
     elif args.free:
         provider = FREE_PROVIDERS[args.free]
         model = args.model or os.environ.get(provider["model_env"]) or provider["default_model"]
-        if not is_free_model(model) and not args.spend_ok:
+        if not is_free_model(model, args.free) and not args.spend_ok:
             print(
                 f"refusing to run: model {model!r} is not provably free. "
                 "Use openrouter/free or a model ending in ':free', or pass "
