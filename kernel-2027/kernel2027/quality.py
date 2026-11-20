@@ -37,6 +37,10 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
+#: Tags whose *contents* are not prose. A style block and a script block are
+#: instructions to a browser or an interpreter, never text a reader reads.
+_NON_PROSE_TAGS = ("script", "style", "head")
+
 #: Below this, an artifact is not worth showing to a user as a deliverable.
 #: Set from measurement, not taste, and raised once: at 0.50 the deterministic
 #: scaffold — which literally says "replace this text" — was rated usable at
@@ -83,14 +87,37 @@ _DOMAIN_TOKENS: dict[str, tuple[str, ...]] = {
     # lists the Arabic "المصدر"; a report that cites its source is on-topic
     # for `document` too, and it scored 0/4 here before these were added.
     "document": (
-        "#", "##", "-", "1.",
-        "تقرير", "الملخص", "المصدر", "التوصيات", "مقدمة", "خاتمة",
-        "report", "summary", "source", "recommendation", "introduction",
+        "#",
+        "##",
+        "-",
+        "1.",
+        "تقرير",
+        "الملخص",
+        "المصدر",
+        "التوصيات",
+        "مقدمة",
+        "خاتمة",
+        "report",
+        "summary",
+        "source",
+        "recommendation",
+        "introduction",
     ),
     "research": ("المصدر", "مصدر", "source", "found", "evidence", "بحث"),
     "organize": (
-        "خطوه", "خطوة", "step", "اليوم", "day", "1.", "2.",
-        "خطوات", "steps", "جدول", "schedule", "ترتيب", "order",
+        "خطوه",
+        "خطوة",
+        "step",
+        "اليوم",
+        "day",
+        "1.",
+        "2.",
+        "خطوات",
+        "steps",
+        "جدول",
+        "schedule",
+        "ترتيب",
+        "order",
     ),
     "learn": ("مثال", "example", "لماذا", "because", "يعني", "means"),
     "travel": ("يوم", "day", "فندق", "hotel", "تكلفه", "تكلفة", "cost", "صباح"),
@@ -103,11 +130,25 @@ _DOMAIN_TOKENS: dict[str, tuple[str, ...]] = {
 #: and they are the most reliable signal that a model was padding rather than
 #: answering.
 _FILLER = (
-    "بالتأكيد", "بالطبع", "سأساعدك", "كمساعد", "كما ذكرت سابقا", "كما ذكرت سابقًا",
-    "أتمنى أن يكون هذا مفيدا", "أتمنى أن يكون هذا مفيدًا",
-    "certainly!", "of course!", "as an ai", "i'd be happy to", "i would be happy to",
-    "great question", "let me know if", "hope this helps", "in conclusion,",
-    "it is important to note that", "as mentioned earlier",
+    "بالتأكيد",
+    "بالطبع",
+    "سأساعدك",
+    "كمساعد",
+    "كما ذكرت سابقا",
+    "كما ذكرت سابقًا",
+    "أتمنى أن يكون هذا مفيدا",
+    "أتمنى أن يكون هذا مفيدًا",
+    "certainly!",
+    "of course!",
+    "as an ai",
+    "i'd be happy to",
+    "i would be happy to",
+    "great question",
+    "let me know if",
+    "hope this helps",
+    "in conclusion,",
+    "it is important to note that",
+    "as mentioned earlier",
 )
 
 #: Text that addresses the *reader of the template*, not the reader of the
@@ -120,25 +161,55 @@ _FILLER = (
 #: term it was explaining. A criterion that fires on correct work is worse
 #: than one that misses: it teaches the writer to avoid accurate words.
 _PLACEHOLDERS = (
-    "استبدل هذا", "استبدل النص", "اكتب هنا", "ضع النص هنا", "محتواك الحقيقي",
-    "replace this", "replace the text", "write here", "your content here",
-    "lorem ipsum", "todo:", "tbd", "متجرك هنا",
+    "استبدل هذا",
+    "استبدل النص",
+    "اكتب هنا",
+    "ضع النص هنا",
+    "محتواك الحقيقي",
+    "replace this",
+    "replace the text",
+    "write here",
+    "your content here",
+    "lorem ipsum",
+    "todo:",
+    "tbd",
+    "متجرك هنا",
     # Template instructions, phrased as instructions rather than as nouns.
-    "insert your ", "insert the text", "[insert", "<insert", "your text here",
+    "insert your ",
+    "insert the text",
+    "[insert",
+    "<insert",
+    "your text here",
 )
 
 #: Claims that need evidence. A number with a currency or a percentage, and a
 #: "source:" line with nothing after it, are the two cheapest ways to look
 #: authoritative while saying nothing.
 _VAGUE_AUTHORITY = (
-    "دراسات تشير", "تشير الدراسات", "الخبراء يقولون", "وفقا للخبراء", "وفقًا للخبراء",
-    "studies show", "experts say", "research suggests", "statistics show",
+    "دراسات تشير",
+    "تشير الدراسات",
+    "الخبراء يقولون",
+    "وفقا للخبراء",
+    "وفقًا للخبراء",
+    "studies show",
+    "experts say",
+    "research suggests",
+    "statistics show",
 )
 
 #: Hedging that is *good*: it tells the reader the artifact knows its limits.
 _HEDGES = (
-    "لا أعرف", "غير متأكد", "غير متأكد", "يجب التحقق", "لم أتحقق", "افتراض",
-    "assumption", "not verified", "i don't know", "unverified", "estimate",
+    "لا أعرف",
+    "غير متأكد",
+    "غير متأكد",
+    "يجب التحقق",
+    "لم أتحقق",
+    "افتراض",
+    "assumption",
+    "not verified",
+    "i don't know",
+    "unverified",
+    "estimate",
 )
 
 
@@ -306,8 +377,14 @@ def _completeness(domain: str, text: str) -> Criterion:
     Thresholds are deliberately modest. A short, finished page beats a long,
     abandoned one, so passing this does not require length — it only requires
     enough substance that a reader is not left asking "and then?".
+
+    The size measured is the *prose*, not the markup. Measured: the scaffold with
+    one sentence removed reported "592 chars against a 800-char floor" while its
+    actual text was eight words — the tags and the style block were doing the
+    work, and completeness scored 0.74 for an empty page.
     """
-    size = len(text.strip())
+    prose = _prose_text(text)
+    size = len(text.strip()) if prose is None else len(prose.strip())
     # Raised after measuring: 400 chars let a one-sentence page pass. A page a
     # user would keep is a few paragraphs; 800 is still modest.
     floor = {"website": 800, "email": 200, "code": 80}.get(domain, 400)
@@ -315,14 +392,12 @@ def _completeness(domain: str, text: str) -> Criterion:
         return Criterion("completeness", 0.0, "empty")
     score = min(1.0, size / floor)
     return Criterion(
-        "completeness",
-        score,
-        f"{size} chars against a {floor}-char floor for {domain}",
+        "completeness", score, f"{size} chars against a {floor}-char floor for {domain}"
     )
 
 
 def _substance(text: str) -> Criterion:
-    """Is this written for a reader, or is it a note telling someone else to write it?
+    r"""Is this written for a reader, or is it a note telling someone else to write it?
 
     This is the criterion the first version of the scorer lacked, and its
     absence was not theoretical: the scaffold supplies a heading, a paragraph
@@ -330,6 +405,22 @@ def _substance(text: str) -> Criterion:
     content." Every mechanical check passed. It scored 0.94.
 
     A deliverable that instructs the user to finish it is not a deliverable.
+
+    Two defects were measured here and both made the criterion *laxer* than the
+    number it printed:
+
+    1. **Tag names were counted as content.** `[^\W\d_]{3,}` over raw HTML found
+       25 "words" in a page whose entire text was four words (موقعي, موقعي,
+       الرئيسية, اتصل بنا); 21 of them were html, head, meta, charset, title,
+       style, margin, body. That page scored 0.8443 overall — above the 0.70
+       floor — and was called usable. Counting text nodes gives 5 words.
+    2. **The criterion was all-or-nothing.** Removing one placeholder sentence
+       from the scaffold moved it from 0.6506 (rejected) to 0.8927 (usable):
+       the presence of one phrase decided the outcome and nothing measured how
+       much of the artifact was actual content.
+
+    So the count is over *text nodes*, and the score is graded by how much text
+    there is rather than switching on at 25 words.
     """
     low = text.lower()
     found = [phrase for phrase in _PLACEHOLDERS if phrase in low]
@@ -341,17 +432,56 @@ def _substance(text: str) -> Criterion:
             0.05,
             "placeholder text: " + ", ".join(found[:3]),
         )
-    # No placeholder and real prose: count words that carry meaning. Markup and
-    # bare numbers do not count, which is what keeps a well-formed empty shell
-    # from passing on structure alone.
-    words = re.findall(r"[^\W\d_]{3,}", text)
-    if len(words) < 25:
+    # No placeholder: count words in the *prose*, not in the markup.
+    prose = _prose_text(text)
+    words = re.findall(r"[^\W\d_]{3,}", prose) if prose is not None else []
+    if prose is None:
+        # Not markup: the raw text is the prose.
+        words = re.findall(r"[^\W\d_]{3,}", text)
+    count = len(words)
+    # Binary at 25 prose words -- the rule that was already here, which was
+    # correct; it was counting tags. Measured on prose only: chrome-only page 4,
+    # scaffold-minus-a-sentence 8, a real 386-char Arabic report 59, a real HTML
+    # page 180. A graded ramp was tried FIRST and removed: it dropped that
+    # complete Arabic report to 0.6084, because grading punishes honest brevity
+    # as if it were emptiness. Brevity is completeness's job; substance asks only
+    # whether prose exists at all.
+    if count < 25:
         return Criterion(
-            "substance",
-            min(1.0, len(words) / 25),
-            f"only {len(words)} words of content",
+            "substance", min(1.0, count / 25), f"only {count} words of content"
         )
-    return Criterion("substance", 1.0, f"{len(words)} words of content")
+    return Criterion("substance", 1.0, f"{count} words of content")
+
+
+def _prose_text(text: str) -> str | None:
+    r"""The text a reader sees, or ``None`` when this is not markup.
+
+    ``None`` rather than the input, because a markdown document has no tags and
+    stripping them would be a no-op that silently changed nothing -- the caller
+    must know which case it is in.
+
+    Measured: a page whose entire text was four words scored 1.00 on substance
+    because 21 of the 25 "words" `[^\W\d_]{3,}` found were tag names -- html,
+    head, meta, charset, title, style, margin, body. This function is what
+    separates the markup from the prose the reader actually reads.
+    """
+    lowered = text.lower()
+    has_markup = any(f"<{tag}" in lowered for tag in _NON_PROSE_TAGS) or any(
+        f"<{tag}" in lowered for tag in ("p", "div", "h1", "html", "body")
+    )
+    if "<" not in text or not has_markup:
+        return None
+    stripped = text
+    for tag in _NON_PROSE_TAGS:
+        stripped = re.sub(
+            rf"<{tag}\b[^>]*>.*?</{tag}\s*>",
+            " ",
+            stripped,
+            flags=re.DOTALL | re.IGNORECASE,
+        )
+    stripped = re.sub(r"<!--.*?-->", " ", stripped, flags=re.DOTALL)
+    stripped = re.sub(r"<[^>]+>", " ", stripped)
+    return stripped
 
 
 def _no_filler(text: str) -> Criterion:
@@ -399,7 +529,9 @@ def _usable(domain: str, text: str) -> Criterion:
     link to a file nobody wrote.
     """
     if domain == "website":
-        remote = re.findall(r"""(?:src|href)\s*=\s*["'](?:https?:)?//""", text, re.IGNORECASE)
+        remote = re.findall(
+            r"""(?:src|href)\s*=\s*["'](?:https?:)?//""", text, re.IGNORECASE
+        )
         if remote:
             return Criterion(
                 "usable",

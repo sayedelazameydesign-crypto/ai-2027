@@ -2,12 +2,12 @@
   "backend": "none",
   "model_called": false,
   "corpus_sha256": "73c67afb8b0efc327fedb371d4f52276dd74e5e384a4b63678a552a66ea2195e",
-  "generated_at": "2026-11-20T15:01:26Z",
+  "generated_at": "2026-11-20T19:04:05Z",
   "usable_floor": 0.7,
-  "scorer_sha256": "37021c370988c76f",
+  "scorer_sha256": "1186701e7e09743d",
   "summary": {
     "sentences": 24,
-    "mean_score": 0.5846,
+    "mean_score": 0.572,
     "usable_rate": 0.0,
     "completion_rate": 1.0,
     "by_domain": {
@@ -18,7 +18,7 @@
       "organize": 0.6577,
       "research": 0.5601,
       "travel": 0.509,
-      "website": 0.6552
+      "website": 0.5549
     }
   },
   "results": [
@@ -27,12 +27,13 @@
       "domain": "website",
       "text": "اعمل لي موقع لمشروعي",
       "status": "succeeded",
-      "score": 0.6506,
+      "score": 0.5526,
       "usable": false,
       "chars": 670,
       "model_called": false,
       "failures": [
-        "substance"
+        "substance",
+        "completeness"
       ],
       "error": ""
     },
@@ -41,12 +42,13 @@
       "domain": "website",
       "text": "أريد صفحة تعريفية لمتجر عسل بلدي",
       "status": "succeeded",
-      "score": 0.6551,
+      "score": 0.5548,
       "usable": false,
       "chars": 694,
       "model_called": false,
       "failures": [
-        "substance"
+        "substance",
+        "completeness"
       ],
       "error": ""
     },
@@ -55,12 +57,13 @@
       "domain": "website",
       "text": "build me a website for my consulting practice",
       "status": "succeeded",
-      "score": 0.66,
+      "score": 0.5573,
       "usable": false,
       "chars": 720,
       "model_called": false,
       "failures": [
-        "substance"
+        "substance",
+        "completeness"
       ],
       "error": ""
     },
