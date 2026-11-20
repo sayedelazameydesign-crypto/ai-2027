@@ -142,6 +142,37 @@ def cmd_demo(args: argparse.Namespace) -> int:
         return _exit_for(report.status)
 
 
+def _build_backend(choice: str) -> object:
+    """Turn a CLI word into a configured backend, or explain why it cannot be one.
+
+    Deliberately explicit. There is no auto-detection: a system that silently
+    starts calling a model because an environment variable happens to be set is
+    a system that can spend a user's money without being asked.
+    """
+    from fleet2027.llm import OllamaBackend, OpenAICompatibleBackend
+
+    if choice == "ollama":
+        backend = OllamaBackend()
+        if not backend.is_configured():
+            raise ValueError(
+                "OLLAMA_BASE_URL is not set (expected loopback http, e.g. "
+                "http://127.0.0.1:11434)"
+            )
+        return backend
+    if choice.startswith("https://"):
+        backend = OpenAICompatibleBackend(
+            endpoint_url=choice,
+            model=os.environ.get("LLM_MODEL", "gpt-4o-mini"),
+            api_key_env="LLM_API_KEY",
+        )
+        if not backend.is_configured():
+            raise ValueError("LLM_API_KEY is not set in the environment")
+        return backend
+    raise ValueError(
+        f"unknown backend {choice!r}: use 'ollama' or an https:// endpoint URL"
+    )
+
+
 def cmd_ask(args: argparse.Namespace) -> int:
     """Turn one plain-language sentence into a persisted, executable task.
 
@@ -159,12 +190,29 @@ def cmd_ask(args: argparse.Namespace) -> int:
 
     from fleet2027.contracts import PlanStep, TaskSpec
 
+    # Resolve the backend first: a bad flag must fail before the user is shown a
+    # plan that will never run.
+    backend = None
+    if args.model:
+        try:
+            backend = _build_backend(args.model)
+        except ValueError as exc:
+            print(f"cannot use backend: {exc}", file=sys.stderr)
+            return EXIT_USAGE
+
     utterance = " ".join(args.request)
     try:
         resolution = resolve(utterance, task_key=args.task or "intent")
     except IntentError as exc:
         print(f"could not understand the request: {exc}", file=sys.stderr)
         return EXIT_USAGE
+
+    if backend is not None:
+        # Say which path will be taken *before* taking it. A user who thinks a
+        # model wrote something a template wrote has been misled by silence.
+        print(f"model backend: {backend.name} · {getattr(backend, 'model', '?')}")
+    else:
+        print("model backend: none (built-in scaffold, nothing is spent)")
 
     print(resolution.explain())
     for step in resolution.steps:
@@ -195,7 +243,7 @@ def cmd_ask(args: argparse.Namespace) -> int:
 
             report = FleetRunner(
                 store=store,
-                registry=build_generalist_registry(),
+                registry=build_generalist_registry(backend=backend),
                 workspace_root=args.workspace,
                 announce=False,
             ).run(spec.task_id)
@@ -522,6 +570,17 @@ def build_parser() -> argparse.ArgumentParser:
         "--run",
         action="store_true",
         help="execute immediately with the local generalist fleet",
+    )
+    ask.add_argument(
+        "--model",
+        default=None,
+        metavar="BACKEND",
+        help=(
+            "write with a model instead of the built-in scaffold: "
+            "'ollama' (local, free, needs OLLAMA_BASE_URL) or an "
+            "OpenAI-compatible endpoint URL (needs its key in the env). "
+            "Without this flag nothing is generated and nothing is spent."
+        ),
     )
     ask.set_defaults(func=cmd_ask)
 
