@@ -163,10 +163,18 @@ class ShippedAdapterTests(unittest.TestCase):
         assert adapter is not None
         self.assertEqual(adapter.name, "image")
 
-    def test_audio_has_no_adapter_and_that_is_visible(self) -> None:
-        # Still a real gap: a family with signatures and no reader must be
-        # queryable rather than silently treated as text.
-        self.assertIsNone(self.registry.for_probe(probe_bytes(b"ID3\x03\x00" + b"\x00" * 20)))
+    def test_audio_routes_to_the_media_adapter(self) -> None:
+        # Was a visible gap; audio and video now share the `media` adapter.
+        adapter = self.registry.for_probe(probe_bytes(b"ID3\x03\x00" + b"\x00" * 20))
+        self.assertIsNotNone(adapter)
+        assert adapter is not None
+        self.assertEqual(adapter.name, "media")
+
+    def test_geometry_has_no_adapter_and_that_is_visible(self) -> None:
+        # A family with signatures and no reader must stay queryable rather than
+        # silently falling through to text. This is the rule the audio test used
+        # to hold; it moved to a family that is still empty.
+        self.assertIsNone(self.registry.for_probe(probe_bytes(b"glTF" + b"\x00" * 20)))
 
     def test_coverage_names_every_operation(self) -> None:
         coverage = self.registry.coverage()

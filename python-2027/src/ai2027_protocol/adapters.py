@@ -185,6 +185,14 @@ def _pdf_adapter() -> Adapter:
     )
 
 
+def _media_adapter() -> Adapter:
+    return Adapter(
+        name="media",
+        families=frozenset({Family.AUDIO, Family.VIDEO}),
+        operations=frozenset({Operation.INSPECT, Operation.RENDER}),
+    )
+
+
 def _archive_adapter() -> Adapter:
     return Adapter(
         name="archive",
@@ -201,6 +209,7 @@ def default_registry() -> Registry:
         _parquet_adapter,
         _image_adapter,
         _pdf_adapter,
+        _media_adapter,
         _text_adapter,
         _archive_adapter,
     ):
