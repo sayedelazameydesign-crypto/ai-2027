@@ -25,12 +25,11 @@ on:
         required: false
         type: boolean
         default: false
-  push:
-    branches: [main]
-    paths:
-      - "fleet-2027/bench/**"
-      - "scripts/run_real_model.py"
-      - ".github/workflows/real-model.yml"
+  # Manual only. An earlier version also ran on every push that touched this
+  # file or bench/**, which meant each merged pull request spent a slice of a
+  # 50-request daily quota. Ten PRs later the quota was gone and the numbers
+  # fell from 0.7850 to 0.0281 for reasons that had nothing to do with the
+  # model. A measurement is a deliberate act, not a side effect of pushing.
 
 permissions:
   contents: read
