@@ -30,6 +30,7 @@ import hashlib
 import json
 import tempfile
 import time
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -172,6 +173,7 @@ def run_benchmark(
     corpus: Path | str = DEFAULT_CORPUS,
     keep_workspace: str | None = None,
     limit: int | None = None,
+    backends: Sequence[Any] | None = None,
 ) -> BenchReport:
     """Run every fixed sentence end to end and score the artifact that resulted.
 
@@ -179,6 +181,13 @@ def run_benchmark(
     real model must beat. ``keep_workspace`` retains the artifacts for
     inspection; without it everything is written to a temporary directory and
     discarded, so a benchmark run cannot pollute the repository.
+
+    ``backends`` rotates one backend per sentence. Free providers each cap
+    their daily requests below what the corpus costs, so a single backend
+    cannot finish it; rotating spreads the corpus across independent quotas
+    while keeping every sentence measured by a real model. A sentence that
+    fails on its assigned backend is not retried on another one — that would
+    quietly change which model produced which row.
 
     ``limit`` runs only the first N sentences. A free provider can cap daily
     requests below what the full corpus costs; a short run that records
@@ -189,14 +198,20 @@ def run_benchmark(
     if limit is not None and limit < len(sentences):
         sentences = sentences[:limit]
     fingerprint = corpus_fingerprint(corpus)
-    backend_name = getattr(backend, "name", "none") if backend is not None else "none"
+    if backends:
+        # A rotated run is not any single backend; naming one would be a lie.
+        backend_name = "rotate(" + ",".join(b.name for b in backends) + ")"
+    else:
+        backend_name = getattr(backend, "name", "none") if backend is not None else "none"
     called_any = False
 
     root = Path(keep_workspace) if keep_workspace else Path(tempfile.mkdtemp())
     root.mkdir(parents=True, exist_ok=True)
     results: list[SentenceResult] = []
 
-    for item in sentences:
+    for index, item in enumerate(sentences):
+        # Rotate when asked to; otherwise one backend measures everything.
+        active = backends[index % len(backends)] if backends else backend
         sentence_id = str(item["id"])
         domain = str(item["domain"])
         text = str(item["text"])
@@ -233,7 +248,7 @@ def run_benchmark(
                 store.submit(spec)
                 report = FleetRunner(
                     store=store,
-                    registry=build_generalist_registry(backend=backend),
+                    registry=build_generalist_registry(backend=active),
                     workspace_root=workspace,
                     announce=False,
                 ).run(sentence_id)

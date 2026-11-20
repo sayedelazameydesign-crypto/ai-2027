@@ -143,56 +143,34 @@ jobs:
             echo "::warning::${line}"
           done < /tmp/diag.txt
 
-      # Three independent free taps. Any one of them succeeding produces a
-      # number; the order is cheapest-first (OpenRouter router, then Gemini's
-      # OpenAI shim, then NIM). A refusal on one provider is not a verdict on
-      # model quality, so it must not end the run.
-      - name: Measure (free providers only)
+      # Rotate the three free taps, one per sentence, so the full 24-sentence
+      # corpus is measured instead of truncated to what one quota allows.
+      # A tap that refuses is simply skipped for its sentences: the number is
+      # still a real-model number, and the report names every tap in
+      # `backend=rotate(...)`.
+      - name: Measure (free taps, rotated)
         id: measure
         if: steps.gate.outputs.available == 'true'
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
-          REQUESTED_MODEL: ${{ inputs.model || '' }}
           PYTHONDONTWRITEBYTECODE: "1"
         run: |
           set -o pipefail
-          status=2
-          measured_on=""
-          # provider:model pairs. A blank model means "the provider default".
-          candidates="openrouter:${REQUESTED_MODEL:-openrouter/free}"$'\n'
-          candidates+="openrouter:meta-llama/llama-3.3-70b-instruct:free"$'\n'
-          candidates+="gemini:"$'\n'
-          candidates+="nvidia:"
-          attempt=0
-          while IFS=: read -r provider model; do
-            [ -z "${provider}" ] && continue
-            attempt=$((attempt + 1))
-            echo "--- attempt ${attempt}: ${provider} ${model:-<default>} ---" >> /tmp/real_model.log
-            echo "--- attempt ${attempt}: ${provider} ${model:-<default>} ---"
-            args=(--free "${provider}" --limit 8 --out "fleet-2027/bench/model.json")
-            if [ -n "${model}" ]; then args+=(--model "${model}"); fi
-            set +e
-            python3 scripts/run_real_model.py "${args[@]}" 2>&1 | tee -a /tmp/real_model.log
-            status=${PIPESTATUS[0]}
-            set -e
-            # 0 = measured (better or indistinguishable), 1 = measured and worse.
-            # Both mean a number exists, so stop. 2 = refused, try the next tap.
-            if [ "${status}" != "2" ]; then
-              measured_on="${provider} ${model:-<default>}"
-              break
-            fi
-          done <<< "${candidates}"
+          set +e
+          python3 scripts/run_real_model.py --rotate \
+            --out "fleet-2027/bench/model.json" 2>&1 | tee /tmp/real_model.log
+          status=${PIPESTATUS[0]}
+          set -e
           echo "exit=${status}" >> /tmp/real_model.log
           echo "measured_exit=${status}" >> "$GITHUB_OUTPUT"
-          echo "measured_on=${measured_on}" >> "$GITHUB_OUTPUT"
           reason=$(grep -m1 -E "(refusing to run|refusing to report): .*|(http_429|http_401|http_403|http_5[0-9][0-9])" /tmp/real_model.log || true)
           if [ -n "${reason}" ]; then
             echo "::error::${reason}"
           fi
           if [ "${status}" = "2" ]; then
-            echo "::error::every free tap refused; see the attempts above"
+            echo "::error::no free tap could measure; see the attempts above"
             exit 1
           fi
           exit 0
