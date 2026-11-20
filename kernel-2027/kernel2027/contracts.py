@@ -11,7 +11,12 @@ import hashlib
 import json
 import re
 from collections.abc import Mapping
-from datetime import UTC, datetime
+from datetime import datetime, timezone
+
+# ``datetime.UTC`` only exists on Python 3.11+, but this package declares
+# requires-python >= 3.10 and is imported by engines that CI tests on 3.10.
+# Spelling the alias this way keeps the promise true instead of nominal.
+UTC = timezone.utc
 from typing import Any
 
 #: Bumped whenever a promoted behaviour changes in a way engines could notice.
