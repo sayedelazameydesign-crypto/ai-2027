@@ -64,6 +64,16 @@ FREE_PROVIDERS = {
         "default_model": "gemini-2.5-flash",
         "free_models": ("gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.0-flash"),
     },
+    "groq": {
+        # 30 requests/min, 1,000/day, 200,000 tokens/day on the free plan
+        # (checked 2026-11-19). That is 20x OpenRouter's 50/day, which makes it
+        # the tap that can carry a full 24-sentence run on its own.
+        "endpoint": "https://api.groq.com/openai/v1/chat/completions",
+        "key_env": "GROQ_API_KEY",
+        "model_env": "GROQ_MODEL",
+        "default_model": "openai/gpt-oss-120b",
+        "free_models": ("openai/gpt-oss-120b", "openai/gpt-oss-20b"),
+    },
     "nvidia": {
         # NIM is OpenAI-compatible at /v1. Free tier, declared in
         # docs/MODEL-CATALOG.md.

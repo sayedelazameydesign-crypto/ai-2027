@@ -48,7 +48,17 @@ FREE_TIER_MODELS: dict[ProviderKind, frozenset[str]] = {
             "z-ai/glm-5.3-flash",
         }
     ),
-    ProviderKind.GROQ: frozenset(),
+    # Groq's free plan is published per model: 30 requests/min, 1,000/day and
+    # 200,000 tokens/day on gpt-oss-120b and gpt-oss-20b (checked 2026-11-19).
+    # Llama 3.3 70B left the free plan, which is why the earlier set was empty.
+    # 1,000 requests a day is 20x OpenRouter's free 50, and it is the tap that
+    # makes a 24-sentence measurement possible on a day the others are spent.
+    ProviderKind.GROQ: frozenset(
+        {
+            "openai/gpt-oss-120b",
+            "openai/gpt-oss-20b",
+        }
+    ),
 }
 
 _normalize_model_id = normalize_model_id

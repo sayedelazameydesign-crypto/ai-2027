@@ -143,7 +143,10 @@ def test_retired_ids_are_never_classified_free(
 def test_free_tier_allowlist_contains_no_retired_ids() -> None:
     for entry in RETIRED_MODELS:
         assert entry.model not in FREE_TIER_MODELS.get(entry.kind, frozenset())
-    assert FREE_TIER_MODELS[ProviderKind.GROQ] == frozenset()
+    # Groq's set was empty while llama was retired from the free plan; the
+    # published gpt-oss ids restored it. The invariant is "no retired id is
+    # ever declared free", not "some provider's set is empty".
+    assert "openai/gpt-oss-120b" in FREE_TIER_MODELS[ProviderKind.GROQ]
     assert find_retired_model(ProviderKind.GEMINI, "gemini-2.5-flash") is None
 
 
@@ -159,20 +162,30 @@ def test_defaults_follow_the_catalogue(monkeypatch: pytest.MonkeyPatch) -> None:
     assert create_nvidia_nim_provider().model == "z-ai/glm-5.3-flash"
 
 
-def test_groq_replacement_model_needs_explicit_free_declaration(
+def test_groq_free_models_are_the_published_ones() -> None:
+    """Groq's free plan covers gpt-oss; llama left it.
+
+    The earlier test asserted that *no* Groq model was free, which was true
+    when Llama was retired from the free plan. Groq publishes 30 requests/min,
+    1,000/day and 200,000 tokens/day on gpt-oss-120b and -20b, so the default
+    is now allowlisted — 1,000 requests a day is 20x OpenRouter's free 50.
+    """
+    allowed = create_groq_free_provider(api_key="gsk-fixture")
+    assert allowed.model == "openai/gpt-oss-20b"
+    decision = BudgetGuard(BudgetPolicy(max_spend_usd=0.0)).evaluate_provider(allowed)
+    assert decision.allowed is True
+    assert decision.cost_status.value == "declared_free_tier_unbilled"
+
+
+def test_a_groq_model_outside_the_published_set_is_still_blocked(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    blocked = create_groq_free_provider(api_key="gsk-fixture")
-    assert blocked.model == "openai/gpt-oss-20b"
+    """The allowlist must stay a list: an unknown Groq id is not assumed free."""
+    # Not retired, simply not on the published free list.
+    blocked = create_groq_free_provider(api_key="gsk-fixture", model="groq/compound")
     decision = BudgetGuard(BudgetPolicy(max_spend_usd=0.0)).evaluate_provider(blocked)
     assert decision.allowed is False
     assert "AI2027_FREE_MODELS" in decision.reason
-
-    monkeypatch.setenv("AI2027_FREE_MODELS", "openai/gpt-oss-20b")
-    declared = create_groq_free_provider(api_key="gsk-fixture")
-    allowed = BudgetGuard(BudgetPolicy(max_spend_usd=0.0)).evaluate_provider(declared)
-    assert allowed.allowed is True
-    assert allowed.cost_status.value == "declared_free_tier_unbilled"
 
 
 async def test_retired_provider_fails_before_network() -> None:
