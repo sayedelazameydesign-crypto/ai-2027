@@ -75,109 +75,128 @@ jobs:
             echo "available=true" >> "$GITHUB_OUTPUT"
           fi
       # Diagnose before measuring. "It failed" is not a finding; knowing
-      # whether the runner cannot reach the host, or reached it and was told
-      # no, is the difference between a fix and a guess.
+      # whether a tap is unreachable, or reached and told no, is the difference
+      # between a fix and a guess. Every tap is probed, because any of them may
+      # be the one that measures.
       - name: Diagnose reachability and credential shape (no secret printed)
         id: diagnose
         if: steps.gate.outputs.available == 'true'
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
         run: |
           echo "### Reachability diagnostic" >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
-          python3 - <<'PY' | tee -a "$GITHUB_STEP_SUMMARY" /tmp/diag.txt
-          import json, os, socket, ssl, urllib.request, urllib.error
+          python3 - <<'TAPS' | tee /tmp/diag.txt
+          import os
+          import socket
+          import ssl
+          import urllib.error
+          import urllib.request
 
-          key = os.environ.get("OPENROUTER_API_KEY", "")
-          print(f"key present: {bool(key)} · length: {len(key)} · "
-                f"prefix ok: {key.startswith('sk-or-')}")
+          TAPS = [
+              ("openrouter", "openrouter.ai", "OPENROUTER_API_KEY",
+               "https://openrouter.ai/api/v1/models", "sk-or-"),
+              ("gemini", "generativelanguage.googleapis.com", "GEMINI_API_KEY",
+               "https://generativelanguage.googleapis.com/v1beta/openai/models", None),
+              ("nvidia", "integrate.api.nvidia.com", "NVIDIA_API_KEY",
+               "https://integrate.api.nvidia.com/v1/models", None),
+          ]
 
-          host = "openrouter.ai"
-          try:
-              ip = socket.gethostbyname(host)
-              print(f"dns {host}: ok")
-          except OSError as exc:
-              print(f"dns {host}: FAILED ({type(exc).__name__})")
-              raise SystemExit(0)
-
-          try:
-              ctx = ssl.create_default_context()
-              with socket.create_connection((host, 443), timeout=15) as sock:
-                  with ctx.wrap_socket(sock, server_hostname=host) as tls:
-                      print(f"tls {host}: ok ({tls.version()})")
-          except Exception as exc:  # noqa: BLE001 - diagnostic must not crash
-              print(f"tls {host}: FAILED ({type(exc).__name__}: {exc})")
-              raise SystemExit(0)
-
-          req = urllib.request.Request(
-              "https://openrouter.ai/api/v1/models",
-              headers={"Authorization": f"Bearer {key}"},
-          )
-          try:
-              with urllib.request.urlopen(req, timeout=20) as resp:
-                  print(f"GET /api/v1/models: http {resp.status}")
-          except urllib.error.HTTPError as exc:
-              print(f"GET /api/v1/models: http {exc.code} (body omitted)")
-          except Exception as exc:  # noqa: BLE001 - diagnostic must not crash
-              print(f"GET /api/v1/models: FAILED ({type(exc).__name__}: {exc})")
-          PY
+          for name, host, key_env, probe_url, prefix in TAPS:
+              key = os.environ.get(key_env, "")
+              shape = f"present={bool(key)} len={len(key)}"
+              if prefix:
+                  shape += f" prefix_ok={key.startswith(prefix)}"
+              print(f"[{name}] key {shape}")
+              if not key:
+                  print(f"[{name}] skipped: no credential")
+                  continue
+              try:
+                  socket.gethostbyname(host)
+              except OSError as exc:
+                  print(f"[{name}] dns FAILED ({type(exc).__name__})")
+                  continue
+              try:
+                  ctx = ssl.create_default_context()
+                  with socket.create_connection((host, 443), timeout=15) as sock:
+                      with ctx.wrap_socket(sock, server_hostname=host) as tls:
+                          print(f"[{name}] tls ok ({tls.version()})")
+              except Exception as exc:  # noqa: BLE001 - diagnostic must not crash
+                  print(f"[{name}] tls FAILED ({type(exc).__name__}: {exc})")
+                  continue
+              req = urllib.request.Request(
+                  probe_url, headers={"Authorization": f"Bearer {key}"}
+              )
+              try:
+                  with urllib.request.urlopen(req, timeout=20) as resp:
+                      print(f"[{name}] GET models http {resp.status}")
+              except urllib.error.HTTPError as exc:
+                  print(f"[{name}] GET models http {exc.code} (body omitted)")
+              except Exception as exc:  # noqa: BLE001 - diagnostic must not crash
+                  print(f"[{name}] GET models FAILED ({type(exc).__name__}: {exc})")
+          TAPS
           echo '```' >> "$GITHUB_STEP_SUMMARY"
-          # Annotations are the only channel confirmed readable by an API
-          # client in this environment; the job summary is not served here.
+          # Annotations are the channel confirmed readable by an API client.
           while IFS= read -r line; do
             echo "::warning::${line}"
           done < /tmp/diag.txt
 
-      - name: Measure (free provider only)
+      # Three independent free taps. Any one of them succeeding produces a
+      # number; the order is cheapest-first (OpenRouter router, then Gemini's
+      # OpenAI shim, then NIM). A refusal on one provider is not a verdict on
+      # model quality, so it must not end the run.
+      - name: Measure (free providers only)
         id: measure
         if: steps.gate.outputs.available == 'true'
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-          OPENROUTER_MODEL: ${{ inputs.model || 'openrouter/free' }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+          REQUESTED_MODEL: ${{ inputs.model || '' }}
           PYTHONDONTWRITEBYTECODE: "1"
         run: |
           set -o pipefail
-          # A free model is rate-limited per model id, and the auto-router
-          # counts as one id. Trying explicit :free models in turn turns a
-          # momentary 429 into a slower success instead of a failed run.
-          # Status is captured per attempt: a fallback must never rewrite the
-          # verdict of the attempt that actually produced a number.
           status=2
+          measured_on=""
+          # provider:model pairs. A blank model means "the provider default".
+          candidates="openrouter:${REQUESTED_MODEL:-openrouter/free}"$'\n'
+          candidates+="openrouter:meta-llama/llama-3.3-70b-instruct:free"$'\n'
+          candidates+="gemini:"$'\n'
+          candidates+="nvidia:"
           attempt=0
-          for candidate in "${OPENROUTER_MODEL}" "meta-llama/llama-3.3-70b-instruct:free" \
-                           "qwen/qwen3-next-80b-a3b-instruct:free"; do
+          while IFS=: read -r provider model; do
+            [ -z "${provider}" ] && continue
             attempt=$((attempt + 1))
-            if [ "${attempt}" -gt 1 ]; then
-              echo "--- attempt ${attempt}: ${candidate} ---" | tee -a /tmp/real_model.log
-            fi
+            echo "--- attempt ${attempt}: ${provider} ${model:-<default>} ---" >> /tmp/real_model.log
+            echo "--- attempt ${attempt}: ${provider} ${model:-<default>} ---"
+            args=(--free "${provider}" --limit 8 --out "fleet-2027/bench/model.json")
+            if [ -n "${model}" ]; then args+=(--model "${model}"); fi
             set +e
-            python3 scripts/run_real_model.py --free openrouter \
-              --model "${candidate}" \
-              --limit 8 \
-              --out "fleet-2027/bench/model.json" 2>&1 | tee -a /tmp/real_model.log
+            python3 scripts/run_real_model.py "${args[@]}" 2>&1 | tee -a /tmp/real_model.log
             status=${PIPESTATUS[0]}
             set -e
             # 0 = measured (better or indistinguishable), 1 = measured and worse.
-            # Both mean a number exists; stop. 2 = refused, so try the next.
+            # Both mean a number exists, so stop. 2 = refused, try the next tap.
             if [ "${status}" != "2" ]; then
+              measured_on="${provider} ${model:-<default>}"
               break
             fi
-          done
+          done <<< "${candidates}"
           echo "exit=${status}" >> /tmp/real_model.log
           echo "measured_exit=${status}" >> "$GITHUB_OUTPUT"
-          # Why it refused: the last line the runner printed is the sentence a
-          # human needs, and an annotation survives where the log does not.
+          echo "measured_on=${measured_on}" >> "$GITHUB_OUTPUT"
           reason=$(grep -m1 -E "(refusing to run|refusing to report): .*|(http_429|http_401|http_403|http_5[0-9][0-9])" /tmp/real_model.log || true)
           if [ -n "${reason}" ]; then
             echo "::error::${reason}"
           fi
-          # 0 = better/indistinguishable, 1 = worse, 2 = refused. All three are
-          # honest outcomes. A refusal is not a success and must fail the job.
           if [ "${status}" = "2" ]; then
-            echo "::error::the runner refused to measure (exit 2); see the log below"
+            echo "::error::every free tap refused; see the attempts above"
             exit 1
           fi
           exit 0
+
       - name: Publish the result to the job summary
         if: steps.gate.outputs.available == 'true'
         run: |
