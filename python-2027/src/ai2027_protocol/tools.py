@@ -146,6 +146,16 @@ _TOOL_SPECS: tuple[ToolSpec, ...] = (
         parameters_hint='{"path": "report.md", "scope": "workspace|sandbox"}',
     ),
     ToolSpec(
+        name="workspace.describe_file",
+        description=(
+            "Describe any file family — database schema, container directory, "
+            "columnar footer, text sections — without loading it. Use before "
+            "read_file on anything that is not plain text."
+        ),
+        read_only=True,
+        parameters_hint='{"path": "sales.db", "scope": "workspace|sandbox"}',
+    ),
+    ToolSpec(
         name="workspace.grep",
         description="Search repository source files concurrently for a pattern.",
         read_only=True,
@@ -298,6 +308,11 @@ class SandboxToolRuntime:
             from .tools_text import index_file_tool
 
             return await index_file_tool(args, ctx)
+        if tool == "workspace.describe_file":
+            # Lazy: tools_describe imports from this module, as tools_text does.
+            from .tools_describe import describe_file_tool
+
+            return await describe_file_tool(args, ctx)
         if tool == "workspace.grep":
             return await workspace_grep_tool(args, ctx)
         if tool == "sandbox.write_artifact":
