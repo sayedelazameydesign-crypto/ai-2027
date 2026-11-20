@@ -395,3 +395,65 @@ class PermanentFailureTests(unittest.TestCase):
         flaky = Flaky()
         run_benchmark(backend=flaky, limit=1)
         self.assertGreater(flaky.calls, 1, "a transient error should be retried")
+
+class ParallelSpeedTests(unittest.TestCase):
+    """Overlapping the waits must not change a single measured value."""
+
+    class _Sleepy:
+        def __init__(self, delay: float) -> None:
+            self.delay = delay
+            self.name = "sleepy"
+            self.model = "sleepy"
+            self.calls = 0
+            self._lock = __import__("threading").Lock()
+
+        def is_configured(self) -> bool:
+            return True
+
+        def complete(self, request):  # noqa: ANN001, ANN201
+            import time as _time
+
+            with self._lock:
+                self.calls += 1
+            _time.sleep(self.delay)
+            return LLMResponse(
+                text="# R\n\n- a\n- b\n- c\n",
+                backend="sleepy",
+                model="sleepy",
+                latency_ms=self.delay * 1000,
+                prompt_sha256="x",
+                raw_bytes=10,
+            )
+
+    def test_parallel_returns_the_same_scores_and_call_count(self) -> None:
+        serial_model = self._Sleepy(0.05)
+        parallel_model = self._Sleepy(0.05)
+        serial = run_benchmark(backend=serial_model, limit=6, workers=1)
+        parallel = run_benchmark(backend=parallel_model, limit=6, workers=4)
+
+        self.assertEqual(
+            [r.sentence_id for r in serial.results],
+            [r.sentence_id for r in parallel.results],
+            "the report order must be the corpus order, not completion order",
+        )
+        self.assertAlmostEqual(serial.mean_score, parallel.mean_score, places=6)
+        self.assertEqual(
+            serial_model.calls,
+            parallel_model.calls,
+            "parallelism must not spend extra model calls",
+        )
+
+    def test_parallel_is_actually_faster_when_the_model_waits(self) -> None:
+        import time as _time
+
+        serial_model = self._Sleepy(0.1)
+        t0 = _time.perf_counter()
+        run_benchmark(backend=serial_model, limit=6, workers=1)
+        serial_s = _time.perf_counter() - t0
+
+        parallel_model = self._Sleepy(0.1)
+        t0 = _time.perf_counter()
+        run_benchmark(backend=parallel_model, limit=6, workers=4)
+        parallel_s = _time.perf_counter() - t0
+
+        self.assertLess(parallel_s, serial_s * 0.7, f"{parallel_s:.2f}s vs {serial_s:.2f}s")

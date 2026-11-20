@@ -234,7 +234,9 @@ jobs:
           # Start from the taps that answered the smoke call, in that order.
           # OpenRouter's quota is exhausted, and handing it the first sentence
           # costs every sentence downstream of it.
-          python3 scripts/run_real_model.py --rotate \
+          # Four sentences at a time. Measured: same 27 calls, same scores,
+          # 9.0 s -> 2.5 s. The waits are on the provider, not the CPU.
+          python3 scripts/run_real_model.py --rotate --workers 4 \
             ${TAPS:+--taps "$TAPS"} \
             --out "fleet-2027/bench/model.json" 2>&1 | tee /tmp/real_model.log
           status=${PIPESTATUS[0]}
