@@ -658,16 +658,16 @@ class UserAgentTests(unittest.TestCase):
         class _Resp:
             status = 200
 
-            def read(self, n: int = -1) -> bytes:  # noqa: ANN401
+            def read(self, n: int = -1) -> bytes:
                 return b'{"ok":true}'
 
-            def __enter__(self) -> "_Resp":
+            def __enter__(self) -> "UserAgentTests._Resp":
                 return self
 
             def __exit__(self, *exc: object) -> None:
                 return None
 
-        def fake_urlopen(request, timeout=0):  # noqa: ANN001, ANN202
+        def fake_urlopen(request: object, timeout: float = 0) -> object:
             sent.update({k.lower(): v for k, v in request.header_items()})
             return _Resp()
 
@@ -691,3 +691,59 @@ class UserAgentTests(unittest.TestCase):
         self.assertTrue(agent, "no User-Agent was sent; a WAF will reject urllib")
         self.assertNotIn("Python-urllib", agent)
         self.assertIn("ai-2027", agent)
+
+
+class ProviderFailureMessageTests(unittest.TestCase):
+    """A failed sentence must name the cause, not just the provider.
+
+    The live run produced `gemini-2.5-flash failed:` with nothing after the
+    colon because the bridge let the provider's exception through unchanged and
+    the provider raised a bare error with no message. The report then looked
+    like a model problem while the reason was available and discarded.
+    """
+
+    def test_a_message_less_provider_error_still_says_something(self) -> None:
+        class Silent:
+            name = "silent"
+            model = "silent"
+
+            def is_configured(self) -> bool:
+                return True
+
+            async def complete(self, request, *, timeout_s: float) -> str:
+                raise RuntimeError()
+
+        from fleet2027.llm import AsyncProviderBridge, LLMError, LLMRequest
+
+        bridge = AsyncProviderBridge(
+            provider=Silent(), prompt_builder=lambda req: {"prompt": req.prompt}
+        )
+        with self.assertRaises(LLMError) as caught:
+            bridge.complete(LLMRequest(prompt="hi", timeout_s=5.0))
+        text = str(caught.exception)
+        self.assertTrue(text.strip(), "the failure message is empty again")
+        self.assertIn("RuntimeError", text)
+
+    def test_a_coded_provider_error_keeps_its_code_and_message(self) -> None:
+        class Coded:
+            name = "coded"
+            model = "coded"
+
+            def is_configured(self) -> bool:
+                return True
+
+            async def complete(self, request, *, timeout_s: float) -> str:
+                exc = RuntimeError("quota exhausted for the day")
+                exc.code = "quota"  # type: ignore[attr-defined]
+                raise exc
+
+        from fleet2027.llm import AsyncProviderBridge, LLMError, LLMRequest
+
+        bridge = AsyncProviderBridge(
+            provider=Coded(), prompt_builder=lambda req: {"prompt": req.prompt}
+        )
+        with self.assertRaises(LLMError) as caught:
+            bridge.complete(LLMRequest(prompt="hi", timeout_s=5.0))
+        text = str(caught.exception)
+        self.assertIn("quota", text)
+        self.assertIn("exhausted", text)
