@@ -166,6 +166,16 @@ _TOOL_SPECS: tuple[ToolSpec, ...] = (
         parameters_hint='{"path": "report.docx", "kind": "docx"}',
     ),
     ToolSpec(
+        name="sandbox.plan_delivery",
+        description=(
+            "Decide how to hand an artifact over: the original file when the "
+            "user's own tool can open it, a table when it cannot, a report when "
+            "it failed validation. Decided from the bytes, not the extension."
+        ),
+        read_only=True,
+        parameters_hint='{"path": "report.docx"}',
+    ),
+    ToolSpec(
         name="workspace.grep",
         description="Search repository source files concurrently for a pattern.",
         read_only=True,
@@ -338,6 +348,10 @@ class SandboxToolRuntime:
             return await run_sandbox_tests(args, ctx)
         if tool == "sandbox.verify_artifact":
             return await verify_sandbox_artifact(args, ctx)
+        if tool == "sandbox.plan_delivery":
+            from .tools_deliver import plan_delivery_tool
+
+            return await plan_delivery_tool(args, ctx)
         if tool == "sandbox.validate_artifact":
             # Lazy, like tools_text: tools_validate imports from this module.
             from .tools_validate import validate_artifact_tool
