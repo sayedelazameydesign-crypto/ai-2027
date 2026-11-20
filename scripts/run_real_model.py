@@ -70,8 +70,11 @@ FREE_PROVIDERS = {
         "endpoint": "https://integrate.api.nvidia.com/v1/chat/completions",
         "key_env": "NVIDIA_API_KEY",
         "model_env": "NVIDIA_MODEL",
-        "default_model": "meta/llama-3.3-70b-instruct",
-        "free_models": ("meta/llama-3.3-70b-instruct",),
+        # 3.3-70b was retired by NVIDIA on 2026-08-26 (HTTP 410 Gone, seen by
+        # this repo's own smoke step). glm-5.3-flash is on NVIDIA's published
+        # free-endpoint list; a probe still has to confirm it answers here.
+        "default_model": "z-ai/glm-5.3-flash",
+        "free_models": ("z-ai/glm-5.3-flash",),
     },
 }
 

@@ -153,7 +153,7 @@ gh workflow run real-model.yml -f model=gemini-2.5-flash      # مصرف محد�
 |---|--------|---------|-------------------|---------------------|
 | 1 | OpenRouter | `OPENROUTER_API_KEY` | `openrouter/free` | موجّه مجاني أو معرّف `:free` |
 | 2 | Gemini (OpenAI shim) | `GEMINI_API_KEY` | `gemini-2.5-flash` | `FREE_TIER` في `docs/MODEL-CATALOG.md` |
-| 3 | NVIDIA NIM | `NVIDIA_API_KEY` | `meta/llama-3.3-70b-instruct` | `FREE_TIER` في `docs/MODEL-CATALOG.md` |
+| 3 | NVIDIA NIM | `NVIDIA_API_KEY` | `z-ai/glm-5.3-flash` | `FREE_TIER` في `docs/MODEL-CATALOG.md` |
 
 كل مصرف يُجرَّب بالتناوب حتى ينجح أحدها. نجاح واحد = رقم. فشل الثلاثة = فشل الوظيفة بصوت عالٍ.
 

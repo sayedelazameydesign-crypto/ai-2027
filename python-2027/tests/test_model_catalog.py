@@ -35,6 +35,7 @@ from ai2027_protocol.model_catalog import (
     RETIRED_MODELS,
     find_retired_model,
     is_openrouter_free_model,
+    normalize_model_id,
 )
 
 _MODEL_ENV_VARS = (
@@ -110,7 +111,13 @@ def test_openrouter_paid_model_is_blocked_before_any_request() -> None:
             ProviderKind.NVIDIA,
             "meta/llama-3.1-8b-instruct",
             "2026-08-26",
+            "z-ai/glm-5.3-flash",
+        ),
+        (
+            ProviderKind.NVIDIA,
             "meta/llama-3.3-70b-instruct",
+            "2026-08-26",
+            "z-ai/glm-5.3-flash",
         ),
     ],
 )
@@ -142,14 +149,14 @@ def test_free_tier_allowlist_contains_no_retired_ids() -> None:
 
 def test_defaults_follow_the_catalogue(monkeypatch: pytest.MonkeyPatch) -> None:
     providers = {p.kind: p for p in build_default_providers()}
-    assert providers[ProviderKind.NVIDIA].model == "meta/llama-3.3-70b-instruct"
+    assert providers[ProviderKind.NVIDIA].model == "z-ai/glm-5.3-flash"
     assert providers[ProviderKind.GROQ].model == DEFAULT_MODELS[ProviderKind.GROQ]
     assert providers[ProviderKind.OPENROUTER].model == OPENROUTER_FREE_ROUTER
     for provider in providers.values():
         assert find_retired_model(provider.kind, provider.model) is None
 
-    monkeypatch.setenv("NVIDIA_MODEL", "meta/llama-3.3-70b-instruct")
-    assert create_nvidia_nim_provider().model == "meta/llama-3.3-70b-instruct"
+    monkeypatch.setenv("NVIDIA_MODEL", "z-ai/glm-5.3-flash")
+    assert create_nvidia_nim_provider().model == "z-ai/glm-5.3-flash"
 
 
 def test_groq_replacement_model_needs_explicit_free_declaration(
@@ -177,7 +184,7 @@ async def test_retired_provider_fails_before_network() -> None:
         transport=_ExplodingTransport(),
     )
     assert provider.retirement_reason is not None
-    assert "meta/llama-3.3-70b-instruct" in provider.retirement_reason
+    assert "meta/llama-3.1-8b-instruct" in provider.retirement_reason
     with pytest.raises(ProviderError) as excinfo:
         await provider.complete(PromptRequest(prompt="ping"), timeout_s=1.0)
     assert excinfo.value.code == "model_retired"
@@ -224,7 +231,7 @@ def test_cli_models_command_lists_defaults_and_retirements(
     payload = json.loads(capsys.readouterr().out)
     defaults = {row["provider"]: row["model"] for row in payload["defaults"]}
     assert defaults["openrouter"] == OPENROUTER_FREE_ROUTER
-    assert defaults["nvidia"] == "meta/llama-3.3-70b-instruct"
+    assert defaults["nvidia"] == "z-ai/glm-5.3-flash"
     retired_models = {row["model"] for row in payload["retired"]}
     assert "llama-3.3-70b-versatile" in retired_models
     assert "meta/llama-3.1-8b-instruct" in retired_models
@@ -233,3 +240,18 @@ def test_cli_models_command_lists_defaults_and_retirements(
     text = capsys.readouterr().out
     assert "openrouter/free" in text
     assert "retired 2026-08-16" in text
+
+def test_no_retirement_points_at_another_retired_model() -> None:
+    """The registry must not send a caller from one dead model to another.
+
+    meta/llama-3.1-8b-instruct recorded meta/llama-3.3-70b-instruct as its
+    replacement, and 3.3 was retired on the same day. Every default that
+    followed the registry therefore landed on a dead endpoint, which is how
+    three files came to ship a model NVIDIA answers with HTTP 410.
+    """
+    retired = {(entry.kind, normalize_model_id(entry.model)) for entry in RETIRED_MODELS}
+    for entry in RETIRED_MODELS:
+        key = (entry.kind, normalize_model_id(entry.replacement))
+        assert key not in retired, (
+            f"{entry.model} is replaced by {entry.replacement}, which is itself retired"
+        )

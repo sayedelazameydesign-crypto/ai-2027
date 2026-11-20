@@ -17,7 +17,9 @@ from .contracts import ProviderKind
 #: is empty. None of these is assumed free by itself: `BudgetGuard` still decides.
 DEFAULT_MODELS: dict[ProviderKind, str] = {
     ProviderKind.GEMINI: "gemini-2.5-flash",
-    ProviderKind.NVIDIA: "meta/llama-3.3-70b-instruct",
+    # The previous default was retired by NVIDIA on 2026-08-26 (HTTP 410).
+    # This id is on NVIDIA's published free-endpoint list.
+    ProviderKind.NVIDIA: "z-ai/glm-5.3-flash",
     ProviderKind.GROQ: "openai/gpt-oss-20b",
     ProviderKind.OPENROUTER: "openrouter/free",
 }
@@ -49,10 +51,24 @@ class RetiredModel:
 #: Retirements we have evidence for. Ordering is provider, newest retirement first.
 RETIRED_MODELS: tuple[RetiredModel, ...] = (
     RetiredModel(
+        # Observed directly by this repo's smoke step (run 44728029339):
+        #   [nvidia] http 410 - The model 'meta/llama-3.3-70b-instruct' has
+        #   reached its end of life on 2026-08-26T09:00:00Z
+        # Note the trap this created: 3.1's recorded replacement was itself
+        # already retired, so the registry pointed at a dead model and three
+        # files kept defaulting to it.
+        kind=ProviderKind.NVIDIA,
+        model="meta/llama-3.3-70b-instruct",
+        retired_on="2026-08-26",
+        replacement="z-ai/glm-5.3-flash",
+        evidence="NVIDIA NIM answers HTTP 410 Gone: 'reached its end of life on "
+                 "2026-08-26T09:00:00Z and is no longer available'",
+    ),
+    RetiredModel(
         kind=ProviderKind.NVIDIA,
         model="meta/llama-3.1-8b-instruct",
         retired_on="2026-08-26",
-        replacement="meta/llama-3.3-70b-instruct",
+        replacement="z-ai/glm-5.3-flash",
         evidence="NVIDIA NIM answers HTTP 410 Gone for this endpoint",
     ),
     RetiredModel(
