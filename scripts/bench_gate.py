@@ -95,6 +95,20 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 1
 
+    # The ruler is part of the measurement. A baseline scored by a different
+    # scorer is a different number for the same system, and comparing them
+    # silently is how a "regression" gets argued that never happened.
+    if baseline.get("scorer_sha256") != current.get("scorer_sha256"):
+        print(
+            "FAIL: the scorer changed since the baseline was recorded "
+            f"({baseline.get('scorer_sha256', 'unrecorded')} -> "
+            f"{current.get('scorer_sha256')}); every number moved with it. "
+            "Re-record with --write-baseline and say what changed and why in "
+            "the commit.",
+            file=sys.stderr,
+        )
+        return 1
+
     if baseline["backend"] != current["backend"]:
         print(
             f"FAIL: baseline backend {baseline['backend']!r} but this run was "
