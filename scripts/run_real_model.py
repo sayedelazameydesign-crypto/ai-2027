@@ -129,6 +129,19 @@ def _report(report, out: str) -> int:
         shown = path
     print(f"report: {shown}")
 
+    # Failures are the most useful part of a bad run, so they are summarised
+    # by cause instead of being left inside the JSON report.
+    failures = [r for r in report.results if r.error]
+    if failures:
+        print()
+        print(f"failures: {len(failures)} of {len(report.results)} sentences")
+        causes: dict[str, int] = {}
+        for item in failures:
+            cause = (item.error or "unknown")[:70]
+            causes[cause] = causes.get(cause, 0) + 1
+        for cause, count in sorted(causes.items(), key=lambda kv: -kv[1])[:4]:
+            print(f"  {count:>2}x {cause}")
+
     baseline = json.loads(BASELINE.read_text(encoding="utf-8"))
     before = baseline["summary"]["mean_score"]
     delta = round(report.mean_score - before, 4)
@@ -209,7 +222,10 @@ def main(argv: list[str] | None = None) -> int:
                 continue
             backends.append(
                 OpenAICompatibleBackend(
-                    endpoint_url=spec["endpoint"], model=model, api_key_env=spec["key_env"]
+                    endpoint_url=spec["endpoint"],
+                    model=model,
+                    api_key_env=spec["key_env"],
+                    label=f"{name}:{model}",
                 )
             )
             print(f"rotation: {name} -> {model}")
