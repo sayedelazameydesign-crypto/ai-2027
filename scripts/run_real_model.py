@@ -203,6 +203,14 @@ def main(argv: list[str] | None = None) -> int:
         help="measure only the first N sentences (free quotas may not cover all 24)",
     )
     parser.add_argument(
+        "--workers",
+        type=int,
+        default=1,
+        metavar="N",
+        help="measure N sentences at once (waits on the network, spends no extra "
+        "model calls; 4 is safe on free tiers)",
+    )
+    parser.add_argument(
         "--taps",
         default="",
         help="comma-separated free providers to rotate over, in order (default: all)",
@@ -286,7 +294,9 @@ def main(argv: list[str] | None = None) -> int:
             return 2
         if args.model:
             print("note: --model is ignored with --rotate; each provider uses its default")
-        report = run_benchmark(backend=backends[0], backends=backends, limit=args.limit)
+        report = run_benchmark(
+        backend=backends[0], backends=backends, limit=args.limit, workers=args.workers
+    )
         return _report(report, args.out)
 
     if args.ollama:
@@ -374,7 +384,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     print(f"connected · model={probe.model} · {probe.latency_ms:.0f} ms")
 
-    report = run_benchmark(backend=backend, limit=args.limit)
+    report = run_benchmark(backend=backend, limit=args.limit, workers=args.workers)
     if not report.model_called:
         # The step evidence says no model ran. Reporting a score now would be a
         # scaffold result wearing a model's name.
