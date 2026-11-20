@@ -177,6 +177,14 @@ def _image_adapter() -> Adapter:
     )
 
 
+def _pdf_adapter() -> Adapter:
+    return Adapter(
+        name="pdf",
+        families=frozenset({Family.PDF}),
+        operations=frozenset({Operation.INSPECT, Operation.RENDER}),
+    )
+
+
 def _archive_adapter() -> Adapter:
     return Adapter(
         name="archive",
@@ -192,6 +200,7 @@ def default_registry() -> Registry:
         _sqlite_adapter,
         _parquet_adapter,
         _image_adapter,
+        _pdf_adapter,
         _text_adapter,
         _archive_adapter,
     ):
