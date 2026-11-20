@@ -222,3 +222,19 @@ class ProvenanceTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+class LimitTests(unittest.TestCase):
+    """A capped run is honest only if it reports the count it actually ran."""
+
+    def test_limit_measures_a_subset_and_says_how_many(self) -> None:
+        report = run_benchmark(backend=None, limit=3)
+        self.assertEqual(report.to_dict()["summary"]["sentences"], 3)
+        self.assertEqual(len(report.results), 3)
+
+    def test_limit_larger_than_the_corpus_runs_everything(self) -> None:
+        full = run_benchmark(backend=None)
+        capped = run_benchmark(backend=None, limit=10_000)
+        self.assertEqual(
+            capped.to_dict()["summary"]["sentences"],
+            full.to_dict()["summary"]["sentences"],
+        )

@@ -153,6 +153,7 @@ jobs:
             set +e
             python3 scripts/run_real_model.py --free openrouter \
               --model "${candidate}" \
+              --limit 8 \
               --out "fleet-2027/bench/model.json" 2>&1 | tee -a /tmp/real_model.log
             status=${PIPESTATUS[0]}
             set -e

@@ -333,6 +333,45 @@ class BackendTests(unittest.TestCase):
         self.assertNotIn("invalid_payload", message)
         self.assertIn("completion_tokens", message)
 
+
+    def test_quota_exhaustion_is_distinguishable_from_an_outage(self) -> None:
+        """A 429 has a different fix (wait or pay) than a dead endpoint.
+
+        This patches ``urlopen``, not ``_post_json``: replacing the helper
+        would skip the very translation being tested.
+        """
+        import io
+        import os
+        import urllib.error
+
+        os.environ["FLEET_TEST_KEY"] = "sk-not-a-real-key"
+
+        def fake_urlopen(request, timeout):  # noqa: ANN001, ANN202
+            raise urllib.error.HTTPError(
+                "https://api.example.com/v1/chat/completions", 429,
+                "Too Many Requests", {},
+                io.BytesIO(b'{"error":{"message":"Rate limit exceeded"}}'),
+            )
+
+        import urllib.request
+
+        import fleet2027.llm as llm_mod
+
+        original = urllib.request.urlopen
+        urllib.request.urlopen = fake_urlopen  # type: ignore[assignment]
+        try:
+            backend = OpenAICompatibleBackend(
+                endpoint_url="https://api.example.com/v1/chat/completions",
+                model="m",
+                api_key_env="FLEET_TEST_KEY",
+            )
+            with self.assertRaises(LLMError) as raised:
+                backend.complete(LLMRequest(prompt="hi"))
+        finally:
+            urllib.request.urlopen = original  # type: ignore[assignment]
+            del os.environ["FLEET_TEST_KEY"]
+        self.assertIn("http_429", str(raised.exception))
+
     def test_scripted_backend_replays_and_records_calls(self) -> None:
         backend = ScriptedBackend(script=["one", "two"])
         self.assertEqual(backend.complete(LLMRequest(prompt="a")).text, "one")
