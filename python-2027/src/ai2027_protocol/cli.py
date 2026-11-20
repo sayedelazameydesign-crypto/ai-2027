@@ -494,6 +494,11 @@ def build_parser() -> argparse.ArgumentParser:
     serve_p.add_argument("--host", default="0.0.0.0")  # noqa: S104
     serve_p.add_argument("--port", type=int, default=8790)
 
+    sub.add_parser(
+        "mcp",
+        help="Expose the read-only AI-2027 file inspector over MCP stdio (requires an HMAC key).",
+    )
+
     studio_p = sub.add_parser("studio", help="Start the AI-2027 Agent Studio web UI & API.")
     studio_p.add_argument("--host", default="0.0.0.0")  # noqa: S104
     studio_p.add_argument("--port", type=int, default=8080)
@@ -551,6 +556,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     """Execute the Python 2027 CLI entrypoint and return an exit code."""
     parser = build_parser()
     args = parser.parse_args(list(argv) if argv is not None else None)
+    if args.command == "mcp":
+        from .mcp_stdio import run_stdio_from_environment
+
+        return run_stdio_from_environment(args.root.resolve())
     if args.command in {"serve", "studio"}:  # pragma: no cover - long-running server
         sdir = getattr(args, "studio_dir", None)
         app = create_app(workspace_root=args.root, studio_dir=sdir)

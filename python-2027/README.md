@@ -32,6 +32,24 @@ uv sync --locked --group dev
 
 ---
 
+## MCP — B1 minimum (stdio only)
+
+`ai2027-py27 --root <workspace> mcp` starts a newline-delimited stdio MCP server. It has no added runtime dependency and exposes one read-only tool: `ai2027.inspect_file`.
+
+```bash
+# Generate a fresh 32-byte key; configure the same value in the MCP client’s secret store.
+export AI2027_MCP_SIGNING_KEY="$(python3 -c 'import secrets; print(secrets.token_hex(32))')"
+.venv/bin/ai2027-py27 --root /path/to/workspace mcp
+```
+
+The server supports MCP initialization, `tools/list`, `tools/call`, progress notifications, and cancellation. Tool output is MCP text content containing `{tool, request_id, request_path_sha256, issued_at, nonce, result, result_sha256, signature}`. The HMAC covers the request ID, SHA-256 of the original path argument (when present), Unix issue time, per-result random nonce, full result, and result digest, using compact UTF-8 JSON with recursively sorted object keys. `verify_signed_mcp_result` checks a five-minute freshness window by default; clients should also bind verification to their expected tool/request ID/path and retain a per-session nonce set to reject duplicates. This is a project extension, not a standard MCP signature; verification requires the same 32-byte secret, so HMAC is not a public-key signature or non-repudiation proof. Do not commit the key or paste it into a versioned client configuration.
+
+**Enforced limits and scope:** one relative workspace file per call; 8 MiB file cap; 12,000-character description cap; 32 KiB signed-result cap; 64K-character input-line cap; 15-second tool deadline; at most 16 pending requests and 4 concurrent file inspections. Traversal, `.env*`, `env.local`, `local-pairings.json`, repository/credential directories (`.git`, `.ssh`, `.aws`, `.azure`, `.kube`, `.docker`), and credential files (`.git-credentials`, `.netrc`, `.npmrc`, `.pypirc`, common `credentials`/`secrets` names, SSH private-key names, and `.key`/`.pem`/`.p12`/`.pfx`/`.p8`/`.ppk` suffixes) are refused, including resolved symlink targets. ZIP/OOXML directory metadata is inspected without inflating members; the result records that archive-member integrity was not checked. OLE structure checks read only header/FAT/directory metadata; raw bytes are streamed in chunks for SHA-256 lineage, but stream payloads are never buffered, decompressed, or interpreted. Free-form text, table/column identifiers, and parser-message strings are omitted; only structural counts and verification check names/pass flags are returned. To avoid path-replacement and growth races, the server opens the resolved file without following replacement symlinks, copies at most 8 MiB into a private temporary snapshot, rejects concurrent changes, and describes/verifies only that snapshot. No workspace files are modified.
+
+This is deliberately **not** general MCP support: there is no HTTP transport, resource/prompt API, or multi-tool catalog. The B1 stdio path was exercised with an external `@modelcontextprotocol/sdk` client (1.32.2): it discovered/called `ai2027.inspect_file`, observed progress, and verified the HMAC. A separate SDK `AbortSignal` smoke canceled a deliberately slow test tool. The automated Python subprocess test covers the discovery/call/progress/signed-result wire flow without adding the SDK as a project dependency. Run the MCP and 100-case hostile-path regression suite with `cd python-2027 && .venv/bin/pytest -o addopts='' tests/test_mcp_server.py tests/test_mcp_file_races.py tests/test_mcp_attestation.py tests/test_mcp_redteam.py -q`.
+
+---
+
 ## 🛡️ Production Hardening Controls (P0–P3)
 
 1. **Real `$0` Budget Enforcement (`budget.py`, `router.py`, `workers/`)**:
