@@ -39,9 +39,13 @@ FREE_TIER_MODELS: dict[ProviderKind, frozenset[str]] = {
             "gemini-1.5-flash-8b",
         }
     ),
+    # NVIDIA retired meta/llama-3.3-70b-instruct on 2026-08-26 (HTTP 410 Gone),
+    # so it can no longer be free. Only ids on NVIDIA's live free-endpoint list
+    # belong here; an allowlist naming a withdrawn model fails the free check
+    # with 410 instead of passing it.
     ProviderKind.NVIDIA: frozenset(
         {
-            "meta/llama-3.3-70b-instruct",
+            "z-ai/glm-5.3-flash",
         }
     ),
     ProviderKind.GROQ: frozenset(),
