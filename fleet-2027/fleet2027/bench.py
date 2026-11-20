@@ -40,6 +40,18 @@ from typing import Any
 from kernel2027.intent import IntentError, resolve, to_task_spec
 from kernel2027.quality import USABLE_FLOOR, score_file
 
+#: The scorer is part of the measurement. Two runs scored by different rulers
+#: are not comparable, and nothing in the report used to say which ruler made
+#: the number: the baseline at 0.5783 was scored before Arabic inflection was
+#: understood, and the same corpus scores 0.5846 after. Recording the digest
+#: makes that visible instead of silent.
+_QUALITY_PATH = Path(__file__).resolve().parents[2] / "kernel-2027" / "kernel2027" / "quality.py"
+_SCORER_DIGEST = (
+    hashlib.sha256(_QUALITY_PATH.read_bytes()).hexdigest()[:16]
+    if _QUALITY_PATH.exists()
+    else "unknown"
+)
+
 from .contracts import PlanStep, TaskSpec
 from .generalist import build_generalist_registry
 from .runner import FleetRunner
@@ -137,6 +149,7 @@ class BenchReport:
             "corpus_sha256": self.corpus_sha256,
             "generated_at": self.generated_at,
             "usable_floor": USABLE_FLOOR,
+            "scorer_sha256": _SCORER_DIGEST,
             "summary": {
                 "sentences": len(self.results),
                 "mean_score": self.mean_score,
