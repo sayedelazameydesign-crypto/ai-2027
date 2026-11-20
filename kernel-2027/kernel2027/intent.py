@@ -760,7 +760,20 @@ def _build_steps(
                 ("artifact", artifact),
             )
         elif action == "collect_sources":
-            inputs = (("prompt", write_prompt),)
+            # Gathering used to carry only a prompt, so an executor that writes
+            # files had nowhere to put the result and refused the step. It gets
+            # its own file: sources are evidence, and evidence is a file.
+            sources_path = (
+                f"{WORKSPACE_SUBDIR}/{task_key}/sources.md"
+                if task_key != WORKSPACE_SUBDIR
+                else f"{WORKSPACE_SUBDIR}/sources.md"
+            )
+            inputs = (
+                ("prompt", write_prompt),
+                ("out", sources_path),
+                ("language", "markdown"),
+                ("artifact", "source notes"),
+            )
         steps.append(
             Step(
                 step_id=f"{task_key}_{suffix}",
