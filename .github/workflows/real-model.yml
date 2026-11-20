@@ -208,7 +208,7 @@ jobs:
           # nothing, which is why the tap name read "model unknown".
           model="$(grep -oE 'rotation: [a-z]+ -> .*' /tmp/real_model.log | tr '\n' ',' | sed 's/,$//')"
           # Failure causes are the most useful line of a bad run.
-          causes="$(grep -E '^  [0-9]+x ' /tmp/real_model.log | head -3 | tr '\n' ';')"
+          causes="$(grep -E '^[[:space:]]+[0-9]+x ' /tmp/real_model.log | head -3 | sed 's/^ *//' | tr '\n' ';')"
           fails="$(grep -E '^failures: ' /tmp/real_model.log | head -1)"
           echo "::warning::${model:-model unknown} | ${scores:-no measurement line} | ${verdict:-no verdict}"
           if [ -n "${fails}" ]; then
