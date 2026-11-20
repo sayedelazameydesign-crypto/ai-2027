@@ -1,9 +1,18 @@
 # kernel-2027 — one implementation of the primitives every engine shares
 
-**Install (one line, any engine):** `pip install -e kernel-2027`
+**No install needed.** Engines find the kernel from their own location via a
+small `_kernel_path.py` bootstrap, so a bare `git clone` works — including in a
+spawned subprocess, where `sys.path` edits from the parent do not survive.
 
-Without an install, add the repo root to `PYTHONPATH` and import
-`kernel2027` — it is stdlib-only, so nothing else is required.
+That is not a convenience: it is verified in a clean virtualenv with nothing but
+pytest installed (fleet 174, render 43, browser 74). If you prefer an explicit
+install, `pip install -e kernel-2027` works too and is never second-guessed —
+the bootstrap probes first and only then looks for a sibling checkout.
+
+**Adoption today: 4 of 11 engines** (`fleet-2027`, `python-2027`,
+`render_control_adapter`, `browser_skill_adapter`). The rest do not re-implement
+a promoted primitive today, and the ratchet in `adoption.json` stops them
+starting.
 
 ## Why it exists (the measured problem)
 
