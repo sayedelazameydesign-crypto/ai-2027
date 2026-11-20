@@ -746,7 +746,9 @@ jobs:
           from pathlib import Path
           stdlib = set(sys.stdlib_module_names) | {"tomllib"}
           files = sorted(Path("browser_skill_adapter").glob("*.py"))
-          siblings = {p.stem for p in files}
+          # kernel2027 is in-repo and stdlib-only (asserted by its own suite),
+          # so importing it cannot add a third-party dependency.
+          siblings = {p.stem for p in files} | {"kernel2027", "_kernel_path"}
           # ONE declared cross-package import: run_local_task.py offers finished
           # DecisionRecords to the repo-local L1 memory gate (also stdlib-only).
           ALLOWED_CROSS_PACKAGE = {

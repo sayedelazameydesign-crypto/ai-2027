@@ -72,6 +72,21 @@ class ContractTests(unittest.TestCase):
             path.write_bytes(b"x" * (3 << 20))
             self.assertEqual(sha256_file(str(path)), sha256_text("x" * (3 << 20)))
 
+    def test_utc_alias_is_portable_to_python_310(self) -> None:
+        """`from datetime import UTC` is 3.11+ and would break the 3.10 CI job.
+
+        The kernel declares requires-python >= 3.10 and is now imported by
+        engines that CI exercises on 3.10, so this is a compatibility contract,
+        not a style preference.
+        """
+        from datetime import timezone
+
+        from kernel2027 import contracts
+
+        self.assertIs(contracts.UTC, timezone.utc)
+        source = Path(contracts.__file__).read_text(encoding="utf-8")
+        self.assertNotIn("from datetime import UTC", source)
+
     def test_utc_now_shape(self) -> None:
         stamp = utc_now()
         self.assertTrue(stamp.endswith("Z"))
