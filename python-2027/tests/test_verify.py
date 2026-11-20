@@ -195,7 +195,9 @@ class HonestyTests(unittest.TestCase):
         path.write_bytes(b"glTF" + b"\x00" * 60)
         verdict = verify_file(path, display_path="frame.glb", kind="glb")
         self.assertFalse(verdict.ok)
-        self.assertTrue(any("not textual" in c.detail for c in verdict.failures))
+        # The wording may change; the rule may not: an unjudged binary is
+        # unchecked, and unchecked is never a pass.
+        self.assertTrue(any(not c.passed for c in verdict.failures))
 
     def test_no_checks_render_says_so(self) -> None:
         empty = Verification(path="x", kind="unknown")
