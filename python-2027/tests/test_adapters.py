@@ -154,9 +154,19 @@ class ShippedAdapterTests(unittest.TestCase):
         assert adapter is not None
         self.assertEqual(adapter.name, "text")
 
-    def test_png_has_no_adapter_and_that_is_visible(self) -> None:
-        # A gap must be queryable, not a silent fallback to text.
-        self.assertIsNone(self.registry.for_probe(probe_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00" * 20)))
+    def test_png_routes_to_the_image_adapter(self) -> None:
+        # Was: PNG had no adapter and the test asserted the gap was visible.
+        # The gap is closed; what must not regress is that PNG never falls
+        # through to `text`, which is how a picture reaches a text viewer.
+        adapter = self.registry.for_probe(probe_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00" * 20))
+        self.assertIsNotNone(adapter)
+        assert adapter is not None
+        self.assertEqual(adapter.name, "image")
+
+    def test_audio_has_no_adapter_and_that_is_visible(self) -> None:
+        # Still a real gap: a family with signatures and no reader must be
+        # queryable rather than silently treated as text.
+        self.assertIsNone(self.registry.for_probe(probe_bytes(b"ID3\x03\x00" + b"\x00" * 20)))
 
     def test_coverage_names_every_operation(self) -> None:
         coverage = self.registry.coverage()
