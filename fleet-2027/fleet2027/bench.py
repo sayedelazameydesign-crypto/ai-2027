@@ -27,6 +27,7 @@ is missing.
 from __future__ import annotations
 
 import hashlib
+import re
 import json
 import tempfile
 import time
@@ -228,8 +229,23 @@ def run_benchmark(
         if dead in live:
             live.remove(dead)
 
+    def _measure_ordered(item: dict, active: Any, _index: int) -> SentenceResult:
+        """Measure one sentence; the index is kept so a parallel wave keeps order."""
+        return _measure(item, active)
+
     def _measure(item: dict, active: Any) -> SentenceResult:
         """Measure one sentence end to end, never raising."""
+        result = _measure_inner(item, active)
+        # A permanent failure is a provider fact, not a sentence fact: the
+        # quota is spent for the day, the model is retired, the credential is
+        # rejected. `_drop` existed but was never called anywhere, so the text
+        # above it described a behaviour the code did not have and a dead tap
+        # kept being scheduled while the run blamed the model for it.
+        if _PERMANENT_MARKERS.search(result.error or ""):
+            _drop(active)
+        return result
+
+    def _measure_inner(item: dict, active: Any) -> SentenceResult:
         sentence_id = str(item["id"])
         domain = str(item["domain"])
         text = str(item["text"])
@@ -312,22 +328,38 @@ def run_benchmark(
             failures=quality.failures(),
         )
 
-    # Assignment is decided before any work starts, so a parallel run is
-    # reproducible and agrees with a serial one about which tap measured which
-    # sentence: sentence i goes to tap (i % len(live)).
-    scheduled = [
-        (item, live[index % len(live)] if live else backend)
-        for index, item in enumerate(sentences)
-    ]
-
-    if workers > 1 and len(scheduled) > 1:
-        # Nearly all of a sentence's time is waiting for the network (measured:
-        # 20 s per sentence, 0.03 s of local work). Overlapping the waits
-        # divides the run time without spending one extra free-tier request.
-        with ThreadPoolExecutor(max_workers=workers) as pool:
-            results = list(pool.map(lambda pair: _measure(*pair), scheduled))
-    else:
-        results = [_measure(item, active) for item, active in scheduled]
+    # A tap is only *proven* dead by using it. Scheduling every sentence up
+    # front handed a dead tap all the sentences it was due before its first
+    # failure came back — 3 calls to a spent quota where 1 proves it. Work is
+    # therefore assigned in waves the size of the live pool: every sentence in
+    # a wave goes to a distinct tap, so each tap is probed by exactly one
+    # sentence. A tap that fails permanently is removed before the next wave,
+    # and every later sentence is handed to a tap that can still answer.
+    results: list[SentenceResult] = []
+    position = 0
+    while position < len(sentences):
+        pool = [tap for tap in live] or [backend]
+        # The first wave probes: exactly one sentence per live tap, so a dead
+        # tap costs one call to prove, not `workers` calls. Probing stays
+        # parallel because the sentences go to *different* taps. Every later
+        # wave is `workers` rounds over the surviving taps, which is what makes
+        # the run faster without spending an extra free-tier request.
+        per_round = 1 if position == 0 else max(workers, 1)
+        wave_size = min(len(sentences) - position, len(pool) * per_round)
+        wave = sentences[position:position + wave_size]
+        pairs = [(item, pool[offset % len(pool)]) for offset, item in enumerate(wave)]
+        if workers > 1 and len(pairs) > 1:
+            # Nearly all of a sentence's time is waiting for the network
+            # (measured: 20 s per sentence, 0.03 s of local work). Overlapping
+            # the waits inside a wave divides the run time without spending one
+            # extra free-tier request. Waves stay ordered because `map` keeps
+            # the input order.
+            with ThreadPoolExecutor(max_workers=workers) as pool_exec:
+                wave_results = list(pool_exec.map(lambda pair: _measure(*pair), pairs))
+        else:
+            wave_results = [_measure(item, active) for item, active in pairs]
+        results.extend(wave_results)
+        position += len(wave)
 
     called_any = any(r.model_called for r in results)
 
@@ -338,6 +370,14 @@ def run_benchmark(
         generated_at=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         results=tuple(results),
     )
+
+
+#: A provider failure that will answer the same way for every later sentence.
+#: Kept as a plain pattern so `bench` does not import the agent module.
+_PERMANENT_MARKERS = re.compile(
+    r"http_(400|401|403|404|410|429)|not_configured|model_retired|"
+    r"ModelRetired|AuthenticationError|PERMISSION_DENIED|quota|billing"
+)
 
 
 #: The artifact each domain must produce, mirroring the plan's `out` basename.
