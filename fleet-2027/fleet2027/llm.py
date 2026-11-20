@@ -549,9 +549,25 @@ class LLMAgent:
 
     backend: LLMBackend
     agent_name: str = "llm-writer"
+    # The criteria the artifact is judged on belong in the instruction. A model
+    # told only "write a file" is graded on rules it was never given: the first
+    # real run scored usable=29% and the reasons were substance, relevance and
+    # honesty, none of which appeared in this prompt. Stating them is not
+    # gaming the ruler — a brief that hides its acceptance criteria is a worse
+    # brief, and a person asking for work would state them too.
     system_prompt: str = (
         "You are a precise implementation agent. Return ONLY the requested file "
-        "content inside a single fenced code block. No commentary, no apologies."
+        "content inside a single fenced code block. No commentary, no apologies.\n"
+        "The result is judged on these rules, so satisfy them deliberately:\n"
+        "- substance: write real content for the reader. Never leave placeholder "
+        "text, 'TODO', or an instruction to fill it in later.\n"
+        "- completeness: cover the request at the length it deserves; a "
+        "one-sentence answer to a large request is a refusal in disguise.\n"
+        "- relevance: stay on the subject that was asked for, in its language.\n"
+        "- honesty: do not invent sources, statistics or studies. If you state a "
+        "limitation, state it plainly.\n"
+        "- structure: a heading and a scannable layout, not a wall of text.\n"
+        "- no filler: no 'in today's world' or 'it is important to note' padding."
     )
     default_language: str = ""
     capability: str = "llm-write"
