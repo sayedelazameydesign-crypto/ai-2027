@@ -342,3 +342,56 @@ class FailureDiagnosisTests(unittest.TestCase):
                 self.assertTrue(result.get("status"), "status must be returned too")
             finally:
                 store.close()
+
+class PermanentFailureTests(unittest.TestCase):
+    """A spent quota must not be retried; a flaky service must."""
+
+    def test_a_permanent_http_error_costs_one_call(self) -> None:
+        """429/410/401 will answer the same way, so the retry is waste.
+
+        Measured before this: a backend answering 429 to everything cost 3
+        calls for one sentence — 6 of 9 wasted calls over three dead taps,
+        which is 12% of a 50-request free day.
+        """
+
+        class DeadRateLimited:
+            name = "rl"
+            model = "rl"
+
+            def __init__(self) -> None:
+                self.calls = 0
+
+            def is_configured(self) -> bool:
+                return True
+
+            def complete(self, request):
+                self.calls += 1
+                raise LLMError("http_429: free-models-per-day")
+
+        dead = DeadRateLimited()
+        report = run_benchmark(backend=dead, limit=1)
+        self.assertEqual(dead.calls, 1, f"retried a spent quota {dead.calls} times")
+        self.assertEqual(report.results[0].status, "dead_letter")
+        # The benchmark's own error names the cause that reached it.
+        self.assertIn("http_429", str(report.results[0].error))
+
+    def test_a_transient_error_is_still_retried(self) -> None:
+        """A 500 or a timeout can succeed on the next attempt."""
+
+        class Flaky:
+            name = "flaky"
+            model = "flaky"
+
+            def __init__(self) -> None:
+                self.calls = 0
+
+            def is_configured(self) -> bool:
+                return True
+
+            def complete(self, request):
+                self.calls += 1
+                raise LLMError("http_503: provider overloaded")
+
+        flaky = Flaky()
+        run_benchmark(backend=flaky, limit=1)
+        self.assertGreater(flaky.calls, 1, "a transient error should be retried")

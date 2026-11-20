@@ -62,7 +62,17 @@ class StepFailure(RuntimeError):
     Use it instead of returning ``ok=False`` when the failure should count
     against the circuit breaker as an infrastructure problem, not a business
     result.
+
+    ``permanent=True`` says a retry cannot help: the quota is spent for the
+    day (`http_429`), the model is retired (`http_410`), or the credential
+    was rejected (`http_401`). Retrying those spends a scarce free-tier
+    request to learn what the first reply already said. Measured: a backend
+    answering 429 to everything cost three calls for one sentence.
     """
+
+    def __init__(self, message: str, *, permanent: bool = False) -> None:
+        super().__init__(message)
+        self.permanent = permanent
 
 
 @dataclass
@@ -655,7 +665,14 @@ class FleetRunner:
             # must never take the fleet down.
             if isinstance(exc, StepFailure):
                 detail = str(exc)
-                self._handle_failure(task_id, snapshot, detail, started)
+                if exc.permanent:
+                    # No point retrying a spent quota or a retired model: the
+                    # next attempt is billed to the same exhausted allowance.
+                    self._handle_failure(
+                        task_id, snapshot, detail, started, permanent=True
+                    )
+                else:
+                    self._handle_failure(task_id, snapshot, detail, started)
                 return _Outcome(
                     snapshot.step_id, entry.spec.name, "failed", None, None, detail, duration
                 )
@@ -759,12 +776,18 @@ class FleetRunner:
         started: float,
         *,
         crashed: bool = False,
+        permanent: bool = False,
         verification: VerificationReport | None = None,
         artifacts: Sequence[Any] = (),
     ) -> None:
-        """Decide retry vs dead-letter using the persisted attempt budget."""
+        """Decide retry vs dead-letter using the persisted attempt budget.
+
+        ``permanent`` overrides the budget: a spent daily quota is not a
+        transient fault, so it dead-letters on the first attempt instead of
+        spending two more free-tier requests to confirm it.
+        """
         del crashed, verification, artifacts, started
-        attempts_left = snapshot.attempts < snapshot.max_attempts
+        attempts_left = not permanent and snapshot.attempts < snapshot.max_attempts
         backoff = min(
             self.config.backoff_cap_s,
             self.config.backoff_base_s * (2 ** max(0, snapshot.attempts - 1)),
@@ -777,7 +800,11 @@ class FleetRunner:
             will_retry=attempts_left,
             backoff_s=backoff,
             dead_letter_reason=(
-                f"exhausted {snapshot.max_attempts} attempt(s): {error[:300]}"
+                (
+                    f"not retryable: {error[:280]}"
+                    if permanent
+                    else f"exhausted {snapshot.max_attempts} attempt(s): {error[:300]}"
+                )
                 if not attempts_left
                 else None
             ),
