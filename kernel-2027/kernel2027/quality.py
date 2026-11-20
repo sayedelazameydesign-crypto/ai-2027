@@ -77,9 +77,21 @@ WEIGHTS: dict[str, float] = {
 #: domain score as relevant to all of them.
 _DOMAIN_TOKENS: dict[str, tuple[str, ...]] = {
     "website": ("<html", "<body", "href", "<h1", "<title", "<p>"),
-    "document": ("#", "##", "-", "1."),
+    # A document's topic words are added, never substituted: the markdown
+    # tokens stay because removing one lowers the score of any artifact that
+    # scored on it, and the ratchet must never move down. `research` already
+    # lists the Arabic "المصدر"; a report that cites its source is on-topic
+    # for `document` too, and it scored 0/4 here before these were added.
+    "document": (
+        "#", "##", "-", "1.",
+        "تقرير", "الملخص", "المصدر", "التوصيات", "مقدمة", "خاتمة",
+        "report", "summary", "source", "recommendation", "introduction",
+    ),
     "research": ("المصدر", "مصدر", "source", "found", "evidence", "بحث"),
-    "organize": ("خطوه", "خطوة", "step", "اليوم", "day", "1.", "2."),
+    "organize": (
+        "خطوه", "خطوة", "step", "اليوم", "day", "1.", "2.",
+        "خطوات", "steps", "جدول", "schedule", "ترتيب", "order",
+    ),
     "learn": ("مثال", "example", "لماذا", "because", "يعني", "means"),
     "travel": ("يوم", "day", "فندق", "hotel", "تكلفه", "تكلفة", "cost", "صباح"),
     "business": ("العميل", "customer", "السوق", "market", "الربح", "revenue"),
@@ -235,13 +247,49 @@ def _structure(domain: str, text: str) -> Criterion:
     return Criterion("structure", score, reason)
 
 
+#: Arabic attaches the article and possessive endings to the same root, so a
+#: literal substring test misses the word it is looking for: a report saying
+#: "التوصية" (one recommendation) contains neither "التوصيات" (the list) nor
+#: "توصيات". Measured: a complete 483-character Arabic report about a market
+#: scored relevance 0.00 and was called unusable. Stripping these affixes is
+#: the narrow fix — it does not lower any score, because a token that matched
+#: before still matches.
+_AR_ARTICLE = "ال"
+_AR_SUFFIXES = ("يات", "ات", "ون", "ين", "ية", "ها", "ه", "ة", "ي", "ا")
+
+
+def _fold_arabic(word: str) -> str:
+    """Reduce an Arabic word to the stem a keyword match should use."""
+    word = word.strip()
+    if word.startswith(_AR_ARTICLE) and len(word) > len(_AR_ARTICLE) + 2:
+        word = word[len(_AR_ARTICLE) :]
+    for suffix in _AR_SUFFIXES:
+        if word.endswith(suffix) and len(word) > len(suffix) + 2:
+            word = word[: -len(suffix)]
+            break
+    return word
+
+
+def _matches(haystack: str, needle: str) -> bool:
+    """Whether `needle` appears in `haystack`, allowing Arabic inflection."""
+    if needle.lower() in haystack:
+        return True
+    folded_needle = _fold_arabic(needle)
+    if not folded_needle or folded_needle == needle:
+        # Not an inflectable token (markdown syntax, latin word): the literal
+        # test above is the whole answer.
+        return False
+    words = re.findall(r"[^\W\d_]+", haystack)
+    return any(_fold_arabic(word) == folded_needle for word in words)
+
+
 def _relevance(domain: str, text: str) -> Criterion:
     """Does the artifact actually address the domain it was asked for?"""
     tokens = _DOMAIN_TOKENS.get(domain, ())
     if not tokens:
         return Criterion("relevance", 0.5, "no token list for this domain")
     low = text.lower()
-    hits = sum(1 for token in tokens if token.lower() in low)
+    hits = sum(1 for token in tokens if _matches(low, token))
     # Three hits is enough to establish the artifact is about the domain; more
     # than that adds no confidence and would reward keyword stuffing.
     score = min(1.0, hits / 3)
