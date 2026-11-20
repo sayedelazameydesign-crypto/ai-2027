@@ -144,10 +144,27 @@ class ShippedAdapterTests(unittest.TestCase):
         assert adapter is not None
         self.assertEqual(adapter.name, "parquet")
 
-    def test_docx_routes_through_the_archive_adapter(self) -> None:
+    def test_docx_routes_through_the_zip_adapter(self) -> None:
+        # The adapter is named `zip` since the split: one adapter that claimed
+        # `{ZIP, ARCHIVE}` while only ZIP had a reader made coverage() count the
+        # archive family as inspected when nothing inspected it.
         adapter = self.registry.for_probe(probe_bytes(b"PK\x03\x04" + b"\x00" * 50))
         assert adapter is not None
-        self.assertIn(adapter.name, {"archive", "docx"})
+        self.assertIn(adapter.name, {"zip", "docx"})
+
+    def test_zip_and_archive_are_separate_adapters(self) -> None:
+        names = {adapter.name for adapter in self.registry.adapters}
+        self.assertIn("zip", names)
+        self.assertIn("archive", names)
+        zip_adapter = next(a for a in self.registry.adapters if a.name == "zip")
+        archive_adapter = next(a for a in self.registry.adapters if a.name == "archive")
+        self.assertEqual(zip_adapter.families, frozenset({Family.ZIP}))
+        self.assertEqual(archive_adapter.families, frozenset({Family.ARCHIVE}))
+
+    def test_a_gzip_is_claimed_by_the_archive_adapter_not_zip(self) -> None:
+        adapter = self.registry.for_probe(probe_bytes(b"\x1f\x8b\x08\x00" + b"\x00" * 40))
+        assert adapter is not None
+        self.assertEqual(adapter.name, "archive")
 
     def test_markdown_routes_to_text(self) -> None:
         adapter = self.registry.for_probe(probe_bytes("# عنوان\n".encode()))
