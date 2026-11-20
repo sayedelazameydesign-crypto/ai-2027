@@ -194,12 +194,14 @@ class UnknownFamilyTests(unittest.TestCase):
         self.assertIn("why:", rendered)
 
     def test_binary_with_no_verifier_is_not_a_pass(self) -> None:
-        # Honest gap, not a defect -- and still not a pass.
-        path = self.tmp / "clip.mp4"
-        path.write_bytes(b"\x00\x00\x00\x18ftypmp42" + b"\x00" * 40)
-        verdict = verify_file(path, display_path="clip.mp4", kind="mp4")
+        # Honest gap, not a defect -- and still not a pass. MP4 gained a verifier
+        # when the media reader landed, so the example moved to a family that
+        # still has none: a CAD file.
+        path = self.tmp / "part.step"
+        path.write_bytes(b"ISO-10303-21;\n" + b"\x00" * 60)
+        verdict = verify_file(path, display_path="part.step", kind="step")
         self.assertFalse(verdict.ok)
-        self.assertTrue(any("no verifier" in check.detail for check in verdict.failures))
+        self.assertTrue(any(not check.passed for check in verdict.failures))
 
 
 if __name__ == "__main__":  # pragma: no cover - convenience
