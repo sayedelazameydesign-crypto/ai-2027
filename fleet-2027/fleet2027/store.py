@@ -570,16 +570,25 @@ class DurableTaskStore:
         return tuple(json.loads(row["artifacts_json"]))
 
     def step_result(self, task_id: str, step_id: str) -> dict[str, Any] | None:
-        """Return the recorded result/evidence of one finished step."""
+        """Return the recorded result/evidence of one finished step.
+
+        ``error`` and ``status`` are included because a caller that only sees
+        an empty output cannot tell a model that answered badly from a step
+        that never ran. The benchmark reported "no artifact" for 23 of 24
+        sentences when the truth — an LLM timeout — was sitting in this column
+        the whole time.
+        """
         row = self._conn.execute(
-            "SELECT output, evidence_json, verification_report_json FROM steps "
-            "WHERE task_id = ? AND step_id = ?",
+            "SELECT output, evidence_json, verification_report_json, last_error, status "
+            "FROM steps WHERE task_id = ? AND step_id = ?",
             (task_id, step_id),
         ).fetchone()
         if row is None:
             return None
         return {
             "output": row["output"],
+            "status": row["status"],
+            "error": row["last_error"],
             "evidence": json.loads(row["evidence_json"]) if row["evidence_json"] else {},
             "verification": (
                 json.loads(row["verification_report_json"])
