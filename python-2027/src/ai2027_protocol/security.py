@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-import ipaddress
 import os
 import re
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from urllib.parse import unquote, urlparse
 
 from kernel2027.contracts import UnsafeValueError
@@ -48,7 +47,7 @@ def redact_secrets(text: str) -> str:
     Delegates to :mod:`kernel2027` so the pattern list cannot drift between the
     engines that log provider errors — this was one of 24 copies of the same idea.
     """
-    return kernel_redact(text)
+    return cast(str, kernel_redact(text))
 
 
 def scrub_mapping(data: Mapping[str, Any]) -> dict[str, Any]:

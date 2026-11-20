@@ -47,7 +47,13 @@ Stdlib only. Python 3.10+.
 from __future__ import annotations
 
 # Make the sibling kernel importable from a bare checkout before it is used.
-import _kernel_path  # noqa: F401,E402  isort: skip
+# Make the sibling kernel importable before it is used, whether this module is
+# imported flat (`import adapter`, script dir on sys.path) or as part of its
+# package. A bare `import _kernel_path` only resolves in the first case.
+try:  # pragma: no cover - the two branches differ only by import style
+    from . import _kernel_path  # noqa: F401
+except ImportError:  # pragma: no cover
+    import _kernel_path  # type: ignore  # noqa: F401
 
 import hashlib
 import hmac

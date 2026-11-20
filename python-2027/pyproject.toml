@@ -91,7 +91,10 @@ strict = true
 plugins = ["pydantic.mypy"]
 warn_unused_ignores = true
 warn_unreachable = true
-mypy_path = ["src", "workers/python-worker/src"]
+# kernel-2027 is the in-repo, stdlib-only shared package (../kernel-2027). It is
+# not a published dependency, so mypy needs the path rather than an install —
+# the same affordance _kernel_path.py gives the interpreter at runtime.
+mypy_path = ["src", "workers/python-worker/src", "../kernel-2027"]
 
 [tool.pydantic-mypy]
 init_forbid_extra = true

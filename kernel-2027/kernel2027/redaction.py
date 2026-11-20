@@ -50,11 +50,11 @@ REDACTED = "[REDACTED]"
 
 
 def redact(
-    text: str,
+    text: Any,
     secrets: Iterable[str] | None = None,
     *,
     marker: str = REDACTED,
-) -> str:
+) -> Any:
     """Mask credential-shaped substrings in ``text``.
 
     ``secrets`` adds *literal* values to scrub — the case a regex cannot catch,
