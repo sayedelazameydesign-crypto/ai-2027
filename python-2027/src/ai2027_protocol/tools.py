@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import os
-import sys
 import time
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
@@ -135,6 +134,16 @@ _TOOL_SPECS: tuple[ToolSpec, ...] = (
         description="Read text lines from a workspace or sandbox file safely.",
         read_only=True,
         parameters_hint='{"path": "README.md", "scope": "workspace|sandbox", "max_lines": 120}',
+    ),
+    ToolSpec(
+        name="workspace.index_file",
+        description=(
+            "Map a file's structure (sections, tables, code blocks) without "
+            "reading its content. Costs a fraction of the file at any size; "
+            "use it before read_file on anything long."
+        ),
+        read_only=True,
+        parameters_hint='{"path": "report.md", "scope": "workspace|sandbox"}',
     ),
     ToolSpec(
         name="workspace.grep",
@@ -283,6 +292,12 @@ class SandboxToolRuntime:
             return await self._list_files(args, ctx)
         if tool == "workspace.read_file":
             return await self._read_file(args, ctx)
+        if tool == "workspace.index_file":
+            # Imported here, not at module scope: tools_text imports from this
+            # module, and a top-level mutual import would fail on first load.
+            from .tools_text import index_file_tool
+
+            return await index_file_tool(args, ctx)
         if tool == "workspace.grep":
             return await workspace_grep_tool(args, ctx)
         if tool == "sandbox.write_artifact":
@@ -290,7 +305,10 @@ class SandboxToolRuntime:
         if tool == "sandbox.edit_file":
             return await self._edit_file(args, ctx)
         if tool == "sandbox.run_python":
-            return await self._run_python(args, ctx)
+            # Imported here to avoid a mutual top-level import with tools_exec.
+            from .tools_exec import run_python_tool
+
+            return await run_python_tool(args, ctx, self._write_artifact)
         if tool == "sandbox.run_tests":
             return await run_sandbox_tests(args, ctx)
         if tool == "sandbox.verify_artifact":
@@ -479,89 +497,6 @@ class SandboxToolRuntime:
         updated = existing.replace(old_text, new_text, 1)
         res = await self._write_artifact({"path": rel_path, "content": updated}, ctx)
         return res.model_copy(update={"tool": "sandbox.edit_file"})
-
-    async def _run_python(self, args: Mapping[str, Any], ctx: ToolContext) -> ToolOutcome:
-        if ctx.read_only:
-            return ToolOutcome(
-                tool="sandbox.run_python",
-                ok=False,
-                summary="Blocked by AI2027_READ_ONLY",
-                error="Service is running in read-only mode.",
-            )
-        rel_path = str(args.get("path", "run_script.py")).strip() or "run_script.py"
-        if not rel_path.endswith(".py"):
-            raise SecurityValidationError("sandbox.run_python path must end with .py")
-        timeout_s = max(0.2, min(float(args.get("timeout_s", 5.0)), 10.0))
-        code_raw = args.get("code")
-        target = resolve_safe_path(ctx.sandbox_dir, rel_path)
-
-        sha: str | None = None
-        if code_raw is not None:
-            write_outcome = await self._write_artifact(
-                {"path": rel_path, "content": str(code_raw)}, ctx
-            )
-            if not write_outcome.ok:
-                return write_outcome.model_copy(update={"tool": "sandbox.run_python"})
-            sha = write_outcome.verified_sha256
-        elif not await asyncio.to_thread(target.is_file):
-            raise FileNotFoundError(f"Sandbox script not found: {rel_path}")
-
-        safe_env = {
-            "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
-            "LANG": "C.UTF-8",
-            "PYTHONIOENCODING": "utf-8",
-            "PYTHONDONTWRITEBYTECODE": "1",
-        }
-        proc = await asyncio.create_subprocess_exec(
-            sys.executable,
-            "-I",
-            "-B",
-            str(target),
-            cwd=str(ctx.sandbox_dir),
-            env=safe_env,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        try:
-            async with asyncio.timeout(timeout_s):
-                stdout_b, stderr_b = await proc.communicate()
-        except TimeoutError:
-            proc.kill()
-            await proc.wait()
-            return ToolOutcome(
-                tool="sandbox.run_python",
-                ok=False,
-                summary=f"Python execution timed out after {timeout_s:.1f}s",
-                artifact_path=rel_path,
-                artifact_kind="python",
-                verified_sha256=sha,
-                error=f"Execution exceeded {timeout_s:.1f}s limit.",
-            )
-
-        stdout_txt = redact_secrets(
-            stdout_b[:_MAX_PROCESS_OUTPUT_BYTES].decode("utf-8", errors="replace")
-        )
-        stderr_txt = redact_secrets(
-            stderr_b[:_MAX_PROCESS_OUTPUT_BYTES].decode("utf-8", errors="replace")
-        )
-        combined = stdout_txt.strip()
-        if stderr_txt.strip():
-            combined = f"{combined}\n[stderr]\n{stderr_txt.strip()}".strip()
-        ok = proc.returncode == 0
-        return ToolOutcome(
-            tool="sandbox.run_python",
-            ok=ok,
-            summary=(
-                f"Executed {rel_path} (exit={proc.returncode})"
-                if ok
-                else f"{rel_path} exited with code {proc.returncode}"
-            ),
-            output=combined,
-            verified_sha256=sha,
-            artifact_path=rel_path,
-            artifact_kind="python",
-            error=None if ok else (stderr_txt.strip() or f"Process exited {proc.returncode}"),
-        )
 
     async def _memory_search(self, args: Mapping[str, Any], ctx: ToolContext) -> ToolOutcome:
         query = str(args.get("query", "")).strip()
