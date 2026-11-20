@@ -357,6 +357,38 @@ def _read_sqlite(
     return _sqlite_ir(path, real, size)
 
 
+def _read_archive(
+    path: str, probe: Probe, _text: str | None, size: int, _real: Path | None, handle: object
+) -> DocumentIR:
+    """Route an archive to the reader that matches its header.
+
+    The defect this replaces: every archive format reached `zipfile`, so a valid
+    .tar.gz and a valid .7z were both reported as
+
+        refused: not a readable zip: File is not a zip file
+
+    A false accusation of corruption is worse than a gap: it sends the user to
+    repair a file that is intact. ZIP therefore keeps its own reader and every
+    other format is described from its own header.
+    """
+    if probe.format in {"zip", "zip-empty", "zip-spanned"}:
+        return _read_zip(path, probe, _text, size, _real, handle)
+    data = b""
+    if handle is not None:
+        handle.seek(0)  # type: ignore[attr-defined]
+        data = handle.read(4 * 1024 * 1024)  # type: ignore[attr-defined]
+    from .archive import describe_archive
+
+    lines, notes = describe_archive(data, probe.format)
+    return DocumentIR(
+        path=path,
+        kind=probe.format,
+        family=Family.ARCHIVE,
+        bytes_on_disk=size,
+        notes=tuple(lines) + tuple(notes),
+    )
+
+
 def _read_zip(
     path: str, probe: Probe, _text: str | None, size: int, _real: Path | None, handle: object
 ) -> DocumentIR:
@@ -454,7 +486,8 @@ _READERS: dict[str, Reader] = {
     "text": _read_text,
     "sqlite": _read_sqlite,
     "parquet": _read_parquet,
-    "archive": _read_zip,
+    "zip": _read_archive,
+    "archive": _read_archive,
     "image": _read_image,
     "pdf": _read_pdf,
     "media": _read_media,

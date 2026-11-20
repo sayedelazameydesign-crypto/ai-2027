@@ -165,9 +165,46 @@ def _looks_textual(prefix: bytes) -> tuple[bool, str]:
     return False, "does not decode as utf-8/16/32"
 
 
+def _is_binary_stl(data: bytes) -> bool:
+    """Whether these bytes are a binary STL, by its arithmetic signature.
+
+    Binary STL has no magic: an 80-byte header of arbitrary text (often a CAD
+    program's name), a 32-bit triangle count, then exactly 50 bytes per triangle.
+    The header's text is why the generic textual test called a valid mesh "text"
+    -- measured, `part.stl` (134 bytes, one triangle) was described as
+
+        text (text) ... no headings; this is a single block of text
+
+    The signature is arithmetic, and it is exact: 84 + 50*n must equal the file
+    size. A text file that happens to pass this is possible but not plausible,
+    and the size is known, so the test is decisive rather than heuristic.
+    """
+    if len(data) < 84:
+        return False
+    count = int.from_bytes(data[80:84], "little")
+    if count == 0:
+        return False
+    return 84 + count * 50 == len(data)
+
+
 def probe_bytes(data: bytes) -> Probe:
     """Classify a byte prefix. The single decision point for "what is this?"."""
     prefix = data[:PROBE_BYTES]
+
+    # STL runs before the signature table, deliberately. Binary STL has no magic
+    # and its 80-byte header is free text -- many CAD programs write "solid ..."
+    # into it, which matches the ASCII-STL signature at offset 0. The prefix is
+    # therefore genuinely ambiguous, and the only decisive discriminator is the
+    # size identity 84 + 50*n == len(data). Checking it first is what makes a
+    # binary mesh geometry instead of "a single block of text".
+    if len(data) >= 84 and _is_binary_stl(data):
+        return Probe(
+            family=Family.GEOMETRY,
+            format="stl-binary",
+            bytes_read=len(prefix),
+            reason="80-byte header + 50 bytes per triangle matches the file size",
+        )
+
     for signature, offset, family, name in _SIGNATURES:
         end = offset + len(signature)
         if len(prefix) >= end and prefix[offset:end] == signature:
