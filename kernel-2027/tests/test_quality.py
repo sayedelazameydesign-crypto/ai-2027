@@ -106,8 +106,9 @@ class DeterminismTests(unittest.TestCase):
     def test_no_network_and_no_provider(self) -> None:
         import ast
 
-        source = (Path(__file__).resolve().parent.parent /
-                  "kernel2027" / "quality.py").read_text(encoding="utf-8")
+        source = (
+            Path(__file__).resolve().parent.parent / "kernel2027" / "quality.py"
+        ).read_text(encoding="utf-8")
         imported: set[str] = set()
         for node in ast.walk(ast.parse(source)):
             if isinstance(node, ast.Import):
@@ -121,8 +122,9 @@ class DeterminismTests(unittest.TestCase):
         """Reading from disk must not change the answer."""
         import tempfile
 
-        with tempfile.NamedTemporaryFile("w", suffix=".html", delete=False,
-                                         encoding="utf-8") as handle:
+        with tempfile.NamedTemporaryFile(
+            "w", suffix=".html", delete=False, encoding="utf-8"
+        ) as handle:
             handle.write(REAL)
             path = handle.name
         try:
@@ -149,7 +151,10 @@ class CriterionTests(unittest.TestCase):
         self.assertIn("remote", criterion.reason)
 
     def test_filler_is_penalised(self) -> None:
-        padded = REAL + "<p>Certainly! As an AI, I would be happy to help. Hope this helps.</p>"
+        padded = (
+            REAL
+            + "<p>Certainly! As an AI, I would be happy to help. Hope this helps.</p>"
+        )
         report = score("website", padded)
         self.assertLess({c.name: c.score for c in report.criteria}["no_filler"], 0.6)
 
@@ -212,6 +217,7 @@ class ShapeTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
 
 class PlaceholderVocabularyTests(unittest.TestCase):
     """A real word must not be mistaken for an unfilled template.
@@ -276,7 +282,7 @@ class ArabicArtifactTests(unittest.TestCase):
     )
 
     def test_an_inflected_arabic_report_is_relevant(self) -> None:
-        """"التوصية" must match the "التوصيات" marker."""
+        """ "التوصية" must match the "التوصيات" marker."""
         from kernel2027.quality import _relevance
 
         criterion = _relevance("document", self.REPORT)
@@ -284,13 +290,17 @@ class ArabicArtifactTests(unittest.TestCase):
 
     def test_the_report_is_usable(self) -> None:
         report = score("document", self.REPORT)
-        self.assertTrue(report.usable, f"a complete Arabic report scored {report.score}")
+        self.assertTrue(
+            report.usable, f"a complete Arabic report scored {report.score}"
+        )
 
     def test_a_source_citation_counts_as_a_document_marker(self) -> None:
         """`research` lists "المصدر"; a report citing its source is on-topic too."""
         from kernel2027.quality import _relevance
 
-        criterion = _relevance("document", "تقرير عن السوق. المصدر: غرفة الصناعات 2025.")
+        criterion = _relevance(
+            "document", "تقرير عن السوق. المصدر: غرفة الصناعات 2025."
+        )
         self.assertGreater(criterion.score, 0.0, criterion.reason)
 
     def test_folding_never_invents_a_match(self) -> None:
@@ -299,3 +309,79 @@ class ArabicArtifactTests(unittest.TestCase):
 
         self.assertFalse(_matches("نص عادي بلا صلة", "تقرير"))
         self.assertTrue(_matches("هذا تقرير مفيد", "تقرير"))
+
+
+class AdversarialRulerTests(unittest.TestCase):
+    """The four inputs the ruler must refuse, measured before the fix and after.
+
+    Each of these scored as a deliverable at some point in this repository's
+    history. They are kept as regression tests because the failure mode is
+    always the same: the ruler counts something the reader never sees.
+    """
+
+    CHROME = (
+        "<!doctype html><html><head><title>موقعي</title>"
+        "<style>body{margin:0}</style></head>"
+        "<body><h1>موقعي</h1><p>الرئيسية</p><p>اتصل بنا</p></body></html>"
+    )
+
+    def test_a_page_of_pure_chrome_is_not_usable(self) -> None:
+        """Measured before: 0.8443 and usable. 21 of 25 "words" were tag names."""
+        report = score("website", self.CHROME)
+        self.assertFalse(report.usable, f"chrome-only page scored {report.score}")
+
+    def test_a_scaffold_without_its_placeholder_sentence_is_not_usable(self) -> None:
+        """Measured before: deleting one sentence moved 0.6506 to 0.8927."""
+        # The scaffold the bench produces, 670 characters, measured from a real
+        # run. A literal, because `kernel` does not depend on `fleet` and the
+        # ruler must be testable on its own.
+        produced = (
+            '<!doctype html>\n<html lang="ar" dir="rtl">\n<head>\n'
+            '  <meta charset="utf-8">\n'
+            "  <title>بناء موقع - «اعمل لي موقع لمشروعي»</title>\n"
+            "  <style>body{font-family:system-ui,sans-serif;max-width:42rem;"
+            "margin:4rem auto;padding:0 1.5rem;line-height:1.7}</style>\n"
+            "</head>\n<body>\n"
+            "  <h1>بناء موقع - «اعمل لي موقع لمشروعي»</h1>\n"
+            "  <p>الجمهور المستهدف: general</p>\n"
+            "  <p>استبدل هذا النص بمحتواك الحقيقي. هذه الصفحة تعمل بلا إنترنت وبلا أي اعتماديات.</p>\n"
+            "</body>\n</html>\n"
+        )
+        leftover = "استبدل هذا النص بمحتواك الحقيقي. هذه الصفحة تعمل بلا إنترنت وبلا أي اعتماديات."
+        stripped = produced.replace(leftover, "")
+        self.assertNotEqual(
+            produced, stripped, "the sentence this test removes must exist"
+        )
+        report = score("website", stripped)
+        self.assertFalse(report.usable, f"de-placeheld scaffold scored {report.score}")
+
+    def test_repeated_text_is_not_rewarded_with_more_substance(self) -> None:
+        # Substance answers "is there prose", and 20x repetition has prose, so
+        # it scores 1.0 -- correctly. What must not happen is repetition being
+        # *rewarded*: twenty copies and forty copies must score identically,
+        # which proves the criterion is not a length reward.
+        once = "هذا نص حقيقي مكتوب لقارئ يريد أن يفهم الموضوع بالتفصيل."
+        one = "<html><body><p>" + once * 20 + "</p></body></html>"
+        two = "<html><body><p>" + once * 40 + "</p></body></html>"
+        a = next(c for c in score("website", one).criteria if c.name == "substance")
+        b = next(c for c in score("website", two).criteria if c.name == "substance")
+        self.assertEqual(a.score, b.score, "substance must not reward repetition")
+
+    def test_real_prose_still_passes(self) -> None:
+        real = (
+            "<html><body>"
+            + (
+                "<p>This is genuine prose written for a reader who wants the details. </p>"
+                * 12
+            )
+            + "</body></html>"
+        )
+        report = score("website", real)
+        self.assertTrue(report.usable, f"real prose scored {report.score}")
+
+    def test_the_arabic_report_is_still_usable(self) -> None:
+        """The fix must not make the ruler stricter on honest, short Arabic."""
+        report = score("document", ArabicArtifactTests.REPORT)
+        self.assertTrue(
+            report.usable, f"a complete Arabic report scored {report.score}"
+        )

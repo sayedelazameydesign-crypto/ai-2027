@@ -187,11 +187,19 @@ class ShippedAdapterTests(unittest.TestCase):
         assert adapter is not None
         self.assertEqual(adapter.name, "media")
 
-    def test_geometry_has_no_adapter_and_that_is_visible(self) -> None:
+    def test_geometry_routes_to_the_geometry_adapter(self) -> None:
+        # This test used to assert that NO adapter claimed geometry. The reader
+        # now exists, so the assertion moved to `ole` -- which is still empty --
+        # rather than being deleted. The rule survives; the stale claim does not.
+        adapter = self.registry.for_probe(probe_bytes(b"glTF" + b"\x00" * 20))
+        assert adapter is not None
+        self.assertEqual(adapter.name, "geometry")
+
+    def test_ole_has_no_adapter_and_that_is_visible(self) -> None:
         # A family with signatures and no reader must stay queryable rather than
-        # silently falling through to text. This is the rule the audio test used
-        # to hold; it moved to a family that is still empty.
-        self.assertIsNone(self.registry.for_probe(probe_bytes(b"glTF" + b"\x00" * 20)))
+        # silently falling through to text.
+        ole_magic = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"
+        self.assertIsNone(self.registry.for_probe(probe_bytes(ole_magic + b"\x00" * 20)))
 
     def test_coverage_names_every_operation(self) -> None:
         coverage = self.registry.coverage()

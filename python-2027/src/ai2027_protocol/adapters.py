@@ -193,6 +193,15 @@ def _media_adapter() -> Adapter:
     )
 
 
+def _geometry_adapter() -> Adapter:
+    """glTF/GLB, STEP and STL: counted from headers, never tessellated."""
+    return Adapter(
+        name="geometry",
+        families=frozenset({Family.GEOMETRY}),
+        operations=frozenset({Operation.INSPECT, Operation.SLICE}),
+    )
+
+
 def _zip_adapter() -> Adapter:
     """ZIP only: the container with a central directory and a bomb check."""
     return Adapter(
@@ -227,6 +236,7 @@ def default_registry() -> Registry:
         _pdf_adapter,
         _media_adapter,
         _text_adapter,
+        _geometry_adapter,
         _zip_adapter,
         _archive_adapter,
     ):

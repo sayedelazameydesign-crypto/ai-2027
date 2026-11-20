@@ -36,6 +36,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import BinaryIO
 
+from .geometry import GeometryInfo, read_geometry
 from .images import ImageInfo, read_image
 from .index import DocumentIndex, build_index
 from .ingest import Family, Probe
@@ -102,6 +103,8 @@ class DocumentIR:
     pdf: PdfInfo | None = None
     #: Audio and video carry duration and dimensions from their container.
     media_info: MediaInfo | None = None
+    #: Geometry files declare their object and vertex counts in a header.
+    geometry: GeometryInfo | None = None
     #: Everything the reader could not determine, named explicitly.
     notes: tuple[str, ...] = field(default_factory=tuple)
 
@@ -140,6 +143,10 @@ class DocumentIR:
             media_lines = self.media_info.render().splitlines()
             lines.extend("  " + line for line in media_lines)
 
+        if self.geometry is not None:
+            geometry_lines = self.geometry.render().splitlines()
+            lines.extend("  " + line for line in geometry_lines)
+
         lines.extend(f"  note: {note}" for note in self.notes)
         return "\n".join(lines)
 
@@ -154,6 +161,7 @@ class DocumentIR:
             or (self.media is not None and self.media.readable)
             or (self.pdf is not None and self.pdf.readable)
             or (self.media_info is not None and self.media_info.readable)
+            or (self.geometry is not None and self.geometry.readable)
         )
 
 
@@ -357,6 +365,30 @@ def _read_sqlite(
     return _sqlite_ir(path, real, size)
 
 
+def _read_geometry(
+    path: str, probe: Probe, _text: str | None, size: int, _real: Path | None, handle: object
+) -> DocumentIR:
+    """Read the header's counts. The mesh itself is never loaded or tessellated."""
+    data = b""
+    if handle is not None:
+        handle.seek(0)  # type: ignore[attr-defined]
+        # A GLB's JSON chunk is metadata; the BIN chunk is the payload. Reading a
+        # bounded prefix is enough for every header in this family.
+        data = handle.read(16 * 1024 * 1024)  # type: ignore[attr-defined]
+    info = read_geometry(data, probe.format)
+    notes = list(info.notes)
+    if not data:
+        notes.append("the geometry header needs an open handle; none was given")
+    return DocumentIR(
+        path=path,
+        kind=probe.format,
+        family=probe.family,
+        bytes_on_disk=size,
+        geometry=info,
+        notes=tuple(notes),
+    )
+
+
 def _read_archive(
     path: str, probe: Probe, _text: str | None, size: int, _real: Path | None, handle: object
 ) -> DocumentIR:
@@ -486,6 +518,7 @@ _READERS: dict[str, Reader] = {
     "text": _read_text,
     "sqlite": _read_sqlite,
     "parquet": _read_parquet,
+    "geometry": _read_geometry,
     "zip": _read_archive,
     "archive": _read_archive,
     "image": _read_image,
