@@ -201,6 +201,19 @@ class ShippedAdapterTests(unittest.TestCase):
         ole_magic = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"
         self.assertIsNone(self.registry.for_probe(probe_bytes(ole_magic + b"\x00" * 20)))
 
+    def test_csv_provider_declares_compile(self) -> None:
+        # Measured: coverage() reported compile: 0 because no adapter declared
+        # the operation. This is the first one that does.
+        self.assertIn(
+            "csv", [adapter.name for adapter in self.registry.providers(Operation.COMPILE)]
+        )
+
+    def test_the_csv_provider_claims_compile_and_patch_only(self) -> None:
+        # It must not quietly duplicate the text adapter's inspect/slice claims,
+        # and it must not claim an operation `edit.py` cannot do.
+        csv_adapter = next(a for a in self.registry.adapters if a.name == "csv")
+        self.assertEqual(csv_adapter.operations, frozenset({Operation.PATCH, Operation.COMPILE}))
+
     def test_coverage_names_every_operation(self) -> None:
         coverage = self.registry.coverage()
         self.assertEqual(set(coverage), ALL_OPERATIONS)
