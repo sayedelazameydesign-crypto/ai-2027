@@ -340,12 +340,36 @@ class OpenAICompatibleBackend:
         latency = (time.perf_counter() - started) * 1000.0
         choices = payload.get("choices")
         text = None
+        finish_reason = ""
+        detail = "no choices[0].message.content"
         if isinstance(choices, list) and choices and isinstance(choices[0], Mapping):
-            message = choices[0].get("message")
+            choice = choices[0]
+            finish_reason = str(choice.get("finish_reason") or "")
+            message = choice.get("message")
             if isinstance(message, Mapping):
-                text = message.get("content")
+                content = message.get("content")
+                if isinstance(content, str) and content.strip():
+                    text = content
+                elif isinstance(content, str) and content == "":
+                    # Reasoning models can return an empty `content` and put the
+                    # tokens elsewhere. `reasoning` is the answer for this run;
+                    # an explicit empty string is still a real (bad) answer.
+                    reasoning = message.get("reasoning")
+                    if isinstance(reasoning, str) and reasoning.strip():
+                        text = reasoning
+                    else:
+                        detail = "choices[0].message.content is empty"
+                refusal = message.get("refusal")
+                if text is None and isinstance(refusal, str) and refusal.strip():
+                    detail = f"model refused: {refusal[:120]}"
         if not isinstance(text, str):
-            raise LLMError("invalid_payload: no choices[0].message.content")
+            # State which of the many shapes actually came back. "invalid
+            # payload" alone sent a whole debugging round down the wrong path.
+            keys = sorted(payload) if isinstance(payload, Mapping) else []
+            raise LLMError(
+                f"invalid_payload: {detail}; finish_reason={finish_reason!r}; "
+                f"top_level_keys={keys}"
+            )
         return LLMResponse(
             text=text,
             backend=self.name,

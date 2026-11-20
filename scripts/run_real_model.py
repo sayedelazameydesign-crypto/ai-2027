@@ -146,12 +146,18 @@ def main(argv: list[str] | None = None) -> int:
                        max_tokens=8, timeout_s=30.0)
         )
     except (LLMError, OSError) as exc:
-        print(f"refusing to run: {backend.name} is not reachable: {exc}", file=sys.stderr)
-        print(
-            "hint: for Ollama, start it with 'ollama serve' and pull a model first "
-            "(e.g. 'ollama pull qwen3.5:0.8b').",
-            file=sys.stderr,
-        )
+        # "not reachable" was printed for every failure, including a reply
+        # that arrived and could not be parsed. The two need different fixes,
+        # so they get different sentences.
+        kind = "replied but the payload was unusable" if "invalid_payload" in str(exc) \
+            else "is not reachable"
+        print(f"refusing to run: {backend.name} {kind}: {exc}", file=sys.stderr)
+        if kind == "is not reachable":
+            print(
+                "hint: for Ollama, start it with 'ollama serve' and pull a model first "
+                "(e.g. 'ollama pull qwen3.5:0.8b').",
+                file=sys.stderr,
+            )
         return 2
     print(f"connected · model={probe.model} · {probe.latency_ms:.0f} ms")
 
