@@ -35,7 +35,7 @@
 | 3 | **Durable Task Engine** | 🟢 | `fleet-2027/fleet2027/store.py` (WAL + synchronous=FULL + lease + attempts + DLQ + idempotency + audit chain) | داخل العملية (threads) لا موزّعًا عبر عدة عُقد/عمال |
 | 4 | **Long-Term Memory** | 🟢 | `memory/store.py` · `python-2027/.../celia_memory.py` | محلي SQLite؛ لا مزامنة بين أجهزة |
 | 5 | **Knowledge & RAG** | 🟡 | `celia_memory.py` (تضمين معجمي حتمي) · `tools_advanced.py` (بحث RAG) | تضمين **معجمي لا عصبي**؛ لا pgvector ولا بحث هجين بإعادة ترتيب |
-| 6 | **Tool & MCP Platform** | 🟡 | `connectors-hub/` · `tools.py` · `tools_advanced.py` | مزوّدو Hub في CI محاكاة؛ لا خادم MCP كامل (اكتشاف/موارد/إلغاء) |
+| 6 | **Tool & MCP Platform** | 🟡 | `connectors-hub/` · `tools.py` · `tools_advanced.py` · `python-2027/.../mcp_server.py` · `mcp_inspector.py` · `mcp_attestation.py` · `mcp_stdio.py` (stdio B1: اكتشاف/استدعاء/تقدم/إلغاء) | أداة قراءة واحدة فقط؛ لا موارد/مطالبات MCP ولا نقل HTTP؛ HMAC امتداد بمفتاح مشترك لا توقيع بمفتاح عام |
 | 7 | **Cloud Computer** | 🟡 | `python-2027/.../tools.py` (subprocess مقيّد بمسار) · E2B يدوي | لا بيئة معزولة لكل مهمة تُشغَّل في CI |
 | 8 | **Browser Automation** | 🟡 | `browser_skill_adapter/` | وضع `local` فقط؛ CI يشغّل متصفحًا محاكى |
 | 9 | **Coding Environment** | 🟡 | `tools_advanced.py` (git diff/grep/tests) · SandboxToolRuntime | لا مستودع Git كامل + PR + نشر معاينة تحت الاختبار |
@@ -175,7 +175,7 @@ PASS idempotency       · PASS audit-chain         · PASS sigkill-resume
 
 | PR | العنوان | معيار القبول |
 |---|---|---|
-| **B1** | خادم MCP بحد أدنى (اكتشاف + استدعاء + إلغاء + تقدم) | عميل خارجي يكتشف أداة واحدة ويستدعيها ويعيد نتيجة موقّعة |
+| **B1** 🟢 (مسار تقني منفصل عن P0–P5؛ stdio محدود) | خادم MCP بحد أدنى (اكتشاف + استدعاء + إلغاء + تقدم) | PR #141: CI المطلوب أخضر؛ 119 اختبار MCP/red-team محلي ناجح وSDK خارجي ناجح. تدقيق الملفات `max_file_loc=590` (هامش 60 من سقف 650). لا يُعامل كمرحلة تشغيل للنظام. التفاصيل: `RUNBOOK.md` و`python-2027/README.md` |
 | **B2** | متصفح حقيقي تحت الاختبار (Playwright في CI) | لقطة + HTML + SHA-256 في `launch/evidence/` |
 | **B3** | Artifact Studio: xlsx + pptx + معاينة | ملفان يُفتحان، وبصمة لكل منهما، ومعاينة في `studio.py` |
 | **B4** | مجدول دائم (APScheduler بلا اعتمادية أو cron داخلي) | مهمة متكررة تستمر 3 دورات عبر إعادة تشغيل |
@@ -212,7 +212,7 @@ PASS idempotency       · PASS audit-chain         · PASS sigkill-resume
 **لا، لم يُنجز بعد:**
 - لا يوجد **وكيل LLM** داخل الـfleet (الوكلاء الحاليون برامج حتمية — وهذا مذكور في مخرجات CLI نفسها).
 - لا يوجد **توزيع عبر عُقد** (threads داخل عملية واحدة).
-- **MCP**، **متصفح حقيقي في CI**، **xlsx/pptx**، **نشر حي** — كلها لاحقة بترتيبها في جدول PRs.
+- **منصة MCP العامة** (الموارد/المطالبات/HTTP وتعدد الأدوات)، **متصفح حقيقي في CI**، **xlsx/pptx**، **نشر حي** — كلها لاحقة بترتيبها في جدول PRs.
 
 **الحد الأدنى للإطلاق التنافسي (15/15 في خريطة المستخدم) لا يزال بعيدًا:** 9 من 15 مكوّنًا منفّذ جزئيًا على الأقل، 0 منها «مكتمل بمعيار منتج تجاري». هذا الرقم الصادق أهم من أي شعار.
 
