@@ -74,6 +74,51 @@ jobs:
           else
             echo "available=true" >> "$GITHUB_OUTPUT"
           fi
+      # Diagnose before measuring. "It failed" is not a finding; knowing
+      # whether the runner cannot reach the host, or reached it and was told
+      # no, is the difference between a fix and a guess.
+      - name: Diagnose reachability and credential shape (no secret printed)
+        if: steps.gate.outputs.available == 'true'
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        run: |
+          python3 - <<'PY'
+          import json, os, socket, ssl, urllib.request, urllib.error
+
+          key = os.environ.get("OPENROUTER_API_KEY", "")
+          print(f"key present: {bool(key)} · length: {len(key)} · "
+                f"prefix ok: {key.startswith('sk-or-')}")
+
+          host = "openrouter.ai"
+          try:
+              ip = socket.gethostbyname(host)
+              print(f"dns {host}: ok")
+          except OSError as exc:
+              print(f"dns {host}: FAILED ({type(exc).__name__})")
+              raise SystemExit(0)
+
+          try:
+              ctx = ssl.create_default_context()
+              with socket.create_connection((host, 443), timeout=15) as sock:
+                  with ctx.wrap_socket(sock, server_hostname=host) as tls:
+                      print(f"tls {host}: ok ({tls.version()})")
+          except Exception as exc:  # noqa: BLE001 - diagnostic must not crash
+              print(f"tls {host}: FAILED ({type(exc).__name__}: {exc})")
+              raise SystemExit(0)
+
+          req = urllib.request.Request(
+              "https://openrouter.ai/api/v1/models",
+              headers={"Authorization": f"Bearer {key}"},
+          )
+          try:
+              with urllib.request.urlopen(req, timeout=20) as resp:
+                  print(f"GET /api/v1/models: http {resp.status}")
+          except urllib.error.HTTPError as exc:
+              print(f"GET /api/v1/models: http {exc.code} (body omitted)")
+          except Exception as exc:  # noqa: BLE001 - diagnostic must not crash
+              print(f"GET /api/v1/models: FAILED ({type(exc).__name__}: {exc})")
+          PY
+
       - name: Measure (free provider only)
         id: measure
         if: steps.gate.outputs.available == 'true'
