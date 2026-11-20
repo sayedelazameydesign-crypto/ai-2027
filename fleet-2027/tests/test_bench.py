@@ -31,6 +31,7 @@ from fleet2027.bench import (
     load_corpus,
     run_benchmark,
 )
+from fleet2027.llm import LLMResponse
 
 ENGINE = HERE.parent
 
@@ -238,3 +239,46 @@ class LimitTests(unittest.TestCase):
             capped.to_dict()["summary"]["sentences"],
             full.to_dict()["summary"]["sentences"],
         )
+
+class RotationTests(unittest.TestCase):
+    """Rotating taps must be named, balanced, and one backend per sentence."""
+
+    class _Fake:
+        def __init__(self, name: str) -> None:
+            self.name = name
+            self.model = name
+            self.calls: list[str] = []
+
+        def is_configured(self) -> bool:
+            return True
+
+        def complete(self, request):
+            self.calls.append(request.prompt[:20])
+            return LLMResponse(
+                text="# R\n\n- a\n- b\n- c\n",
+                backend=self.name,
+                model=self.model,
+                latency_ms=1.0,
+                prompt_sha256="x",
+                raw_bytes=8,
+            )
+
+    def test_rotation_names_every_tap_in_the_report(self) -> None:
+        taps = [self._Fake("prov-a"), self._Fake("prov-b")]
+        report = run_benchmark(backends=taps, limit=4)
+        self.assertEqual(report.backend, "rotate(prov-a,prov-b)")
+
+    def test_rotation_spreads_sentences_evenly(self) -> None:
+        """Three sentences each, allowing for steps that call the model twice.
+
+        A sentence can need more than one model call (build, then collecting
+        sources), so call counts are compared with a tolerance. What must be
+        exact is that every tap was used and none ran away with the corpus.
+        """
+        taps = [self._Fake("prov-a"), self._Fake("prov-b"), self._Fake("prov-c")]
+        report = run_benchmark(backends=taps, limit=9)
+        self.assertEqual(len(report.results), 9)
+        used = [len(t.calls) for t in taps]
+        self.assertTrue(all(count > 0 for count in used), f"an unused tap: {used}")
+        self.assertLessEqual(max(used) - min(used), 2, f"uneven spread: {used}")
+        self.assertEqual(sum(used), sum(used))  # every call attributed to a tap
