@@ -47,7 +47,7 @@ def check_imports() -> int:
     stdlib = set(sys.stdlib_module_names) | CONDITIONAL_STDLIB
     rel = {
         "contracts", "store", "verifier", "registry", "runner", "examples", "llm",
-        "routing",
+        "routing", "generalist", "bench",
         # The shared kernel: stdlib-only by construction (its own test suite
         # asserts that), so importing it cannot smuggle in a third-party dep.
         "kernel2027",

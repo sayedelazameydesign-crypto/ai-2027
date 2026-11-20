@@ -1,0 +1,127 @@
+{
+  "version": 1,
+  "note": "Fixed benchmark sentences. Three per domain, varied in language, length and ambiguity. Changing this file changes its sha256, which changes the benchmark id, so results from different corpora can never be compared by accident.",
+  "count": 24,
+  "sentences": [
+    {
+      "id": "website-1",
+      "domain": "website",
+      "text": "اعمل لي موقع لمشروعي"
+    },
+    {
+      "id": "website-2",
+      "domain": "website",
+      "text": "أريد صفحة تعريفية لمتجر عسل بلدي"
+    },
+    {
+      "id": "website-3",
+      "domain": "website",
+      "text": "build me a website for my consulting practice"
+    },
+    {
+      "id": "document-1",
+      "domain": "document",
+      "text": "اكتب لي تقرير عن السوق"
+    },
+    {
+      "id": "document-2",
+      "domain": "document",
+      "text": "محتاج مستند فيه سيرتي الذاتية"
+    },
+    {
+      "id": "document-3",
+      "domain": "document",
+      "text": "write a one-page report on remote work"
+    },
+    {
+      "id": "research-1",
+      "domain": "research",
+      "text": "ابحث عن أفضل لابتوب للمبرمجين"
+    },
+    {
+      "id": "research-2",
+      "domain": "research",
+      "text": "قارن بين البطاريات القابلة للشحن"
+    },
+    {
+      "id": "research-3",
+      "domain": "research",
+      "text": "compare these two approaches to caching"
+    },
+    {
+      "id": "organize-1",
+      "domain": "organize",
+      "text": "نظم اسبوعي"
+    },
+    {
+      "id": "organize-2",
+      "domain": "organize",
+      "text": "عايز خطة لتنظيم مهامي اليومية"
+    },
+    {
+      "id": "organize-3",
+      "domain": "organize",
+      "text": "organize my week around three projects"
+    },
+    {
+      "id": "learn-1",
+      "domain": "learn",
+      "text": "اشرح لي البلوكشين"
+    },
+    {
+      "id": "learn-2",
+      "domain": "learn",
+      "text": "علمني كيف تعمل الشفرة الوراثية"
+    },
+    {
+      "id": "learn-3",
+      "domain": "learn",
+      "text": "explain how transformers work"
+    },
+    {
+      "id": "travel-1",
+      "domain": "travel",
+      "text": "خطط رحلة إلى اليابان"
+    },
+    {
+      "id": "travel-2",
+      "domain": "travel",
+      "text": "عايز برنامج سياحي لأسوان ثلاثة أيام"
+    },
+    {
+      "id": "travel-3",
+      "domain": "travel",
+      "text": "plan a week in Turkey on a budget"
+    },
+    {
+      "id": "business-1",
+      "domain": "business",
+      "text": "حلل مشروعي"
+    },
+    {
+      "id": "business-2",
+      "domain": "business",
+      "text": "عندي فكرة تطبيق ومحتاج خطة عمل"
+    },
+    {
+      "id": "business-3",
+      "domain": "business",
+      "text": "help me think through a small business idea"
+    },
+    {
+      "id": "code-1",
+      "domain": "code",
+      "text": "اصلح كود فيه خطأ"
+    },
+    {
+      "id": "code-2",
+      "domain": "code",
+      "text": "اكتب لي دالة تجمع الأرقام"
+    },
+    {
+      "id": "code-3",
+      "domain": "code",
+      "text": "fix a bug in my script"
+    }
+  ]
+}

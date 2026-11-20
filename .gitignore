@@ -69,3 +69,7 @@ fleet-2027/fleet.db*
 fleet-2027/**/.fleet-scratch/
 .fleet-scratch/
 demo/
+
+# Quality benchmark: the corpus and the baseline are reviewed source, the
+# per-run report is generated and would otherwise churn on every invocation.
+fleet-2027/bench/latest.json
