@@ -24,10 +24,11 @@ classifiers = [
   "Typing :: Typed",
 ]
 dependencies = [
-  # Shared reliability primitives (stdlib-only, in-repo at ../kernel-2027).
-  # Installed via `pip install -e kernel-2027`; declared here so the
-  # relationship is explicit rather than a hidden sys.path trick.
-  "kernel-2027>=1.0,<2",
+  # NOTE: kernel-2027 is deliberately NOT a declared dependency here.
+  # It is stdlib-only and sits in the same repository, so
+  # `ai2027_protocol/_kernel_path.py` makes it importable from a checkout with
+  # no install. Declaring it would force a uv.lock regeneration and a PyPI
+  # lookup for a package that is not published — cost with no benefit.
   "fastapi>=0.115,<1",
   "httpx>=0.27,<1",
   "opentelemetry-api>=1.27,<2",

@@ -46,6 +46,9 @@ Stdlib only. Python 3.10+.
 """
 from __future__ import annotations
 
+# Make the sibling kernel importable from a bare checkout before it is used.
+import _kernel_path  # noqa: F401,E402  isort: skip
+
 import hashlib
 import hmac
 import ipaddress
