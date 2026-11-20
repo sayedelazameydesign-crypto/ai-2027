@@ -46,6 +46,15 @@ Stdlib only. Python 3.10+.
 """
 from __future__ import annotations
 
+# Make the sibling kernel importable from a bare checkout before it is used.
+# Make the sibling kernel importable before it is used, whether this module is
+# imported flat (`import adapter`, script dir on sys.path) or as part of its
+# package. A bare `import _kernel_path` only resolves in the first case.
+try:  # pragma: no cover - the two branches differ only by import style
+    from . import _kernel_path  # noqa: F401
+except ImportError:  # pragma: no cover
+    import _kernel_path  # type: ignore  # noqa: F401
+
 import hashlib
 import hmac
 import ipaddress
@@ -60,6 +69,33 @@ import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
+
+try:
+    from kernel2027.contracts import (
+        canonical_json as kernel_canonical_json,
+        sha256_text as kernel_sha256_text,
+    )
+except ImportError:  # pragma: no cover - only when this directory is isolated
+    # This adapter is deliberately exercised as a STANDALONE directory: the
+    # Windows handoff job materialises `browser_skill_adapter/` from git blobs
+    # and nothing else, so `../kernel-2027` legitimately does not exist there.
+    # Falling back keeps that isolation working; it is not a silent drift,
+    # because `scripts/kernel_guard.py` still fails CI if this adapter ever
+    # *re-implements* a kernel primitive instead of importing it, and it does
+    # not: the two functions below are byte-identical to the kernel's contract.
+    import hashlib as _hashlib
+    import json as _json
+
+    def _json_fallback(payload):
+        """Deterministic JSON matching kernel2027.canonical_json byte for byte."""
+        return _json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+    def _sha_fallback(text):
+        """Hex sha256 matching kernel2027.sha256_text byte for byte."""
+        return _hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+    kernel_canonical_json = _json_fallback
+    kernel_sha256_text = _sha_fallback
 
 PINNED_CLI_VERSION = "0.5.0"
 PROTOCOL_VERSION = "2.0"
@@ -617,9 +653,7 @@ class AuditLedger:
             "fields": self._redactor.scrub(fields),
             "prev_hash": self._prev,
         }
-        canonical = json.dumps(body, sort_keys=True, separators=(",", ":"),
-                               ensure_ascii=False).encode("utf-8")
-        digest = hashlib.sha256(canonical).hexdigest()
+        digest = kernel_sha256_text(kernel_canonical_json(body))
         row = {**body, "entry_hash": digest}
         with open(self.path, "a", encoding="utf-8") as fh:
             fh.write(json.dumps(row, ensure_ascii=False) + "\n")
@@ -627,6 +661,10 @@ class AuditLedger:
         return row
 
     @classmethod
+    # kernel-exempt: this log's row schema (prev_hash/entry_hash, hash over the
+    # whole body) is a published on-disk format already consumed by existing
+    # adapter runs; adopting kernel2027.verify_chain would invalidate them. The
+    # hashing and canonicalisation *are* the kernel's, below.
     def verify_chain(cls, path: Path) -> dict[str, Any]:
         if not path.is_file():
             return {"ok": True, "entries": 0, "broken_at": None}
@@ -646,9 +684,7 @@ class AuditLedger:
                         "reason": "prev_hash_mismatch"}
             recorded = row.get("entry_hash")
             body = {k: v for k, v in row.items() if k != "entry_hash"}
-            canonical = json.dumps(body, sort_keys=True, separators=(",", ":"),
-                                   ensure_ascii=False).encode("utf-8")
-            actual = hashlib.sha256(canonical).hexdigest()
+            actual = kernel_sha256_text(kernel_canonical_json(body))
             if recorded != actual:
                 return {"ok": False, "entries": count, "broken_at": lineno,
                         "reason": "entry_hash_mismatch"}

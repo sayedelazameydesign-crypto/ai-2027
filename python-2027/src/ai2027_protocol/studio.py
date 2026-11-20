@@ -288,6 +288,8 @@ def build_studio_router(
         return await agent.connectors_bridge.list_approvals(session_id=session_id)
 
     @api.post("/v1/studio/approvals/{action_id}/approve", response_model=ApprovalProposal)
+    # kernel-exempt: HTTP transport only — read-only guard, delegate, translate
+    # errors to status codes. It holds no approval policy of its own.
     async def approve_action(
         action_id: str, payload: ApprovalDecisionRequest | None = None
     ) -> ApprovalProposal:

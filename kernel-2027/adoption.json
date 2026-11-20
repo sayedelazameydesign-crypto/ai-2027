@@ -1,0 +1,23 @@
+{
+  "engines_importing": [
+    "browser_skill_adapter",
+    "fleet-2027",
+    "python-2027",
+    "render_control_adapter"
+  ],
+  "engines_present": [
+    "browser_skill_adapter",
+    "command-hud",
+    "connectors-hub",
+    "deployment",
+    "fleet-2027",
+    "live-agent",
+    "memory",
+    "monitoring",
+    "python-2027",
+    "render_control_adapter",
+    "scripts"
+  ],
+  "accepted_duplicates": [],
+  "note": "Ratchet file: engines_importing may only grow. accepted_duplicates are visible debt, not permissions."
+}
