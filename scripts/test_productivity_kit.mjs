@@ -9,11 +9,11 @@ const index = read("index.html");
 const lab = read("lab.html");
 
 const essentials = [
-  "refined-github", "octotree", "ui-vision", "singlefile", "zotero-connector",
-  "ublock-origin-lite", "bitwarden", "vimium",
+  "refined-github", "octotree", "ui-vision", "singlefile", "gofullpage", "json-formatter",
+  "zotero-connector", "ublock-origin-lite", "bitwarden", "vimium",
 ];
 
-test("the kit includes the eight local tools and only one optional advanced adapter", () => {
+test("the kit includes the ten local tools and only one optional advanced adapter", () => {
   assert.deepEqual(extensions.filter((item) => item.category !== "advanced").map((item) => item.id), essentials);
   assert.deepEqual(filterExtensions("advanced", "").map((item) => item.id), ["browserskill"]);
   assert.equal(new Set(extensions.map((item) => item.id)).size, extensions.length);
@@ -92,4 +92,26 @@ test("the Ui.Vision macro can only open the loopback fixture and run four fixed 
   for (const { Target } of Commands.slice(1)) assert.ok(lab.includes(Target.replace(/^id=/, 'id="') + '"'));
   assert.match(lab, /href="ui-vision-lab\.json" download/);
   assert.match(read("lab.mjs"), /input\.value === "ARENA-2027"[\s\S]+setResult\("LAB_OK", "pass"\)/);
+});
+
+test("the JSON fixture is synthetic, static, and parses as the eight-key object it claims", () => {
+  const block = lab.match(/<pre class="lab-json[^>]*>([\s\S]*?)<\/pre>/);
+  assert.ok(block, "the lab must expose a JSON fixture block");
+  const payload = JSON.parse(block[1]);
+  assert.deepEqual(Object.keys(payload).sort(), ["items", "kit", "notes", "schema_version", "synthetic", "totals"]);
+  assert.equal(payload.synthetic, true, "the fixture must declare itself synthetic");
+  assert.equal(payload.notes, null, "null must survive verbatim for the formatter test");
+  assert.equal(payload.totals.tested, 0, "no test may be pre-marked as passing");
+  assert.doesNotMatch(block[1], /https?:\/\//, "the fixture must not reference a remote service");
+});
+
+test("the full-page capture fixture puts its two markers far enough apart to prove capture", () => {
+  const section = lab.match(/<section class="lab-card" id="longpage"[\s\S]*?<\/section>/);
+  assert.ok(section, "the lab must expose a long-page fixture");
+  const body = section[0];
+  assert.match(body, /CAPTURE-TOP-2027/);
+  assert.match(body, /CAPTURE-BOTTOM-2027/);
+  assert.match(body, /class="longpage-spacer"/, "the two markers need a spacer between them");
+  assert.ok(body.indexOf("CAPTURE-TOP-2027") < body.indexOf("CAPTURE-BOTTOM-2027"));
+  assert.match(read("kit.css"), /\.longpage-spacer\s*\{[^}]*block-size:\s*\d+vh/);
 });

@@ -239,3 +239,7 @@ main h2 { margin-block: 8px 6px; font-size: clamp(1.7rem, 3vw, 2.45rem); font-we
   .handoff .button { margin-inline-start: 0; }
   .tool-card { min-block-size: 0; }
 }
+
+/* JSON and full-page capture fixtures: static, local, and disposable. */
+.lab-card .lab-json { direction: ltr; text-align: left; overflow-x: auto; padding: 10px 12px; margin-block: 10px; background: #0d1520; border: 1px solid var(--line); border-radius: 8px; font: 12px/1.65 var(--mono); color: #cfe3ff; white-space: pre-wrap; word-break: break-word; }
+.lab-card .longpage-spacer { block-size: 165vh; margin-block: 12px; border-inline-start: 2px dashed #42546a; border-inline-end: 2px dashed #42546a; background: repeating-linear-gradient(180deg, #0d1520 0 46px, #101b29 46px 92px); border-radius: 8px; }

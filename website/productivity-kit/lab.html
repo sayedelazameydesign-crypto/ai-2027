@@ -18,7 +18,7 @@
         <span class="brand-text" dir="ltr">ARENA<span> / </span>KIT</span>
       </a>
       <nav class="top-nav" aria-label="أقسام المختبر">
-        <a href="#fixture">عينة الأتمتة</a><a href="#filtering">عينة التصفية</a><a href="#reference">العلامة المرجعية</a>
+        <a href="#fixture">عينة الأتمتة</a><a href="#filtering">عينة التصفية</a><a href="#json">عينة JSON</a><a href="#longpage">صفحة طويلة</a><a href="#reference">العلامة المرجعية</a>
       </nav>
       <a class="project-link" href="./#extensions">إلى قائمة الإضافات</a>
     </div>
@@ -74,6 +74,23 @@
           <p>يجب أن تبقى هذه العلامة والصورة العادية أعلاه ظاهرتين عند فتح نسخة SingleFile من القرص بلا اتصال.</p>
           <p class="reference-marker mono" dir="ltr">ARENA-KIT-2027</p>
           <a class="lab-link" href="./#extensions">ارجع إلى الحزمة وسجّل نتيجتك يدويًا</a>
+        </section>
+      </div>
+
+      <div class="lab-grid">
+        <section class="lab-card" id="json" aria-labelledby="json-title">
+          <h2 id="json-title">عينة <bdi dir="ltr">· JSON</bdi></h2>
+          <p>هذه استجابة API اصطناعية، ليست من خدمة حقيقية. انسخها كما هي إلى أداة تنسيق JSON.</p>
+          <pre class="lab-json mono" id="json-sample" dir="ltr" tabindex="0">{"kit":"arena-productivity-kit-2027","synthetic":true,"schema_version":1,"items":[{"id":"refined-github","status":"not_run"},{"id":"octotree","status":"not_run"},{"id":"singlefile","status":"not_run"}],"totals":{"tools":3,"tested":0},"notes":null}</pre>
+          <p class="lab-note">القيم هنا ثابتة ولا تُرسَل إلى أي خدمة. التنسيق الصحيح يعرض المفاتيح الستة العليا منفصلة، ويحافظ على <code>true</code> و<code>null</code> كما هما.</p>
+        </section>
+        <section class="lab-card" id="longpage" aria-labelledby="longpage-title">
+          <h2 id="longpage-title">عينة الصفحة الطويلة <bdi dir="ltr">· GoFullPage</bdi></h2>
+          <p>التقط هذه الصفحة كاملة. يجب أن تظهر العلامتان أدناه في اللقطة نفسها، بما يعني أن ما تحت الشاشة قد التُقط أيضًا.</p>
+          <p class="reference-marker mono" dir="ltr">CAPTURE-TOP-2027</p>
+          <div class="longpage-spacer" aria-hidden="true"></div>
+          <p class="reference-marker mono" dir="ltr">CAPTURE-BOTTOM-2027</p>
+          <p class="lab-note">إن ظهرت العلامة العليا فقط فلم تُلتقط الصفحة كاملة. لا ترفع لقطة تحتوي على بيانات شخصية.</p>
         </section>
       </div>
     </div>
