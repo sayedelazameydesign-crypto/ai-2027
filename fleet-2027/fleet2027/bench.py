@@ -31,6 +31,7 @@ import json
 import tempfile
 import time
 from collections.abc import Sequence
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -174,6 +175,7 @@ def run_benchmark(
     keep_workspace: str | None = None,
     limit: int | None = None,
     backends: Sequence[Any] | None = None,
+    workers: int = 1,
 ) -> BenchReport:
     """Run every fixed sentence end to end and score the artifact that resulted.
 
@@ -226,12 +228,8 @@ def run_benchmark(
         if dead in live:
             live.remove(dead)
 
-    for item in sentences:
-        if live:
-            active = live[turn % len(live)]
-            turn += 1
-        else:
-            active = backend
+    def _measure(item: dict, active: Any) -> SentenceResult:
+        """Measure one sentence end to end, never raising."""
         sentence_id = str(item["id"])
         domain = str(item["domain"])
         text = str(item["text"])
@@ -242,23 +240,17 @@ def run_benchmark(
         try:
             resolution = resolve(text, task_key=sentence_id)
         except IntentError as exc:
-            # The corpus names a domain; if the reader cannot recover it, the
-            # reader is wrong and the report must say so rather than score zero
-            # and move on. Counted as a failure, with the reason attached.
-            results.append(
-                SentenceResult(
-                    sentence_id=sentence_id,
-                    domain=domain,
-                    text=text,
-                    status="unreadable",
-                    score=0.0,
-                    usable=False,
-                    chars=0,
-                    model_called=False,
-                    error=str(exc),
-                )
+            return SentenceResult(
+                sentence_id=sentence_id,
+                domain=domain,
+                text=text,
+                status="unreadable",
+                score=0.0,
+                usable=False,
+                chars=0,
+                model_called=False,
+                error=str(exc),
             )
-            continue
 
         spec = to_task_spec(
             resolution, task_id=sentence_id, build_step=PlanStep, build_spec=TaskSpec
@@ -266,7 +258,7 @@ def run_benchmark(
         try:
             with DurableTaskStore(db) as store:
                 store.submit(spec)
-                report = FleetRunner(
+                run_report = FleetRunner(
                     store=store,
                     registry=build_generalist_registry(backend=active),
                     workspace_root=workspace,
@@ -275,71 +267,69 @@ def run_benchmark(
                 step = store.step_result(sentence_id, f"{sentence_id}_build") or {}
                 evidence = step.get("evidence") or {}
                 called = bool(evidence.get("called"))
-                status = report.status.value
-                # The runner records a refusal as a failed task, not as an
-                # exception, so the exception handler never saw it. A tap that
-                # produced no model call on its sentence is dead for the rest
-                # of the run.
-                if not called and status != "succeeded":
-                    _drop(active)
+                status = run_report.status.value
         except Exception as exc:  # noqa: BLE001 - a benchmark reports, never crashes
-            if live and active in live:
-                live.remove(active)
-            results.append(
-                SentenceResult(
-                    sentence_id=sentence_id,
-                    domain=domain,
-                    text=text,
-                    status="error",
-                    score=0.0,
-                    usable=False,
-                    chars=0,
-                    model_called=False,
-                    error=f"{type(exc).__name__}: {exc}"[:200],
-                )
+            return SentenceResult(
+                sentence_id=sentence_id,
+                domain=domain,
+                text=text,
+                status="error",
+                score=0.0,
+                usable=False,
+                chars=0,
+                model_called=False,
+                error=f"{type(exc).__name__}: {exc}"[:200],
             )
-            continue
 
-        called_any = called_any or called
         produced = workspace / "intent" / sentence_id / _expected_file(resolution.domain)
         if not produced.exists():
-            # "no artifact" describes the symptom. The step's own error says
-            # why it never appeared — an LLM timeout, a refusal, a verifier
-            # rejection — and that sentence is what makes a bad run diagnosable
-            # instead of merely countable.
             step_error = (step or {}).get("error")
             reason = f"no artifact at {produced.name}"
             if step_error:
                 reason = f"{reason}; step said: {str(step_error)[:150]}"
-            results.append(
-                SentenceResult(
-                    sentence_id=sentence_id,
-                    domain=resolution.domain,
-                    text=text,
-                    status=status,
-                    score=0.0,
-                    usable=False,
-                    chars=0,
-                    model_called=called,
-                    error=reason,
-                )
-            )
-            continue
-
-        quality = score_file(resolution.domain, str(produced))
-        results.append(
-            SentenceResult(
+            return SentenceResult(
                 sentence_id=sentence_id,
                 domain=resolution.domain,
                 text=text,
                 status=status,
-                score=quality.score,
-                usable=quality.usable,
-                chars=quality.chars,
+                score=0.0,
+                usable=False,
+                chars=0,
                 model_called=called,
-                failures=quality.failures(),
+                error=reason,
             )
+
+        quality = score_file(resolution.domain, str(produced))
+        return SentenceResult(
+            sentence_id=sentence_id,
+            domain=resolution.domain,
+            text=text,
+            status=status,
+            score=quality.score,
+            usable=quality.usable,
+            chars=quality.chars,
+            model_called=called,
+            failures=quality.failures(),
         )
+
+    # Assignment is decided before any work starts, so a parallel run is
+    # reproducible and agrees with a serial one about which tap measured which
+    # sentence: sentence i goes to tap (i % len(live)).
+    scheduled = [
+        (item, live[index % len(live)] if live else backend)
+        for index, item in enumerate(sentences)
+    ]
+
+    if workers > 1 and len(scheduled) > 1:
+        # Nearly all of a sentence's time is waiting for the network (measured:
+        # 20 s per sentence, 0.03 s of local work). Overlapping the waits
+        # divides the run time without spending one extra free-tier request.
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            results = list(pool.map(lambda pair: _measure(*pair), scheduled))
+    else:
+        results = [_measure(item, active) for item, active in scheduled]
+
+    called_any = any(r.model_called for r in results)
 
     return BenchReport(
         backend=backend_name,
