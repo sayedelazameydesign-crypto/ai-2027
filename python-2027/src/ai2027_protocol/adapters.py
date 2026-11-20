@@ -193,11 +193,27 @@ def _media_adapter() -> Adapter:
     )
 
 
+def _zip_adapter() -> Adapter:
+    """ZIP only: the container with a central directory and a bomb check."""
+    return Adapter(
+        name="zip",
+        families=frozenset({Family.ZIP}),
+        operations=frozenset({Operation.INSPECT, Operation.SLICE}),
+    )
+
+
 def _archive_adapter() -> Adapter:
+    """Non-ZIP archives, named by format.
+
+    The defect this split fixes: one adapter declared
+    ``families={ZIP, ARCHIVE}`` while only ZIP had a reader, so ``coverage()``
+    counted the archive family as inspected when nothing inspected it. An
+    adapter that claims a family it cannot read makes the coverage number lie.
+    """
     return Adapter(
         name="archive",
-        families=frozenset({Family.ZIP, Family.ARCHIVE}),
-        operations=frozenset({Operation.INSPECT, Operation.SLICE}),
+        families=frozenset({Family.ARCHIVE}),
+        operations=frozenset({Operation.INSPECT}),
     )
 
 
@@ -211,6 +227,7 @@ def default_registry() -> Registry:
         _pdf_adapter,
         _media_adapter,
         _text_adapter,
+        _zip_adapter,
         _archive_adapter,
     ):
         registry.register(factory())
