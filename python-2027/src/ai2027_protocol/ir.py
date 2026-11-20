@@ -39,6 +39,7 @@ from typing import BinaryIO
 from .images import ImageInfo, read_image
 from .index import DocumentIndex, build_index
 from .ingest import Family, Probe
+from .pdf import MAX_SCAN_BYTES, PdfInfo, read_pdf
 
 #: A family reader: (path, probe, text, size, real_path, handle) -> IR.
 Reader = Callable[[str, "Probe", "str | None", int, "Path | None", "object"], "DocumentIR"]
@@ -96,6 +97,8 @@ class DocumentIR:
     rows: int | None = None
     #: Images carry their own header facts (dimensions, depth, colour).
     media: ImageInfo | None = None
+    #: PDFs carry page count, page size and metadata.
+    pdf: PdfInfo | None = None
     #: Everything the reader could not determine, named explicitly.
     notes: tuple[str, ...] = field(default_factory=tuple)
 
@@ -126,6 +129,10 @@ class DocumentIR:
             media_lines = self.media.render().splitlines()
             lines.extend("  " + line for line in media_lines)
 
+        if self.pdf is not None:
+            pdf_lines = self.pdf.render().splitlines()
+            lines.extend("  " + line for line in pdf_lines)
+
         lines.extend(f"  note: {note}" for note in self.notes)
         return "\n".join(lines)
 
@@ -138,6 +145,7 @@ class DocumentIR:
             or self.columns
             or self.rows is not None
             or (self.media is not None and self.media.readable)
+            or (self.pdf is not None and self.pdf.readable)
         )
 
 
@@ -351,6 +359,28 @@ def _read_zip(
     return _zip_ir(path, data, size)
 
 
+def _read_pdf(
+    path: str, probe: Probe, _text: str | None, size: int, _real: Path | None, handle: object
+) -> DocumentIR:
+    """Read PDF structure from a bounded prefix, never the whole file."""
+    data = b""
+    if handle is not None:
+        handle.seek(0)  # type: ignore[attr-defined]
+        data = handle.read(MAX_SCAN_BYTES)  # type: ignore[attr-defined]
+    info = read_pdf(data)
+    notes = info.notes
+    if not data:
+        notes = (*notes, "the pdf structure needs an open handle; none was given")
+    return DocumentIR(
+        path=path,
+        kind="pdf",
+        family=probe.family,
+        bytes_on_disk=size,
+        pdf=info,
+        notes=notes,
+    )
+
+
 def _read_image(
     path: str, probe: Probe, _text: str | None, size: int, _real: Path | None, handle: object
 ) -> DocumentIR:
@@ -394,6 +424,7 @@ _READERS: dict[str, Reader] = {
     "parquet": _read_parquet,
     "archive": _read_zip,
     "image": _read_image,
+    "pdf": _read_pdf,
 }
 
 
