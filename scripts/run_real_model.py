@@ -142,15 +142,23 @@ def main(argv: list[str] | None = None) -> int:
           f"{getattr(backend, 'endpoint_url', '')} ...")
     try:
         probe = backend.complete(
+            # 8 tokens was too few for a reasoning model: it spent the whole
+            # allowance before writing `content`, returning finish_reason
+            # 'length'. The probe asks for one word, not one token.
             LLMRequest(prompt="Reply with the single word: ready", temperature=0.0,
-                       max_tokens=8, timeout_s=30.0)
+                       max_tokens=512, timeout_s=60.0)
         )
     except (LLMError, OSError) as exc:
         # "not reachable" was printed for every failure, including a reply
         # that arrived and could not be parsed. The two need different fixes,
         # so they get different sentences.
-        kind = "replied but the payload was unusable" if "invalid_payload" in str(exc) \
-            else "is not reachable"
+        text = str(exc)
+        if "truncated" in text:
+            kind = "replied but ran out of tokens before answering"
+        elif "invalid_payload" in text:
+            kind = "replied but the payload was unusable"
+        else:
+            kind = "is not reachable"
         print(f"refusing to run: {backend.name} {kind}: {exc}", file=sys.stderr)
         if kind == "is not reachable":
             print(

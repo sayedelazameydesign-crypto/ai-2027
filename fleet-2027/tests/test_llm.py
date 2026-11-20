@@ -301,6 +301,38 @@ class BackendTests(unittest.TestCase):
             llm_mod._post_json = original  # type: ignore[assignment]
             del os.environ["FLEET_TEST_KEY"]
 
+
+    def test_truncation_is_named_truncation_not_invalid_payload(self) -> None:
+        """finish_reason='length' has a fix (raise the budget); a shape error does not."""
+        import os
+
+        os.environ["FLEET_TEST_KEY"] = "sk-not-a-real-key"
+
+        def fake_post(url, payload, headers, *, timeout_s):  # noqa: ANN001, ANN202
+            return {
+                "choices": [{"message": {"content": ""}, "finish_reason": "length"}],
+                    "usage": {"completion_tokens": 8}}
+
+        import fleet2027.llm as llm_mod
+
+        original = llm_mod._post_json
+        llm_mod._post_json = fake_post  # type: ignore[assignment]
+        try:
+            backend = OpenAICompatibleBackend(
+                endpoint_url="https://api.example.com/v1/chat/completions",
+                model="m",
+                api_key_env="FLEET_TEST_KEY",
+            )
+            with self.assertRaises(LLMError) as raised:
+                backend.complete(LLMRequest(prompt="hi", max_tokens=8))
+        finally:
+            llm_mod._post_json = original  # type: ignore[assignment]
+            del os.environ["FLEET_TEST_KEY"]
+        message = str(raised.exception)
+        self.assertIn("truncated", message)
+        self.assertNotIn("invalid_payload", message)
+        self.assertIn("completion_tokens", message)
+
     def test_scripted_backend_replays_and_records_calls(self) -> None:
         backend = ScriptedBackend(script=["one", "two"])
         self.assertEqual(backend.complete(LLMRequest(prompt="a")).text, "one")
