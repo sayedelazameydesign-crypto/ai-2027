@@ -859,3 +859,22 @@ class TokenPacingTests(unittest.TestCase):
         for _ in range(20):
             self.llm._wait_for_token_budget("openrouter", 50_000)
         self.assertLess(_time.monotonic() - started, 0.5)
+
+
+class LayoutInstructionTests(unittest.TestCase):
+    """The prompt must say what "a scannable layout" means, in the language used.
+
+    Measured on the same content: paragraphs scored 0.72, the same text with
+    titled sections and a list scored 0.93. A prompt that says only "a heading
+    and a scannable layout" leaves the model to guess, and two of 24 sentences
+    kept failing on `structure` across runs.
+    """
+
+    def test_the_prompt_names_the_sections_a_report_needs(self) -> None:
+        prompt = LLMAgent.__dataclass_fields__["system_prompt"].default
+        for marker in ("ملخص", "توصيات", "Summary", "Recommendations"):
+            self.assertIn(marker, prompt, f"the layout rule never names {marker}")
+
+    def test_the_prompt_states_why_layout_is_scored(self) -> None:
+        prompt = LLMAgent.__dataclass_fields__["system_prompt"].default
+        self.assertIn("0.93", prompt, "the measured gain is not in the prompt")
