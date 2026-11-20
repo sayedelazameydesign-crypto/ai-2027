@@ -130,16 +130,26 @@ def _report(report, out: str) -> int:
     print(f"report: {shown}")
 
     # Failures are the most useful part of a bad run, so they are summarised
-    # by cause instead of being left inside the JSON report.
-    failures = [r for r in report.results if r.error]
-    if failures:
+    # by cause instead of being left inside the JSON report. A sentence can be
+    # incomplete without raising: `status` may be unfinished, or the artifact
+    # may be missing, or the quality gate may have rejected it. All three are
+    # causes, and reading only `.error` printed an empty summary three runs in
+    # a row.
+    incomplete = [r for r in report.results if r.status != "succeeded" or not r.usable]
+    if incomplete:
         print()
-        print(f"failures: {len(failures)} of {len(report.results)} sentences")
+        print(f"failures: {len(incomplete)} of {len(report.results)} sentences")
         causes: dict[str, int] = {}
-        for item in failures:
-            cause = (item.error or "unknown")[:70]
+        for item in incomplete:
+            if item.error:
+                cause = item.error[:70]
+            elif item.status != "succeeded":
+                cause = f"status={item.status}"
+            else:
+                got = ", ".join(item.failures[:2]) if item.failures else "scored below floor"
+                cause = f"unusable: {got}"[:70]
             causes[cause] = causes.get(cause, 0) + 1
-        for cause, count in sorted(causes.items(), key=lambda kv: -kv[1])[:4]:
+        for cause, count in sorted(causes.items(), key=lambda kv: -kv[1])[:5]:
             print(f"  {count:>2}x {cause}")
 
     baseline = json.loads(BASELINE.read_text(encoding="utf-8"))
