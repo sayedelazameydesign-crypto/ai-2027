@@ -40,12 +40,18 @@ skipped, because a skipped check that renders as a pass is worse than no check.
 from __future__ import annotations
 
 import hashlib
+import re
 import struct
 import zipfile
 import zlib
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import BinaryIO
+
+#: Byte prefixes that identify an image header this build can read. Kept as a
+#: regex only so the branch above stays one line; the reading is done by
+#: `images.read_image`, which is the single authority.
+_IMAGE_MAGIC = re.compile(rb"\A(\x89PNG\r\n\x1a\n|\xff\xd8|GIF8[79]a|BM)")
 
 #: Kinds whose bytes must carry a specific signature. Claiming one of these
 #: without the signature is a mislabel, and a mislabel must fail rather than
@@ -195,6 +201,21 @@ def _check_text_integrity(path: Path, size: int) -> list[Check]:
     return [Check("utf-8 decodable", True, f"{size:,} bytes")]
 
 
+def _check_image(path: Path, head: bytes) -> list[Check]:
+    """An image is valid when its header both parses and agrees with itself.
+
+    Re-uses the same reader the IR uses, so a "valid" verdict means the very
+    facts the system will report are the facts it could read -- not a second,
+    weaker opinion that happens to pass.
+    """
+    from .images import read_image
+
+    info = read_image(head)
+    if not info.readable:
+        return [Check("image header", False, "; ".join(info.notes) or "dimensions unreadable")]
+    return [Check("image header", True, f"{info.width}×{info.height} {info.format}")]
+
+
 def _check_sqlite(path: Path) -> list[Check]:
     """Open read-only and run SQLite's own integrity check.
 
@@ -283,6 +304,8 @@ def verify_file(
                 checks.extend(_check_ooxml(archive, kind))
         except zipfile.BadZipFile as exc:
             checks.append(Check("archive readable", False, str(exc)))
+    elif _IMAGE_MAGIC.search(head):
+        checks.extend(_check_image(real_path, head))
     elif head[:16] == b"SQLite format 3\x00":
         checks.extend(_check_sqlite(real_path))
     elif kind in _STRUCTURED_KINDS:
