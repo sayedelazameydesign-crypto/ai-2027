@@ -67,6 +67,11 @@ from .runner import StepFailure
 #: Hard caps — a model must never be able to hang a wave or fill the disk.
 MAX_OUTPUT_BYTES = 256_000
 MAX_PROMPT_CHARS = 16_000
+#: Sent on every request. Several providers sit behind a WAF that rejects the
+#: default urllib signature ("Python-urllib/3.x") before the API key is read,
+#: so the agent names the project instead.
+USER_AGENT = "ai-2027-fleet/1.0 (+https://github.com/sayedelazameydesign-crypto/ai-2027)"
+
 MAX_TIMEOUT_S = 300.0
 MIN_TIMEOUT_S = 0.5
 
@@ -182,6 +187,11 @@ def _post_json(
     request = urllib.request.Request(url, data=body, method="POST")  # noqa: S310 - validated URL
     request.add_header("Content-Type", "application/json")
     request.add_header("Accept", "application/json")
+    # api.groq.com is behind Cloudflare, which answers the default urllib agent
+    # with `403 error code: 1010` before Groq sees the key. The same key works
+    # from curl, which is what made this look like a bad credential for a whole
+    # debugging round. Callers may override via `headers`.
+    request.add_header("User-Agent", USER_AGENT)
     for key, value in headers.items():
         request.add_header(key, value)
     try:

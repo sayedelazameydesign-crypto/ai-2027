@@ -641,3 +641,53 @@ class InstructionCarriesCriteriaTests(unittest.TestCase):
         prompt = LLMAgent.__dataclass_fields__["system_prompt"].default
         self.assertIn("placeholder", prompt)
         self.assertIn("TODO", prompt)
+
+
+class UserAgentTests(unittest.TestCase):
+    """A Cloudflare-fronted provider rejects the default urllib signature.
+
+    api.groq.com answers `403 error code: 1010` to "Python-urllib/3.x" before
+    Groq reads the key, while the same key succeeds from curl. Without an
+    explicit agent the transport cannot reach Groq at all, and the failure
+    looks like a bad credential.
+    """
+
+    def test_every_request_names_the_project(self) -> None:
+        sent: dict[str, str] = {}
+
+        class _Resp:
+            status = 200
+
+            def read(self, n: int = -1) -> bytes:  # noqa: ANN401
+                return b'{"ok":true}'
+
+            def __enter__(self) -> "_Resp":
+                return self
+
+            def __exit__(self, *exc: object) -> None:
+                return None
+
+        def fake_urlopen(request, timeout=0):  # noqa: ANN001, ANN202
+            sent.update({k.lower(): v for k, v in request.header_items()})
+            return _Resp()
+
+        import urllib.request
+
+        original = urllib.request.urlopen
+        urllib.request.urlopen = fake_urlopen  # type: ignore[assignment]
+        try:
+            import fleet2027.llm as llm_mod
+
+            llm_mod._post_json(
+                "https://api.example.com/v1/chat/completions",
+                {"model": "m"},
+                {"Authorization": "Bearer x"},
+                timeout_s=5.0,
+            )
+        finally:
+            urllib.request.urlopen = original  # type: ignore[assignment]
+
+        agent = sent.get("user-agent", "")
+        self.assertTrue(agent, "no User-Agent was sent; a WAF will reject urllib")
+        self.assertNotIn("Python-urllib", agent)
+        self.assertIn("ai-2027", agent)
