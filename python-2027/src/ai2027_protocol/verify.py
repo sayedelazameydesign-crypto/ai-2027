@@ -50,7 +50,7 @@ from typing import BinaryIO
 #: Kinds whose bytes must carry a specific signature. Claiming one of these
 #: without the signature is a mislabel, and a mislabel must fail rather than
 #: fall through to a weaker check that happens to pass.
-_STRUCTURED_KINDS = frozenset({"docx", "xlsx", "pptx", "zip", "parquet"})
+_STRUCTURED_KINDS = frozenset({"docx", "xlsx", "pptx", "zip", "parquet", "sqlite"})
 
 #: Above this size a ZIP-shaped artifact is not re-read for CRC verification.
 #: Measured: 30 MB costs 22 ms, so the budget is generous; the cap exists to
@@ -195,6 +195,34 @@ def _check_text_integrity(path: Path, size: int) -> list[Check]:
     return [Check("utf-8 decodable", True, f"{size:,} bytes")]
 
 
+def _check_sqlite(path: Path) -> list[Check]:
+    """Open read-only and run SQLite's own integrity check.
+
+    `PRAGMA integrity_check` is the format's own answer to "are these bytes a
+    sound database", which is exactly the question this layer asks. It costs a
+    scan; a database small enough to ship as an artifact is small enough to
+    scan. Above the budget the check reports that it did not run.
+    """
+    import sqlite3
+
+    if path.stat().st_size > MAX_VERIFY_BYTES:
+        return [Check("sqlite integrity", False, "database exceeds the verify budget")]
+    try:
+        connection = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+    except sqlite3.Error as exc:
+        return [Check("sqlite integrity", False, f"could not open read-only: {exc}")]
+    try:
+        answer = connection.execute("PRAGMA integrity_check").fetchone()
+    except sqlite3.Error as exc:
+        return [Check("sqlite integrity", False, f"check failed: {exc}")]
+    finally:
+        connection.close()
+    verdict = str(answer[0]) if answer else "no answer"
+    if verdict != "ok":
+        return [Check("sqlite integrity", False, verdict)]
+    return [Check("sqlite integrity", True, "ok")]
+
+
 def _check_parquet(handle: BinaryIO) -> list[Check]:
     """A parquet file is valid when its footer says so and nothing else does."""
     checks: list[Check] = []
@@ -255,6 +283,8 @@ def verify_file(
                 checks.extend(_check_ooxml(archive, kind))
         except zipfile.BadZipFile as exc:
             checks.append(Check("archive readable", False, str(exc)))
+    elif head[:16] == b"SQLite format 3\x00":
+        checks.extend(_check_sqlite(real_path))
     elif kind in _STRUCTURED_KINDS:
         # The producer claimed a structured kind and the header denies it. This
         # is the mislabelling case: a text file named `report.docx` would pass
@@ -268,15 +298,26 @@ def verify_file(
         )
     elif _looks_textual(head):
         checks.extend(_check_text_integrity(real_path, size))
-    else:
-        # The producer said "text" and the bytes say otherwise. Reporting a pass
-        # here would be the lie this module exists to prevent: `b"glTF" + NULs`
-        # decodes as UTF-8 perfectly and is a binary glTF header.
+    elif kind and kind not in {"unknown", "text"}:
+        # A known binary kind with no verifier here (png, mp4, pdf). Honest gap,
+        # not a defect: the file is not claimed to be text and nothing about it
+        # was disproved. Marked as unchecked so it cannot read as a pass.
         checks.append(
             Check(
                 "content checked",
                 False,
-                f"{kind or 'the'} artifact is not textual; this verifier cannot judge it",
+                f"no verifier for {kind} yet; the bytes were not judged",
+            )
+        )
+    else:
+        # Labelled text, bytes are binary. Reporting a pass here would be the
+        # lie this module exists to prevent: `b"glTF" + NULs` decodes as UTF-8
+        # perfectly and is a binary glTF header.
+        checks.append(
+            Check(
+                "content checked",
+                False,
+                "the artifact is labelled text but its header is binary",
             )
         )
 
