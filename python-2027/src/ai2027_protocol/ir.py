@@ -39,6 +39,7 @@ from typing import BinaryIO
 from .images import ImageInfo, read_image
 from .index import DocumentIndex, build_index
 from .ingest import Family, Probe
+from .media import MediaInfo, read_media
 from .pdf import MAX_SCAN_BYTES, PdfInfo, read_pdf
 
 #: A family reader: (path, probe, text, size, real_path, handle) -> IR.
@@ -99,6 +100,8 @@ class DocumentIR:
     media: ImageInfo | None = None
     #: PDFs carry page count, page size and metadata.
     pdf: PdfInfo | None = None
+    #: Audio and video carry duration and dimensions from their container.
+    media_info: MediaInfo | None = None
     #: Everything the reader could not determine, named explicitly.
     notes: tuple[str, ...] = field(default_factory=tuple)
 
@@ -133,6 +136,10 @@ class DocumentIR:
             pdf_lines = self.pdf.render().splitlines()
             lines.extend("  " + line for line in pdf_lines)
 
+        if self.media_info is not None:
+            media_lines = self.media_info.render().splitlines()
+            lines.extend("  " + line for line in media_lines)
+
         lines.extend(f"  note: {note}" for note in self.notes)
         return "\n".join(lines)
 
@@ -146,6 +153,7 @@ class DocumentIR:
             or self.rows is not None
             or (self.media is not None and self.media.readable)
             or (self.pdf is not None and self.pdf.readable)
+            or (self.media_info is not None and self.media_info.readable)
         )
 
 
@@ -381,6 +389,30 @@ def _read_pdf(
     )
 
 
+def _read_media(
+    path: str, probe: Probe, _text: str | None, size: int, _real: Path | None, handle: object
+) -> DocumentIR:
+    """Walk the container's boxes/chunks. Never reads the media payload."""
+    data = b""
+    if handle is not None:
+        handle.seek(0)  # type: ignore[attr-defined]
+        # The moov box can sit after mdat; read a bounded prefix and, if the
+        # walk needs more, report that rather than loading a 4 GB video.
+        data = handle.read(4 * 1024 * 1024)  # type: ignore[attr-defined]
+    info = read_media(data, probe.format)
+    notes = info.notes
+    if not data:
+        notes = (*notes, "the media container needs an open handle; none was given")
+    return DocumentIR(
+        path=path,
+        kind=info.format,
+        family=probe.family,
+        bytes_on_disk=size,
+        media_info=info,
+        notes=notes,
+    )
+
+
 def _read_image(
     path: str, probe: Probe, _text: str | None, size: int, _real: Path | None, handle: object
 ) -> DocumentIR:
@@ -425,6 +457,7 @@ _READERS: dict[str, Reader] = {
     "archive": _read_zip,
     "image": _read_image,
     "pdf": _read_pdf,
+    "media": _read_media,
 }
 
 
