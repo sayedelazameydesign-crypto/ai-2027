@@ -310,3 +310,35 @@ class RotationTests(unittest.TestCase):
         self.assertLessEqual(dead.calls, 4, f"dead tap called {dead.calls} times")
         self.assertLess(dead.calls, 6, "a dead tap must not outnumber the sentences")
         self.assertEqual(len(report.results), 6)
+
+
+class FailureDiagnosisTests(unittest.TestCase):
+    """A failed sentence must say why, not just that an artifact is absent."""
+
+    def test_step_result_exposes_the_recorded_error(self) -> None:
+        """The error was already in the row; step_result simply did not return it.
+
+        Without it a benchmark can only say "no artifact", which is the
+        symptom. The cause — an LLM timeout during the live run — was present
+        in the database the whole time.
+        """
+        from fleet2027.contracts import PlanStep, TaskSpec
+        from fleet2027.store import DurableTaskStore
+
+        with tempfile.TemporaryDirectory() as tmp:
+            store = DurableTaskStore(str(Path(tmp) / "s.db"))
+            try:
+                step = PlanStep(step_id="s1", agent="generalist", action="build")
+                store.submit(TaskSpec(task_id="t1", goal="g", steps=(step,)))
+                claimed = store.claim_ready_steps("t1", worker="w", lease_seconds=60)
+                self.assertTrue(claimed, "the step must be claimable before it can fail")
+                store.record_failure(
+                    "t1", "s1", worker="w",
+                    error="LLMError: The read operation timed out",
+                    will_retry=False,
+                )
+                result = store.step_result("t1", "s1") or {}
+                self.assertIn("timed out", str(result.get("error")), result)
+                self.assertTrue(result.get("status"), "status must be returned too")
+            finally:
+                store.close()
