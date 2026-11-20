@@ -299,11 +299,18 @@ class OpenAICompatibleBackend:
     model: str
     api_key_env: str
     extra_headers: Mapping[str, str] = field(default_factory=dict)
+    label: str = ""
 
     @property
     def name(self) -> str:
-        """Backend identifier used in events and evidence."""
-        return "openai-compat"
+        """Backend identifier used in events and evidence.
+
+        The label defaults to the wire protocol, but a rotated run needs to
+        name the *tap*, not the protocol. Three taps all reporting
+        "openai-compat" made a 24-sentence failure unreadable: there was no
+        way to tell which provider produced which row.
+        """
+        return self.label or "openai-compat"
 
     def _api_key(self) -> str:
         return os.environ.get(self.api_key_env, "").strip()
