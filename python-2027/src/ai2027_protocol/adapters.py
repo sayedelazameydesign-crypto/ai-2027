@@ -169,6 +169,14 @@ def _parquet_adapter() -> Adapter:
     )
 
 
+def _image_adapter() -> Adapter:
+    return Adapter(
+        name="image",
+        families=frozenset({Family.IMAGE}),
+        operations=frozenset({Operation.INSPECT, Operation.RENDER}),
+    )
+
+
 def _archive_adapter() -> Adapter:
     return Adapter(
         name="archive",
@@ -180,7 +188,13 @@ def _archive_adapter() -> Adapter:
 def default_registry() -> Registry:
     """The adapters this build ships, registered in specific-before-general order."""
     registry = Registry()
-    for factory in (_sqlite_adapter, _parquet_adapter, _text_adapter, _archive_adapter):
+    for factory in (
+        _sqlite_adapter,
+        _parquet_adapter,
+        _image_adapter,
+        _text_adapter,
+        _archive_adapter,
+    ):
         registry.register(factory())
     return registry
 

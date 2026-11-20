@@ -36,6 +36,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import BinaryIO
 
+from .images import ImageInfo, read_image
 from .index import DocumentIndex, build_index
 from .ingest import Family, Probe
 
@@ -93,6 +94,8 @@ class DocumentIR:
     #: Schema fields for columnar files, where a "table" is the only one.
     columns: tuple[Column, ...] = field(default_factory=tuple)
     rows: int | None = None
+    #: Images carry their own header facts (dimensions, depth, colour).
+    media: ImageInfo | None = None
     #: Everything the reader could not determine, named explicitly.
     notes: tuple[str, ...] = field(default_factory=tuple)
 
@@ -119,6 +122,10 @@ class DocumentIR:
             rows = "" if self.rows is None else f", {self.rows:,} rows"
             lines.append(f"  schema: {columns}{more}{rows}")
 
+        if self.media is not None:
+            media_lines = self.media.render().splitlines()
+            lines.extend("  " + line for line in media_lines)
+
         lines.extend(f"  note: {note}" for note in self.notes)
         return "\n".join(lines)
 
@@ -126,7 +133,11 @@ class DocumentIR:
     def is_inspectable(self) -> bool:
         """Whether the IR describes anything beyond the file's name and size."""
         return bool(
-            self.text_index is not None or self.tables or self.columns or self.rows is not None
+            self.text_index is not None
+            or self.tables
+            or self.columns
+            or self.rows is not None
+            or (self.media is not None and self.media.readable)
         )
 
 
@@ -340,6 +351,28 @@ def _read_zip(
     return _zip_ir(path, data, size)
 
 
+def _read_image(
+    path: str, probe: Probe, _text: str | None, size: int, _real: Path | None, handle: object
+) -> DocumentIR:
+    """Read the image header. Only a prefix is needed, never the whole file."""
+    data = b""
+    if handle is not None:
+        handle.seek(0)  # type: ignore[attr-defined]
+        data = handle.read(1_000_000)  # type: ignore[attr-defined]
+    info = read_image(data, probe.format)
+    notes = info.notes
+    if not data:
+        notes = (*notes, "the image header needs an open handle; none was given")
+    return DocumentIR(
+        path=path,
+        kind=info.format,
+        family=probe.family,
+        bytes_on_disk=size,
+        media=info,
+        notes=notes,
+    )
+
+
 def _read_parquet(
     path: str, probe: Probe, _text: str | None, size: int, _real: Path | None, handle: object
 ) -> DocumentIR:
@@ -360,6 +393,7 @@ _READERS: dict[str, Reader] = {
     "sqlite": _read_sqlite,
     "parquet": _read_parquet,
     "archive": _read_zip,
+    "image": _read_image,
 }
 
 
