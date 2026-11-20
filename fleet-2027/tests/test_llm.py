@@ -747,3 +747,63 @@ class ProviderFailureMessageTests(unittest.TestCase):
         text = str(caught.exception)
         self.assertIn("quota", text)
         self.assertIn("exhausted", text)
+
+
+class TruncationRetryTests(unittest.TestCase):
+    """A truncated answer must be retried with a bigger budget, not unchanged.
+
+    gpt-oss-120b reasons before it writes `content`. With a 1,024-token budget
+    it returned finish_reason='length' and no content; the runner treated that
+    as retryable and sent the identical request, got the identical truncation,
+    and spent free-tier calls that A0 exists to protect.
+    """
+
+    def test_truncated_is_retried_with_a_larger_budget(self) -> None:
+        from fleet2027.llm import LLMAgent, LLMError, LLMRequest, LLMResponse
+
+        seen: list[int] = []
+
+        class TruncatingBackend:
+            name = "trunc"
+            model = "trunc"
+
+            def is_configured(self) -> bool:
+                return True
+
+            def complete(self, request: LLMRequest) -> LLMResponse:
+                seen.append(request.max_tokens)
+                if len(seen) == 1:
+                    raise LLMError("truncated: finish_reason='length' and no content was written")
+                return LLMResponse(
+                    text="print('ok')",
+                    backend=self.name,
+                    model=self.model,
+                    latency_ms=1.0,
+                    prompt_sha256="x",
+                    raw_bytes=11,
+                )
+
+        import tempfile
+        from pathlib import Path
+
+        from fleet2027.contracts import AgentSpec
+        from fleet2027.registry import HandlerContext
+
+        backend = TruncatingBackend()
+        agent = LLMAgent(backend=backend)
+        with tempfile.TemporaryDirectory() as tmp:
+            ctx = HandlerContext(
+                task_id="t1",
+                step_id="s1",
+                action="llm.write",
+                goal="write a file",
+                agent=AgentSpec(name="writer", role="specialist"),
+                attempt=1,
+                workspace_root=Path(tmp),
+                idempotency_key="k1",
+                inputs={"prompt": "write main.py", "out": "main.py", "language": "python"},
+            )
+            agent.handler(ctx)
+        self.assertEqual(len(seen), 2, "truncation must be retried exactly once")
+        self.assertEqual(seen[0], 2048)
+        self.assertEqual(seen[1], 4096, "the retry must ask for more room than the first try")
