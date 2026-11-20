@@ -516,3 +516,71 @@ class DescribeToolTests(unittest.TestCase):
     def test_path_traversal_is_refused(self) -> None:
         outcome = self._run("../../etc/passwd")
         self.assertFalse(outcome.ok)
+
+
+class ReaderTableTests(unittest.TestCase):
+    """The routing table and the declared adapters must not drift apart.
+
+    Adding an adapter that claims a family with no reader entry would route to
+    nothing and report a gap -- correct, but silent. This test makes the drift
+    visible at build time instead.
+    """
+
+    def test_every_reader_key_is_a_registered_adapter(self) -> None:
+        from ai2027_protocol.adapters import default_registry
+        from ai2027_protocol.ir import _READERS
+
+        names = {adapter.name for adapter in default_registry().adapters}
+        self.assertTrue(set(_READERS) <= names, set(_READERS) - names)
+
+    def test_every_adapter_claiming_inspect_has_a_reader_or_is_declared(self) -> None:
+        from ai2027_protocol.adapters import Operation, default_registry
+        from ai2027_protocol.ir import _READERS
+
+        # Adapters that inspect must actually describe. If a future adapter is
+        # registered without a reader, this fails and says which one.
+        inspectors = {a.name for a in default_registry().providers(Operation.INSPECT)}
+        self.assertTrue(inspectors <= set(_READERS), inspectors - set(_READERS))
+
+    def test_known_families_still_route_to_a_reader(self) -> None:
+        from ai2027_protocol.adapters import default_registry
+        from ai2027_protocol.ingest import probe_bytes
+
+        registry = default_registry()
+        for head in (
+            b"SQLite format 3\x00",
+            b"PAR1",
+            b"PK\x03\x04",
+            "# عنوان\n".encode(),
+        ):
+            probe = probe_bytes(head)
+            adapter = registry.for_probe(probe)
+            self.assertIsNotNone(adapter, head[:12])
+
+
+class HandlelessRouteTests(unittest.TestCase):
+    """A structured family asked to describe bytes with no file behind them.
+
+    `describe()` can be called with only a probe (a caller describing bytes it
+    already holds). The readers that need a real file must say so instead of
+    raising or returning an empty description that looks like an empty database.
+    """
+
+    def test_sqlite_without_a_path_reports_the_gap(self) -> None:
+        probe = probe_bytes(b"SQLite format 3\x00")
+        described = describe("x.db", probe)
+        self.assertEqual(described.family.value, "database")
+        self.assertTrue(any("needs a real path" in note for note in described.notes))
+
+    def test_parquet_without_a_handle_reports_the_gap(self) -> None:
+        probe = probe_bytes(b"PAR1" + b"\x00" * 40)
+        described = describe("x.parquet", probe)
+        self.assertEqual(described.family.value, "columnar")
+        self.assertTrue(any("open handle" in note for note in described.notes))
+
+    def test_zip_without_a_handle_reports_a_refusal_not_a_crash(self) -> None:
+        probe = probe_bytes(b"PK\x03\x04" + b"\x00" * 40)
+        described = describe("x.zip", probe)
+        self.assertEqual(described.family.value, "zip")
+        # An empty body is not a valid zip; the container layer refuses it.
+        self.assertTrue(described.notes)

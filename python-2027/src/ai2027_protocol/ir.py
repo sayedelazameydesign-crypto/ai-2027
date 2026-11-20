@@ -31,12 +31,16 @@ Design rules
 from __future__ import annotations
 
 import struct
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import BinaryIO
 
 from .index import DocumentIndex, build_index
 from .ingest import Family, Probe
+
+#: A family reader: (path, probe, text, size, real_path, handle) -> IR.
+Reader = Callable[[str, "Probe", "str | None", int, "Path | None", "object"], "DocumentIR"]
 
 #: How many tables/columns an IR reports before it stops listing. The same
 #: reasoning as the section cap: beyond this the description becomes the bloat.
@@ -290,6 +294,75 @@ def _zip_ir(path: str, data: bytes, size: int) -> DocumentIR:
     )
 
 
+def _reader_key(probe: Probe) -> str:
+    """The adapter name responsible for these bytes, resolved through the mesh.
+
+    `adapters.default_registry()` decides, so the readers below and the declared
+    capabilities cannot drift apart: an adapter that claims a family with no
+    entry in `_READERS` routes to nothing and is reported as a gap, not as an
+    empty success.
+    """
+    from .adapters import default_registry
+
+    adapter = default_registry().for_probe(probe)
+    return adapter.name if adapter is not None else ""
+
+
+def _read_text(
+    path: str, probe: Probe, text: str | None, size: int, _real: Path | None, handle: object
+) -> DocumentIR:
+    if text is None and handle is not None:
+        handle.seek(0)  # type: ignore[attr-defined]
+        text = handle.read().decode("utf-8", errors="replace")  # type: ignore[attr-defined]
+    return _text_ir(path, text or "", size, probe.format)
+
+
+def _read_sqlite(
+    path: str, probe: Probe, _text: str | None, size: int, real: Path | None, _handle: object
+) -> DocumentIR:
+    if real is None:
+        return DocumentIR(
+            path=path,
+            kind=probe.format,
+            family=probe.family,
+            notes=("the database needs a real path; none was given",),
+        )
+    return _sqlite_ir(path, real, size)
+
+
+def _read_zip(
+    path: str, probe: Probe, _text: str | None, size: int, _real: Path | None, handle: object
+) -> DocumentIR:
+    data = b""
+    if handle is not None:
+        handle.seek(0)  # type: ignore[attr-defined]
+        data = handle.read()  # type: ignore[attr-defined]
+    return _zip_ir(path, data, size)
+
+
+def _read_parquet(
+    path: str, probe: Probe, _text: str | None, size: int, _real: Path | None, handle: object
+) -> DocumentIR:
+    if handle is None:
+        return DocumentIR(
+            path=path,
+            kind=probe.format,
+            family=probe.family,
+            notes=("the parquet footer needs an open handle; none was given",),
+        )
+    return _parquet_ir(path, size, handle)  # type: ignore[arg-type]
+
+
+#: Adapter name -> reader. Keys are the names `adapters` declares, so the mesh
+#: and this table are checked against each other by `test_ir`.
+_READERS: dict[str, Reader] = {
+    "text": _read_text,
+    "sqlite": _read_sqlite,
+    "parquet": _read_parquet,
+    "archive": _read_zip,
+}
+
+
 def describe(
     path: str,
     probe: Probe,
@@ -320,21 +393,14 @@ def describe(
         )
 
     try:
-        if probe.family is Family.TEXT:
-            if text is None and handle is not None:
-                handle.seek(0)
-                text = handle.read().decode("utf-8", errors="replace")
-            return _text_ir(path, text or "", size, probe.format)
-
-        if probe.family is Family.DATABASE and real_path is not None:
-            return _sqlite_ir(path, real_path, size)
-
-        if probe.family is Family.ZIP:
-            handle.seek(0) if handle else None
-            return _zip_ir(path, handle.read() if handle else b"", size)
-
-        if probe.family is Family.COLUMNAR and probe.format == "parquet" and handle is not None:
-            return _parquet_ir(path, size, handle)
+        # Routing asks the mesh which adapter claims these bytes, instead of
+        # enumerating families here. The readers are unchanged; what changed is
+        # that the mapping is declared in one place (`_READERS`) and a family
+        # with no reader falls through to the explicit note below rather than
+        # needing a branch of its own.
+        reader = _READERS.get(_reader_key(probe))
+        if reader is not None:
+            return reader(path, probe, text, size, real_path, handle)
 
         return DocumentIR(
             path=path,
