@@ -156,6 +156,16 @@ _TOOL_SPECS: tuple[ToolSpec, ...] = (
         parameters_hint='{"path": "sales.db", "scope": "workspace|sandbox"}',
     ),
     ToolSpec(
+        name="sandbox.validate_artifact",
+        description=(
+            "Re-open a sandbox artifact and prove it: ZIP members re-read for "
+            "CRC, OOXML parts present, parquet footer consistent, text really "
+            "decodes. Different from verify_artifact, which checks the hash."
+        ),
+        read_only=True,
+        parameters_hint='{"path": "report.docx", "kind": "docx"}',
+    ),
+    ToolSpec(
         name="workspace.grep",
         description="Search repository source files concurrently for a pattern.",
         read_only=True,
@@ -328,6 +338,11 @@ class SandboxToolRuntime:
             return await run_sandbox_tests(args, ctx)
         if tool == "sandbox.verify_artifact":
             return await verify_sandbox_artifact(args, ctx)
+        if tool == "sandbox.validate_artifact":
+            # Lazy, like tools_text: tools_validate imports from this module.
+            from .tools_validate import validate_artifact_tool
+
+            return await validate_artifact_tool(args, ctx)
         if tool == "workspace.git_diff":
             return await workspace_git_diff(args, ctx)
         if tool == "memory.search":
