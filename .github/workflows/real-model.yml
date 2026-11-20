@@ -197,7 +197,15 @@ jobs:
           name: real-model-report
           path: fleet-2027/bench/model.json
           retention-days: 30
-      - name: Record the verdict in the summary
+      # The measurement itself must leave the job even when nothing else can be
+      # fetched: the artifact lives in blob storage and the log is not always
+      # reachable. An annotation is served by the API, so the number goes there.
+      - name: Publish the number as an annotation
         if: steps.gate.outputs.available == 'true'
         run: |
+          verdict="$(grep -E '^(baseline|RESULT)' /tmp/real_model.log | tr '\n' ' ')"
+          scores="$(grep -E '^measured ' /tmp/real_model.log | head -1)"
+          model="$(grep -oE "attempt [0-9]+: .*|free-provider policy: model '[^']*'" /tmp/real_model.log | head -1)"
+          echo "::warning::${model:-model unknown} | ${scores:-no measurement line} | ${verdict:-no verdict}"
           echo "verdict exit code: ${{ steps.measure.outputs.measured_exit }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "${verdict}" >> "$GITHUB_STEP_SUMMARY"
