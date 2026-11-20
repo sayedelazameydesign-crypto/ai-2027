@@ -13,7 +13,12 @@ scaffold twice and calling the result a model comparison. That refusal is the
 point: the most dangerous outcome here is a number that looks like a model
 result and is not one.
 
+The free-provider path exists so a run can happen in CI, where no local model
+is available but a repository secret is. It refuses any model that is not
+explicitly free, so an unattended run can never spend money.
+
 Usage:
+    python3 scripts/run_real_model.py --free openrouter
     python3 scripts/run_real_model.py --ollama http://127.0.0.1:11434
     python3 scripts/run_real_model.py --ollama http://127.0.0.1:11434 --model qwen3.5
     python3 scripts/run_real_model.py --openai https://api.example.com/v1 --model gpt-x
@@ -34,6 +39,23 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "fleet-2027"))
 
 BASELINE = ROOT / "fleet-2027" / "bench" / "baseline.json"
+
+# A CI run must never be able to spend. `$0` is enforced here, in the runner
+# that would place the call — not in a document that asks nicely.
+FREE_PROVIDERS = {
+    "openrouter": {
+        "endpoint": "https://openrouter.ai/api/v1/chat/completions",
+        "key_env": "OPENROUTER_API_KEY",
+        "model_env": "OPENROUTER_MODEL",
+        "default_model": "openrouter/free",
+    },
+}
+
+
+def is_free_model(model: str) -> bool:
+    """Return whether ``model`` is provably zero-cost under the repo policy."""
+    name = (model or "").strip()
+    return name == "openrouter/free" or name.endswith(":free")
 OUTPUT = ROOT / "fleet-2027" / "bench" / "model.json"
 
 
@@ -45,9 +67,20 @@ def main(argv: list[str] | None = None) -> int:
     source = parser.add_mutually_exclusive_group(required=True)
     source.add_argument("--ollama", metavar="URL", help="loopback Ollama base URL")
     source.add_argument("--openai", metavar="URL", help="OpenAI-compatible endpoint")
+    source.add_argument(
+        "--free",
+        metavar="PROVIDER",
+        choices=sorted(FREE_PROVIDERS),
+        help="zero-cost provider from the allow-list (e.g. openrouter)",
+    )
     parser.add_argument("--model", default=None, help="model id (provider default if omitted)")
     parser.add_argument(
         "--out", default=str(OUTPUT), help="where to write the report"
+    )
+    parser.add_argument(
+        "--spend-ok",
+        action="store_true",
+        help="explicitly allow a model that is not provably free (never in CI)",
     )
     args = parser.parse_args(argv)
 
@@ -64,6 +97,31 @@ def main(argv: list[str] | None = None) -> int:
             base_url=args.ollama,
             model=args.model or os.environ.get("OLLAMA_MODEL", "qwen3.5:0.8b"),
         )
+    elif args.free:
+        provider = FREE_PROVIDERS[args.free]
+        model = args.model or os.environ.get(provider["model_env"]) or provider["default_model"]
+        if not is_free_model(model) and not args.spend_ok:
+            print(
+                f"refusing to run: model {model!r} is not provably free. "
+                "Use openrouter/free or a model ending in ':free', or pass "
+                "--spend-ok if you have decided to pay.",
+                file=sys.stderr,
+            )
+            return 2
+        if not os.environ.get(provider["key_env"]):
+            print(
+                f"refusing to run: {provider['key_env']} is not set. "
+                "Run this where the repository secret is available "
+                "(GitHub Actions), not in a bare shell.",
+                file=sys.stderr,
+            )
+            return 2
+        backend = OpenAICompatibleBackend(
+            endpoint_url=provider["endpoint"],
+            model=model,
+            api_key_env=provider["key_env"],
+        )
+        print(f"free-provider policy: model {model!r} is zero-cost")
     else:
         if not os.environ.get("LLM_API_KEY"):
             print(

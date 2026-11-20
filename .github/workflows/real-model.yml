@@ -1,0 +1,125 @@
+# Run the quality benchmark against a real model, using a provider that is
+# provably free. This file exists because of a specific gap: `run_real_model.py`
+# could only ever run on a laptop with Ollama, so the one number that matters —
+# how a real model scores against the 0.5783 scaffold — had never been produced.
+#
+# Three rules this workflow keeps:
+#   1. It runs on `main` only. A pull request never spends, never calls a
+#      network provider, and never needs the secret.
+#   2. The model must be provably free (`openrouter/free` or `*:free`). The
+#      script enforces that itself; this file does not rely on remembering it.
+#   3. The key comes from the repository secret and is never echoed. The script
+#      only ever prints the model name and latency.
+name: Real model benchmark · free provider, main only
+
+on:
+  workflow_dispatch:
+    inputs:
+      model:
+        description: "Model id (must be 'openrouter/free' or end with ':free')"
+        required: false
+        type: string
+        default: "openrouter/free"
+      require_live:
+        description: "Fail instead of skipping when OPENROUTER_API_KEY is absent"
+        required: false
+        type: boolean
+        default: false
+  push:
+    branches: [main]
+    paths:
+      - "fleet-2027/bench/**"
+      - "scripts/run_real_model.py"
+      - ".github/workflows/real-model.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: real-model-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  measure:
+    name: Measure a real model against the scaffold baseline
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
+        with:
+          python-version: "3.12"
+      # The fleet package is stdlib-only; nothing to install.
+      - name: Refuse to run anywhere but main
+        run: |
+          if [ "${GITHUB_REF}" != "refs/heads/main" ]; then
+            echo "::error::this workflow measures a real model and is restricted to main"
+            exit 1
+          fi
+      - name: Decide whether the run is possible
+        id: gate
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          REQUIRE_LIVE: ${{ inputs.require_live }}
+        run: |
+          if [ -z "${OPENROUTER_API_KEY}" ]; then
+            if [ "${REQUIRE_LIVE}" = "true" ]; then
+              echo "::error::OPENROUTER_API_KEY is absent and this run was told to require it"
+              exit 1
+            fi
+            echo "::notice::OPENROUTER_API_KEY absent — real-model measurement SKIPPED (not a failure)"
+            echo "available=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Measure (free provider only)
+        id: measure
+        if: steps.gate.outputs.available == 'true'
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          OPENROUTER_MODEL: ${{ inputs.model || 'openrouter/free' }}
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: |
+          set -o pipefail
+          python3 scripts/run_real_model.py --free openrouter \
+            --model "${OPENROUTER_MODEL}" \
+            --out "fleet-2027/bench/model.json" 2>&1 | tee /tmp/real_model.log
+          # Capture the script's status, not tee's. `$?` after a pipe is the
+          # last command in the pipe, which is the one that succeeded — this
+          # exact mistake hid a failing gate once already.
+          status=${PIPESTATUS[0]}
+          echo "exit=${status}" >> /tmp/real_model.log
+          echo "measured_exit=${status}" >> "$GITHUB_OUTPUT"
+          # 0 = better/indistinguishable, 1 = worse, 2 = refused. All three are
+          # honest outcomes. A refusal is not a success and must fail the job.
+          if [ "${status}" = "2" ]; then
+            echo "::error::the runner refused to measure (exit 2); see the log below"
+            exit 1
+          fi
+          exit 0
+      - name: Publish the result to the job summary
+        if: steps.gate.outputs.available == 'true'
+        run: |
+          {
+            echo "## Real model benchmark"
+            echo ""
+            echo '```'
+            tail -n 12 /tmp/real_model.log
+            echo '```'
+            echo ""
+            echo "Baseline is the scaffold at 0.5783. The comparison is by domain,"
+            echo "not only by mean, so a gain in one area cannot hide a loss in another."
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload the measurement
+        if: steps.gate.outputs.available == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        with:
+          name: real-model-report
+          path: fleet-2027/bench/model.json
+          retention-days: 30
+      - name: Record the verdict in the summary
+        if: steps.gate.outputs.available == 'true'
+        run: |
+          echo "verdict exit code: ${{ steps.measure.outputs.measured_exit }}" >> "$GITHUB_STEP_SUMMARY"
