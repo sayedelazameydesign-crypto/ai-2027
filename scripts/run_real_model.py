@@ -230,8 +230,11 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     path = write_report(report, args.out)
+    # Name the backend and model in the same line as the score: a number
+    # without its source cannot be checked or reproduced later.
     print(
-        f"measured {len(report.results)} sentences · mean={report.mean_score:.4f} "
+        f"measured {len(report.results)} sentences · backend={report.backend} "
+        f"model_called={report.model_called} · mean={report.mean_score:.4f} "
         f"usable={report.usable_rate:.0%} complete={report.completion_rate:.0%}"
     )
     # A caller may write the report anywhere; `relative_to` raises for a path
