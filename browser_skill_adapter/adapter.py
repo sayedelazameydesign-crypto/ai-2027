@@ -61,6 +61,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
 
+from kernel2027.contracts import (  # noqa: E402 - kernel is stdlib-only
+    canonical_json as kernel_canonical_json,
+    sha256_text as kernel_sha256_text,
+)
+
 PINNED_CLI_VERSION = "0.5.0"
 PROTOCOL_VERSION = "2.0"
 DEFAULT_DAEMON_PORT = 52800
@@ -617,9 +622,7 @@ class AuditLedger:
             "fields": self._redactor.scrub(fields),
             "prev_hash": self._prev,
         }
-        canonical = json.dumps(body, sort_keys=True, separators=(",", ":"),
-                               ensure_ascii=False).encode("utf-8")
-        digest = hashlib.sha256(canonical).hexdigest()
+        digest = kernel_sha256_text(kernel_canonical_json(body))
         row = {**body, "entry_hash": digest}
         with open(self.path, "a", encoding="utf-8") as fh:
             fh.write(json.dumps(row, ensure_ascii=False) + "\n")
@@ -627,6 +630,10 @@ class AuditLedger:
         return row
 
     @classmethod
+    # kernel-exempt: this log's row schema (prev_hash/entry_hash, hash over the
+    # whole body) is a published on-disk format already consumed by existing
+    # adapter runs; adopting kernel2027.verify_chain would invalidate them. The
+    # hashing and canonicalisation *are* the kernel's, below.
     def verify_chain(cls, path: Path) -> dict[str, Any]:
         if not path.is_file():
             return {"ok": True, "entries": 0, "broken_at": None}
@@ -646,9 +653,7 @@ class AuditLedger:
                         "reason": "prev_hash_mismatch"}
             recorded = row.get("entry_hash")
             body = {k: v for k, v in row.items() if k != "entry_hash"}
-            canonical = json.dumps(body, sort_keys=True, separators=(",", ":"),
-                                   ensure_ascii=False).encode("utf-8")
-            actual = hashlib.sha256(canonical).hexdigest()
+            actual = kernel_sha256_text(kernel_canonical_json(body))
             if recorded != actual:
                 return {"ok": False, "entries": count, "broken_at": lineno,
                         "reason": "entry_hash_mismatch"}

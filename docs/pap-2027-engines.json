@@ -365,6 +365,34 @@
         }
       ],
       "gap_ar": "الأدلة تغطي الاختبارات والأرقام المُعلنة؛ لا تغطي بعد «مهمة مستخدم كاملة من البداية إلى النهاية» كمقياس مقارن مع منتج آخر."
+    },
+    {
+      "id": "shared-kernel",
+      "title_ar": "Shared Kernel — البدائيات المشتركة وبوابة الانتشار",
+      "status": "present",
+      "evidence": [
+        "kernel-2027/kernel2027/contracts.py",
+        "kernel-2027/kernel2027/redaction.py",
+        "kernel-2027/kernel2027/retry.py",
+        "kernel-2027/kernel2027/circuit.py",
+        "kernel-2027/kernel2027/approvals.py",
+        "kernel-2027/kernel2027/idempotency.py",
+        "kernel-2027/kernel2027/audit.py",
+        "kernel-2027/kernel2027/endpoint.py",
+        "kernel-2027/adoption.json",
+        "scripts/kernel_guard.py"
+      ],
+      "tests": [
+        {
+          "file": "kernel-2027/tests/test_kernel.py",
+          "marker": "def test_"
+        },
+        {
+          "file": "kernel-2027/tests/test_kernel_guard.py",
+          "marker": "def test_"
+        }
+      ],
+      "gap_ar": "الانتشار 3 من 11 محرّكًا. الثمانية الباقية لا تُعيد تنفيذ بدائية مرفوعة اليوم (البوابة تمرّ عليها)، لكنها لم تبدأ الاستهلاك بعد — والسقّاطة تمنعها من كتابة نسخة خاصة. البوابة تفحص أسماء التعريفات لا دلالتها، فإعادة تنفيذ باسم مختلف تُفلت."
     }
   ]
 }
