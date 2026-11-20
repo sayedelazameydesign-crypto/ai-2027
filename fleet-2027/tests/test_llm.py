@@ -622,3 +622,22 @@ class SpecTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+class InstructionCarriesCriteriaTests(unittest.TestCase):
+    """A model graded on rules must be given those rules.
+
+    The first real run scored usable=29% and failed on substance, relevance
+    and honesty — none of which appeared in the instruction it received. A
+    brief that hides its acceptance criteria is a defective brief, not a
+    stricter test.
+    """
+
+    def test_the_default_prompt_states_every_graded_criterion(self) -> None:
+        prompt = LLMAgent.__dataclass_fields__["system_prompt"].default
+        for criterion in ("substance", "completeness", "relevance", "honesty"):
+            self.assertIn(criterion, prompt, f"{criterion} is graded but not stated")
+
+    def test_the_prompt_forbids_the_placeholder_the_scorer_rejects(self) -> None:
+        prompt = LLMAgent.__dataclass_fields__["system_prompt"].default
+        self.assertIn("placeholder", prompt)
+        self.assertIn("TODO", prompt)
