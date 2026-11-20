@@ -571,6 +571,46 @@ class AsyncProviderBridge:
 # --------------------------------------------------------------------------- #
 
 
+#: Free tiers that count tokens per minute (not only requests per minute).
+#: Groq publishes 8,000 TPM for gpt-oss-120b, and it reserves `max_tokens`
+#: before the call: three 1,536-token calls with a ~700-token prompt fit in one
+#: minute, four do not. Without pacing the run sends everything at once and the
+#: provider answers 429 to sentences that would have succeeded a minute later.
+_TPM_LIMIT = {"groq": 8_000}
+#: Sliding window of (monotonic time, reserved tokens) per backend name.
+_token_window: dict[str, list[tuple[float, int]]] = {}
+
+
+def _wait_for_token_budget(name: str, reserved: int, *, timeout_s: float = 90.0) -> None:
+    """Sleep until `reserved` more tokens fit inside the per-minute window.
+
+    A rate limit is not a permanent failure: the same sentence succeeds after
+    the window moves. Failing it instead costs the sentence for the whole run,
+    which is why every free tap looked dead while only the pacing was wrong.
+    """
+    limit = _TPM_LIMIT.get(name)
+    if not limit or reserved <= 0:
+        return
+    import time as _time
+
+    deadline = _time.monotonic() + timeout_s
+    while True:
+        now = _time.monotonic()
+        window = [item for item in _token_window.get(name, []) if now - item[0] < 60.0]
+        _token_window[name] = window
+        used = sum(tokens for _, tokens in window)
+        if used + reserved <= limit:
+            window.append((now, reserved))
+            return
+        oldest = min(window, key=lambda item: item[0])[0]
+        sleep_for = max(0.05, 60.0 - (now - oldest) + 0.05)
+        if _time.monotonic() + sleep_for > deadline:
+            # The window cannot move fast enough inside this call's patience.
+            # Returning lets the caller retry rather than block the whole run.
+            return
+        _time.sleep(sleep_for)
+
+
 #: Status codes where a retry cannot produce a different answer.
 _PERMANENT_HTTP = ("http_400", "http_401", "http_403", "http_404", "http_410", "http_429")
 
@@ -618,12 +658,14 @@ class LLMAgent:
     )
     default_language: str = ""
     capability: str = "llm-write"
-    #: A reasoning model spends this budget before it writes `content`: the
-    #: first 1,024-token budget came back with finish_reason='length' and an
-    #: empty answer, and the runner retried the identical request, which
-    #: produced the identical truncation. 2,048 leaves room for a short
-    #: reasoning trace plus the file the step was asked to write.
-    max_tokens: int = 2048
+    #: A reasoning model spends this budget before it writes `content`, so a
+    #: budget too small returns finish_reason='length' with no answer. 1,024
+    #: was not enough for gpt-oss-120b, and 2,048 made things worse for a
+    #: different reason: Groq counts `max_tokens` against its 8,000-tokens-per-
+    #: minute limit *before* the call is made, so 2,048 + ~700 prompt = 2,748
+    #: tokens per call allows only two calls a minute. 1,536 fits three calls a
+    #: minute and still leaves room for a short reasoning trace.
+    max_tokens: int = 1536
     temperature: float = 0.2
     timeout_s: float = 120.0
     max_output_bytes: int = MAX_OUTPUT_BYTES
@@ -685,6 +727,15 @@ class LLMAgent:
         root = ctx.workspace_root.resolve()
         if target != root and root not in target.parents:
             raise StepFailure(f"refused to write outside the workspace: {relative_out!r}")
+
+        # The provider counts the reservation before the call, so the wait
+        # belongs here, before the request leaves. A tap without a published
+        # token limit (or a label that does not name one) is not paced at all.
+        _wait_for_token_budget(
+            self.backend.name.split(":")[0],
+            len(prompt) // 4 + request.max_tokens,
+            timeout_s=min(request.timeout_s, 90.0),
+        )
 
         try:
             response = self.backend.complete(request)

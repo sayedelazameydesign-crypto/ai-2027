@@ -113,8 +113,12 @@ def _write_report(report, out: str):
     return write_report(report, out)
 
 
-#: Enough for a provider error code and its message, without a wall of text.
-_CAUSE_WIDTH = 160
+#: A provider's rate-limit message names the limit, the used count and the
+#: reset — the three numbers needed to decide whether to wait or to switch
+#: taps. Cutting it at 70 characters kept "Rate limit reached for model" and
+#: threw those numbers away, so the next run could not tell a per-minute limit
+#: from a spent daily quota. Two lines is the width of a report line.
+_CAUSE_WIDTH = 320
 
 
 def _short_cause(text: str) -> str:
