@@ -2,52 +2,53 @@
 
 Why this file exists
 --------------------
-``fleet2027`` builds on the shared kernel, so ``import fleet2027`` needs
-``kernel2027`` to be importable. Three situations must all work, and one of them
-is the reason this module is not simply a ``pip install`` line in the docs:
+``fleet2027`` builds on the shared kernel, so importing it needs ``kernel2027``
+to be importable. Two situations must both work, and the second is the reason
+this is not simply a ``pip install`` line in the docs:
 
-1. **In-repo, no install** — ``python3 fleet-2027/cli.py`` and
-   ``pytest fleet-2027/tests``. The repository's whole promise is "clone and
-   run", so requiring a prior ``pip install -e kernel-2027`` would break it.
-2. **Subprocesses** — ``cli.py`` is executed as a child process by the
-   multi-process gates. A child inherits neither ``sys.path`` edits nor the
-   parent's pytest ``conftest``.
-3. **Installed** — if ``kernel2027`` is importable already (wheel, editable
-   install, or ``PYTHONPATH``), this module does nothing at all.
+1. **Installed** — a wheel, an editable install, or ``PYTHONPATH`` already makes
+   ``kernel2027`` importable. Nothing is touched here, so an installed
+   environment is never second-guessed by a directory that happens to sit
+   nearby.
+2. **Bare checkout** — ``git clone`` and run, with no pip step. The sibling
+   ``kernel-2027/`` directory is added to ``sys.path``.
 
-The third case is checked first, so an installed environment is never
-second-guessed by a stray directory next door.
+Subprocesses are the hard case: a spawned child (``multiprocessing`` *spawn*,
+``python cli.py``) inherits neither the parent's ``sys.path`` edits nor pytest's
+``conftest``, so it re-runs this module from scratch. Resolving from
+``__file__`` makes that work in a child exactly as it does in the parent.
+
+If no sibling checkout exists either, the caller's own ``import kernel2027``
+raises its normal ``ImportError`` — this helper never substitutes a fake.
 """
 
 from __future__ import annotations
 
+import importlib.util
 import sys
 from pathlib import Path
 
+#: Where the sibling package lives, relative to this file.
+_SIBLING = Path(__file__).resolve().parent.parent.parent / "kernel-2027"
+
 
 def ensure_kernel_importable() -> bool:
-    """Add the sibling kernel to ``sys.path`` if it is not already importable.
+    """Make ``kernel2027`` importable from the sibling checkout if needed.
 
-    Returns ``True`` when a path was added. Deliberately silent and idempotent:
-    this is a packaging affordance, not a feature, and it must never mask a
-    genuinely missing dependency — if no sibling checkout exists, the import
-    error surfaces from the real ``import kernel2027`` with its own message.
+    Returns ``True`` when a ``sys.path`` entry was added, ``False`` when the
+    kernel was already importable or is simply not present beside this checkout.
+    Uses ``find_spec`` rather than ``try: import`` so the probe neither executes
+    the module nor hides a failure behind a suspended ``except``.
     """
-    try:
-        import kernel2027  # noqa: F401 - the import is the probe
-
+    if importlib.util.find_spec("kernel2027") is not None:
         return False
-    except ImportError:
-        pass
-
-    # fleet-2027/fleet2027/_kernel_path.py -> fleet-2027/fleet2027 -> fleet-2027
-    # -> repository root -> kernel-2027/
-    candidate = Path(__file__).resolve().parent.parent.parent / "kernel-2027"
-    entry = str(candidate)
-    if (candidate / "kernel2027" / "__init__.py").is_file() and entry not in sys.path:
-        sys.path.insert(0, entry)
-        return True
-    return False
+    if not (_SIBLING / "kernel2027" / "__init__.py").is_file():
+        return False
+    entry = str(_SIBLING)
+    if entry in sys.path:
+        return False
+    sys.path.insert(0, entry)
+    return True
 
 
 ensure_kernel_importable()
