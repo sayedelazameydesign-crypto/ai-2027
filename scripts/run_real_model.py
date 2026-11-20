@@ -93,12 +93,63 @@ def is_free_model(model: str, provider: str = "openrouter") -> bool:
 OUTPUT = ROOT / "fleet-2027" / "bench" / "model.json"
 
 
+def _write_report(report, out: str):
+    """Import lazily: fleet2027 lives in a sibling directory, not on sys.path."""
+    from fleet2027.bench import write_report
+
+    return write_report(report, out)
+
+
+def _report(report, out: str) -> int:
+    """Write the report and state the verdict. One place, three outcomes."""
+    if not report.model_called:
+        # The step evidence says no model ran. Reporting a score now would be
+        # a scaffold result wearing a model's name.
+        print(
+            "refusing to report: no step recorded a model call, so this run "
+            "measured the scaffold, not the model.",
+            file=sys.stderr,
+        )
+        return 2
+
+    path = _write_report(report, out)
+    # Name the backend and model in the same line as the score: a number
+    # without its source cannot be checked or reproduced later.
+    print(
+        f"measured {len(report.results)} sentences · backend={report.backend} "
+        f"model_called={report.model_called} · mean={report.mean_score:.4f} "
+        f"usable={report.usable_rate:.0%} complete={report.completion_rate:.0%}"
+    )
+    # A caller may write the report anywhere; `relative_to` raises for a path
+    # outside the repository, which turned a successful measurement into a
+    # traceback after the work was already done.
+    try:
+        shown = path.relative_to(ROOT)
+    except ValueError:
+        shown = path
+    print(f"report: {shown}")
+
+    baseline = json.loads(BASELINE.read_text(encoding="utf-8"))
+    before = baseline["summary"]["mean_score"]
+    delta = round(report.mean_score - before, 4)
+    print()
+    print(f"baseline (scaffold) {before:.4f} -> model {report.mean_score:.4f} ({delta:+.4f})")
+    if delta > 0.02:
+        print("RESULT: the model beats the scaffold.")
+        return 0
+    if delta < -0.02:
+        print("RESULT: the model is WORSE than the scaffold — investigate before shipping.")
+        return 1
+    print("RESULT: indistinguishable from the scaffold; do not claim an improvement.")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     """Measure a real model and compare it against the recorded baseline."""
     parser = argparse.ArgumentParser(
         description="Benchmark a real model against the scaffold baseline."
     )
-    source = parser.add_mutually_exclusive_group(required=True)
+    source = parser.add_mutually_exclusive_group()
     source.add_argument("--ollama", metavar="URL", help="loopback Ollama base URL")
     source.add_argument("--openai", metavar="URL", help="OpenAI-compatible endpoint")
     source.add_argument(
@@ -119,19 +170,59 @@ def main(argv: list[str] | None = None) -> int:
         help="measure only the first N sentences (free quotas may not cover all 24)",
     )
     parser.add_argument(
+        "--rotate",
+        action="store_true",
+        help="rotate every free provider with a key, one per sentence "
+        "(spreads the corpus across independent quotas)",
+    )
+    parser.add_argument(
         "--spend-ok",
         action="store_true",
         help="explicitly allow a model that is not provably free (never in CI)",
     )
     args = parser.parse_args(argv)
+    sources = [bool(args.ollama), bool(args.openai), bool(args.free), bool(args.rotate)]
+    if sum(sources) != 1:
+        parser.error("choose exactly one of --ollama, --openai, --free, --rotate")
 
-    from fleet2027.bench import run_benchmark, write_report
+    from fleet2027.bench import run_benchmark, write_report  # noqa: F401 - used in _report
     from fleet2027.llm import (
         LLMError,
         LLMRequest,
         OllamaBackend,
         OpenAICompatibleBackend,
     )
+
+    if args.rotate:
+        # Each free provider has its own daily cap; the full corpus costs more
+        # than any single one allows. Rotation keeps every sentence measured by
+        # a real model instead of truncating the corpus.
+        backends = []
+        for name, spec in FREE_PROVIDERS.items():
+            key = os.environ.get(spec["key_env"], "").strip()
+            if not key:
+                print(f"rotation: {name} skipped (no {spec['key_env']})")
+                continue
+            model = os.environ.get(spec["model_env"]) or spec["default_model"]
+            if not is_free_model(model, name) and not args.spend_ok:
+                print(f"rotation: {name} skipped ({model!r} is not free)")
+                continue
+            backends.append(
+                OpenAICompatibleBackend(
+                    endpoint_url=spec["endpoint"], model=model, api_key_env=spec["key_env"]
+                )
+            )
+            print(f"rotation: {name} -> {model}")
+        if not backends:
+            print(
+                "refusing to run: no free provider has a usable credential.",
+                file=sys.stderr,
+            )
+            return 2
+        if args.model:
+            print("note: --model is ignored with --rotate; each provider uses its default")
+        report = run_benchmark(backend=backends[0], backends=backends, limit=args.limit)
+        return _report(report, args.out)
 
     if args.ollama:
         backend = OllamaBackend(
@@ -229,36 +320,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 2
 
-    path = write_report(report, args.out)
-    # Name the backend and model in the same line as the score: a number
-    # without its source cannot be checked or reproduced later.
-    print(
-        f"measured {len(report.results)} sentences · backend={report.backend} "
-        f"model_called={report.model_called} · mean={report.mean_score:.4f} "
-        f"usable={report.usable_rate:.0%} complete={report.completion_rate:.0%}"
-    )
-    # A caller may write the report anywhere; `relative_to` raises for a path
-    # outside the repository, which turned a successful measurement into a
-    # traceback after the work was already done.
-    try:
-        shown = path.relative_to(ROOT)
-    except ValueError:
-        shown = path
-    print(f"report: {shown}")
-
-    baseline = json.loads(BASELINE.read_text(encoding="utf-8"))
-    before = baseline["summary"]["mean_score"]
-    delta = round(report.mean_score - before, 4)
-    print()
-    print(f"baseline (scaffold) {before:.4f} -> model {report.mean_score:.4f} ({delta:+.4f})")
-    if delta > 0.02:
-        print("RESULT: the model beats the scaffold.")
-        return 0
-    if delta < -0.02:
-        print("RESULT: the model is WORSE than the scaffold — investigate before shipping.")
-        return 1
-    print("RESULT: indistinguishable from the scaffold; do not claim an improvement.")
-    return 0
+    return _report(report, args.out)
 
 
 if __name__ == "__main__":
