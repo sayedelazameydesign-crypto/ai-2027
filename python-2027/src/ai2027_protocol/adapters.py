@@ -193,6 +193,24 @@ def _media_adapter() -> Adapter:
     )
 
 
+def _csv_adapter() -> Adapter:
+    """CSV: patched safely and compiled into SQLite.
+
+    `compile` was declared nowhere before this adapter, so `coverage()` reported
+    0 and a caller asking "what can produce another format?" was told nothing
+    could. `patch` is declared here as well because `edit.py` implements it for
+    text of any shape, and a CSV edited by a text replacement is the same
+    operation -- the difference is that converting a CSV also *checks its shape*,
+    which is why the two live in one adapter.
+    """
+    return Adapter(
+        name="csv",
+        families=frozenset({Family.TEXT}),
+        formats=frozenset({"text"}),
+        operations=frozenset({Operation.PATCH, Operation.COMPILE}),
+    )
+
+
 def _geometry_adapter() -> Adapter:
     """glTF/GLB, STEP and STL: counted from headers, never tessellated."""
     return Adapter(
@@ -236,6 +254,7 @@ def default_registry() -> Registry:
         _pdf_adapter,
         _media_adapter,
         _text_adapter,
+        _csv_adapter,
         _geometry_adapter,
         _zip_adapter,
         _archive_adapter,
