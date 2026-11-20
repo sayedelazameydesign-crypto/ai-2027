@@ -14,8 +14,10 @@ winner.
 
 from __future__ import annotations
 
+import os
 import sys
 import unittest
+import unittest.mock
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -120,6 +122,53 @@ class ReportingTests(unittest.TestCase):
         self.assertGreater(NOISE, 0.0)
         self.assertLess(NOISE, 0.10)
 
+
+
+
+def _load_runner():
+    """Import `run_real_model` by path: it lives in scripts, not a package."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "run_real_model_probe", Path(__file__).with_name("run_real_model.py")
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+class FreeModelPolicyTest(unittest.TestCase):
+    """$0 must be decided by code the caller cannot talk around."""
+
+    def test_only_explicitly_free_models_pass(self) -> None:
+        runner = _load_runner()
+        self.assertTrue(runner.is_free_model("openrouter/free"))
+        self.assertTrue(runner.is_free_model("meta-llama/llama-3.3-70b-instruct:free"))
+        self.assertFalse(runner.is_free_model("anthropic/claude-sonnet-5.5"))
+        self.assertFalse(runner.is_free_model("openai/gpt-4o-mini"))
+        self.assertFalse(runner.is_free_model(""))
+        self.assertFalse(runner.is_free_model("free-ish-paid-model"))
+
+    def test_paid_model_is_refused_before_any_network_call(self) -> None:
+        runner = _load_runner()
+        with unittest.mock.patch.dict("os.environ", {"OPENROUTER_API_KEY": "sk-fake"}):
+            code = runner.main(["--free", "openrouter", "--model", "openai/gpt-4o-mini"])
+        self.assertEqual(code, 2)
+
+    def test_missing_key_is_refused_before_any_network_call(self) -> None:
+        runner = _load_runner()
+        env = {k: v for k, v in os.environ.items() if k != "OPENROUTER_API_KEY"}
+        with unittest.mock.patch.dict("os.environ", env, clear=True):
+            code = runner.main(["--free", "openrouter"])
+        self.assertEqual(code, 2)
+
+    def test_spend_ok_is_the_only_door_to_a_paid_model(self) -> None:
+        runner = _load_runner()
+        with unittest.mock.patch.dict("os.environ", {"OPENROUTER_API_KEY": "sk-fake"}):
+            # No --spend-ok: refused at the policy gate, never reaching the network.
+            self.assertEqual(
+                runner.main(["--free", "openrouter", "--model", "openai/gpt-4o-mini"]), 2
+            )
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
