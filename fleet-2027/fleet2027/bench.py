@@ -303,6 +303,14 @@ def run_benchmark(
         called_any = called_any or called
         produced = workspace / "intent" / sentence_id / _expected_file(resolution.domain)
         if not produced.exists():
+            # "no artifact" describes the symptom. The step's own error says
+            # why it never appeared — an LLM timeout, a refusal, a verifier
+            # rejection — and that sentence is what makes a bad run diagnosable
+            # instead of merely countable.
+            step_error = (step or {}).get("error")
+            reason = f"no artifact at {produced.name}"
+            if step_error:
+                reason = f"{reason}; step said: {str(step_error)[:150]}"
             results.append(
                 SentenceResult(
                     sentence_id=sentence_id,
@@ -313,7 +321,7 @@ def run_benchmark(
                     usable=False,
                     chars=0,
                     model_called=called,
-                    error=f"no artifact at {produced.name}",
+                    error=reason,
                 )
             )
             continue
