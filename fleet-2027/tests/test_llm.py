@@ -805,5 +805,57 @@ class TruncationRetryTests(unittest.TestCase):
             )
             agent.handler(ctx)
         self.assertEqual(len(seen), 2, "truncation must be retried exactly once")
-        self.assertEqual(seen[0], 2048)
-        self.assertEqual(seen[1], 4096, "the retry must ask for more room than the first try")
+        # 1,536 is the default: three calls a minute fit Groq's 8,000 TPM once
+        # the prompt is counted, where 2,048 allowed only two.
+        self.assertEqual(seen[0], 1536)
+        self.assertEqual(seen[1], 3072, "the retry must ask for more room than the first try")
+
+
+class TokenPacingTests(unittest.TestCase):
+    """Groq counts `max_tokens` against its token limit before the call.
+
+    Three 1,536-token calls with a ~700-token prompt fit inside 8,000 tokens a
+    minute; the fourth does not. Without pacing the run fires everything at
+    once, the provider answers 429, and the report blames a dead tap for what
+    is only a window that had not moved yet.
+    """
+
+    def setUp(self) -> None:
+        from fleet2027 import llm
+
+        self.llm = llm
+        llm._token_window.clear()
+
+    def tearDown(self) -> None:
+        self.llm._token_window.clear()
+
+    def test_the_window_admits_three_calls_and_holds_the_fourth(self) -> None:
+        import time as _time
+
+        # 1,711 tokens a call: four fit in 8,000 (6,844), five do not (8,555).
+        reserved = 700 // 4 + 1536
+        for _ in range(4):
+            self.llm._wait_for_token_budget("groq", reserved)
+        self.assertEqual(len(self.llm._token_window["groq"]), 4)
+
+        # The wait is bounded by the caller's patience. A short timeout must
+        # return rather than block the run, and — this is the part that
+        # matters — a call that gave up must NOT be counted in the window,
+        # or the budget would shrink every time a wait was abandoned.
+        started = _time.monotonic()
+        self.llm._wait_for_token_budget("groq", reserved, timeout_s=0.05)
+        waited = _time.monotonic() - started
+        self.assertGreaterEqual(waited, 0.0)
+        self.assertLess(waited, 1.0, "the wait must be bounded by the timeout")
+        self.assertEqual(
+            len(self.llm._token_window["groq"]), 4, "a held call must not reserve"
+        )
+        self.assertEqual(len(self.llm._token_window["groq"]), 4, "a held call must not reserve")
+
+    def test_a_tap_without_a_published_limit_is_not_paced(self) -> None:
+        import time as _time
+
+        started = _time.monotonic()
+        for _ in range(20):
+            self.llm._wait_for_token_budget("openrouter", 50_000)
+        self.assertLess(_time.monotonic() - started, 0.5)
