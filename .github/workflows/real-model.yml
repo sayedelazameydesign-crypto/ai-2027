@@ -85,7 +85,7 @@ jobs:
         run: |
           echo "### Reachability diagnostic" >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
-          python3 - <<'PY' | tee -a "$GITHUB_STEP_SUMMARY"
+          python3 - <<'PY' | tee -a "$GITHUB_STEP_SUMMARY" /tmp/diag.txt
           import json, os, socket, ssl, urllib.request, urllib.error
 
           key = os.environ.get("OPENROUTER_API_KEY", "")
@@ -122,6 +122,11 @@ jobs:
               print(f"GET /api/v1/models: FAILED ({type(exc).__name__}: {exc})")
           PY
           echo '```' >> "$GITHUB_STEP_SUMMARY"
+          # Annotations are the only channel confirmed readable by an API
+          # client in this environment; the job summary is not served here.
+          while IFS= read -r line; do
+            echo "::warning::${line}"
+          done < /tmp/diag.txt
 
       - name: Measure (free provider only)
         id: measure
@@ -141,6 +146,12 @@ jobs:
           status=${PIPESTATUS[0]}
           echo "exit=${status}" >> /tmp/real_model.log
           echo "measured_exit=${status}" >> "$GITHUB_OUTPUT"
+          # Why it refused: the last line the runner printed is the sentence a
+          # human needs, and an annotation survives where the log does not.
+          reason=$(grep -m1 -E "^(refusing to run|refusing to report|checking )" /tmp/real_model.log || true)
+          if [ -n "${reason}" ]; then
+            echo "::error::${reason}"
+          fi
           # 0 = better/indistinguishable, 1 = worse, 2 = refused. All three are
           # honest outcomes. A refusal is not a success and must fail the job.
           if [ "${status}" = "2" ]; then
