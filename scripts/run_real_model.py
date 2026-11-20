@@ -150,7 +150,14 @@ def _report(report, out: str) -> int:
                 cause = f"unusable: {got}"[:70]
             causes[cause] = causes.get(cause, 0) + 1
         for cause, count in sorted(causes.items(), key=lambda kv: -kv[1])[:5]:
-            print(f"  {count:>2}x {cause}")
+            print(f"  {count:02d}x {cause}")
+        # When everything fails, a tally is not enough: quote one row whole so
+        # the next run can be diagnosed instead of guessed at.
+        if len(incomplete) == len(report.results):
+            first = incomplete[0]
+            print(f"  first failure: {first.sentence_id} status={first.status} "
+                  f"model_called={first.model_called} error={first.error!r}")
+            print(f"  its criteria: {list(first.failures)[:6]}")
 
     baseline = json.loads(BASELINE.read_text(encoding="utf-8"))
     before = baseline["summary"]["mean_score"]
