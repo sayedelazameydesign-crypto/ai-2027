@@ -58,7 +58,20 @@ class DeliveryForm(StrEnum):
 
 #: Families the user can open in a tool they already have. Delivering the file
 #: wins over any rendering, because it keeps every property the rendering drops.
-_NATIVE_FAMILIES: frozenset[str] = frozenset({"zip", "pdf", "ole", "image", "audio", "video"})
+_NATIVE_FAMILIES: frozenset[str] = frozenset(
+    {
+        "zip",
+        "pdf",
+        "ole",
+        "image",
+        "audio",
+        "video",
+        # Measured: a valid STEP validated correctly and was then planned as a
+        # *report*, because the format was missing from this set. The user has a
+        # CAD tool; the file is the deliverable, not a description of it.
+        "geometry",
+    }
+)
 
 #: Formats with no viewer on a normal machine: a table is the usable form.
 _TABLE_FORMATS: frozenset[str] = frozenset({"sqlite", "parquet"})
