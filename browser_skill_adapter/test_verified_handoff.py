@@ -35,6 +35,7 @@ for _entry in (str(_HERE), str(_HERE.parent / "kernel-2027")):
         sys.path.insert(0, _entry)
 
 
+import adapter
 from adapter import BskCommandError
 from handoff_contract import (CHECKS, MAX_JSON_BYTES, SIGN_NAMESPACE, SIGN_PRINCIPAL, HandoffError, Request,
                               canonical, read_document, sha256, verify_receipt, verify_signature)
@@ -43,6 +44,53 @@ import windows_acl
 
 
 _PROCESS_TIMEOUT = 20
+
+
+class KernelFallbackEquivalenceTest(unittest.TestCase):
+    """The adapter must hash identically with and without the shared kernel.
+
+    `adapter` imports `kernel2027` when the sibling checkout is present and
+    falls back to two local functions when this directory is isolated (the
+    Windows handoff job materialises `browser_skill_adapter/` from git blobs and
+    nothing else). If those two paths ever disagreed, the audit chain would
+    verify on one machine and fail on another for the same bytes — the exact
+    class of bug the shared kernel exists to prevent.
+    """
+
+    def test_fallback_matches_an_independent_implementation(self) -> None:
+        import hashlib
+        import json
+
+        # Reference implementation, written from the contract rather than copied
+        # from either branch, so a shared typo cannot make both agree.
+        def reference(payload):
+            text = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+            return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+        samples = [
+            {},
+            {"b": 1, "a": {"z": 2, "y": [3, 1]}},
+            {"unicode": "محرّك 2027", "nested": [{"k": None}]},
+            {"flag": True, "number": 1.5, "empty": []},
+        ]
+        for sample in samples:
+            with self.subTest(sample=sample):
+                self.assertEqual(
+                    adapter.kernel_sha256_text(adapter.kernel_canonical_json(sample)),
+                    reference(sample),
+                )
+
+    def test_the_audit_chain_verifies_with_whichever_implementation_is_active(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "chain.jsonl"
+            log = adapter.AuditLedger(path, adapter.Redactor())
+            log.append("first", {"n": 1})
+            log.append("second", {"n": 2})
+            result = adapter.AuditLedger.verify_chain(path)
+            self.assertTrue(result["ok"], result)
+            self.assertEqual(result["entries"], 2)
 _CRASH_EXIT = 73
 
 
