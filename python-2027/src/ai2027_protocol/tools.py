@@ -26,6 +26,7 @@ from .contracts import (
 from .contracts import (
     ToolSpec as ToolSpec,
 )
+from .ingest import probe_bytes
 from .security import SecurityValidationError, redact_secrets, resolve_safe_path
 from .tools_advanced import (
     connector_read_tool,
@@ -95,7 +96,15 @@ class ToolExecutor(Protocol):
 
 
 def infer_artifact_kind(rel_path: str) -> str:
-    """Classify an artifact extension for live Studio preview rendering."""
+    """Classify an artifact for live Studio preview rendering.
+
+    This is an extension lookup on purpose: it answers "which preview widget
+    renders this?", not "what is this file?". Measured on twelve real formats
+    it labelled all twelve `text`, including a PNG and a ZIP, because the map
+    knows eleven extensions and everything else fell through. For questions
+    about what a file *is*, use `ai2027_protocol.ingest.probe_bytes`, which
+    reads signatures instead of trusting the name.
+    """
     suffix = Path(rel_path).suffix.lower()
     mapping = {
         ".html": "html",
@@ -360,7 +369,19 @@ class SandboxToolRuntime:
         def _read() -> tuple[str, int]:
             if not target.is_file():
                 raise FileNotFoundError(f"File not found: {rel}")
-            raw = target.read_bytes()[:_MAX_READ_BYTES].decode("utf-8", errors="replace")
+            head = target.read_bytes()[:_MAX_READ_BYTES]
+            # Decoding a binary file as text produces replacement characters,
+            # and the model then reasons about a document that does not exist.
+            # Measured: a PNG read through this path yielded 40 bytes of
+            # U+FFFD and was scored as a badly written page. The refusal says
+            # what the file actually is, which is the useful answer.
+            probe = probe_bytes(head)
+            if not probe.is_textual:
+                raise SecurityValidationError(
+                    f"{rel} is not text ({probe.format}); refusing to decode it "
+                    f"as text. Use a reader for the {probe.family.value} family."
+                )
+            raw = head.decode("utf-8", errors="replace")
             lines = raw.splitlines()
             slice_lines = lines[offset - 1 : offset - 1 + max_lines]
             formatted = "\n".join(f"{offset + idx}: {line}" for idx, line in enumerate(slice_lines))
