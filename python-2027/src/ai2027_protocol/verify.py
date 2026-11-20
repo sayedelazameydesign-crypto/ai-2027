@@ -56,7 +56,7 @@ _IMAGE_MAGIC = re.compile(rb"\A(\x89PNG\r\n\x1a\n|\xff\xd8|GIF8[79]a|BM)")
 #: Kinds whose bytes must carry a specific signature. Claiming one of these
 #: without the signature is a mislabel, and a mislabel must fail rather than
 #: fall through to a weaker check that happens to pass.
-_STRUCTURED_KINDS = frozenset({"docx", "xlsx", "pptx", "zip", "parquet", "sqlite"})
+_STRUCTURED_KINDS = frozenset({"docx", "xlsx", "pptx", "zip", "parquet", "sqlite", "pdf"})
 
 #: Above this size a ZIP-shaped artifact is not re-read for CRC verification.
 #: Measured: 30 MB costs 22 ms, so the budget is generous; the cap exists to
@@ -216,6 +216,30 @@ def _check_image(path: Path, head: bytes) -> list[Check]:
     return [Check("image header", True, f"{info.width}×{info.height} {info.format}")]
 
 
+def _check_pdf(head: bytes) -> list[Check]:
+    """A PDF is valid when its header parses and, if it states a page count, it
+    does not contradict itself.
+
+    Re-uses `pdf.read_pdf`, so the verdict and the description cannot disagree:
+    if the system will report "12 pages", this check saw the same 12.
+    """
+    from .pdf import read_pdf
+
+    info = read_pdf(head)
+    if not info.version:
+        return [Check("pdf header", False, "no %PDF- version line")]
+    checks = [Check("pdf header", True, f"{info.version}")]
+    if info.inconsistent_page_count:
+        checks.append(
+            Check(
+                "page count consistent",
+                False,
+                f"/Count says {info.pages} but {info.page_objects} page object(s) visible",
+            )
+        )
+    return checks
+
+
 def _check_sqlite(path: Path) -> list[Check]:
     """Open read-only and run SQLite's own integrity check.
 
@@ -304,6 +328,8 @@ def verify_file(
                 checks.extend(_check_ooxml(archive, kind))
         except zipfile.BadZipFile as exc:
             checks.append(Check("archive readable", False, str(exc)))
+    elif head.startswith(b"%PDF-"):
+        checks.extend(_check_pdf(head))
     elif _IMAGE_MAGIC.search(head):
         checks.extend(_check_image(real_path, head))
     elif head[:16] == b"SQLite format 3\x00":
