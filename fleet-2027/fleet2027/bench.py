@@ -209,9 +209,29 @@ def run_benchmark(
     root.mkdir(parents=True, exist_ok=True)
     results: list[SentenceResult] = []
 
-    for index, item in enumerate(sentences):
-        # Rotate when asked to; otherwise one backend measures everything.
-        active = backends[index % len(backends)] if backends else backend
+    # A tap that refuses once will refuse for every sentence it is handed:
+    # the cause (quota, wrong model id, rejected credential) is per provider,
+    # not per sentence. Retrying it sentence after sentence turned one bad
+    # tap into 8 wasted calls and hid the good ones behind it.
+    live = list(backends) if backends else []
+    turn = 0
+
+    def _drop(dead) -> None:
+        """Remove a tap the moment it proves it cannot answer.
+
+        A build step and a collect-sources step can both target the same tap
+        before the loop advances, so dropping only on the outer failure still
+        cost three calls to a dead provider.
+        """
+        if dead in live:
+            live.remove(dead)
+
+    for item in sentences:
+        if live:
+            active = live[turn % len(live)]
+            turn += 1
+        else:
+            active = backend
         sentence_id = str(item["id"])
         domain = str(item["domain"])
         text = str(item["text"])
@@ -256,7 +276,15 @@ def run_benchmark(
                 evidence = step.get("evidence") or {}
                 called = bool(evidence.get("called"))
                 status = report.status.value
+                # The runner records a refusal as a failed task, not as an
+                # exception, so the exception handler never saw it. A tap that
+                # produced no model call on its sentence is dead for the rest
+                # of the run.
+                if not called and status != "succeeded":
+                    _drop(active)
         except Exception as exc:  # noqa: BLE001 - a benchmark reports, never crashes
+            if live and active in live:
+                live.remove(active)
             results.append(
                 SentenceResult(
                     sentence_id=sentence_id,
