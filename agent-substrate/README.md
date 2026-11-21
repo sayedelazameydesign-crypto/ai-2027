@@ -182,3 +182,37 @@ The `Agent Substrate manual deploy` workflow is manual and targets a Linux x64 *
 Generate the two application secrets independently with `python3 -c 'import secrets; print(secrets.token_urlsafe(48))'`, then store them directly in GitHub Secrets. Never print them in CI logs or commit them. From **Actions → Agent Substrate manual deploy → Run workflow**, provide the published image tag such as `v0.1.0`; the counter example is optional. The target cluster still needs the requirements listed above, including persistent storage, an installed gVisor/Kata RuntimeClass for the counter, and a NetworkPolicy-enforcing CNI.
 
 GitHub Secrets only store credentials—they do not provide a Kubernetes cluster or pay for its runtime. A $0 cloud invoice therefore requires existing hardware or a provider whose current free tier genuinely supports the required runtime, persistent storage, and network policy. Free tiers and quotas can change; a public, always-on service cannot be promised free indefinitely.
+
+### The published Agent Studio (`/studio`)
+
+`render.yaml` defines a second free service, `ai-2027-studio`, that publishes the Agent Studio web UI and its API **from one origin**. `studio.html` is served by the FastAPI application itself at `/studio`, and it calls `/v1/studio/*` with relative paths. That single fact is what keeps the deployment free of a proxy, of CORS headers, and of any credential in a browser bundle: the browser's default same-origin policy applies unchanged, and nothing sensitive is ever shipped to the client.
+
+Two services, deliberately kept apart:
+
+| | `ai-2027-live-agent` | `ai-2027-studio` |
+|---|---|---|
+| Serves | the bounded Live Agent file workspace | the Studio UI at `/studio` and `/v1/studio/*` |
+| Build | none — the path is stdlib-only | `pip install -e python-2027` |
+| Health | `/api/health` | `/v1/studio/status` |
+| Needs | no third-party package | fastapi, httpx, uvicorn, pydantic |
+
+The live-agent service installs nothing because that path is stdlib-only by construction, and `scripts/ci_guard.py` fails CI if that ever changes. The Studio service needs its declared dependencies, so the two are never mixed.
+
+#### The published instance spends nothing
+
+The blueprint sets `AI2027_READ_ONLY=1` and `AI2027_MAX_SPEND_USD=0`. The first refuses writes; the second authorises no paid request at all. Together they mean a public instance can show real provider and budget state while being unable to spend anything. `AI2027_MAX_SPEND_USD` is an authorisation, not a financial ceiling — for a provider whose cost is unknown, the ceiling that matters here is zero, so nothing is authorised.
+
+#### Credentials are presence-only
+
+`OPENROUTER_API_KEY` and `CONNECTORS_HUB_API_TOKEN` are declared with `sync: false`, so they are entered once in the Render dashboard and are never stored in Git. Neither value ever reaches a response: the status route reports `configured: true` or `false` per provider, and the connectors route reports `token_missing` when its token is absent. `python-2027/tests/test_studio_deploy.py` proves this — it sets a fixture credential, then asserts the value appears nowhere in the response and that the payload matches no credential-shaped text.
+
+#### Bringing it up
+
+Render reads `render.yaml` as a Blueprint: connect the repository, apply the blueprint, then fill in the two secret values under **Environment**. The first request after an idle period can take 30–50 seconds, because a free instance sleeps after roughly 15 minutes of inactivity.
+
+#### The published UI versus `workspace-ui`
+
+They are different frontends for different jobs, and the difference is structural rather than cosmetic:
+
+- **`/studio` (published)** — served by the FastAPI application itself, same origin as the API, no build step, no proxy, no CORS.
+- **`workspace-ui` (local)** — a React/Vite workspace for development. Its credential proxy is bound to `127.0.0.1` on purpose, and it talks to three backends (`/studio-api`, `/api`, `/ops`). It is not a static site: without a proxy it cannot reach those backends, so publishing it as static files would not work.

@@ -38,3 +38,44 @@ services:
       # Only an operator-managed secret plus an explicit override can enable writes.
       - key: AI2027_READ_ONLY
         value: "1"
+
+  # The Agent Studio web UI and its API, served from ONE origin.
+  #
+  # studio.html is served by the FastAPI application itself at /studio, and it
+  # calls /v1/studio/* with relative paths. The UI and the API are therefore
+  # the same origin: no proxy, no CORS headers and no browser-bundled
+  # credential are involved, and the default browser same-origin policy
+  # applies unchanged.
+  #
+  # This service does install the package, unlike the live-agent service
+  # above: the Studio API needs fastapi, httpx, uvicorn and pydantic. The two
+  # services stay separate on purpose - the live-agent path must remain
+  # stdlib-only, and scripts/ci_guard.py fails CI if that ever changes.
+  - type: web
+    name: ai-2027-studio
+    runtime: python
+    region: frankfurt
+    plan: free
+    buildCommand: "pip install -e python-2027"
+    startCommand: "ai2027-py27 studio --host 0.0.0.0 --port $PORT"
+    # The status route reports readiness and the presence of provider
+    # credentials. It never reports a credential value, so it is safe to use
+    # as a liveness probe.
+    healthCheckPath: /v1/studio/status
+    autoDeploy: true
+    envVars:
+      # Render injects PORT itself.
+      - key: AI2027_READ_ONLY
+        value: "1"
+      # A public instance must never spend. This authorises no paid request;
+      # with no budget, every paid and unknown-cost call is refused.
+      - key: AI2027_MAX_SPEND_USD
+        value: "0"
+      # Secrets are entered once in the Render dashboard (sync: false) and
+      # are never stored in Git. Each one has a real consumer: the Studio
+      # status route reports configured true/false, and the connectors
+      # catalog route reports token_missing when it is absent.
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: CONNECTORS_HUB_API_TOKEN
+        sync: false
