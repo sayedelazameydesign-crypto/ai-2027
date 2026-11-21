@@ -96,6 +96,10 @@ const dictionaries = {
     statusAborted: 'أُلغيت الجولة',
     statusInconclusive: 'غير حاسم',
     statusUnknown: 'حالة غير معروفة',
+    cleanupStatus: 'حالة التنظيف',
+    cleanupComplete: 'اكتمل التنظيف',
+    cleanupNotApplicable: 'التنظيف غير منطبق في نمط Live Agent المباشر',
+    cleanupNotConfirmed: 'التنظيف جزئي أو فاشل أو غير مُبلّغ عنه؛ النجاح الكامل غير مؤكد',
     duration: 'زمن التنفيذ',
     evidenceChecks: 'فحوص الأدلة',
     memoryAdmission: 'الذاكرة المحكومة',
@@ -213,6 +217,10 @@ const dictionaries = {
     statusAborted: 'Run aborted',
     statusInconclusive: 'Inconclusive',
     statusUnknown: 'Unknown status',
+    cleanupStatus: 'Cleanup status',
+    cleanupComplete: 'Cleanup complete',
+    cleanupNotApplicable: 'Cleanup not applicable in direct Live Agent mode',
+    cleanupNotConfirmed: 'Cleanup is partial, failed, or unreported; full success is not confirmed',
     duration: 'Execution time',
     evidenceChecks: 'Evidence checks',
     memoryAdmission: 'Evidence-gated memory',
@@ -286,11 +294,18 @@ interface HealthPayload {
   memory?: number;
 }
 
+interface CleanupPayload {
+  status?: string;
+  reason?: string;
+  warnings?: string[];
+}
+
 interface RunSummary {
   run_id: string;
   ts: number;
   status: string;
   goal_type: string;
+  cleanup?: CleanupPayload;
 }
 
 interface RunAction {
@@ -333,6 +348,7 @@ interface RunRecord {
   sandbox?: string;
   sandbox_files?: string[];
   memory?: { admitted?: boolean; reason?: string };
+  cleanup?: CleanupPayload;
 }
 
 interface FilePreview {
@@ -398,6 +414,25 @@ function getStatusCopy(status: string, t: Copy): string {
 
 function statusClass(status: string): string {
   return status.toLowerCase().replace(/[^a-z0-9-]/g, '-');
+}
+
+function cleanupAccepted(cleanup?: CleanupPayload): boolean {
+  return cleanup?.status === 'complete' || (
+    cleanup?.status === 'not_applicable' && cleanup?.reason === 'direct_live_agent_mode'
+  );
+}
+
+function displayRunStatus(status: string, cleanup?: CleanupPayload): string {
+  if (status !== 'VERIFIED') return status;
+  return cleanupAccepted(cleanup) ? status : 'INCONCLUSIVE';
+}
+
+function cleanupMessage(cleanup: CleanupPayload | undefined, t: Copy): string {
+  if (cleanup?.status === 'complete') return t.cleanupComplete;
+  if (cleanupAccepted(cleanup) && cleanup?.status === 'not_applicable') return t.cleanupNotApplicable;
+  const status = cleanup?.status || 'unreported';
+  const warnings = Array.isArray(cleanup?.warnings) ? cleanup.warnings.join(', ') : '';
+  return `${t.cleanupNotConfirmed} (${status}${warnings ? `: ${warnings}` : ''})`;
 }
 
 function operationCopy(goal: string | undefined, t: Copy): string {
@@ -495,11 +530,12 @@ function App() {
   const refreshOverview = useCallback(async () => {
     setOverviewLoading(true);
     try {
-      const [healthPayload, runPayload] = await Promise.all([
+      const [healthPayload, capabilitiesPayload, runPayload] = await Promise.all([
         api<HealthPayload>('/api/health'),
+        api<Pick<HealthPayload, 'supported_goals' | 'memory'>>('/api/capabilities'),
         api<{ runs?: RunSummary[] }>('/api/runs'),
       ]);
-      setHealth(healthPayload);
+      setHealth({ ...healthPayload, ...capabilitiesPayload });
       setRuns(Array.isArray(runPayload.runs) ? runPayload.runs : []);
       setOverviewError(false);
     } catch {
@@ -759,10 +795,11 @@ function App() {
               <div className="history-empty"><History size={15} /><span>{overviewLoading ? t.loading : t.emptyHistory}</span></div>
             ) : runs.slice(0, 16).map((run) => {
               const selected = selectedRunId === run.run_id;
-              const runStatus = statusClass(run.status);
+              const resultStatus = displayRunStatus(run.status, run.cleanup);
+              const runStatus = statusClass(resultStatus);
               return (
                 <button key={run.run_id} className={`history-item ${selected ? 'history-selected' : ''}`} onClick={() => void openRun(run.run_id)}>
-                  <span className={`history-status ${runStatus}`}>{run.status === 'VERIFIED' ? <Check size={12} /> : run.status === 'DENIED' ? <ShieldAlert size={12} /> : <Circle size={9} />}</span>
+                  <span className={`history-status ${runStatus}`}>{resultStatus === 'VERIFIED' ? <Check size={12} /> : resultStatus === 'DENIED' ? <ShieldAlert size={12} /> : <Circle size={9} />}</span>
                   <span className="history-copy">
                     <span className="history-name">{operationCopy(run.goal_type, t)}</span>
                     <span className="history-meta">{formatTime(run.ts, lang)} <i>·</i> {run.run_id.slice(-8)}</span>
@@ -929,7 +966,7 @@ function App() {
             </section>
 
             <section className="inspector-card proof-card">
-              <div className="inspector-title-row"><div className="inspector-title"><span className="inspector-icon proof-icon"><ShieldCheck size={15} /></span><h2>{t.proofTitle}</h2></div>{record && <span className={`status-chip ${statusClass(record.status)}`}>{getStatusCopy(record.status, t)}</span>}</div>
+              <div className="inspector-title-row"><div className="inspector-title"><span className="inspector-icon proof-icon"><ShieldCheck size={15} /></span><h2>{t.proofTitle}</h2></div>{record && <span className={`status-chip ${statusClass(displayRunStatus(record.status, record.cleanup))}`}>{getStatusCopy(displayRunStatus(record.status, record.cleanup), t)}</span>}</div>
               {!record ? (
                 <div className="proof-empty"><div className="proof-empty-mark"><ShieldCheck size={18} /></div><p>{t.proofEmpty}</p></div>
               ) : (
@@ -985,7 +1022,8 @@ function RunResult({
   copied: boolean;
   displayedFiles: string[];
 }) {
-  const status = statusClass(record.status);
+  const displayStatus = displayRunStatus(record.status, record.cleanup);
+  const status = statusClass(displayStatus);
   const counts = evidenceCounts(record);
   const policy = record.policy ?? [];
   const planActions = record.plan?.actions ?? [];
@@ -1006,8 +1044,8 @@ function RunResult({
   return (
     <section className={`run-result-card run-${status}`} aria-live="polite">
       <div className="run-result-header">
-        <div className="run-status-mark">{record.status === 'VERIFIED' ? <CheckCircle2 size={21} /> : record.status === 'DENIED' ? <ShieldAlert size={21} /> : <AlertCircle size={21} />}</div>
-        <div className="run-title-group"><span className="result-kicker">{t.resultTitle} <i>·</i> {t.resultReady}</span><h2>{getStatusCopy(record.status, t)}</h2><p>{operationCopy(record.goal?.goal_type, t)} <b>·</b> <code dir="auto">{runPath(record)}</code></p></div>
+        <div className="run-status-mark">{displayStatus === 'VERIFIED' ? <CheckCircle2 size={21} /> : displayStatus === 'DENIED' ? <ShieldAlert size={21} /> : <AlertCircle size={21} />}</div>
+        <div className="run-title-group"><span className="result-kicker">{t.resultTitle} <i>·</i> {t.resultReady}</span><h2>{getStatusCopy(displayStatus, t)}</h2><p>{operationCopy(record.goal?.goal_type, t)} <b>·</b> <code dir="auto">{runPath(record)}</code></p></div>
         <div className="run-header-actions">
           <button className="run-action" onClick={onCopy} title={t.copyId}><Copy size={14} /><span>{copied ? t.copied : t.copyId}</span></button>
           <a className="run-action" href={`/api/run/${encodeURIComponent(record.run_id)}`} download={`${record.run_id}.json`}><ArrowDownToLine size={14} /><span>{t.downloadRecord}</span></a>
@@ -1018,6 +1056,9 @@ function RunResult({
         <div className="summary-metric"><span><Clock3 size={13} />{t.duration}</span><strong>{duration}</strong></div>
         <div className="summary-metric"><span><ShieldCheck size={13} />{t.evidenceChecks}</span><strong>{counts.passed}<small> / {counts.total}</small></strong></div>
         <div className="summary-metric"><span><HardDrive size={13} />{t.memoryAdmission}</span><strong className={record.memory?.admitted ? 'metric-good' : 'metric-neutral'}>{record.memory?.admitted ? t.memoryAccepted : t.memoryRefused}</strong></div>
+      </div>
+      <div className={`cleanup-notice cleanup-${statusClass(record.cleanup?.status || 'unreported')}`} role="status">
+        <ShieldCheck size={14} /><span><strong>{t.cleanupStatus}:</strong> {cleanupMessage(record.cleanup, t)}</span>
       </div>
 
       <div className="run-stages" aria-label={t.resultTitle}>
@@ -1085,10 +1126,11 @@ function RunResult({
 function ProofSummary({ record, t }: { record: RunRecord; t: Copy }) {
   const counts = evidenceCounts(record);
   const hash = recordHash(record);
-  const statusText = getStatusCopy(record.status, t);
+  const displayStatus = displayRunStatus(record.status, record.cleanup);
+  const statusText = getStatusCopy(displayStatus, t);
   return (
     <div className="proof-summary">
-      <div className="proof-status-line"><span className={`proof-status-icon ${statusClass(record.status)}`}>{record.status === 'VERIFIED' ? <Check size={13} /> : record.status === 'DENIED' ? <ShieldAlert size={13} /> : <AlertCircle size={13} />}</span><strong>{statusText}</strong><span className="proof-run-short" dir="ltr">{record.run_id.slice(-8)}</span></div>
+      <div className="proof-status-line"><span className={`proof-status-icon ${statusClass(displayStatus)}`}>{displayStatus === 'VERIFIED' ? <Check size={13} /> : displayStatus === 'DENIED' ? <ShieldAlert size={13} /> : <AlertCircle size={13} />}</span><strong>{statusText}</strong><span className="proof-run-short" dir="ltr">{record.run_id.slice(-8)}</span></div>
       <div className="proof-stat-row"><span>{t.verifiedChecks}</span><strong>{counts.passed} / {counts.total}</strong></div>
       {hash && <div className="proof-hash"><span>{t.hashLabel}</span><code dir="ltr" title={hash}>{hash.slice(0, 12)}…{hash.slice(-8)}</code></div>}
       {record.memory && <div className="memory-state"><span className={`memory-dot ${record.memory.admitted ? 'memory-good' : 'memory-muted'}`} />{record.memory.admitted ? t.memoryAccepted : t.memoryRefused}</div>}

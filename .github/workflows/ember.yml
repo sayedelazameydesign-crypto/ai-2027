@@ -6,7 +6,7 @@
 #
 # What each run does (all of it real, none of it simulated):
 #   1. boots the real live-agent (real kernel) + the real Command HUD;
-#   2. runs `scripts/runtime_smoke.py` (15 checks over real HTTP);
+#   2. runs `scripts/runtime_smoke.py` (17 checks over real HTTP);
 #   3. computes the Heat Index from measured history and writes ember/status.json
 #      + STATUS.md from the same variables;
 #   4. judges that beat with `scripts/health_gate.py` against the recorded past —
@@ -57,11 +57,65 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Boot the real services
+      - name: Boot the real services with ephemeral API credentials
         run: |
           set -euo pipefail
-          python live-agent/server.py --port 8090 --host 127.0.0.1 > /tmp/live-agent.log 2>&1 &
-          python command-hud/server.py --port 8091 --host 127.0.0.1 > /tmp/hud.log 2>&1 &
+          umask 077
+          if [[ -e .ember-up || -L .ember-up ]]; then
+            echo "refusing pre-existing .ember-up workflow state" >&2
+            exit 1
+          fi
+          mkdir -m 700 .ember-up
+          ( set -o noclobber; printf '%s\n' 'ai-2027-ember-owned-state-v1' > .ember-up/workflow-owner )
+          write_owned_pid() {
+            local file="$1" pid="$2"
+            [[ "$pid" =~ ^[0-9]+$ ]] || return 1
+            ( umask 077; set -o noclobber; printf '%s\n' "$pid" > "$file" )
+          }
+          WRITE_TOKEN="$(python -c 'import secrets; print(secrets.token_urlsafe(32))')"
+          READ_ID="ember-reader"
+          READ_SECRET="$(python -c 'import secrets; print(secrets.token_urlsafe(32))')"
+          READ_HASHES="$(AI2027_READ_TOKEN_ID="$READ_ID" AI2027_READ_TOKEN_SECRET="$READ_SECRET" AI2027_WRITE_TOKEN="$WRITE_TOKEN" python - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+          state = Path(".ember-up")
+          os.umask(0o077)
+          if state.is_symlink():
+              raise SystemExit("refusing a symlinked .ember-up directory")
+          state.mkdir(mode=0o700, exist_ok=True)
+          if state.is_symlink() or not state.is_dir():
+              raise SystemExit(".ember-up is not a real directory")
+          os.chmod(state, 0o700)
+          identifier = os.environ["AI2027_READ_TOKEN_ID"]
+          secret = os.environ["AI2027_READ_TOKEN_SECRET"]
+          writer = os.environ["AI2027_WRITE_TOKEN"]
+          hashes = {identifier: hashlib.sha256(secret.encode()).hexdigest()}
+          path = state / "api-credentials.json"
+          descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+          with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+              json.dump({"read_id": identifier, "read_secret": secret,
+                         "write_token": writer, "read_hashes": hashes}, handle)
+              handle.write("\n")
+          print(json.dumps(hashes))
+          PY
+          )"
+          AI2027_WRITE_TOKEN="$WRITE_TOKEN" AI2027_READ_TOKEN_HASHES="$READ_HASHES" \
+            AI2027_READ_ONLY=0 python live-agent/server.py --port 8090 --host 127.0.0.1 \
+            > .ember-up/live-agent.log 2>&1 &
+          LIVE_AGENT_PID=$!
+          if ! write_owned_pid .ember-up/live-agent.pid "$LIVE_AGENT_PID"; then
+            kill "$LIVE_AGENT_PID" 2>/dev/null || true
+            echo "could not record the Live Agent process id" >&2
+            exit 1
+          fi
+          python command-hud/server.py --port 8091 --host 127.0.0.1 \
+            > .ember-up/command-hud.log 2>&1 &
+          HUD_PID=$!
+          if ! write_owned_pid .ember-up/command-hud.pid "$HUD_PID"; then
+            kill "$HUD_PID" 2>/dev/null || true
+            echo "could not record the Command HUD process id" >&2
+            exit 1
+          fi
           for i in $(seq 1 30); do
             if curl -sf http://127.0.0.1:8090/api/health > /dev/null \
                && curl -sf http://127.0.0.1:8091/api/health > /dev/null; then
@@ -70,7 +124,7 @@ jobs:
             sleep 1
           done
           echo "::error::services did not become healthy in 30s"
-          tail -40 /tmp/live-agent.log /tmp/hud.log || true
+          tail -40 .ember-up/live-agent.log .ember-up/command-hud.log 2>/dev/null || true
           exit 1
 
       - name: Restore the recorded past (history lives on the heartbeat branch)
@@ -295,3 +349,41 @@ jobs:
             || echo "nothing changed this beat"
           git push --force origin HEAD:heartbeat
           echo "heartbeat pushed: $SUMMARY"
+
+      - name: Stop services and remove ephemeral API credentials
+        if: always()
+        run: |
+          set -euo pipefail
+          stop_owned_service() {
+            local pid_file="$1" expected="$2" pid command
+            [[ ! -L "$pid_file" && -f "$pid_file" && -r "$pid_file" ]] || return 0
+            read -r pid < "$pid_file" || return 0
+            [[ "$pid" =~ ^[0-9]+$ ]] || return 0
+            command="$(ps -p "$pid" -o args= 2>/dev/null || true)"
+            case "$command" in
+              *"$expected"*) kill "$pid" 2>/dev/null || true ;;
+              *) return 0 ;;
+            esac
+            for _ in $(seq 1 20); do
+              command="$(ps -p "$pid" -o args= 2>/dev/null || true)"
+              case "$command" in *"$expected"*) sleep 0.1 ;; *) break ;; esac
+            done
+            command="$(ps -p "$pid" -o args= 2>/dev/null || true)"
+            case "$command" in
+              *"$expected"*) kill -KILL "$pid" 2>/dev/null || true ;;
+            esac
+          }
+          if [[ -L .ember-up ]]; then
+            echo "refusing symlinked .ember-up during cleanup" >&2
+          elif [[ -d .ember-up && ! -L .ember-up \
+                && -f .ember-up/workflow-owner && ! -L .ember-up/workflow-owner \
+                && "$(cat .ember-up/workflow-owner)" == "ai-2027-ember-owned-state-v1" ]]; then
+            stop_owned_service .ember-up/live-agent.pid 'live-agent/server.py'
+            stop_owned_service .ember-up/command-hud.pid 'command-hud/server.py'
+            rm -f .ember-up/api-credentials.json .ember-up/live-agent.pid \
+              .ember-up/command-hud.pid .ember-up/live-agent.log \
+              .ember-up/command-hud.log .ember-up/workflow-owner
+            rmdir .ember-up 2>/dev/null || true
+          else
+            echo "no owned .ember-up workflow state to clean" >&2
+          fi

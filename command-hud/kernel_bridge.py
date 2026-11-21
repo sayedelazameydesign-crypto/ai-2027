@@ -3,9 +3,10 @@
 
 We do NOT copy or reimplement the kernel. We import `live-agent/server.py` in
 place (which itself inserts `projects/agi-system` into sys.path and imports
-`core.*` directly). Only RUNS_DIR / SANDBOXES_DIR are redirected so the HUD
-never writes into the live-agent demo's evidence trail. Existing HUD runtime
-data is preserved by default; a clean reset is explicit (`fresh=True`).
+`core.*` directly). All runtime paths (runs, sandboxes, and the kernel's SQLite
+state) are redirected so the HUD never writes into the Live Agent demo's
+separate evidence trail. Existing HUD runtime data is preserved by default; a
+clean reset is explicit (`fresh=True`).
 
 Stdlib only.
 """
@@ -38,12 +39,11 @@ def load(runtime: Path | None = None, fresh: bool = False):
     spec.loader.exec_module(mod)
 
     rt = Path(runtime) if runtime is not None else RUNTIME
-    mod.RUNS_DIR = rt / "runs"
-    mod.SANDBOXES_DIR = rt / "sandboxes"
-    # The evidence-gated memory DB is runtime state too: redirect it, otherwise
-    # this process would share (and _fresh_state would DELETE) the live-agent's
-    # memory file. That bug was found by the HTTP smoke test, not by review.
-    mod.MEMORY_DB = rt / "state" / "memory.db"
+    # Use the Live Agent's validated runtime setup so the HUD shares its
+    # no-symlink layout checks and owner-only permission policy without sharing
+    # the Live Agent's separate runtime data.
+    mod._configure_runtime(rt)
+    mod._restrict_runtime_permissions()
     mod._prepare_state(fresh=fresh)
     history_file = rt / "state" / "hud-history.jsonl"
     if fresh:

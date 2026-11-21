@@ -27,7 +27,7 @@
 | الملف | الدور | التحقق المنفَّذ |
 |---|---|---|
 | `.github/pr-lens.yml` | قواعد التصحيح والتجميع (`10` corrections: rename, lane, group, exclude `uv.lock`) | `✓ validate` بدون أي تحذير |
-| `.github/workflows/pr-lens.yml` | مسار تشغيل CLI يدوي على `main` يمرّر `GEMINI_API_KEY` عبر `env:` فقط | `✓ workflow_secret_audit.py --assert` (`30/30` tests OK) |
+| `.github/workflows/pr-lens.yml` | مسار تشغيل CLI يدوي على `main` يمرّر `GEMINI_API_KEY` عبر `env:` فقط | `✓ workflow_secret_audit.py --assert` (`31/31` tests OK) |
 | `.github/pr-lens.map.json` | خريطة الحالة المخزنة للمستودع عند الالتزام `cbabaa45f12cb1213b80ef1f3b9d62a5982691f4` (`13` عقدة، `11` رابطاً، `4` مسارات) | `✓ validate` صالح (`schemaVersion: 0.3.1`) |
 | `.pr-lens/python-2027-protocol-production-hardening-pr-64/` | نواتج الرسم المولَّدة محلياً (غير مُلتَزَمة في Git وفق `.gitignore`): `8` ملفات SVG للواجهات + `2` ملف SVG للـWalkthrough المتحرك + `manifest.json` + `drawn.graph.json` | `✓ render` كامل (`light` + `dark`) |
 

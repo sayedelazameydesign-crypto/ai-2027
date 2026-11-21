@@ -31,6 +31,7 @@
   ],
   "endpoints": {
     "health": "/api/health",
+    "capabilities": "/api/capabilities",
     "run": "/api/run",
     "runs": "/api/runs",
     "run_record": "/api/run/{run_id}",
@@ -43,7 +44,7 @@
   "honest_limits": [
     "No LLM in the loop: the planner is deterministic and rule-based. This card describes what runs, not what is planned.",
     "Memory retrieval is lexical (hashed uni/bi-grams), not neural. Measured: 16/16 on corpus-vocabulary queries, 2/16 on paraphrases.",
-    "No authentication or tenancy: this is a single-tenant demo surface. Do not expose it to the public internet as-is.",
+    "Reader/operator bearer tokens are an interim single-tenant local control, not user identity or multi-user tenancy. Do not expose this service or its local Vite gateway to the public internet.",
     "The agent cannot prove outcomes it did not verify: unverified runs are reported DENIED/FAILED/INCONCLUSIVE and are refused by the memory gate."
   ],
   "verification": {

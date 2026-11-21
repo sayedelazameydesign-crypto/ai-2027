@@ -51,42 +51,96 @@ python3 live-agent/test_llm_planner.py
 
 ```bash
 python3 server.py            # http://localhost:8090; preserves existing runtime data
-python3 test_server.py       # 8 wrapper tests (verification, denial, safety, restart restore, local bind)
+python3 test_server.py       # 23 tests (authorization, privacy, safety, credential checks, local bind)
 python3 server.py --fresh    # explicitly DELETE this service's runs, sandboxes, and memory
 ```
 
 Normal boots restore the recent `/api/runs` index from persisted DecisionRecords
-and retain the sandbox artifacts and SQLite evidence memory. A clean reset is
-opt-in via `--fresh`; tests and benchmarks use disposable temporary runtimes.
+and retain the sandbox artifacts and SQLite evidence memory. On POSIX, the service
+sets a restrictive `umask` and keeps runtime directories owner-only (`0700`) and
+runtime files owner-only (`0600`), tightening modes on existing runtime data at
+startup. With no credentials,
+private reads fail closed and writes are disabled; set reader hashes and an operator
+write token only in a trusted local secret manager/environment when exercising the
+HTTP UI. A clean reset is opt-in via `--fresh`; tests and benchmarks use disposable
+temporary runtimes. The one-command local helper `scripts/ember_up.sh` creates
+random loopback-only API credentials when none are supplied; it keeps them in the
+ignored `.ember-up/api-credentials.json` file with owner-only permissions so the
+local smoke checks can authenticate. Treat that file as a secret and never upload it.
 
 ## Security and privacy
 
-`live-agent/server.py` is a **local-only** demo server: it has no authentication or
-rate limiting and must not be exposed directly to the internet. For deployment,
-use [`deployment/live_server.py`](../deployment/README.md), which disables writes
-without an operator-managed bearer token, applies a process-local write limit, and
-ships read-only defaults for Render and Docker. That is still not a full public
-production auth system: the shared token is not user identity, and a public auth
-proxy is required for interactive writes.
+All API data routes fail closed in both the direct server and deployment launcher.
+Only `GET /api/health` is public and returns a short status object; every other
+`/api/` GET (including run records, artifacts, memory/search, metrics, and the agent
+card) requires a configured reader credential. `POST /api/run` requires an operator
+write token, and `AI2027_READ_ONLY=1` always disables writes. No reader hashes or
+write token configured means private routes are unavailable, not public.
 
-**GET endpoints remain public.** Run lists, DecisionRecords, memory summaries, and
-sandbox artifacts have no per-user access control. Do not submit passwords, API
-keys, personal data, or confidential content to a publicly reachable instance;
-read-only does not mean private. Terminate HTTPS at a trusted hosting proxy.
+Reader clients send `Authorization: Bearer <token-id>.<secret>`; the service stores
+only SHA-256 hashes of high-entropy reader secrets in `AI2027_READ_TOKEN_HASHES`.
+Writes use `Authorization: Bearer <AI2027_WRITE_TOKEN>`. Operator tokens must be
+32-512 visible ASCII characters (`0x21`-`0x7e`) without whitespace; `+`, `/`, and
+`=` are valid symbols. This same contract is enforced by the Live Agent, deployment
+launcher, local auth client, Ember boot helper, and Workspace Vite gateway.
+`GET /api/local/credentials-check` is a loopback-only, non-mutating internal probe:
+it requires the reader bearer and `X-AI2027-Operator-Authorization: Bearer <token>`
+and confirms both credentials without reading records or executing a goal. Ember
+uses it before reusing a healthy Live Agent; an unavailable or incompatible service
+is left running and reported for manual reconfiguration or shutdown. Repository HTTP
+clients attach bearer credentials only to HTTPS URLs, except loopback HTTP for a local
+service (which bypasses configured HTTP proxies); authenticated redirects are
+refused instead of forwarding tokens. Read and write throttles
+are process-local, keyed by the peer IP seen by Python, and are not distributed
+edge protection. These interim bearer credentials are **not** a user-login,
+per-user authorization, or production multi-user system. Use a trusted HTTPS
+identity gateway for real users and edge rate limiting. Never embed secrets in
+public HTML, query strings, committed files, or logs.
+
+The direct Live Agent static UI's credential fields are transient page inputs; this
+page does not write them to localStorage, cookies, or URLs and sends them only in
+Authorization headers. Use that form only over loopback HTTP for local development
+or over HTTPS behind an approved identity gateway. Browser-based authorization does
+not make a shared token safe for public multi-user access. The Workspace UI's Vite
+credential proxy is a separate, loopback-only single-user development bridge; it
+reads `.ember-up/api-credentials.json` server-side and never sends those tokens to
+browser code. Do not expose that proxy through a public preview or deployment. Run
+records, artifacts, memory, and backup archives may contain user content; do not
+submit confidential material until the gateway, persistent storage, encryption, and
+retention policies are approved.
+
+See [`deployment/PERSISTENCE.md`](../deployment/PERSISTENCE.md) for the offline
+backup/restore design and its limits. No hosting configuration is changed by that
+design.
 
 ## API
 
 | Endpoint | Method | Purpose |
 |---|---|---|
-| `/` | GET | Bilingual (EN/AR) live UI |
-| `/api/health` | GET | Kernel status + supported goals |
-| `/api/run` | POST | `{goal_type, params}` → full DecisionRecord JSON |
-| `/api/run/<id>` | GET | Download the persisted evidence record |
-| `/api/file?run=..&path=..` | GET | Download a sandbox artifact (traversal-safe) |
-| `/api/runs` | GET | Recent runs |
+| `/` | GET | Bilingual (EN/AR) static UI; it contains no API credentials |
+| `/api/health` | GET | Minimal public service status |
+| `/api/capabilities` | GET | Supported goals and memory count; reader token required |
+| `/api/run` | POST | `{goal_type, params}` → DecisionRecord JSON; operator Bearer token required |
+| `/api/run/<id>` | GET | Download persisted evidence; reader token required |
+| `/api/file?run=..&path=..` | GET | Download sandbox artifact (traversal-safe); reader token required |
+| `/api/runs` | GET | Recent runs; reader token required |
+| `/api/memory`, `/api/memory/search` | GET | Memory summary/search; reader token required |
+| `/api/metrics`, `/api/agent-card` | GET | Internal metrics/agent metadata; reader token required |
+
+Every `/api/` route except `GET /api/health` is private by default, including
+unknown routes and future additions. Private reads require a configured token ID and
+secret; an empty `AI2027_READ_TOKEN_HASHES` map denies them.
 
 Capabilities (kernel-defined): `create_file` · `read_file` · `append_file` · `list_dir` ·
-`ensure_dir` · `delete_file` — all confined to a fresh sandbox per run.
+`ensure_dir` · `delete_file` — all confined to a fresh sandbox per run. Public health
+stays minimal; `/api/capabilities` is a separate reader-protected UI contract.
+
+Every DecisionRecord explicitly reports cleanup: direct `server.py` runs use
+`cleanup.status = "not_applicable"` because no deployment pruning wrapper runs;
+`deployment/live_server.py` replaces that with `complete`, `partial`, or `failed`.
+Missing or unknown cleanup status is not success. UI result surfaces preserve the
+kernel's raw `status` in the record but show `INCONCLUSIVE` for a `VERIFIED` run when
+cleanup is partial, failed, or unreported.
 
 ## Why this matters for the launch
 

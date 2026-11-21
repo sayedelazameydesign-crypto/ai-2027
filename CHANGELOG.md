@@ -21,8 +21,13 @@ fail or when any GitHub Action is not pinned to a full-length SHA.
 
 ### Security — fail-closed writes for the Live Agent deployment
 - `deployment/live_server.py` disables `POST /api/run` unless an operator supplies
-  `AI2027_WRITE_TOKEN` (minimum 32 characters); enabled writes require a
-  constant-time-checked Bearer token.
+  `AI2027_WRITE_TOKEN` (32-512 visible ASCII characters, no whitespace); enabled
+  writes require a constant-time-checked Bearer token. Symbols including `+`, `/`,
+  and `=` are accepted consistently by the server, clients, Ember, and Workspace.
+- `scripts/ember_up.sh` reuses an already healthy Live Agent only after a loopback,
+  non-mutating check proves both the reader and operator credentials; `--no-smoke`
+  does not bypass it. Unknown or mismatched services are left running with manual
+  reconfiguration/shutdown guidance.
 - Added a bounded, process-local sliding-window rate limit (default 10 attempts per
   60 seconds per observed peer IP). Untrusted forwarded-IP headers are ignored;
   this is not a substitute for proxy-level controls or per-user authentication.

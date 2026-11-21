@@ -7,8 +7,8 @@ listed as not enforced.** Aspirations live in `docs/ROADMAP-2027.md`, not here.
 
 | Control | Mechanism | Evidence |
 |---|---|---|
-| Tests must pass | 11 CI jobs on every PR | `gh pr checks` |
-| Runtime must work over real HTTP | 15 checks against booted servers | `scripts/runtime_smoke.py` |
+| Tests must pass | 15 CI jobs on every PR | `gh pr checks` |
+| Runtime must work over real HTTP | 17 checks against booted servers | `scripts/runtime_smoke.py` |
 | No third-party imports in the kernel | AST gate with a repo-local allowlist | `scripts/ci_guard.py imports` |
 | Published numbers cannot drift | CI reads the claim from `memory/README.md` | `.github/workflows/ci.yml` |
 | Actions must be SHA-pinned | SBOM verifier | `python3 scripts/sbom.py --assert-pinned` |
@@ -18,8 +18,8 @@ listed as not enforced.** Aspirations live in `docs/ROADMAP-2027.md`, not here.
 | Escalation is real, not decorative | stage 3 adds `escalation/s3` + code-owner mention | issue #39 (3 degraded runs, then closed by a healthy beat) |
 | **Silent degradation is refused** | `scripts/health_gate.py` — 11 checks, 3 escalation stages | `python3 scripts/test_health_gate.py` (24 tests) |
 | The retry cannot inflate the record | history row written once by the gate (`--commit-beat`) | `test_19b` (idempotent on `beat_ts`) |
-| Recovery is one command and timed | `scripts/ember_up.sh` | 2.46 s · 15/15 (cold) |
-| The 60 s task promise is falsifiable | `scripts/run_task.py --budget 60` + CI `recovery` job | `python3 scripts/test_run_task.py` (6 tests) |
+| Recovery is one command and timed | `scripts/ember_up.sh` | CI boots the isolated local stack and rechecks all 17 HTTP contracts |
+| The 60 s task promise is falsifiable | `scripts/run_task.py --budget 60` + CI `recovery` job | `python3 scripts/test_run_task.py` (10 tests) |
 | Ownership is declared | `CODEOWNERS` | `.github/CODEOWNERS` |
 | Releases carry proof | tag → tests → wheel + SBOM + SHA256SUMS | `.github/workflows/release.yml` |
 

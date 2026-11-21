@@ -12,7 +12,7 @@ Arabic-first, bilingual workspace that uses the real **Agent Studio** API for se
 - Artifact previews are fetched as text and rendered in an escaped `<pre>` element; HTML and SVG are never executed.
 - The previous bounded Live Agent file workspace remains available under **Kernel workspace**. Command HUD remains available under Operations.
 
-## Run locally / in Arena
+## Run locally (loopback-only)
 
 ### 1. Start Agent Studio
 
@@ -25,7 +25,7 @@ python3 -m pip install -e python-2027
 Start the Studio API from the repository root:
 
 ```bash
-ai2027-py27 --root . studio --host 0.0.0.0 --port 8080
+ai2027-py27 --root . studio --host 127.0.0.1 --port 8080
 ```
 
 The Vite development server proxies `/studio-api/*` to `AI2027_STUDIO_URL` (default `http://127.0.0.1:8080`).
@@ -45,23 +45,31 @@ Do not use a `VITE_`-prefixed variable, paste the token into the UI, or commit i
 
 ### 3. Start the existing kernel services and the UI
 
-The existing one-command script starts Live Agent and Command HUD:
+The one-command script starts Live Agent and Command HUD on loopback and creates a random owner-only credential file at `.ember-up/api-credentials.json`:
 
 ```bash
 ./scripts/ember_up.sh --no-browser
 ```
 
+Before reusing an already healthy Live Agent—and again after starting a new
+one—Ember verifies both the configured reader and operator credentials with the
+loopback-only, read-only `GET /api/local/credentials-check` probe. This check also runs with `--no-smoke`;
+if both credentials cannot be proven, Ember fails closed and leaves the existing
+service running for the operator to reconfigure or stop manually.
+
 In another terminal:
 
 ```bash
 cd workspace-ui
-npm install
-npm run dev -- --host 0.0.0.0
+npm ci
+npm run dev
 ```
 
-Open the Vite preview at port `4173`. Same-origin proxies route `/api/*` to Live Agent `8090`, `/ops/*` to Command HUD `8091`, and `/studio-api/*` to Agent Studio `8080`. Browser code does not call a sandbox `localhost` URL.
+Open `http://127.0.0.1:4173`. Vite binds to `127.0.0.1` and accepts only local Host/Origin values; attempts to bind this credential proxy to a public interface are rejected. Same-origin `/api/*` requests go to Live Agent `8090`: the server-side Vite middleware reads the owner-only file, injects the reader credential for GETs, and injects the operator credential only for `POST /api/run`. Browser-supplied Authorization headers are overwritten. No bearer credential is included in the JavaScript bundle, browser storage, cookies, or URLs. `/ops/*` is similarly restricted to validated local same-origin requests; the proxy rewrites the already-validated Origin for Command HUD's loopback guard. `/studio-api/*` remains a relative proxy to Agent Studio `8080`.
 
-For a production deployment, configure the equivalent same-origin `/studio-api/*` reverse proxy to Agent Studio. Keep `CONNECTORS_HUB_URL` and `CONNECTORS_HUB_API_TOKEN` in the Agent Studio server environment, never in the static bundle.
+Missing, malformed, symlinked, or non-private credential files fail closed for private API calls. Operator write tokens must be 32-512 visible ASCII characters (`0x21`-`0x7e`) with no whitespace; symbols such as `+`, `/`, and `=` are accepted. The gateway requires verifiable POSIX owner-only file/directory modes; platforms where those permissions cannot be verified fail closed (this is not native Windows validation). The Live Agent still enforces `AI2027_READ_ONLY=1`, regardless of the local proxy's operator credential. `/api/health` remains a minimal public liveness response; the reader-protected `/api/capabilities` supplies the goal list and memory count used by the Kernel workspace.
+
+This is a **trusted single-user local development bridge**, not multi-user authentication. Do not expose Vite, Live Agent, or Command HUD through an Arena/public preview, tunnel, public reverse proxy, or production deployment. The static production build does not include this proxy or credentials; internet access requires a separately approved identity gateway, not this local token bridge. Keep `CONNECTORS_HUB_URL` and `CONNECTORS_HUB_API_TOKEN` in the Agent Studio server environment, never in the static bundle.
 
 ## Build checks
 

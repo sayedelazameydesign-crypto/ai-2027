@@ -12,6 +12,7 @@ from __future__ import annotations
 import hashlib
 import json
 import shutil
+import stat
 import sys
 import tempfile
 import threading
@@ -19,6 +20,7 @@ import unittest
 import urllib.error
 import urllib.request
 from http.server import ThreadingHTTPServer
+from unittest.mock import patch
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -232,6 +234,38 @@ class HudTests(unittest.TestCase):
             live_db = (kernel_bridge.ROOT / "live-agent" / "memory.db").resolve()
             self.assertNotEqual(Path(mod.MEMORY_DB).resolve(), live_db,
                                 "the HUD must never write the live-agent's memory DB")
+
+            # The HUD has a separate, legacy root-level SQLite DB; harden it too.
+            hud_db = tmp / "memory.sqlite"
+            hud_db.write_bytes(b"synthetic-existing-db-file")
+            hud_db.chmod(0o644)
+            self.assertEqual(hud._prepare_hud_memory_db(mod, tmp, fresh=False), hud_db)
+            self.assertEqual(stat.S_IMODE(hud_db.stat().st_mode), 0o600)
+
+            external_db = tmp / "external.sqlite"
+            external_db.write_bytes(b"synthetic-external-marker")
+            hud_db.unlink()
+            hud_db.symlink_to(external_db)
+            with self.assertRaisesRegex(ValueError, "symlink"):
+                hud._prepare_hud_memory_db(mod, tmp, fresh=False)
+            self.assertEqual(external_db.read_bytes(), b"synthetic-external-marker")
+            hud_db.unlink()
+
+            # --fresh must not turn a symlinked runtime alias into deletion of its target.
+            target = tmp / "linked-runtime-target"
+            (target / "runs").mkdir(parents=True)
+            marker = target / "runs" / "preserve.json"
+            marker.write_text("synthetic-preservation-proof", encoding="utf-8")
+            alias = tmp / "linked-runtime-alias"
+            alias.symlink_to(target, target_is_directory=True)
+            with patch.object(sys, "argv", [
+                "server.py", "--runtime-dir", str(alias), "--fresh", "--fast-audit",
+            ]), patch.object(hud, "ThreadingHTTPServer",
+                             side_effect=RuntimeError("unexpected socket creation")):
+                with self.assertRaisesRegex(ValueError, "symlink"):
+                    hud.main()
+            self.assertEqual(marker.read_text(encoding="utf-8"),
+                             "synthetic-preservation-proof")
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
 
@@ -324,6 +358,57 @@ class HudTests(unittest.TestCase):
         self.assertEqual(artifact_bytes, content.encode("utf-8"))
         self.assertEqual(hashlib.sha256(artifact_bytes).hexdigest(), expected_hash)
         self.assertEqual(restored_entry["sha256"]["sha256"], expected_hash)
+
+    def test_18_control_routes_reject_foreign_hosts_and_origins(self):
+        action = {"enabled": True}
+        body = json.dumps(action).encode("utf-8")
+        evil_origin = urllib.request.Request(
+            self.base + "/api/kill", data=body,
+            headers={"Content-Type": "application/json", "Origin": "https://evil.example"},
+            method="POST",
+        )
+        with self.assertRaises(urllib.error.HTTPError) as context:
+            urllib.request.urlopen(evil_origin, timeout=5)
+        self.assertEqual(context.exception.code, 403)
+        context.exception.close()
+        self.assertFalse(hud.STATE["frozen"])
+
+        foreign_host = urllib.request.Request(
+            self.base + "/api/state", headers={"Host": "attacker.example"})
+        with self.assertRaises(urllib.error.HTTPError) as context:
+            urllib.request.urlopen(foreign_host, timeout=5)
+        self.assertEqual(context.exception.code, 403)
+        context.exception.close()
+
+        cross_site = urllib.request.Request(
+            self.base + "/api/kill", data=body,
+            headers={"Content-Type": "application/json", "Sec-Fetch-Site": "cross-site"},
+            method="POST",
+        )
+        with self.assertRaises(urllib.error.HTTPError) as context:
+            urllib.request.urlopen(cross_site, timeout=5)
+        self.assertEqual(context.exception.code, 403)
+        context.exception.close()
+        self.assertFalse(hud.STATE["frozen"])
+
+        local_origin = urllib.request.Request(
+            self.base + "/api/kill", data=body,
+            headers={"Content-Type": "application/json",
+                     "Origin": f"http://127.0.0.1:{self.port}"},
+            method="POST",
+        )
+        with urllib.request.urlopen(local_origin, timeout=5) as response:
+            result = json.loads(response.read())
+        self.assertTrue(result["frozen"])
+        self.post("/api/kill", {"enabled": False})
+
+    def test_19_command_hud_refuses_non_loopback_bind_addresses(self):
+        self.assertEqual(hud._loopback_bind_host("localhost"), "127.0.0.1")
+        self.assertEqual(hud._loopback_bind_host("127.0.0.1"), "127.0.0.1")
+        self.assertEqual(hud._loopback_bind_host("127.0.0.2"), "127.0.0.2")
+        for host in ("0.0.0.0", "192.0.2.10", "hud.example.invalid", "::1"):
+            with self.subTest(host=host), self.assertRaises(ValueError):
+                hud._loopback_bind_host(host)
 
 
 if __name__ == "__main__":

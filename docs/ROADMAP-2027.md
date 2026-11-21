@@ -97,7 +97,7 @@
   - **مقيس:** `python3 scripts/run_task.py --boot` → `VERIFIED` في **22.9 ms** (السقف 60000 ms)،
     مع إعادة حساب SHA-256 محليًا ومطابقته، ورابط دليل `http://127.0.0.1:8090/api/run/<run_id>`
     وحزمة دليل في `launch/evidence/`.
-  - `python3 scripts/test_run_task.py -v` = **6 اختبارات**، منها اختبار يجعل ادعاء الـ60 ثانية يفشل عمدًا (خروج `3`).
+  - `python3 scripts/test_run_task.py -v` = **7 اختبارات**، منها اختبار يجعل ادعاء الـ60 ثانية يفشل عمدًا (خروج `3`) واختبار يرفض التنظيف غير المكتمل.
 
 ---
 
@@ -168,12 +168,17 @@ HEAT = 0.4×success_rate_7d
 - `ember.yml` موجود ومُشغَّل يدويًا بنجاح على الفرع **[بانتظار تحقق]**.
 - `runtime_smoke.py` = **15/15** (كان 13) **[منفّذ محليًا]**.
 - `/api/agent-card` و`/api/metrics` يعملان ويفشلان بصدق عند غياب البيانات **[منفّذ]**.
-- `scripts/test_ember_beat.py` = 7 اختبارات خضراء **[منفّذ]**.
+- `scripts/test_ember_beat.py` = 13 اختبارًا أخضر **[منفّذ]**.
 - CI على `main` = 11/11 أخضر بعد الدمج **[بانتظار الدمج]**.
 
 ---
 
 ## 9️⃣ دليل الأوامر (كل رقم أعلاه يعود إلى واحد منها)
+
+> **تحديث Phase 2 (2026-11-19):** كل مسارات `/api/` خاصة باستثناء `GET /api/health`
+> المختصر. على checkout نظيف، استخدم `ember_up.sh --check` أولًا؛ فهو ينشئ بيانات
+> اعتماد محلية خاصة ويشغّل smoke بها. تشغيل `runtime_smoke.py` يدويًا يحتاج ملف
+> `.ember-up/api-credentials.json` المولّد محليًا أو متغيرات اعتماد صريحة.
 
 ```bash
 ./scripts/ember_up.sh --check                      # تشغيل كامل بأمر واحد + 15/15 + إيقاف (2.46s)
@@ -184,10 +189,10 @@ python3 scripts/runtime_smoke.py                  # 15/15 عبر HTTP حقيقي
 python3 scripts/runtime_smoke.py --json           # نفس النتيجة، قابلة للآلة
 python3 scripts/ember_beat.py --write             # نبضة + Heat Index + STATUS.md
 python3 scripts/ember_beat.py --json              # نبضة قابلة للقراءة آليًا
-python3 scripts/test_ember_beat.py -v             # 7 اختبارات للحرارة والنشر
+python3 scripts/test_ember_beat.py -v             # 13 اختبارًا للحرارة والنشر ومصادقة القراءة
 python3 memory/evaluate.py --json                 # صدق الاسترجاع (16/16 · 11/16 · FP 0)
-python3 command-hud/test_hud.py -v                # 15 اختبار HUD
-python3 live-agent/test_server.py -v              # 6 اختبارات الوكيل
+python3 command-hud/test_hud.py -v                # 19 اختبار HUD
+python3 live-agent/test_server.py -v              # 16 اختبارًا للمصادقة والمعدل والسجلات
 gh run list --workflow ember.yml                  # النبضات (بلا بشر)
 gh api repos/:owner/:repo/pages --jq .status      # Pages
 ```
