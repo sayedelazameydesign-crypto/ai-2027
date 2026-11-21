@@ -162,6 +162,14 @@ class BudgetPolicy(StrictModel):
     """Execution policy controlling zero-spend and remote free-tier admission."""
 
     max_spend_usd: float = Field(default=0.0, ge=0.0, le=1000.0)
+    #: Permit calls whose cost cannot be estimated. NOTE: this is an
+    #: authorisation, NOT a financial ceiling. An UNKNOWN_COST decision carries
+    #: no ``estimated_cost_usd``, so ``record_completed`` never advances
+    #: ``spent_usd`` and the ``max_spend_usd`` budget is never consumed by
+    #: these calls. With this flag enabled, every unknown-cost call is
+    #: admitted and repeated calls do not approach the ceiling; the limit only
+    #: binds providers that report a cost estimate. Use it as an explicit
+    #: operator authorisation for a bounded experiment, never as a spend cap.
     allow_unknown_cost: bool = False
     allow_declared_free_tier: bool = True
 
