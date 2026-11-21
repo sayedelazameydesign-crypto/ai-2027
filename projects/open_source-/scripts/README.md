@@ -33,6 +33,10 @@
 | `test_postgres_persistence.py` | دخان C6 مقابل PostgreSQL حقيقي عبر إعادات اتصال. | `CELA_TEST_POSTGRES_DSN` + extra `distributed` |
 | `test_cli_gemini_request_shape.py` | يتحقق من شكل الطلب المرسل إلى Gemini مقابل ناقل موكَّب (بلا شبكة، بلا مفتاح). | بلا مفاتيح |
 | `acceptance_artifacts.py` | فحص مشترك لمخرجات سكربتات القبول (يستورده ما سبق). | — |
+| `e2b_live_check.py` | دخان واحد حيّ على صندوق E2B: ينفّذ ثابتًا واحدًا (`print(40 + 2)`) داخل صندوق مؤقت ثم يدمّره. يُثبت استجابة create/execute واحدة، **لا** عزل إنتاج ولا حدود موارد ولا فوترة. | `E2B_API_KEY` — السرّ يُقرأ من البيئة فقط، لا من argv ولا من المخرجات |
+
+> `e2b_live_check.py` لا يُشغَّل في CI؛ CI يشغّل اختباراته المغلقة (hermetic) في
+> `tests/test_e2b_live_check.py`، وهي تمرّر نسخة موكَّبة من الخلفية فلا تحتاج سرًّا ولا شبكة.
 
 ## تحذير تسمية
 
