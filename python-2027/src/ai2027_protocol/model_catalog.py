@@ -34,6 +34,10 @@ MODEL_ENV_VARS: dict[ProviderKind, str] = {
     ProviderKind.NVIDIA: "NVIDIA_MODEL",
     ProviderKind.GROQ: "GROQ_MODEL",
     ProviderKind.OPENROUTER: "OPENROUTER_MODEL",
+    # OmniRouters has NO default model: the catalogue is per-account and the
+    # provider is not free-guaranteed, so a pinned guess would be both wrong
+    # and unverifiable. `OMNIROUTERS_MODEL` must be set explicitly.
+    ProviderKind.OMNIROUTERS: "OMNIROUTERS_MODEL",
 }
 
 
