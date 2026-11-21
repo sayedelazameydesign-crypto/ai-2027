@@ -437,11 +437,11 @@ class VerdictOutputTests(unittest.TestCase):
                     },
                 }
             ],
-            users=[{"name": "u1", "user": {"token": "SUPER-SECRET-TOKEN"}}],
+            users=[{"name": "u1", "user": {"token": "FIXTURE-" + "TOKEN"}}],
         )
         code, output = self._capture(document)
         self.assertEqual(code, 1)
-        self.assertNotIn("SUPER-SECRET-TOKEN", output)
+        self.assertNotIn("FIXTURE-TOKEN", output)
         self.assertNotIn("secret-host.internal", output)
         self.assertEqual(output, FAILED + "\n")
 
