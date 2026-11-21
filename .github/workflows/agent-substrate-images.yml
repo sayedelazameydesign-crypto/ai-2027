@@ -1,0 +1,57 @@
+name: Agent Substrate images
+
+on:
+  push:
+    tags:
+      - "agent-substrate-v*"
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: agent-substrate-images-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Test, build and publish to GHCR
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+
+      - name: Test Agent Substrate
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s agent-substrate/tests -v
+          python3 -m compileall -q agent-substrate/substrate agent-substrate/examples/counter
+
+      - name: Log in to GitHub Container Registry
+        env:
+          REGISTRY_USER: ${{ github.actor }}
+          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$REGISTRY_TOKEN" | docker login ghcr.io --username "$REGISTRY_USER" --password-stdin
+
+      - name: Build and push versioned images
+        env:
+          IMAGE_OWNER: ${{ github.repository_owner }}
+          SOURCE_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          image_tag="${SOURCE_TAG#agent-substrate-}"
+          if [[ ! "$image_tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Release tag must look like agent-substrate-v1.2.3"
+            exit 1
+          fi
+          owner="$(printf '%s' "$IMAGE_OWNER" | tr '[:upper:]' '[:lower:]')"
+
+          docker buildx build --platform linux/amd64 --push \
+            --tag "ghcr.io/${owner}/agent-substrate:${image_tag}" \
+            -f agent-substrate/Dockerfile agent-substrate
+          docker buildx build --platform linux/amd64 --push \
+            --tag "ghcr.io/${owner}/agent-substrate-counter:${image_tag}" \
+            -f agent-substrate/examples/counter/Dockerfile agent-substrate/examples/counter
