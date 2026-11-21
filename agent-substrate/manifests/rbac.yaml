@@ -1,0 +1,43 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: agent-substrate-controller
+  namespace: agent-substrate
+  labels:
+    app.kubernetes.io/part-of: agent-substrate
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: agent-substrate-controller
+  namespace: agent-substrate
+rules:
+  - apiGroups: ["substrate.ai"]
+    resources: ["agents"]
+    verbs: ["get", "list", "watch", "patch"]
+  - apiGroups: ["substrate.ai"]
+    resources: ["agents/status"]
+    verbs: ["get", "patch", "update"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "create", "delete"]
+  - apiGroups: [""]
+    resources: ["persistentvolumeclaims"]
+    verbs: ["get", "list", "create"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "create", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: agent-substrate-controller
+  namespace: agent-substrate
+subjects:
+  - kind: ServiceAccount
+    name: agent-substrate-controller
+    namespace: agent-substrate
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: agent-substrate-controller

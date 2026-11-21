@@ -1,6 +1,6 @@
 # Evidence-First CI — Phase 2 / Week 1 of the 2027 roadmap.
-# Gates: 104 kernel tests + 20 Live Agent wrapper tests + authenticated client and
-# snapshot regressions + CLI contract, AST zero-deps proof, reproducible benchmarks,
+# Gates: 104 kernel tests + 20 Live Agent wrapper tests + Agent Substrate MVP tests,
+# authenticated client and snapshot regressions + CLI contract, AST zero-deps proof, reproducible benchmarks,
 # 12 demo contract tests, 44 watchdog tests + 9 Phase 2B alerting tests, and
 # an installable-wheel smoke test.
 #
@@ -59,6 +59,9 @@ jobs:
 
       - name: Live Agent wrapper tests (20)
         run: python live-agent/test_server.py -v
+
+      - name: Agent Substrate lifecycle, isolation and gateway tests
+        run: python -m unittest discover -s agent-substrate/tests -v
 
       - name: CeliaOS verified file bridge and approval tests
         run: |

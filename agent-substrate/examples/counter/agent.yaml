@@ -1,0 +1,12 @@
+apiVersion: substrate.ai/v1alpha1
+kind: Agent
+metadata:
+  name: counter
+  namespace: agent-substrate
+spec:
+  # Build and push examples/counter first, then replace this with its immutable image digest.
+  image: ghcr.io/example/agent-substrate-counter:0.1.0
+  desiredState: Running
+  runtimeClassName: gvisor
+  workspaceStorage: 1Gi
+  idleTimeoutSeconds: 300

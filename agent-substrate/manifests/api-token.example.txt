@@ -1,0 +1,7 @@
+This is a placeholder, not a credential. Create a real token with:
+
+  API_TOKEN="$(python3 -c 'import secrets; print(secrets.token_urlsafe(48))')"
+  ACTOR_MASTER="$(python3 -c 'import secrets; print(secrets.token_urlsafe(48))')"
+  kubectl -n agent-substrate create secret generic agent-substrate-api \
+    --from-literal=token="$API_TOKEN" --from-literal=actor-master="$ACTOR_MASTER"
+  unset API_TOKEN ACTOR_MASTER
