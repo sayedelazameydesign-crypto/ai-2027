@@ -16,6 +16,7 @@ Stdlib only (the YAML test skips cleanly if PyYAML is absent — CI installs non
 """
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 import re
@@ -33,11 +34,14 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parent.parent
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-from deployment import live_server as deployment_live_server
-
 DEPLOY = ROOT / "deployment"
+_LIVE_SPEC = importlib.util.spec_from_file_location(
+    "ai2027_deployment_live_server_test", DEPLOY / "live_server.py"
+)
+if _LIVE_SPEC is None or _LIVE_SPEC.loader is None:
+    raise RuntimeError("could not load deployment/live_server.py for prune tests")
+deployment_live_server = importlib.util.module_from_spec(_LIVE_SPEC)
+_LIVE_SPEC.loader.exec_module(deployment_live_server)
 
 
 def _free_port() -> int:
