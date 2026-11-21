@@ -69,6 +69,7 @@ _PROVIDER_ENV_LABELS = {
     "nvidia": "NVIDIA_API_KEY",
     "groq": "GROQ_API_KEY",
     "openrouter": "OPENROUTER_API_KEY",
+    "omnirouters": "OMNIROUTERS_API_KEY",
     "deterministic": "—",
 }
 

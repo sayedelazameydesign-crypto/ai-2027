@@ -290,6 +290,11 @@ class OpenAICompatibleFreeProvider:
         return self._model
 
     @property
+    def endpoint_url(self) -> str:
+        """Return the validated HTTPS endpoint this provider will call."""
+        return self._endpoint_url
+
+    @property
     def retirement_reason(self) -> str | None:
         """Return why this model ID can no longer be served, or None when it is live."""
         return None if self._retired is None else retirement_reason(self._retired)
@@ -406,6 +411,50 @@ def create_openrouter_free_provider(
         },
         transport=transport,
         billing_tier=billing_tier,
+    )
+
+
+class MissingProviderModelError(ValueError):
+    """Raised when a provider requires an explicitly configured model ID."""
+
+
+def create_omnirouters_provider(
+    *,
+    api_key: str | None = None,
+    model: str | None = None,
+    transport: AsyncHttpTransport | None = None,
+) -> OpenAICompatibleFreeProvider:
+    """Build an OmniRouters provider from the documented OpenAI-compatible API.
+
+    OmniRouters is NOT free-guaranteed: accounts do not receive free credit by
+    default and the minimum top-up is USD 10. This factory therefore has three
+    deliberate differences from the other provider builders:
+
+    * It accepts NO ``billing_tier`` parameter. Passing one would let a caller
+      classify a paid provider as ``FREE_TIER``; ``classify_billing_tier``
+      trusts an explicit tier for any kind except OpenRouter's ``:free`` check.
+      OmniRouters is classified only by policy, so the bypass is unavailable
+      at the API surface rather than merely unused.
+    * It has NO default model. The available catalogue is per-account, so
+      ``OMNIROUTERS_MODEL`` must be set explicitly; without it nothing is
+      constructed and no request can be attempted.
+    * It never claims free tier. An unlisted model falls through to
+      ``UNKNOWN_COST`` and stays blocked while ``MAX_SPEND=0``.
+    """
+    resolved_model = (model or os.environ.get("OMNIROUTERS_MODEL", "")).strip()
+    if not resolved_model:
+        raise MissingProviderModelError(
+            "OMNIROUTERS_MODEL is required: OmniRouters has no default model and no "
+            "free-tier guarantee. Set it to a model id from your account catalogue "
+            "(GET https://omnirouters.com/v1/models)."
+        )
+    return OpenAICompatibleFreeProvider(
+        kind=ProviderKind.OMNIROUTERS,
+        endpoint_url="https://omnirouters.com/v1/chat/completions",
+        api_key=api_key if api_key is not None else os.environ.get("OMNIROUTERS_API_KEY", ""),
+        model=resolved_model,
+        env_var="OMNIROUTERS_API_KEY",
+        transport=transport,
     )
 
 
