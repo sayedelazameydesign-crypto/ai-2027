@@ -26,6 +26,7 @@ class ProviderKind(StrEnum):
     NVIDIA = "nvidia"
     GROQ = "groq"
     OPENROUTER = "openrouter"
+    OMNIROUTERS = "omnirouters"
     DETERMINISTIC = "deterministic"
 
 
