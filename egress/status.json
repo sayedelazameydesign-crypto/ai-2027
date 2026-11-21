@@ -1,0 +1,127 @@
+{
+  "egress": {
+    "egress": "OPEN",
+    "general_egress": true,
+    "can_judge_public_urls": true,
+    "probes": [
+      {
+        "url": "https://example.com/",
+        "host": "example.com",
+        "reachable": true,
+        "status": 200,
+        "ms": 72.1,
+        "error": null,
+        "allowlisted": false
+      },
+      {
+        "url": "https://www.wikipedia.org/",
+        "host": "www.wikipedia.org",
+        "reachable": true,
+        "status": 200,
+        "ms": 99.7,
+        "error": null,
+        "allowlisted": false
+      },
+      {
+        "url": "https://www.cloudflare.com/",
+        "host": "www.cloudflare.com",
+        "reachable": true,
+        "status": 200,
+        "ms": 192.4,
+        "error": null,
+        "allowlisted": false
+      },
+      {
+        "url": "https://api.github.com/",
+        "host": "api.github.com",
+        "reachable": true,
+        "status": 200,
+        "ms": 126.7,
+        "error": null,
+        "allowlisted": true
+      }
+    ]
+  },
+  "measured_at": "2026-11-21T07:29:48Z",
+  "counts": {
+    "ok": 8,
+    "regression": 0,
+    "recovered": 0,
+    "blocked": 0
+  },
+  "regressions": [],
+  "results": [
+    {
+      "url": "https://sayedelazameydesign-crypto.github.io/ai-2027/demo.html",
+      "what": "GitHub Pages demo — JS mirror of the kernel (says so on the page)",
+      "expected": "live",
+      "verdict": "ok",
+      "code": 200,
+      "ms": 145.2,
+      "error": null
+    },
+    {
+      "url": "https://sayedelazameydesign-crypto.github.io/ai-2027/",
+      "what": "GitHub Pages root — published by pages.yml (build_type=workflow since 2026-11-17)",
+      "expected": "live",
+      "verdict": "ok",
+      "code": 200,
+      "ms": 161.9,
+      "error": null
+    },
+    {
+      "url": "https://cela-umber.vercel.app/",
+      "what": "cela 2027 — Arabic 'واحة' learning app, Gemini/NVIDIA provider choice",
+      "expected": "live",
+      "verdict": "ok",
+      "code": 200,
+      "ms": 3403.4,
+      "error": null
+    },
+    {
+      "url": "https://new-pro-kohl.vercel.app/",
+      "what": "'نواة AI' chat assistant (asks for a free key to activate)",
+      "expected": "live",
+      "verdict": "ok",
+      "code": 200,
+      "ms": 421.2,
+      "error": null
+    },
+    {
+      "url": "https://cerulean-boba-48f59a.netlify.app/",
+      "what": "celia.pro — login page; in-account features were never tested",
+      "expected": "live",
+      "verdict": "ok",
+      "code": 200,
+      "ms": 467.8,
+      "error": null
+    },
+    {
+      "url": "https://elazamet1.vercel.app/",
+      "what": "Dead link: referenced 8 times in the archive as if live (DEPLOYMENT_NOT_FOUND)",
+      "expected": "dead",
+      "verdict": "ok",
+      "code": 404,
+      "ms": 160.6,
+      "error": "HTTP 404"
+    },
+    {
+      "url": "https://celia-pro.onrender.com/",
+      "what": "Dead link: Render service 'celia-pro' (Not Found)",
+      "expected": "dead",
+      "verdict": "ok",
+      "code": 404,
+      "ms": 169.5,
+      "error": "HTTP 404"
+    },
+    {
+      "url": "https://nawah-agent.onrender.com/",
+      "what": "Dead link: Render service 'nawah-agent' (Not Found)",
+      "expected": "dead",
+      "verdict": "ok",
+      "code": 404,
+      "ms": 274.2,
+      "error": "HTTP 404"
+    }
+  ]
+}
