@@ -142,17 +142,19 @@ class TestRunGoal(unittest.TestCase):
     def test_runtime_directories_and_files_are_owner_only_under_umask_022(self):
         if os.name != "posix":
             self.skipTest("POSIX mode bits are not portable to this platform")
-        old_sandbox = server.SANDBOXES_DIR / "legacy-open-runtime"
-        old_sandbox.mkdir()
-        old_artifact = old_sandbox / "artifact.txt"
-        old_artifact.write_text("synthetic-old-artifact", encoding="utf-8")
-        os.chmod(server.RUNS_DIR, 0o750)
-        os.chmod(server.SANDBOXES_DIR, 0o750)
-        os.chmod(old_sandbox, 0o750)
-        os.chmod(old_artifact, 0o640)
-
         previous_umask = os.umask(0o022)
         try:
+            # Recreate runtime paths under a permissive umask instead of using
+            # chmod on sensitive paths; the helper must tighten these defaults.
+            shutil.rmtree(server.RUNS_DIR)
+            shutil.rmtree(server.SANDBOXES_DIR)
+            server.RUNS_DIR.mkdir()
+            server.SANDBOXES_DIR.mkdir()
+            old_sandbox = server.SANDBOXES_DIR / "legacy-open-runtime"
+            old_sandbox.mkdir()
+            old_artifact = old_sandbox / "artifact.txt"
+            old_artifact.write_text("synthetic-old-artifact", encoding="utf-8")
+
             server._restrict_runtime_permissions()
             self.assertEqual(stat.S_IMODE(server.RUNS_DIR.stat().st_mode), 0o700)
             self.assertEqual(stat.S_IMODE(server.SANDBOXES_DIR.stat().st_mode), 0o700)
