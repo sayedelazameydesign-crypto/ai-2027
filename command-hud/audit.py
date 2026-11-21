@@ -34,7 +34,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 # Everything else is explicitly NOT VERIFIED, however confident its README is.
 PROBES = [
     {
-        "name": "kernel-86-tests",
+        "name": "kernel-unit-tests",
         "command": [sys.executable, "-m", "unittest", "discover", "-s",
                     "projects/agi-system/tests", "-t", "projects/agi-system"],
         "proves": "agi-system",
@@ -196,8 +196,8 @@ def architecture_map(catalog: dict) -> dict:
         cats[key] = cats.get(key, 0) + 1
     layers = [
         {"layer": "L0 · Deterministic kernel", "path": "projects/agi-system",
-         "role": "Goal→Plan→Policy→Execute→Verify→Evidence→Ledger. Zero third-party imports.",
-         "verification": "86 unit tests executed in this audit + AST gate"},
+         "role": "Goal→Plan→Policy→Execute→Verify→Evidence→Ledger plus an exact small-integer optimizer. Zero third-party imports.",
+         "verification": "unit tests executed in this audit + AST gate"},
         {"layer": "L1 · Live wrapper", "path": "live-agent",
          "role": "Stdlib HTTP wrapper importing the kernel in place; per-run sandbox + evidence JSON.",
          "verification": "7 wrapper tests executed in this audit"},
