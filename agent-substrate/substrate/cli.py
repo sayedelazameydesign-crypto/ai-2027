@@ -7,7 +7,7 @@ import os
 import sys
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
-from urllib.request import HTTPRedirectHandler, Request, build_opener
+from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
 
 
 class _NoRedirect(HTTPRedirectHandler):
@@ -27,7 +27,7 @@ def _origin() -> str:
     return raw
 
 
-def _request(path: str, *, method: str, payload: dict | None = None) -> dict:
+def _request(path: str, *, method: str, payload: dict | None = None, timeout: float = 30.0) -> dict:
     token = os.environ.get("SUBSTRATE_API_TOKEN", "")
     if len(token) < 32:
         raise ValueError("Set SUBSTRATE_API_TOKEN to the gateway token (at least 32 characters)")
@@ -35,9 +35,15 @@ def _request(path: str, *, method: str, payload: dict | None = None) -> dict:
     headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
     if data is not None:
         headers["Content-Type"] = "application/json"
-    request = Request(_origin() + path, data=data, headers=headers, method=method)
+    origin = _origin()
+    request = Request(origin + path, data=data, headers=headers, method=method)
+    handlers = [_NoRedirect]
+    if urlsplit(origin).hostname in {"localhost", "127.0.0.1", "::1"}:
+        # Port-forward traffic should not be sent through HTTP(S)_PROXY, but
+        # keep the normal proxy behavior for remote gateway URLs.
+        handlers.append(ProxyHandler({}))
     try:
-        with build_opener(_NoRedirect).open(request, timeout=30) as response:
+        with build_opener(*handlers).open(request, timeout=timeout) as response:
             raw = response.read(64 * 1024 + 1)
     except HTTPError as exc:
         try:
