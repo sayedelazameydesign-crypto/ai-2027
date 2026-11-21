@@ -213,6 +213,33 @@ def test_no_policy_combination_admits_the_provider_by_accident() -> None:
     assert admitted.cost_status.value == "allowed_within_budget"
 
 
+def test_the_ceiling_is_an_authorisation_not_a_financial_cap() -> None:
+    """Document the limit of ``MAX_SPEND`` for unknown-cost calls.
+
+    An ``UNKNOWN_COST`` decision carries no ``estimated_cost_usd``, so
+    ``record_completed`` never advances ``spent_usd``. Repeated unknown-cost
+    calls are therefore admitted without consuming the ceiling: the budget
+    only binds providers that report a cost estimate.
+
+    This is a pre-existing property of the budget policy, not something this
+    provider introduced, and it is why ``MAX_SPEND_USD`` must never be
+    described as a spend cap for an unknown-cost provider. The test pins the
+    behaviour so the documented caveat cannot silently change.
+    """
+    guard = BudgetGuard(BudgetPolicy(max_spend_usd=10.0, allow_unknown_cost=True))
+    provider = _provider()
+
+    for _ in range(100):
+        decision = guard.evaluate_provider(provider)
+        guard.record_completed(decision)
+        assert decision.allowed is True
+        assert decision.estimated_cost_usd is None
+
+    snapshot = guard.snapshot()
+    assert snapshot.spent_usd == 0.0
+    assert snapshot.max_spend_usd == 10.0
+
+
 async def test_no_network_attempt_occurs_for_a_blocked_provider() -> None:
     """The budget must block the call BEFORE any request leaves the process.
 
