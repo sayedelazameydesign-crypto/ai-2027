@@ -245,7 +245,10 @@ jobs:
           python-version: "3.11"
       - name: Install test dependencies (no MCP credentials, no network)
         working-directory: projects/open_source-
-        run: python -m pip install --editable ".[dev]"
+        # The `server` extra is required: the MCP tests drive our own MCP
+        # server as a subprocess and exercise the CLI, and os_server imports
+        # fastapi. Without it five of them fail on a missing module.
+        run: python -m pip install --editable ".[dev,server]"
       # The MCP transport contract (JSON-RPC framing, stdio + Streamable HTTP,
       # config parsing, env expansion, guardrails bridge) was implemented under
       # ADR-0017 but never executed by CI, so a regression there would have
