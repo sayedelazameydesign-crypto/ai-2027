@@ -51,7 +51,7 @@ python3 live-agent/test_llm_planner.py
 
 ```bash
 python3 server.py            # http://localhost:8090; preserves existing runtime data
-python3 test_server.py       # 7 wrapper tests (verification, denial, safety, restart restore)
+python3 test_server.py       # 8 wrapper tests (verification, denial, safety, restart restore, local bind)
 python3 server.py --fresh    # explicitly DELETE this service's runs, sandboxes, and memory
 ```
 
