@@ -1,0 +1,39 @@
+[[topic]]
+id = "agent-evaluation"
+name = "Agent evaluation and trustworthy benchmarks"
+priority = 1
+categories = ["cs.AI", "cs.CL"]
+keywords = ["agent evaluation", "LLM agent benchmark", "tool use evaluation"]
+relevance_note = "Evaluation methods that can be reproduced on local, bounded engineering tasks."
+
+[[topic]]
+id = "deterministic-optimization"
+name = "Exact optimization and constrained planning"
+priority = 1
+categories = ["math.OC", "cs.DS", "cs.CE"]
+keywords = ["integer programming", "constraint optimization", "exact optimization"]
+relevance_note = "Small exact solvers and verifiable constraint-planning techniques."
+
+[[topic]]
+id = "local-memory-retrieval"
+name = "Local memory and lightweight retrieval"
+priority = 2
+categories = ["cs.IR", "cs.AI", "cs.CL"]
+keywords = ["agent memory", "local retrieval", "retrieval augmented generation"]
+relevance_note = "Methods that fit local storage and measured retrieval without mandatory hosted models."
+
+[[topic]]
+id = "inference-efficiency"
+name = "Inference efficiency and model compression"
+priority = 2
+categories = ["cs.LG", "cs.AI", "cs.DC"]
+keywords = ["inference efficiency", "model compression", "low resource inference"]
+relevance_note = "Efficiency work that reports resource use and can be tested on constrained hardware."
+
+[[topic]]
+id = "systems-security"
+name = "Agent, software, and systems security"
+priority = 1
+categories = ["cs.CR", "cs.SE", "cs.AI"]
+keywords = ["agent security", "prompt injection defense", "software supply chain security"]
+relevance_note = "Threat models, mitigations, and verification techniques relevant to the repository's guards."

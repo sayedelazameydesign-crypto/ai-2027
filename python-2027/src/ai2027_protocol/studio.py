@@ -508,10 +508,19 @@ def build_studio_router(
                 "memory_search": "/v1/studio/memory/search?q={query}",
                 "connectors_catalog": "/v1/studio/connectors/catalog",
                 "connectors_search": "/v1/studio/connectors/search",
+                "research_topics": "/v1/research/topics",
+                "research_search": "/v1/research/search",
+                "research_ingest": "/v1/research/ingest",
+                "research_registry": "/v1/research/papers",
+                "research_audit": "/v1/research/audit",
             },
             "honest_limits": [
                 "Runs default to offline-deterministic mode unless Free-First LLM keys exist.",
                 "External writes are never auto-dispatched; they enter approvals.json for review.",
+                "Research search is limited to configured topics and arXiv; "
+                "selected IDs are re-fetched from arXiv/OpenAlex before local candidate ingestion.",
+                "Paper summaries are not adoption decisions; production changes require a "
+                "reviewed PR.",
                 "L1 retrieval uses lexical hashed uni/bi-grams + declared thesaurus, not neural.",
             ],
         }
