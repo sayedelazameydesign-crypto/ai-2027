@@ -85,7 +85,9 @@ class LocalWorkspaceGatewayTests(unittest.TestCase):
         if shutil.which("npm") is None:
             raise unittest.SkipTest("npm is required for the Vite integration test")
         if not (WORKSPACE / "node_modules" / "vite").is_dir():
-            raise RuntimeError("run `npm ci` in workspace-ui before this integration test")
+            raise unittest.SkipTest(
+                "the dedicated Workspace gateway CI job installs npm dependencies before running this integration test"
+            )
 
         cls.tmp = tempfile.TemporaryDirectory(prefix="ai2027-workspace-gateway-")
         cls.tmp_root = Path(cls.tmp.name)
