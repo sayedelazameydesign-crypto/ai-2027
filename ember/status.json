@@ -1,0 +1,174 @@
+{
+  "beat_ts": 1795244425.838933,
+  "beat_at_iso": "2026-11-21T07:00:25Z",
+  "duration_ms": 1691.0,
+  "smoke": {
+    "ok": true,
+    "passed": 15,
+    "total": 15,
+    "checks": [
+      {
+        "name": "live-agent: health + honest scope",
+        "ok": true,
+        "note": "REAL execution — deterministic planner, NO LLM (Phase 1)"
+      },
+      {
+        "name": "live-agent: create_file -> VERIFIED (5/5 checks)",
+        "ok": true,
+        "note": "run_1795244424_295de0f1"
+      },
+      {
+        "name": "live-agent: artifact download matches byte-for-byte",
+        "ok": true,
+        "note": "26 bytes"
+      },
+      {
+        "name": "live-agent: evidence retrievable by run_id",
+        "ok": true,
+        "note": "run_1795244424_295de0f1"
+      },
+      {
+        "name": "live-agent: POSIX traversal -> DENIED",
+        "ok": true,
+        "note": "path escapes the sandbox: '../../etc/pwned' resolves to /hom…"
+      },
+      {
+        "name": "live-agent: Windows-style traversal -> DENIED",
+        "ok": true,
+        "note": "path '..\\\\..\\\\pwned.txt' contains a backslash, which is a pa…"
+      },
+      {
+        "name": "live-agent: VERIFIED run admitted to memory, DENIED run refused",
+        "ok": true,
+        "note": "memories=1 refused=2"
+      },
+      {
+        "name": "live-agent: memory search returns the real run above noise",
+        "ok": true,
+        "note": "score=1.0 threshold=0.15"
+      },
+      {
+        "name": "live-agent: unrelated query -> no confident hit (honest recall)",
+        "ok": true,
+        "note": "top_score=0.0"
+      },
+      {
+        "name": "live-agent: agent card is valid + declares its limits",
+        "ok": true,
+        "note": "9 endpoints · 4 limits"
+      },
+      {
+        "name": "live-agent: metrics expose real counters (Prometheus text)",
+        "ok": true,
+        "note": "verified_runs=1"
+      },
+      {
+        "name": "hud: health (stdlib, no LLM)",
+        "ok": true,
+        "note": "ok"
+      },
+      {
+        "name": "hud: plan + VERIFIED artifact/hash + history and persisted record restore",
+        "ok": true,
+        "note": "run_1795244424_0d58a52a"
+      },
+      {
+        "name": "hud: built-in escape test -> DENIED",
+        "ok": true,
+        "note": "ok"
+      },
+      {
+        "name": "hud: 100-attack gate (0 breaches, all gates)",
+        "ok": true,
+        "note": "denied=91 contained=9"
+      }
+    ],
+    "error": null
+  },
+  "memory": {
+    "memories": 1,
+    "refusals": 2
+  },
+  "public_paths": [
+    {
+      "url": "https://sayedelazameydesign-crypto.github.io/ai-2027/demo.html",
+      "status": 200,
+      "live": true,
+      "verdict": "live"
+    },
+    {
+      "url": "https://cdn.jsdelivr.net/gh/sayedelazameydesign-crypto/ai-2027@main/website/demo.html",
+      "status": 200,
+      "live": true,
+      "verdict": "live"
+    }
+  ],
+  "public_paths_blocked": 0,
+  "egress": {
+    "egress": "OPEN",
+    "general_egress": true,
+    "can_judge_public_urls": true,
+    "probes": [
+      {
+        "url": "https://example.com/",
+        "host": "example.com",
+        "reachable": true,
+        "status": 200,
+        "ms": 33.6,
+        "error": null,
+        "allowlisted": false
+      },
+      {
+        "url": "https://www.wikipedia.org/",
+        "host": "www.wikipedia.org",
+        "reachable": true,
+        "status": 200,
+        "ms": 68.2,
+        "error": null,
+        "allowlisted": false
+      },
+      {
+        "url": "https://www.cloudflare.com/",
+        "host": "www.cloudflare.com",
+        "reachable": true,
+        "status": 200,
+        "ms": 69.1,
+        "error": null,
+        "allowlisted": false
+      },
+      {
+        "url": "https://api.github.com/",
+        "host": "api.github.com",
+        "reachable": true,
+        "status": 200,
+        "ms": 59.7,
+        "error": null,
+        "allowlisted": true
+      }
+    ]
+  },
+  "heat": {
+    "heat": 0.5852,
+    "verdict": "hot-without-flame",
+    "beats_7d": 13,
+    "success_rate_7d": 0.7692,
+    "longest_gap_h": 14.94,
+    "since_last_beat_h": 0.0,
+    "memories": 1,
+    "embers_live": 3,
+    "embers_measured": true,
+    "weights": {
+      "success": 0.4,
+      "recency": 0.2,
+      "fuel": 0.2,
+      "embers": 0.2
+    },
+    "components": {
+      "success": 0.3077,
+      "recency": 0.0755,
+      "fuel": 0.002,
+      "embers": 0.2
+    }
+  },
+  "degraded": false
+}
