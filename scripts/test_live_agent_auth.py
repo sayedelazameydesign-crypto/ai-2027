@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import hashlib
-import json
 import os
 import sys
 import tempfile
@@ -154,7 +153,7 @@ class LiveAgentCredentialRoutingTests(unittest.TestCase):
             credentials_path.is_symlink.assert_not_called()
             credentials_path.open.assert_not_called()
 
-    def test_private_loopback_credentials_are_read_only_from_private_local_file(self):
+    def test_private_loopback_credentials_require_owner_only_file_metadata(self):
         if os.name != "posix":
             self.skipTest("Windows ACL privacy cannot be verified with the stdlib helper")
         with tempfile.TemporaryDirectory(prefix="ai2027-auth-helper-") as tmp:
@@ -165,17 +164,19 @@ class LiveAgentCredentialRoutingTests(unittest.TestCase):
             reader_id = "local-test-reader"
             reader_secret = "synthetic-local-read-secret-" + "r" * 40
             writer = "synthetic-local-write-secret-" + "w" * 40
-            # This disposable fixture stores only synthetic tokens in a 0600
-            # temporary directory to exercise the private-file credential loader.
-            # codeql[py/clear-text-storage-sensitive-data]
-            credential_path.write_text(json.dumps({
+            fixture = {
                 "read_id": reader_id,
                 "read_secret": reader_secret,
                 "write_token": writer,
                 "read_hashes": {reader_id: hashlib.sha256(reader_secret.encode()).hexdigest()},
-            }), encoding="utf-8")
+            }
+            # Exercise ownership and mode checks against a real private file,
+            # but supply its synthetic contents in memory so no test token is
+            # ever serialized to disk.
+            credential_path.touch(mode=0o600)
             credential_path.chmod(0o600)
             with patch.object(auth, "_LOCAL_CREDENTIALS", credential_path), \
+                    patch.object(auth.json, "load", return_value=fixture), \
                     patch.dict(os.environ, {}, clear=True):
                 self.assertEqual(auth.authorization_header(
                     "http://127.0.0.1:8090", "/api/runs", "GET"),
