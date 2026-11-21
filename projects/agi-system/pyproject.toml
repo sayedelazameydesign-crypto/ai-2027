@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "agi-kernel"
 version = "0.3.0"
-description = "Dependency-free AGI kernel: a verified cognitive loop with an append-only event ledger"
+description = "Dependency-free AGI kernel with a verified cognitive loop, append-only event ledger, and exact bounded integer optimizer"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }

@@ -63,9 +63,9 @@ Understand → Plan → Policy → Execute → Verify → Evidence → Report
 |---|---|
 | **[Cela 2027](projects/cela2027)** | Autonomous Manus-style agent: Goal→Plan→Execute→Verify→Evidence loop, coding agent tools, Pyodide sandbox, live 3D pipeline UI, Arabic dark interface — with a clearly-labeled local simulation mode (no API key needed) |
 | **[CeliaOS · 12pro](projects/12pro)** | 12-layer Agent OS control plane: benchmarks (latency/memory/planning/tool-use), certification gates G0–G15, attestations, monorepo (api + web + agent-ui) |
-| **[agi-system](projects/agi-system)** | Pure-Python AGI kernel, zero dependencies: full cognitive loop with independent Verifier + EventLedger, 86 unit tests |
+| **[agi-system](projects/agi-system)** | Pure-Python AGI kernel, zero dependencies: verified cognitive loop plus an exact small-integer optimizer, safe AST contract parser, independent constraint audit and optional local SQLite audit chain; 104 unit tests |
 | **[🧪 Live Agent Experience](live-agent)** | **Runnable now (Phase 1):** zero-dependency web app on the real agi-system kernel — submit a goal, watch Plan→Policy→Execute→Verify→Evidence, try a sandbox escape (DENIED), download the evidence JSON. Honest scope: deterministic planner, no LLM yet |
-| **[✨ AI-2027 Workspace UI](workspace-ui)** | **First UI slice:** Arabic-first RTL React workspace over the real Live Agent API — bounded file operations, run history, safe artifact preview and DecisionRecord evidence. Deterministic kernel, no LLM; not a general-purpose agent yet. See its README to run. |
+| **[✨ AI-2027 Workspace UI](workspace-ui)** | Arabic-first RTL workspace over Agent Studio sessions, streamed task events, system/provider/budget status and verified artifacts; its Connectors page reads the authenticated live Hub catalog and distinguishes configured credentials from verified access. The bounded Live Agent kernel workspace remains available as a separate view. See its README to run. |
 | **[🚀 AI-2027 Agent Studio](python-2027)** | **Unified Manus + Claude Workspace:** bridges L0 Kernel + L1 Memory + L4 Free-First LLMs (`Ollama`, `Gemini`, `NVIDIA NIM`, `Groq`, `OpenRouter`, honest offline fallback) + L5 Connectors Approval Gate into a streaming web Studio (`./scripts/studio_up.sh`) and CLI agent (`ai2027-py27 agent`) |
 
 ## 🗂️ The Ecosystem
@@ -83,12 +83,12 @@ Full categorized catalog with per-project features: **below in Arabic** ⬇ and 
 ## ✅ Verified — not just claimed
 
 - 🔍 **Post-merge audit re-run 2026-11-17**: 46/48 byte-identical to upstream + 2 deviations documented in [DEVIATIONS.md](docs/DEVIATIONS.md) — the archive is a mirror, not a claim that it runs ([GROUND-TRUTH](docs/GROUND-TRUTH-2026-11-17.md))
-- 📊 **Measured, not claimed**: full verified cycle **p50 7.5 ms** · denial at the policy wall **3.1 ms** · zero deps · 86/86 tests → [BENCHMARKS.md](docs/BENCHMARKS.md) (reproducible: `live-agent/bench.py`)
+- 📊 **Measured, not claimed**: full verified cycle **p50 7.5 ms** · denial at the policy wall **3.1 ms** · zero deps · 104/104 agi-system unit tests → [BENCHMARKS.md](docs/BENCHMARKS.md) (reproducible: `live-agent/bench.py`)
 - 📦 **Installable**: 40 KB wheel, CLI smoke-tested → `packaging/agi-kernel` (PyPI publish gated on the pending license decision)
 - 🔐 **Secrets scan**: one exposed key found → redacted here (rotation tracked in AUDIT.md)
 - 📄 **Readiness review**: what's proven vs. declared vs. simulated → [docs/PHASE-0-READINESS.md](docs/PHASE-0-READINESS.md) (with the 2026-11-17 correction addendum)
 - 🧪 **Try it in your browser**: the [public kernel demo](https://sayedelazameydesign-crypto.github.io/ai-2027/demo.html) runs the 7-stage loop with a real policy wall, an independent verifier and SHA-256 evidence. Honest scope: a dependency-free JS **port** on an in-memory sandbox, not the Python kernel and not an LLM (12 contract tests in [`website/kernel-demo.test.js`](website/kernel-demo.test.js)).
-- 🤖 **CI on every push** → [`.github/workflows/ci.yml`](.github/workflows/ci.yml): 86 kernel tests + 7 wrapper tests across Python 3.10/3.11/3.12, CLI VERIFIED/DENIED contract, AST zero-dependency gate (+ 9 self-tests for the gates themselves), 12 demo tests, `bench.py` with raw JSON artifacts, and a wheel smoke test. Regression gate is jitter-aware by design → [`scripts/ci_guard.py`](scripts/ci_guard.py).
+- 🤖 **CI on every push** → [`.github/workflows/ci.yml`](.github/workflows/ci.yml): 104 kernel tests + 7 wrapper tests across Python 3.10/3.11/3.12, CLI VERIFIED/DENIED contract, AST zero-dependency gate (+ 9 self-tests for the gates themselves), 12 demo tests, `bench.py` with raw JSON artifacts, and a wheel smoke test. Regression gate is jitter-aware by design → [`scripts/ci_guard.py`](scripts/ci_guard.py).
 - 🧭 **Project lifecycle control plane** → [`.github/workflows/project-lifecycle.yml`](.github/workflows/project-lifecycle.yml): one manual entry point for the full CI gate, optional Gemini/NVIDIA/E2B checks, and a gated Render deployment with exact service-name confirmation in the `production` environment (configure required reviewers there for human approval). Provider secrets are passed only to their reusable workflow; model/service routing lives in non-secret Actions Variables. Live checks and deployment are main-only and never run from a PR.
 
 ## 🧠 Cumulative memory that only remembers what was proven
@@ -257,7 +257,7 @@ python3 scripts/run_task.py --boot
 ```bash
 # The canonical Python kernel
 cd projects/agi-system
-python3 -m unittest discover -s tests -t .        # 86 tests
+python3 -m unittest discover -s tests -t .        # 104 tests
 python3 -m core doctor
 python3 -m core run --goal-type create_file --param path=a.txt --param content=hi   # VERIFIED
 python3 -m core run --goal-type create_file --param path=../../x --param content=x  # DENIED, exit 3
@@ -304,7 +304,7 @@ Each project keeps **its own license** inside its folder. Most are MIT/Apache-2.
 | المشروع | اللغة | الأدوات والميزات |
 |---|---|---|
 | [`projects/cela2027`](projects/cela2027) | TypeScript | **وكيل مستقل بأسلوب Manus وعقل Claude**: حلقة Goal→Plan→Policy→Execute→Verify→Evidence→Ledger، شبكة خط أنابيب 3D حية (Three.js)، وكيل برمجي بأدوات read/ls/write/edit/patch/scaffold، صندوق Python معزول (Pyodide)، واجهة عربية داكنة، «لا ادعاءات بدون أدلة» |
-| [`projects/agi-system`](projects/agi-system) | Python | **نواة AGI Kernel بـ Python صرفة بدون أي اعتمادات**: حلقة إدراكية كاملة (Planner→Policy→Executor→Verifier→Evidence→DecisionRecord→EventLedger)، 86 اختبار وحدة، `python3 -m core doctor`، فلسفة التحقق المستقل |
+| [`projects/agi-system`](projects/agi-system) | Python | **نواة AGI Kernel بـ Python صرفة بدون أي اعتمادات**: حلقة إدراكية كاملة مع Solver صحيح حتمي صغير، عقد AST آمن، تحقق مستقل وسجل SQLite اختياري، 104 اختبار وحدة، `python3 -m core doctor` |
 | [`projects/12pro`](projects/12pro) | TypeScript | **CeliaOS v1.0.0 — Agent OS Control Plane**: معمارية 12 طبقة، Benchmarks (latency/memory/planning/tool-use/long-horizon)، Certification + Attestations + SBOM، Monorepo (apps/api + apps/web + apps/agent-ui)، جاهزية نشر Docker/Fly.io/Render/Railway |
 | [`projects/open_source-`](projects/open_source-) | Python | **`cela_use_browser` — منصة متصفح مستقلة مفتوحة المصدر**: استدلال وكيلي ReAct، واجهة تصفح خاصة `/cela/v1` + CelaBrowser، Artifacts لحظية بنمط Claude، تنفيذ معزول بنمط Manus، أدلة اختبارات مولّدة (`make evidence`) |
 | [`projects/cela.nimna`](projects/cela.nimna) | Python | **Nimna — وكيل بمهارات قابلة لإعادة الاستخدام**: 28 أداة، مكتبة SKILL.md قابلة للتبديل، ذاكرة متجهة (Qdrant + fallback بـ 768 بُعد)، موافقة بصرية للأدوات الخطرة (TTL 5د)، بوابة رؤية، يعمل على مفتاح Gemini المجاني، 510 اختبارات (504 ناجحة، 6 تحتاج google-genai) |
