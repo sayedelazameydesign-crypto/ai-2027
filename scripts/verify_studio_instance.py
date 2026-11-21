@@ -59,7 +59,9 @@ def fetch(url: str, timeout: int = 90) -> tuple[int, str, dict[str, str]]:
     roughly 15 minutes of inactivity, so the first request of a session can
     take 30-50 seconds to wake it. That is the sleep, not a failure.
     """
-    request = urllib.request.Request(url, headers={"User-Agent": "ai-2027-studio-verify/1"})
+    request = urllib.request.Request(
+        url, headers={"User-Agent": "ai-2027-studio-verify/1"}
+    )
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
             body = response.read().decode("utf-8", errors="replace")
@@ -67,7 +69,7 @@ def fetch(url: str, timeout: int = 90) -> tuple[int, str, dict[str, str]]:
     except urllib.error.HTTPError as exc:
         body = exc.read().decode("utf-8", errors="replace")
         return exc.code, body, dict(exc.headers or {})
-    except Exception as exc:  # noqa: BLE001 - the message is the useful part
+    except Exception as exc:  # the message is the useful part
         raise SystemExit(
             f"could not reach {url}: {exc}\n"
             "If this is the first request after an idle period, a free instance "
@@ -120,12 +122,24 @@ def main(argv: list[str]) -> int:
     result.check(not cors, "no Access-Control-Allow-Origin header", ", ".join(cors))
 
     # ---- the safety posture ---------------------------------------------
-    result.check(payload.get("read_only") is True, "read_only is true", str(payload.get("read_only")))
-    result.check(payload.get("cost_usd") == 0.0, "cost_usd is 0.0", str(payload.get("cost_usd")))
+    result.check(
+        payload.get("read_only") is True,
+        "read_only is true",
+        str(payload.get("read_only")),
+    )
+    result.check(
+        payload.get("cost_usd") == 0.0, "cost_usd is 0.0", str(payload.get("cost_usd"))
+    )
 
     budget = payload.get("budget") or {}
-    result.check(budget.get("max_spend_usd") == 0.0, "max_spend_usd is 0.0", str(budget.get("max_spend_usd")))
-    result.check(budget.get("spent_usd") == 0.0, "spent_usd is 0.0", str(budget.get("spent_usd")))
+    result.check(
+        budget.get("max_spend_usd") == 0.0,
+        "max_spend_usd is 0.0",
+        str(budget.get("max_spend_usd")),
+    )
+    result.check(
+        budget.get("spent_usd") == 0.0, "spent_usd is 0.0", str(budget.get("spent_usd"))
+    )
     result.check(
         budget.get("api_key_never_implies_free") is True,
         "api_key_never_implies_free is true",
@@ -168,8 +182,14 @@ def main(argv: list[str]) -> int:
     connectors = payload.get("connectors")
     result.check(isinstance(connectors, list), "the connectors block is present")
     if isinstance(connectors, list):
-        bad = [c.get("connector_id") for c in connectors if not isinstance(c.get("configured"), bool)]
-        result.check(not bad, "every connector reports a boolean configured flag", str(bad))
+        bad = [
+            c.get("connector_id")
+            for c in connectors
+            if not isinstance(c.get("configured"), bool)
+        ]
+        result.check(
+            not bad, "every connector reports a boolean configured flag", str(bad)
+        )
         states = {c.get("credential_state") for c in connectors}
         result.check(
             states <= {"configured", "absent"},
