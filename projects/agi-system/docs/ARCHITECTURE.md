@@ -36,7 +36,9 @@ Goal ──►│ Planner ──► Policy ──► Executor ──► Verifier
    plus a coded error. (`KeyboardInterrupt` / `SystemExit` are process-level
    signals and are deliberately re-raised.)
 5. **Everything is bounded** — action timeout, run timeout, retry budget,
-   payload size, file quota.
+   payload size, file quota. A planner that calls an external provider must enforce
+   its own transport timeout; the kernel rechecks the run deadline when planning
+   returns and refuses to authorize a late plan.
 
 ## 3. Modules
 
