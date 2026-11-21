@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 import socket
 import subprocess
 import sys
@@ -28,8 +29,14 @@ import unittest
 import urllib.error
 import urllib.request
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parent.parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+from deployment import live_server as deployment_live_server
+
 DEPLOY = ROOT / "deployment"
 
 
@@ -156,6 +163,326 @@ class DockerfileTests(unittest.TestCase):
             self.assertNotIn("pip install", ln.lower(), f"image installs packages: {ln}")
 
 
+class PruneSafetyTests(unittest.TestCase):
+    """Pin deletion scope, root containment, and partial-failure reporting."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory(prefix="ai2027-prune-safety-")
+        self.runtime = Path(self.tmp.name) / "runtime"
+        self.runs = self.runtime / "runs"
+        self.sandboxes = self.runtime / "sandboxes"
+        (self.runs / "ledgers").mkdir(parents=True)
+        self.sandboxes.mkdir()
+        self.server = SimpleNamespace(
+            RUNS_DIR=self.runs,
+            SANDBOXES_DIR=self.sandboxes,
+            _run_index={},
+        )
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def _add_run(self, run_id: str) -> tuple[Path, Path, Path]:
+        sandbox = self.sandboxes / run_id
+        sandbox.mkdir()
+        (sandbox / "artifact.txt").write_text("evidence", encoding="utf-8")
+        record_data = {
+            "run_id": run_id,
+            "sandbox": run_id,
+            "goal": {"goal_type": "prune-test"},
+            "status": "VERIFIED",
+            "started_at": 1700000000.0,
+            "finished_at": 1700000001.0,
+        }
+        record = self.runs / f"{run_id}.json"
+        record.write_text(json.dumps(record_data), encoding="utf-8")
+        ledger_record = {key: value for key, value in record_data.items() if key != "sandbox"}
+        ledger_event = {
+            "type": "DECISION_RECORDED",
+            "run_id": run_id,
+            "payload": {"record": ledger_record, "status": record_data["status"]},
+        }
+        ledger = self.runs / "ledgers" / f"{run_id}.jsonl"
+        ledger.write_text(json.dumps(ledger_event) + "\n", encoding="utf-8")
+        self.server._run_index[run_id] = {"status": "VERIFIED"}
+        return sandbox, record, ledger
+
+    def test_only_generated_run_ids_are_pruned(self):
+        run_id = "run_1700000000_abcdef12"
+        sandbox, record, ledger = self._add_run(run_id)
+        unrelated = "run_notes"
+        unrelated_sandbox = self.sandboxes / unrelated
+        unrelated_sandbox.mkdir()
+        (unrelated_sandbox / "keep.txt").write_text("keep", encoding="utf-8")
+        unrelated_record = self.runs / f"{unrelated}.json"
+        unrelated_record.write_text("keep", encoding="utf-8")
+        unrelated_ledger = self.runs / "ledgers" / f"{unrelated}.jsonl"
+        unrelated_ledger.write_text("keep", encoding="utf-8")
+
+        result = deployment_live_server._prune(self.server, 0)
+
+        self.assertEqual(result["removed"], 1)
+        self.assertFalse(sandbox.exists())
+        self.assertFalse(record.exists())
+        self.assertFalse(ledger.exists())
+        self.assertTrue(unrelated_sandbox.exists())
+        self.assertTrue(unrelated_record.exists())
+        self.assertTrue(unrelated_ledger.exists())
+        self.assertNotIn(run_id, self.server._run_index)
+        self.assertGreater(result["over_cap_bytes"], 0)
+
+    def test_disk_usage_scan_failure_aborts_without_deleting(self):
+        run_id = "run_1700000011_abcdef12"
+        sandbox, record, ledger = self._add_run(run_id)
+
+        with patch.object(deployment_live_server, "_dir_bytes", side_effect=PermissionError):
+            result = deployment_live_server._prune(self.server, 0)
+
+        self.assertTrue(sandbox.exists())
+        self.assertTrue(record.exists())
+        self.assertTrue(ledger.exists())
+        self.assertEqual(result["removed"], 0)
+        self.assertEqual(result["disk_bytes"], None)
+        self.assertIn("disk-usage-scan-failed", result["failures"])
+
+    def test_mismatched_record_blocks_its_whole_run_group(self):
+        run_id = "run_1700000001_abcdef12"
+        sandbox, record, ledger = self._add_run(run_id)
+        record.write_text(json.dumps({"run_id": "another-run", "sandbox": run_id}),
+                          encoding="utf-8")
+
+        result = deployment_live_server._prune(self.server, 0)
+
+        self.assertEqual(result["removed"], 0)
+        self.assertTrue(sandbox.exists())
+        self.assertTrue(record.exists())
+        self.assertTrue(ledger.exists())
+        self.assertIn(f"{run_id}:record:id-mismatch", result["failures"])
+
+    def test_mismatched_ledger_blocks_its_whole_run_group(self):
+        run_id = "run_1700000007_abcdef12"
+        sandbox, record, ledger = self._add_run(run_id)
+        ledger_record = {key: value for key, value in json.loads(record.read_text()).items()
+                         if key != "sandbox"}
+        ledger_record["run_id"] = "run_abcdef123456"
+        ledger_record["status"] = "FAILED"
+        event = {
+            "type": "DECISION_RECORDED",
+            "run_id": ledger_record["run_id"],
+            "payload": {"record": ledger_record, "status": "FAILED"},
+        }
+        ledger.write_text(json.dumps(event) + "\n", encoding="utf-8")
+
+        result = deployment_live_server._prune(self.server, 0)
+
+        self.assertEqual(result["removed"], 0)
+        self.assertTrue(sandbox.exists())
+        self.assertTrue(record.exists())
+        self.assertTrue(ledger.exists())
+        self.assertIn(f"{run_id}:ledger:invalid-or-mismatched", result["failures"])
+
+        # Malformed, unhashable event IDs must fail closed rather than crash pruning.
+        ledger.write_text(json.dumps({"type": "DECISION_RECORDED", "run_id": [run_id]}) + "\n",
+                          encoding="utf-8")
+        malformed = deployment_live_server._prune(self.server, 0)
+        self.assertEqual(malformed["removed"], 0)
+        self.assertTrue(sandbox.exists())
+        self.assertTrue(record.exists())
+        self.assertTrue(ledger.exists())
+        self.assertIn(f"{run_id}:ledger:invalid-or-mismatched", malformed["failures"])
+
+    def test_legacy_ledger_requires_a_matching_final_record(self):
+        run_id = "run_1700000010_abcdef12"
+        sandbox, record, ledger = self._add_run(run_id)
+        public_record = json.loads(record.read_text(encoding="utf-8"))
+        kernel_run_id = "run_abcdef123456"
+        ledger_record = {
+            key: value for key, value in public_record.items() if key != "sandbox"
+        }
+        ledger_record["run_id"] = kernel_run_id
+        event = {
+            "type": "DECISION_RECORDED",
+            "run_id": kernel_run_id,
+            "payload": {"record": ledger_record, "status": public_record["status"]},
+        }
+        ledger.write_text(json.dumps(event) + "\n", encoding="utf-8")
+
+        result = deployment_live_server._prune(self.server, 0)
+
+        self.assertEqual(result["removed"], 1)
+        self.assertFalse(sandbox.exists())
+        self.assertFalse(record.exists())
+        self.assertFalse(ledger.exists())
+
+    def test_symlinked_storage_roots_are_never_pruned(self):
+        run_id = "run_1700000002_abcdef12"
+        for linked_dir in ("runs", "sandboxes", "ledgers"):
+            with self.subTest(linked_dir=linked_dir):
+                with tempfile.TemporaryDirectory(prefix="ai2027-prune-link-") as tmp:
+                    runtime = Path(tmp) / "runtime"
+                    outside = Path(tmp) / "outside"
+                    runtime.mkdir()
+                    outside.mkdir()
+                    runs = runtime / "runs"
+                    sandboxes = runtime / "sandboxes"
+                    if linked_dir == "runs":
+                        (outside / "ledgers").mkdir()
+                        external = outside / f"{run_id}.json"
+                        external.write_text(
+                            json.dumps({"run_id": run_id, "sandbox": run_id}), encoding="utf-8"
+                        )
+                        runs.symlink_to(outside, target_is_directory=True)
+                        sandboxes.mkdir()
+                    elif linked_dir == "sandboxes":
+                        runs.mkdir()
+                        (runs / "ledgers").mkdir()
+                        external = outside / run_id
+                        external.mkdir()
+                        (external / "artifact.txt").write_text("outside", encoding="utf-8")
+                        sandboxes.symlink_to(outside, target_is_directory=True)
+                    else:
+                        runs.mkdir()
+                        sandboxes.mkdir()
+                        external = outside / f"{run_id}.jsonl"
+                        external.write_text("outside", encoding="utf-8")
+                        (runs / "ledgers").symlink_to(outside, target_is_directory=True)
+                    server = SimpleNamespace(RUNS_DIR=runs, SANDBOXES_DIR=sandboxes, _run_index={})
+                    try:
+                        result = deployment_live_server._prune(server, 0)
+                    except (OSError, NotImplementedError) as exc:
+                        self.skipTest(f"directory symlinks unavailable: {exc}")
+
+                    self.assertEqual(result["removed"], 0)
+                    self.assertIn("unsafe-storage-layout", result["failures"])
+                    self.assertTrue(external.exists())
+
+    def test_symlinked_run_candidate_does_not_follow_target(self):
+        run_id = "run_1700000005_abcdef12"
+        sandbox, record, ledger = self._add_run(run_id)
+        outside = Path(self.tmp.name) / "outside-sandbox"
+        outside.mkdir()
+        external_file = outside / "keep.txt"
+        external_file.write_text("outside", encoding="utf-8")
+        shutil.rmtree(sandbox)
+        try:
+            sandbox.symlink_to(outside, target_is_directory=True)
+        except (OSError, NotImplementedError) as exc:
+            self.skipTest(f"directory symlinks unavailable: {exc}")
+
+        result = deployment_live_server._prune(self.server, 0)
+
+        self.assertEqual(result["removed"], 0)
+        self.assertTrue(sandbox.is_symlink())
+        self.assertTrue(external_file.exists())
+        self.assertTrue(record.exists())
+        self.assertTrue(ledger.exists())
+        self.assertIn(f"{run_id}:sandbox:unexpected-file-type", result["failures"])
+
+    def test_nested_symlink_inside_sandbox_does_not_delete_outside_target(self):
+        if not getattr(shutil.rmtree, "avoids_symlink_attacks", False):
+            self.skipTest("safe recursive deletion is unavailable on this platform")
+        run_id = "run_1700000008_abcdef12"
+        sandbox, record, ledger = self._add_run(run_id)
+        outside = Path(self.tmp.name) / "outside-nested"
+        outside.mkdir()
+        external_file = outside / "keep.txt"
+        external_file.write_text("outside", encoding="utf-8")
+        try:
+            (sandbox / "external").symlink_to(outside, target_is_directory=True)
+        except (OSError, NotImplementedError) as exc:
+            self.skipTest(f"directory symlinks unavailable: {exc}")
+
+        result = deployment_live_server._prune(self.server, 0)
+
+        self.assertEqual(result["removed"], 1)
+        self.assertFalse(sandbox.exists())
+        self.assertFalse(record.exists())
+        self.assertFalse(ledger.exists())
+        self.assertTrue(external_file.exists())
+
+    def test_unsafe_recursive_delete_platform_does_not_prune(self):
+        run_id = "run_1700000006_abcdef12"
+        sandbox, record, ledger = self._add_run(run_id)
+
+        with patch.object(shutil.rmtree, "avoids_symlink_attacks", False, create=True):
+            result = deployment_live_server._prune(self.server, 0)
+
+        self.assertTrue(sandbox.exists())
+        self.assertTrue(record.exists())
+        self.assertTrue(ledger.exists())
+        self.assertEqual(result["removed"], 0)
+        self.assertEqual(result["partial_runs"], [])
+        self.assertIn(
+            f"{run_id}:sandbox:safe-recursive-delete-unavailable", result["failures"]
+        )
+
+    def test_record_delete_failure_leaves_the_group_untouched(self):
+        run_id = "run_1700000003_abcdef12"
+        sandbox, record, ledger = self._add_run(run_id)
+        remove_artifact = deployment_live_server._remove_run_artifact
+
+        def fail_on_record(path: Path, kind: str) -> int:
+            if kind == "record":
+                raise PermissionError("simulated removal failure")
+            return remove_artifact(path, kind)
+
+        with patch.object(deployment_live_server, "_remove_run_artifact", side_effect=fail_on_record):
+            result = deployment_live_server._prune(self.server, 0)
+
+        self.assertTrue(sandbox.exists())
+        self.assertTrue(record.exists())
+        self.assertTrue(ledger.exists())
+        self.assertEqual(result["removed"], 0)
+        self.assertEqual(result["partial_runs"], [])
+        self.assertIn(f"{run_id}:record:delete-failed", result["failures"])
+        self.assertIn(run_id, self.server._run_index)
+        self.assertGreater(result["over_cap_bytes"], 0)
+
+    def test_sandbox_delete_failure_removes_record_and_reports_partial_prune(self):
+        run_id = "run_1700000009_abcdef12"
+        sandbox, record, ledger = self._add_run(run_id)
+        remove_artifact = deployment_live_server._remove_run_artifact
+
+        def fail_on_sandbox(path: Path, kind: str) -> int:
+            if kind == "sandbox":
+                raise PermissionError("simulated sandbox deletion failure")
+            return remove_artifact(path, kind)
+
+        with patch.object(deployment_live_server, "_remove_run_artifact", side_effect=fail_on_sandbox):
+            result = deployment_live_server._prune(self.server, 0)
+
+        self.assertTrue(sandbox.exists())
+        self.assertFalse(record.exists())
+        self.assertTrue(ledger.exists())
+        self.assertEqual(result["removed"], 0)
+        self.assertEqual(result["partial_runs"], [run_id])
+        self.assertIn(f"{run_id}:sandbox:delete-failed", result["failures"])
+        self.assertNotIn(run_id, self.server._run_index)
+        self.assertGreater(result["over_cap_bytes"], 0)
+
+    def test_ledger_delete_failure_is_not_reported_as_a_complete_prune(self):
+        run_id = "run_1700000004_abcdef12"
+        sandbox, record, ledger = self._add_run(run_id)
+        remove_artifact = deployment_live_server._remove_run_artifact
+
+        def fail_on_ledger(path: Path, kind: str) -> int:
+            if kind == "ledger":
+                raise PermissionError("simulated removal failure")
+            return remove_artifact(path, kind)
+
+        with patch.object(deployment_live_server, "_remove_run_artifact", side_effect=fail_on_ledger):
+            result = deployment_live_server._prune(self.server, 0)
+
+        self.assertFalse(sandbox.exists())
+        self.assertFalse(record.exists())
+        self.assertTrue(ledger.exists())  # the audit artifact survives the failed cleanup
+        self.assertEqual(result["removed"], 0)
+        self.assertEqual(result["partial_runs"], [run_id])
+        self.assertIn(f"{run_id}:ledger:delete-failed", result["failures"])
+        self.assertNotIn(run_id, self.server._run_index)
+        self.assertGreater(result["over_cap_bytes"], 0)
+
+
 class LauncherTests(unittest.TestCase):
     """Boot the real launcher and talk to it over HTTP."""
 
@@ -229,6 +556,10 @@ class LauncherTests(unittest.TestCase):
         }
         self.assertEqual(run_records, sandbox_ids, "pruning split records from their sandboxes")
         self.assertEqual(run_records, ledger_ids, "pruning left run ledgers orphaned")
+        listed = json.loads(urllib.request.urlopen(
+            f"http://127.0.0.1:{self.port}/api/runs", timeout=5).read())
+        reported_ids = {run["run_id"] for run in listed["runs"]}
+        self.assertEqual(run_records, reported_ids, "the API listed pruned run records")
 
     def test_32_run_budget_is_enforced(self):
         """Past AI2027_MAX_RUNS the launcher refuses instead of growing forever."""
