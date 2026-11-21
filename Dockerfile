@@ -10,12 +10,13 @@
 FROM python:3.11-slim
 
 # Unbuffered stdout so PaaS log panes show output immediately, and no .pyc clutter.
+# The image is read-only by default; write access requires an operator token and override.
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PORT=7860 \
     AI2027_MAX_DISK_MB=256 \
     AI2027_MAX_RUNS=5000 \
-    AI2027_READ_ONLY=0
+    AI2027_READ_ONLY=1
 
 WORKDIR /app
 

@@ -42,7 +42,7 @@ PROBES = [
         "extract": r"Ran (\d+) tests",
     },
     {
-        "name": "live-agent-7-tests",
+        "name": "live-agent-8-tests",
         "command": [sys.executable, "live-agent/test_server.py"],
         "proves": None,
         "expect": "OK",
@@ -200,7 +200,7 @@ def architecture_map(catalog: dict) -> dict:
          "verification": "unit tests executed in this audit + AST gate"},
         {"layer": "L1 · Live wrapper", "path": "live-agent",
          "role": "Stdlib HTTP wrapper importing the kernel in place; per-run sandbox + evidence JSON.",
-         "verification": "7 wrapper tests executed in this audit"},
+         "verification": "8 wrapper tests executed in this audit"},
         {"layer": "L2 · Public surface", "path": "website",
          "role": "Static bilingual site + JS reference port of the loop (labelled as a port).",
          "verification": "12 demo contract tests executed in this audit"},

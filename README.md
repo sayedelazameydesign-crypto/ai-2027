@@ -6,10 +6,10 @@
 
 **An open ecosystem of 48 archived AI projects — and one agent kernel that proves its work.**
 
-*Verified on 2026-11-17, not assumed:* **1 project PROVEN by execution · 40 declared only ·
-6 explicitly simulated · 1 with a concrete defect** → [`docs/GROUND-TRUTH-2026-11-17.md`](docs/GROUND-TRUTH-2026-11-17.md)
-<br>*Re-verified on 2026-11-18:* **295 tests green · 15/15 live-HTTP checks · 100/100 attacks, 0 breaches ·
-48 projects / 3,967 files exact · 48/48 archive identity accounted for** → [`docs/GROUND-TRUTH-2026-11-18.md`](docs/GROUND-TRUTH-2026-11-18.md)
+*Latest local read-only inventory* (`python3 command-hud/audit.py`): **48 projects · 3,981 files ·
+1 PROVEN · 40 DECLARED · 6 SIMULATED · 1 FAILED**. A classification of archived projects is not a product-completion score.
+<br>*Historical verification on 2026-11-18:* **295 tests green · 15/15 live-HTTP checks · 100/100 attacks, 0 breaches ·
+48 projects / 3,967 files · 48/48 archive identity accounted for at that time** → [`docs/GROUND-TRUTH-2026-11-18.md`](docs/GROUND-TRUTH-2026-11-18.md)
 <br>*Anti-false-claim guards shipped with it:* [`scripts/network_preflight.py`](scripts/network_preflight.py)
 (a blind runner reports **BLOCKED**, never "dead") · [`docs/deviations.json`](docs/deviations.json)
 (generated files declared volatile **and** schema-checked, so `drift` still means drift) ·
@@ -18,7 +18,7 @@ on a scheduled runner) · [`scripts/secret_scan.py`](scripts/secret_scan.py) (a 
 becomes a commit — install with `./scripts/install_hooks.sh`).
 
 [![Projects](https://img.shields.io/badge/projects-48-00e5a0)](#the-ecosystem)
-[![Files](https://img.shields.io/badge/files-3%2C967-38bdf8)](catalog.json)
+[![Files](https://img.shields.io/badge/files-3%2C981-38bdf8)](catalog.json)
 [![Audited](https://img.shields.io/badge/post--merge%20audit-passed-brightgreen)](AUDIT.md)
 [![Proven](https://img.shields.io/badge/executed%20here-1%20PROVEN%20%C2%B7%2040%20declared%20%C2%B7%206%20simulated-orange)](docs/GROUND-TRUTH-2026-11-17.md)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
@@ -39,13 +39,13 @@ becomes a commit — install with `./scripts/install_hooks.sh`).
 Most AI agents say *"done"* — AI-2027 agents must **prove it**.
 This repository is the central hub unifying every tool and feature from [@sayedelazameydesign-crypto](https://github.com/sayedelazameydesign-crypto)'s 68 repositories into one verified, categorized ecosystem:
 
-> **48 projects · 3,967 files · 46 byte-identical to upstream + 2 documented deviations · independently audited** (see [AUDIT.md](AUDIT.md), [DEVIATIONS.md](docs/DEVIATIONS.md))
+> **48 projects · 3,981 files counted by the latest local audit · archive identity and deviations are tracked separately** (see [AUDIT.md](AUDIT.md), [DEVIATIONS.md](docs/DEVIATIONS.md), and run `python3 command-hud/audit.py` for the current inventory)
 >
-> **What "archived" means here:** a folder is a byte-mirror of an upstream repository, *not* evidence that it runs.
+> **What "archived" means here:** a folder is an upstream snapshot with documented exceptions where applicable, *not* evidence that it runs or remains byte-identical to upstream.
 > `catalog.json` now carries an `operational_status` field per project (`PROVEN` / `DECLARED` / `SIMULATED` / `FAILED`),
 > measured by `python3 command-hud/audit.py`, so the index cannot be read as "48 working systems".
 
-Every project lives 1:1 under [`projects/`](projects/) with its original license. [`catalog.json`](catalog.json) is the machine-readable index.
+Every archived project lives under [`projects/`](projects/); its license status varies and may be missing or pending, so check that project's source and notice before reuse. [`catalog.json`](catalog.json) is the machine-readable inventory.
 
 ## ⚡ The Evidence-First Cycle
 
@@ -88,7 +88,7 @@ Full categorized catalog with per-project features: **below in Arabic** ⬇ and 
 - 🔐 **Secrets scan**: one exposed key found → redacted here (rotation tracked in AUDIT.md)
 - 📄 **Readiness review**: what's proven vs. declared vs. simulated → [docs/PHASE-0-READINESS.md](docs/PHASE-0-READINESS.md) (with the 2026-11-17 correction addendum)
 - 🧪 **Try it in your browser**: the [public kernel demo](https://sayedelazameydesign-crypto.github.io/ai-2027/demo.html) runs the 7-stage loop with a real policy wall, an independent verifier and SHA-256 evidence. Honest scope: a dependency-free JS **port** on an in-memory sandbox, not the Python kernel and not an LLM (12 contract tests in [`website/kernel-demo.test.js`](website/kernel-demo.test.js)).
-- 🤖 **CI on every push** → [`.github/workflows/ci.yml`](.github/workflows/ci.yml): 104 kernel tests + 7 wrapper tests across Python 3.10/3.11/3.12, CLI VERIFIED/DENIED contract, AST zero-dependency gate (+ 9 self-tests for the gates themselves), 12 demo tests, `bench.py` with raw JSON artifacts, and a wheel smoke test. Regression gate is jitter-aware by design → [`scripts/ci_guard.py`](scripts/ci_guard.py).
+- 🤖 **CI on every push** → [`.github/workflows/ci.yml`](.github/workflows/ci.yml): 104 kernel tests + 8 wrapper tests across Python 3.10/3.11/3.12, CLI VERIFIED/DENIED contract, AST zero-dependency gate (+ 9 self-tests for the gates themselves), 12 demo tests, `bench.py` with raw JSON artifacts, and a wheel smoke test. Regression gate is jitter-aware by design → [`scripts/ci_guard.py`](scripts/ci_guard.py).
 - 🧭 **Project lifecycle control plane** → [`.github/workflows/project-lifecycle.yml`](.github/workflows/project-lifecycle.yml): one manual entry point for the full CI gate, optional Gemini/NVIDIA/E2B checks, and a gated Render deployment with exact service-name confirmation in the `production` environment (configure required reviewers there for human approval). Provider secrets are passed only to their reusable workflow; model/service routing lives in non-secret Actions Variables. Live checks and deployment are main-only and never run from a PR.
 
 ## 🧠 Cumulative memory that only remembers what was proven
@@ -277,11 +277,11 @@ Each project keeps **its own license** inside its folder. Most are MIT/Apache-2.
 # 🧠 ai-2027 — المستودع الجامع لكل الأدوات والميزات
 
 > **كل أداة وميزة من مستودعات [sayedelazameydesign-crypto](https://github.com/sayedelazameydesign-crypto) في مكان واحد.**
-> تم دمج **48 مشروعًا** (3,967 ملفًا) من 68 مستودعًا في مجلد واحد منظّم تحت [`projects/`](projects/).
-> ⚠️ **الدمج ليس تشغيلًا:** القياس الفعلي = **1 مُثبت بالتشغيل · 40 وصف فقط · 6 محاكاة · 1 فيه عيب** — [`docs/GROUND-TRUTH-2026-11-17.md`](docs/GROUND-TRUTH-2026-11-17.md)، وكل مشروع في [`catalog.json`](catalog.json) يحمل حقل `operational_status`.
+> أحصى آخر تدقيق محلي للقراءة فقط **48 مشروعًا و3,981 ملفًا** (`python3 command-hud/audit.py`).
+> ⚠️ **الأرشفة لا تعني التشغيل:** التصنيف الحالي **1 مثبت · 40 موصوفة فقط · 6 محاكاة · 1 به عطل محدد**؛ لا تمثل هذه الأرقام نسبة اكتمال المنتج. راجع سجل التدقيق وأعد تشغيل الأمر للحصول على الجرد الحالي.
 
-كل مشروع محفوظ **كما هو 1:1** داخل `projects/<اسم-المستودع>/` مع ترخيصه وملفاته،
-والفهرس أدناه يصنّف كل أداة وميزة حسب الوظيفة. للفهرس الآلي القابل للبرمجة: [`catalog.json`](catalog.json).
+المجلدات في `projects/<اسم-المستودع>/` أرشيفات للمصادر مع استثناءات موثقة حيث تنطبق؛ لا يعني ذلك تطابقًا بايتيًا دائمًا أو أن المشروع يعمل. حالة الترخيص تختلف وقد تكون مفقودة أو قيد الحسم، لذا راجع ترخيص المصدر قبل إعادة الاستخدام.
+الفهرس الآلي: [`catalog.json`](catalog.json).
 
 ---
 
@@ -396,7 +396,7 @@ rsync -a --delete --exclude __pycache__ <repo>-main/ projects/<repo>/
 
 ---
 
-**الإحصاء الكلي:** 48 مشروعًا · 3,967 ملفًا (catalog.json مصدر الحقيقة) · 16 مشروع وكلاء · 9 منصات ويب · 8 مشاريع تجارة أزياء · 8 تطبيقات متخصصة · 7 بذور — **منها 1 مُثبت بالتشغيل فقط**
+**الإحصاء الكلي:** 48 مشروعًا · 3,981 ملفًا وفق آخر تدقيق محلي للقراءة فقط · 16 مشروع وكلاء · 9 منصات ويب · 8 مشاريع تجارة أزياء · 8 تطبيقات متخصصة · 7 بذور — **منها مشروع واحد مُثبت بالتشغيل في هذا التدقيق فقط**
 **تاريخ الدمج:** 2026-11-17 · **المصدر:** [github.com/sayedelazameydesign-crypto](https://github.com/sayedelazameydesign-crypto?tab=repositories)
 
 ---
