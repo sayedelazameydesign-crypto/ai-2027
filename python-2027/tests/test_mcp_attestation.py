@@ -97,3 +97,8 @@ def test_signing_key_is_required_and_never_echoed() -> None:
     assert signing_key_from_env({"AI2027_MCP_SIGNING_KEY": _KEY.hex()}) == _KEY
     with pytest.raises(McpConfigurationError, match="hexadecimal"):
         signing_key_from_env({"AI2027_MCP_SIGNING_KEY": "z" * 64})
+
+
+def test_canonical_json_rejects_non_finite_numbers() -> None:
+    with pytest.raises(ValueError):
+        canonical_json({"value": float("nan")})

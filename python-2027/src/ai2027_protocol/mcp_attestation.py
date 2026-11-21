@@ -10,12 +10,13 @@ from __future__ import annotations
 
 import hashlib
 import hmac
-import json
 import os
 import secrets
 import time
 from collections.abc import Mapping
 from typing import Any
+
+from kernel2027 import canonical_json as _kernel_canonical_json
 
 MCP_SIGNING_KEY_ENV = "AI2027_MCP_SIGNING_KEY"
 MCP_RESULT_MAX_AGE_SECONDS = 300
@@ -48,15 +49,8 @@ def signing_key_from_env(environ: Mapping[str, str] | None = None) -> bytes:
 
 
 def canonical_json(value: object) -> bytes:
-    """Serialize compact UTF-8 JSON with sorted keys for signatures and wire output."""
-    serialized = json.dumps(
-        value,
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
-        allow_nan=False,
-    )
-    return serialized.encode("utf-8", errors="backslashreplace")
+    """Serialize with the shared kernel format and encode canonical UTF-8 bytes."""
+    return _kernel_canonical_json(value).encode("utf-8", errors="backslashreplace")
 
 
 def _path_digest(path: str | None) -> str | None:

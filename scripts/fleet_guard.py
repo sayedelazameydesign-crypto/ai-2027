@@ -45,13 +45,13 @@ def _python_files() -> list[Path]:
 def check_imports() -> int:
     """Fail on any third-party import in the fleet package."""
     stdlib = set(sys.stdlib_module_names) | CONDITIONAL_STDLIB
-    rel = {
+    relative_modules = {
         "contracts", "store", "verifier", "registry", "runner", "examples", "llm",
-        "routing", "generalist", "bench",
-        # The shared kernel: stdlib-only by construction (its own test suite
-        # asserts that), so importing it cannot smuggle in a third-party dep.
-        "kernel2027",
+        "routing", "generalist", "bench", "ops",
     }
+    # The shared kernel is stdlib-only by construction (its own tests assert
+    # that), and is the only non-stdlib package allowed via an absolute import.
+    absolute_internal = {"kernel2027"}
     bad: dict[str, set[str]] = {}
     files = _python_files()
     for path in files:
@@ -64,13 +64,13 @@ def check_imports() -> int:
                 names = [node.module.split(".")[0]]
             elif isinstance(node, ast.ImportFrom) and node.level > 0 and node.module:
                 names = [node.module.split(".")[0]]
-                if names[0] not in rel:
+                if names[0] not in relative_modules:
                     bad.setdefault(str(path.relative_to(ROOT)), set()).add(f".{names[0]}")
                 continue
             for name in names:
                 if name in {"__future__"}:
                     continue
-                if name not in stdlib and name not in rel:
+                if name not in stdlib and name not in absolute_internal:
                     bad.setdefault(str(path.relative_to(ROOT)), set()).add(name)
     print(f"AST-scanned {len(files)} fleet-2027 modules for third-party imports "
           f"(Python {sys.version.split()[0]}).")

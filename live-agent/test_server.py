@@ -63,6 +63,10 @@ class TestRunGoal(unittest.TestCase):
         rec = server.run_goal("ensure_dir", {"path": "d1"})
         loaded = server.read_run(rec["run_id"])
         self.assertEqual(loaded["status"], "VERIFIED")
+        ledger = server.RUNS_DIR / "ledgers" / f"{rec['run_id']}.jsonl"
+        events = [json.loads(line) for line in ledger.read_text(encoding="utf-8").splitlines()]
+        self.assertTrue(events)
+        self.assertTrue(all(event.get("run_id") == rec["run_id"] for event in events))
 
     def test_sandbox_file_serving_is_traversal_safe(self):
         rec = server.run_goal("create_file", {"path": "pub.txt", "content": "42"})

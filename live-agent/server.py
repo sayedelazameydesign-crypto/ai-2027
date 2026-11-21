@@ -189,7 +189,9 @@ def run_goal(goal_type: str, params: dict, *, planner: Planner | None = None) ->
             planner=planner,
             config=KernelConfig(),
         )
-        record = kernel.run(Goal(goal_type=goal_type, params=params))
+        # Use the public run ID in the kernel ledger too, so the sandbox,
+        # persisted record, and append-only ledger share one verifiable ID.
+        record = kernel.run(Goal(goal_type=goal_type, params=params), run_id=run_id)
 
     payload = record.to_dict()
     payload["run_id"] = run_id
