@@ -1,6 +1,6 @@
 # Evidence-First CI — Phase 2 / Week 1 of the 2027 roadmap.
-# Gates: 104 kernel tests + 8 wrapper tests + CLI contract, AST zero-deps proof,
-# reproducible benchmarks with a published jitter-aware regression ceiling,
+# Gates: 104 kernel tests + 16 Live Agent wrapper tests + authenticated client and
+# snapshot regressions + CLI contract, AST zero-deps proof, reproducible benchmarks,
 # 12 demo contract tests, 44 watchdog tests + 9 Phase 2B alerting tests, and
 # an installable-wheel smoke test.
 #
@@ -57,7 +57,7 @@ jobs:
       - name: Kernel unit tests (104)
         run: python -m unittest discover -s projects/agi-system/tests -t projects/agi-system -v
 
-      - name: Live Agent wrapper tests (8)
+      - name: Live Agent wrapper tests (16)
         run: python live-agent/test_server.py -v
 
       - name: CeliaOS verified file bridge and approval tests
@@ -149,13 +149,13 @@ jobs:
       - name: Archive identity tests — drift vs deviation vs generated (17)
         run: python scripts/test_verify_identity.py -v
 
-      - name: Ember beat tests — heat index + honest publishing (12)
+      - name: Ember beat tests — heat index + honest publishing (13)
         run: python scripts/test_ember_beat.py -v
 
       - name: Health gate tests — the gate must be able to refuse (24)
         run: python scripts/test_health_gate.py -v
 
-      - name: Task runner tests — the 60 s budget must be falsifiable (6)
+      - name: Task runner tests — the 60 s budget must be falsifiable (7)
         run: python scripts/test_run_task.py -v
 
       - name: Secret-handling tests — the key must never reach the output (15)
@@ -560,7 +560,7 @@ jobs:
               print("THIRD-PARTY:", bad, file=sys.stderr); sys.exit(1)
           print("PASS: stdlib only")
           PY
-      - name: End-to-end HUD tests (17, real HTTP + real kernel)
+      - name: End-to-end HUD tests (19, real HTTP + real kernel)
         run: python command-hud/test_hud.py -v
       - name: Red-team gate — 100 attacks, 0 breaches, 10/10 controls
         run: python command-hud/redteam.py --markdown --assert
@@ -727,8 +727,12 @@ jobs:
               sys.exit(1)
           print("PASS: zero declared dependencies")
           PY
-      - name: Deployment configs + live launcher (40 tests, 1 optional skip, real HTTP + prune safety)
+      - name: Deployment configs + live launcher (46 tests, 1 optional skip, real HTTP + prune safety)
         run: python deployment/test_deployment.py -v
+      - name: Live Agent client transport policy (8 tests)
+        run: python scripts/test_live_agent_auth.py -v
+      - name: Offline runtime snapshot compatibility and safety (9 tests)
+        run: python deployment/test_runtime_snapshot.py -v
       - name: Render adapter is stdlib-only (AST gate)
         run: |
           python - <<'PY'
@@ -967,8 +971,62 @@ jobs:
       - name: Boot the live agent and the HUD
         run: |
           set -euo pipefail
-          python live-agent/server.py --port 8090 --host 127.0.0.1 &
-          python command-hud/server.py --port 8091 --host 127.0.0.1 &
+          umask 077
+          if [[ -e .ember-up || -L .ember-up ]]; then
+            echo "refusing pre-existing .ember-up workflow state" >&2
+            exit 1
+          fi
+          mkdir -m 700 .ember-up
+          ( set -o noclobber; printf '%s\n' 'ai-2027-ci-owned-state-v1' > .ember-up/workflow-owner )
+          write_owned_pid() {
+            local file="$1" pid="$2"
+            [[ "$pid" =~ ^[0-9]+$ ]] || return 1
+            ( umask 077; set -o noclobber; printf '%s\n' "$pid" > "$file" )
+          }
+          WRITE_TOKEN="$(python -c 'import secrets; print(secrets.token_urlsafe(32))')"
+          READ_ID="ci-reader"
+          READ_SECRET="$(python -c 'import secrets; print(secrets.token_urlsafe(32))')"
+          READ_HASHES="$(AI2027_READ_TOKEN_ID="$READ_ID" AI2027_READ_TOKEN_SECRET="$READ_SECRET" AI2027_WRITE_TOKEN="$WRITE_TOKEN" python - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+          state = Path(".ember-up")
+          os.umask(0o077)
+          if state.is_symlink():
+              raise SystemExit("refusing a symlinked .ember-up directory")
+          state.mkdir(mode=0o700, exist_ok=True)
+          if state.is_symlink() or not state.is_dir():
+              raise SystemExit(".ember-up is not a real directory")
+          os.chmod(state, 0o700)
+          identifier = os.environ["AI2027_READ_TOKEN_ID"]
+          secret = os.environ["AI2027_READ_TOKEN_SECRET"]
+          writer = os.environ["AI2027_WRITE_TOKEN"]
+          hashes = {identifier: hashlib.sha256(secret.encode()).hexdigest()}
+          path = state / "api-credentials.json"
+          descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+          with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+              json.dump({"read_id": identifier, "read_secret": secret,
+                         "write_token": writer, "read_hashes": hashes}, handle)
+              handle.write("\n")
+          print(json.dumps(hashes))
+          PY
+          )"
+          AI2027_WRITE_TOKEN="$WRITE_TOKEN" AI2027_READ_TOKEN_HASHES="$READ_HASHES" \
+            AI2027_READ_ONLY=0 python live-agent/server.py --port 8090 --host 127.0.0.1 \
+            > .ember-up/live-agent.log 2>&1 &
+          LIVE_AGENT_PID=$!
+          if ! write_owned_pid .ember-up/live-agent.pid "$LIVE_AGENT_PID"; then
+            kill "$LIVE_AGENT_PID" 2>/dev/null || true
+            echo "could not record the Live Agent process id" >&2
+            exit 1
+          fi
+          python command-hud/server.py --port 8091 --host 127.0.0.1 \
+            > .ember-up/command-hud.log 2>&1 &
+          HUD_PID=$!
+          if ! write_owned_pid .ember-up/command-hud.pid "$HUD_PID"; then
+            kill "$HUD_PID" 2>/dev/null || true
+            echo "could not record the Command HUD process id" >&2
+            exit 1
+          fi
           for i in $(seq 1 40); do
             if curl -sf http://127.0.0.1:8090/api/health >/dev/null &&
                curl -sf http://127.0.0.1:8091/api/health >/dev/null; then
@@ -978,16 +1036,50 @@ jobs:
             sleep 0.5
           done
           echo "servers did not start within 20s" >&2
+          tail -30 .ember-up/live-agent.log 2>/dev/null || true
+          tail -30 .ember-up/command-hud.log 2>/dev/null || true
           exit 1
       - name: End-to-end smoke against the running servers (15 checks)
         run: python scripts/runtime_smoke.py
       - name: Process restart persistence (Live Agent + Command HUD)
         run: python scripts/test_runtime_restart.py -v
-      - name: Stop the servers
+      - name: Stop services and remove ephemeral credentials
         if: always()
         run: |
-          pkill -f "live-agent/server.py" || true
-          pkill -f "command-hud/server.py" || true
+          set -euo pipefail
+          stop_owned_service() {
+            local pid_file="$1" expected="$2" pid command
+            [[ ! -L "$pid_file" && -f "$pid_file" && -r "$pid_file" ]] || return 0
+            read -r pid < "$pid_file" || return 0
+            [[ "$pid" =~ ^[0-9]+$ ]] || return 0
+            command="$(ps -p "$pid" -o args= 2>/dev/null || true)"
+            case "$command" in
+              *"$expected"*) kill "$pid" 2>/dev/null || true ;;
+              *) return 0 ;;
+            esac
+            for _ in $(seq 1 20); do
+              command="$(ps -p "$pid" -o args= 2>/dev/null || true)"
+              case "$command" in *"$expected"*) sleep 0.1 ;; *) break ;; esac
+            done
+            command="$(ps -p "$pid" -o args= 2>/dev/null || true)"
+            case "$command" in
+              *"$expected"*) kill -KILL "$pid" 2>/dev/null || true ;;
+            esac
+          }
+          if [[ -L .ember-up ]]; then
+            echo "refusing symlinked .ember-up during cleanup" >&2
+          elif [[ -d .ember-up && ! -L .ember-up \
+                && -f .ember-up/workflow-owner && ! -L .ember-up/workflow-owner \
+                && "$(cat .ember-up/workflow-owner)" == "ai-2027-ci-owned-state-v1" ]]; then
+            stop_owned_service .ember-up/live-agent.pid 'live-agent/server.py'
+            stop_owned_service .ember-up/command-hud.pid 'command-hud/server.py'
+            rm -f .ember-up/api-credentials.json .ember-up/live-agent.pid \
+              .ember-up/command-hud.pid .ember-up/live-agent.log \
+              .ember-up/command-hud.log .ember-up/workflow-owner
+            rmdir .ember-up 2>/dev/null || true
+          else
+            echo "no owned .ember-up workflow state to clean" >&2
+          fi
 
   live-gemini:
     # Provider quota is always opt-in. Pushes and PRs stay offline; a manual

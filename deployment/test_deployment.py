@@ -17,11 +17,13 @@ Stdlib only (the YAML test skips cleanly if PyYAML is absent — CI installs non
 from __future__ import annotations
 
 import importlib.util
+import hashlib
 import json
 import os
 import re
 import shutil
 import socket
+import stat
 import subprocess
 import sys
 import tempfile
@@ -43,6 +45,17 @@ if _LIVE_SPEC is None or _LIVE_SPEC.loader is None:
 deployment_live_server = importlib.util.module_from_spec(_LIVE_SPEC)
 _LIVE_SPEC.loader.exec_module(deployment_live_server)
 TEST_WRITE_TOKEN = "test-write-token-" + "x" * 40
+TEST_READ_TOKEN_ID = "test-reader"
+TEST_READ_TOKEN = "test-read-token-" + "r" * 40
+TEST_READ_TOKEN_HASHES = json.dumps({
+    TEST_READ_TOKEN_ID: hashlib.sha256(TEST_READ_TOKEN.encode("utf-8")).hexdigest()
+})
+
+
+def _read_headers(token: str | None = TEST_READ_TOKEN) -> dict[str, str]:
+    if token is None:
+        return {}
+    return {"Authorization": f"Bearer {TEST_READ_TOKEN_ID}.{token}"}
 
 
 def _free_port() -> int:
@@ -60,6 +73,17 @@ def _wait_http(port: int, path: str = "/api/health", timeout: float = 25.0) -> b
         except (urllib.error.URLError, OSError):
             time.sleep(0.2)
     return False
+
+
+def _get_http(port: int, path: str, *, token: str | None = TEST_READ_TOKEN):
+    request = urllib.request.Request(
+        f"http://127.0.0.1:{port}{path}", headers=_read_headers(token), method="GET"
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=5) as response:
+            return response.status, response.headers, response.read()
+    except urllib.error.HTTPError as exc:
+        return exc.code, exc.headers, exc.read()
 
 
 class RenderYamlTests(unittest.TestCase):
@@ -524,6 +548,74 @@ class PruneSafetyTests(unittest.TestCase):
         self.assertGreater(result["over_cap_bytes"], 0)
 
 
+class CleanupReportTests(unittest.TestCase):
+    def test_partial_and_failed_cleanup_are_path_free_and_never_complete(self):
+        internal_run_id = "run_1700000000_abcdef01"
+        partial = deployment_live_server._cleanup_report({
+            "failures": [
+                f"{internal_run_id}:record:delete-failed:/private/runtime/runs/record.json",
+                "disk-cap-unmet:no-safe-candidates",
+            ],
+            "partial_runs": [internal_run_id],
+            "removed": 1,
+            "freed_bytes": 512,
+        })
+        self.assertEqual(partial["status"], "partial")
+        self.assertTrue(partial["completed"])
+        self.assertEqual(partial["partial_run_count"], 1)
+        self.assertIn("RUN_RECORD_CLEANUP_FAILED", partial["warnings"])
+        self.assertIn("DISK_CAP_UNMET", partial["warnings"])
+        self.assertIn("CLEANUP_PARTIAL", partial["warnings"])
+        self.assertNotIn(internal_run_id, json.dumps(partial))
+        self.assertNotIn("/private/runtime", json.dumps(partial))
+
+        failed = deployment_live_server._cleanup_report({
+            "failures": ["disk-usage-scan-failed"], "partial_runs": [],
+            "removed": 0, "freed_bytes": 0,
+        })
+        self.assertEqual(failed["status"], "failed")
+        complete = deployment_live_server._cleanup_report({
+            "failures": [], "partial_runs": [], "removed": 0, "freed_bytes": 0,
+        })
+        self.assertEqual(complete["status"], "complete")
+        self.assertEqual(complete["warnings"], [])
+
+    def test_partial_report_is_attached_to_caller_payload(self):
+        run_id = "run_1700000001_abcdef02"
+        persisted = []
+        fake_server = SimpleNamespace(
+            _persist_run_record=lambda payload: persisted.append(
+                json.loads(json.dumps(payload))
+            )
+        )
+        payload = {"run_id": run_id, "status": "VERIFIED"}
+        report, persist_failed = deployment_live_server._attach_cleanup_result(
+            fake_server, payload, {
+                "failures": [f"{run_id}:ledger:delete-failed:/private/ledger"],
+                "partial_runs": [run_id], "removed": 0, "freed_bytes": 0,
+            }
+        )
+        self.assertFalse(persist_failed)
+        self.assertEqual(report["status"], "partial")
+        self.assertEqual(payload["cleanup"], report)
+        self.assertEqual(persisted[0]["cleanup"]["status"], "partial")
+        self.assertNotIn("/private/ledger", json.dumps(payload))
+        self.assertNotIn(run_id, json.dumps(payload["cleanup"]))
+
+    def test_cleanup_report_persistence_failure_downgrades_complete_result(self):
+        fake_server = SimpleNamespace(
+            _persist_run_record=lambda _payload: (_ for _ in ()).throw(OSError("synthetic"))
+        )
+        payload = {"run_id": "run_1700000002_abcdef03", "status": "VERIFIED"}
+        report, persist_failed = deployment_live_server._attach_cleanup_result(
+            fake_server, payload, {"failures": [], "partial_runs": [],
+                              "removed": 0, "freed_bytes": 0}
+        )
+        self.assertTrue(persist_failed)
+        self.assertEqual(report["status"], "partial")
+        self.assertIn("CLEANUP_RESULT_PERSIST_FAILED", report["warnings"])
+
+
 class LauncherTests(unittest.TestCase):
     """Boot the real launcher and talk to it over HTTP."""
 
@@ -536,7 +628,8 @@ class LauncherTests(unittest.TestCase):
                    "AI2027_LIVE_RUNTIME_DIR": str(cls.runtime_dir),
                    "AI2027_MAX_DISK_MB": "1", "AI2027_MAX_RUNS": "40",
                    "AI2027_WRITE_TOKEN": TEST_WRITE_TOKEN, "AI2027_READ_ONLY": "0",
-                   "AI2027_WRITE_RATE_LIMIT": "100"}
+                   "AI2027_WRITE_RATE_LIMIT": "100",
+                   "AI2027_READ_TOKEN_HASHES": TEST_READ_TOKEN_HASHES}
         cls.proc = subprocess.Popen(
             [sys.executable, "deployment/live_server.py"], cwd=ROOT, env=cls.env,
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
@@ -575,17 +668,18 @@ class LauncherTests(unittest.TestCase):
             return e.code, json.loads(e.read() or b"{}")
 
     def test_30_health_endpoint_answers(self):
-        d = json.loads(urllib.request.urlopen(
-            f"http://127.0.0.1:{self.port}/api/health", timeout=5).read())
-        self.assertTrue(d["ok"])
-        self.assertIn("agi-system", d["kernel"])
+        health_status, _, health_raw = _get_http(self.port, "/api/health", token=None)
+        self.assertEqual(health_status, 200)
+        d = json.loads(health_raw)
+        self.assertEqual(d, {"ok": True, "service": "ai-2027-live-agent"})
         page = urllib.request.urlopen(f"http://127.0.0.1:{self.port}/", timeout=5).read().decode()
-        self.assertIn("do not enter credentials", page.lower())
-        self.assertIn("لا تُدخل بيانات اعتماد", page)
+        self.assertIn("private api", page.lower())
+        self.assertIn("واجهة API خاصة", page)
 
     def test_30a_missing_or_wrong_bearer_token_cannot_run_a_goal(self):
-        before = json.loads(urllib.request.urlopen(
-            f"http://127.0.0.1:{self.port}/api/runs", timeout=5).read())
+        before_status, _, before_raw = _get_http(self.port, "/api/runs")
+        self.assertEqual(before_status, 200)
+        before = json.loads(before_raw)
         code, body = self._post({"goal_type": "create_file",
                                  "params": {"path": "unauthorized.txt", "content": "x"}},
                                 token=None)
@@ -599,9 +693,41 @@ class LauncherTests(unittest.TestCase):
         self.assertIn("bearer", wrong_body["error"])
         self.assertNotIn("wrong-", json.dumps(wrong_body))
 
-        after = json.loads(urllib.request.urlopen(
-            f"http://127.0.0.1:{self.port}/api/runs", timeout=5).read())
+        after_status, _, after_raw = _get_http(self.port, "/api/runs")
+        self.assertEqual(after_status, 200)
+        after = json.loads(after_raw)
         self.assertEqual(before["runs"], after["runs"], "unauthorized requests executed goals")
+
+    def test_30b_every_private_data_route_rejects_missing_and_wrong_reader_tokens(self):
+        marker = "synthetic-query-secret-never-log"
+        paths = (
+            "/api/agent-card",
+            "/api/metrics",
+            "/api/memory",
+            "/api/memory/search?q=" + marker,
+            "/api/runs",
+            "/api/run/run_1700000000_abcdef01",
+            "/api/file?run=run_1700000000_abcdef01&path=" + marker,
+            "/api/unregistered-private-route?value=" + marker,
+        )
+        wrong_secret = "wrong-reader-secret-" + "w" * 40
+        for path in paths:
+            with self.subTest(path=path.split("?", 1)[0]):
+                missing_status, missing_headers, missing_body = _get_http(
+                    self.port, path, token=None)
+                self.assertEqual(missing_status, 401)
+                self.assertIn("Bearer", missing_headers.get("WWW-Authenticate", ""))
+                self.assertNotIn(marker, missing_body.decode("utf-8", errors="replace"))
+
+                wrong_status, wrong_headers, wrong_body = _get_http(
+                    self.port, path, token=wrong_secret)
+                self.assertEqual(wrong_status, 401)
+                self.assertIn("Bearer", wrong_headers.get("WWW-Authenticate", ""))
+                self.assertNotIn(wrong_secret, wrong_body.decode("utf-8", errors="replace"))
+
+        valid_status, _, valid_body = _get_http(self.port, "/api/memory")
+        self.assertEqual(valid_status, 200)
+        self.assertIn("memories", json.loads(valid_body))
 
     def test_31_disk_cap_is_enforced_under_load(self):
         """The whole point: 60 runs against a 1 MB cap must not exceed it."""
@@ -627,8 +753,9 @@ class LauncherTests(unittest.TestCase):
         }
         self.assertEqual(run_records, sandbox_ids, "pruning split records from their sandboxes")
         self.assertEqual(run_records, ledger_ids, "pruning left run ledgers orphaned")
-        listed = json.loads(urllib.request.urlopen(
-            f"http://127.0.0.1:{self.port}/api/runs", timeout=5).read())
+        listed_status, _, listed_raw = _get_http(self.port, "/api/runs")
+        self.assertEqual(listed_status, 200)
+        listed = json.loads(listed_raw)
         reported_ids = {run["run_id"] for run in listed["runs"]}
         self.assertEqual(run_records, reported_ids, "the API listed pruned run records")
 
@@ -642,6 +769,110 @@ class LauncherTests(unittest.TestCase):
                 break
         self.assertEqual(code, 400, "run budget never engaged")
         self.assertIn("budget", body["error"].lower())
+
+    def test_30c_runtime_storage_uses_owner_only_modes(self):
+        result_code, payload = self._post({"goal_type": "create_file", "params": {
+            "path": "permissions/proof.txt", "content": "private-runtime-mode-check"}})
+        self.assertEqual(result_code, 200)
+        self.assertEqual(payload["status"], "VERIFIED")
+        run_id = payload["run_id"]
+        private_directories = (
+            self.runtime_dir, self.runtime_dir / "runs", self.runtime_dir / "runs" / "ledgers",
+            self.runtime_dir / "sandboxes", self.runtime_dir / "state",
+        )
+        for path in private_directories:
+            with self.subTest(directory=path.relative_to(self.runtime_dir.parent).as_posix()):
+                self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o700)
+        private_files = (
+            self.runtime_dir / "runs" / f"{run_id}.json",
+            self.runtime_dir / "runs" / "ledgers" / f"{run_id}.jsonl",
+            self.runtime_dir / "sandboxes" / run_id / "permissions" / "proof.txt",
+            self.runtime_dir / "state" / "memory.db",
+        )
+        for path in private_files:
+            with self.subTest(file=path.relative_to(self.runtime_dir).as_posix()):
+                self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
+
+
+class SecureLoggingLauncherTests(unittest.TestCase):
+    def test_http_logs_exclude_query_authorization_body_paths_and_error_details(self):
+        port = _free_port()
+        query_marker = "synthetic-search-secret-never-log"
+        body_marker = "synthetic-artifact-content-never-log"
+        error_marker = "synthetic-invalid-goal-never-log"
+        with tempfile.TemporaryDirectory(prefix="ai2027-secure-logs-") as tmp:
+            runtime = Path(tmp) / "private-runtime-path-marker"
+            log_path = Path(tmp) / "service.log"
+            env = {
+                **os.environ,
+                "PORT": str(port), "HOST": "127.0.0.1",
+                "AI2027_LIVE_RUNTIME_DIR": str(runtime),
+                "AI2027_WRITE_TOKEN": TEST_WRITE_TOKEN,
+                "AI2027_READ_TOKEN_HASHES": TEST_READ_TOKEN_HASHES,
+                "AI2027_READ_ONLY": "0",
+                "AI2027_READ_RATE_LIMIT": "100",
+                "AI2027_WRITE_RATE_LIMIT": "100",
+            }
+            with log_path.open("w", encoding="utf-8") as log:
+                proc = subprocess.Popen(
+                    [sys.executable, "deployment/live_server.py"], cwd=ROOT, env=env,
+                    stdout=log, stderr=subprocess.STDOUT, text=True,
+                )
+                try:
+                    self.assertTrue(_wait_http(port), "secure-log launcher did not start")
+                    status, _, _ = _get_http(
+                        port, "/api/memory/search?q=" + query_marker)
+                    self.assertEqual(status, 200)
+
+                    payload = {"goal_type": "create_file", "params": {
+                        "path": "log-audit.txt", "content": body_marker,
+                    }}
+                    request = urllib.request.Request(
+                        f"http://127.0.0.1:{port}/api/run",
+                        data=json.dumps(payload).encode(),
+                        headers={"Content-Type": "application/json",
+                                 "Authorization": f"Bearer {TEST_WRITE_TOKEN}"},
+                    )
+                    with urllib.request.urlopen(request, timeout=15) as response:
+                        result = json.loads(response.read())
+                        self.assertEqual(response.status, 200)
+                    self.assertEqual(result["cleanup"]["status"], "complete")
+
+                    bad_payload = {"goal_type": error_marker, "params": {}}
+                    bad_request = urllib.request.Request(
+                        f"http://127.0.0.1:{port}/api/run",
+                        data=json.dumps(bad_payload).encode(),
+                        headers={"Content-Type": "application/json",
+                                 "Authorization": f"Bearer {TEST_WRITE_TOKEN}"},
+                    )
+                    with self.assertRaises(urllib.error.HTTPError) as error:
+                        urllib.request.urlopen(bad_request, timeout=5)
+                    self.assertEqual(error.exception.code, 400)
+                    error_body = error.exception.read().decode("utf-8", errors="replace")
+                    self.assertNotIn(error_marker, error_body)
+                finally:
+                    if proc.poll() is None:
+                        proc.terminate()
+                    try:
+                        proc.wait(timeout=10)
+                    except subprocess.TimeoutExpired:
+                        proc.kill()
+                        proc.wait(timeout=5)
+
+            log_text = log_path.read_text(encoding="utf-8", errors="replace")
+            for marker in (query_marker, body_marker, error_marker, TEST_WRITE_TOKEN,
+                           TEST_READ_TOKEN, str(runtime)):
+                self.assertNotIn(marker, log_text)
+            access_records = [
+                json.loads(line) for line in log_text.splitlines()
+                if line.startswith("{\"request_id\"")
+            ]
+            self.assertGreaterEqual(len(access_records), 3)
+            for record in access_records:
+                self.assertEqual(set(record), {
+                    "request_id", "method", "route", "status", "duration_ms"
+                })
+                self.assertNotIn("?", record["route"])
 
 
 class RateLimitedLauncherTests(unittest.TestCase):
@@ -719,7 +950,8 @@ class FreshResetTests(unittest.TestCase):
             outside.write_text("must survive", encoding="utf-8")
 
             env = {**os.environ, "PORT": str(port), "HOST": "127.0.0.1",
-                   "AI2027_LIVE_RUNTIME_DIR": str(runtime)}
+                   "AI2027_LIVE_RUNTIME_DIR": str(runtime),
+                   "AI2027_READ_TOKEN_HASHES": TEST_READ_TOKEN_HASHES}
             log_path = root / "launcher.log"
             with log_path.open("w", encoding="utf-8") as log:
                 proc = subprocess.Popen(
@@ -732,16 +964,17 @@ class FreshResetTests(unittest.TestCase):
                         log_path.read_text(encoding="utf-8", errors="replace"))
                     self.assertFalse(stale_run.exists())
                     self.assertFalse(stale_artifact.exists())
-                    # Health initializes a new, empty SQLite DB after --fresh,
-                    # so check its content/state rather than expecting no file.
-                    self.assertNotEqual(stale_db.read_bytes(), b"stale")
+                    # Minimal public health must not initialize private stores;
+                    # an authorized memory read creates the new empty database.
+                    self.assertFalse(stale_db.exists())
                     self.assertTrue(outside.is_file())
-                    runs = json.loads(urllib.request.urlopen(
-                        f"http://127.0.0.1:{port}/api/runs", timeout=5).read())
-                    self.assertEqual(runs["runs"], [])
-                    memory = json.loads(urllib.request.urlopen(
-                        f"http://127.0.0.1:{port}/api/memory", timeout=5).read())
-                    self.assertEqual(memory["memories"], 0)
+                    runs_status, _, runs_raw = _get_http(port, "/api/runs")
+                    self.assertEqual(runs_status, 200)
+                    self.assertEqual(json.loads(runs_raw)["runs"], [])
+                    memory_status, _, memory_raw = _get_http(port, "/api/memory")
+                    self.assertEqual(memory_status, 200)
+                    self.assertEqual(json.loads(memory_raw)["memories"], 0)
+                    self.assertNotEqual(stale_db.read_bytes(), b"stale")
                 finally:
                     if proc.poll() is None:
                         proc.terminate()
@@ -818,9 +1051,9 @@ class ReadOnlyTests(unittest.TestCase):
 class DocumentationHonestyTests(unittest.TestCase):
     def test_50_deployment_doc_states_the_write_controls(self):
         doc = (DEPLOY / "README.md").read_text(encoding="utf-8").lower()
-        for phrase in ("bearer token", "rate limit", "read-only is the default",
-                       "never commit the", "embed it in public html",
-                       "no user-level access control", "terminate tls"):
+        for phrase in ("bearer", "rate limit", "ai2027_read_only=1",
+                       "never commit", "embed them in public html",
+                       "multi-user", "terminate tls", "ai2027_read_token_hashes"):
             self.assertIn(phrase, doc, f"deployment README omits {phrase!r}")
 
     def test_51_deployment_doc_quotes_the_measured_fill_rate(self):
@@ -828,11 +1061,21 @@ class DocumentationHonestyTests(unittest.TestCase):
         self.assertIn("69.5 KB", doc, "the measured per-run disk growth is missing")
         self.assertIn("1.4 min", doc, "the measured time-to-fill is missing")
 
-    def test_52_live_ui_warns_that_public_runs_may_expose_user_data(self):
+    def test_52_live_ui_never_embeds_or_persists_api_credentials(self):
         ui = (ROOT / "live-agent" / "static" / "index.html").read_text(encoding="utf-8")
-        self.assertIn("do not enter credentials", ui.lower())
-        self.assertIn("لا تُدخل بيانات اعتماد", ui)
-        self.assertIn("not protected by user authentication", ui.lower())
+        self.assertIn("trusted gateway", ui.lower())
+        self.assertIn("HTTPS", ui)
+        self.assertIn("لا تضمّن رموزًا مشتركة", ui)
+        self.assertIn("autocomplete=\"off\"", ui)
+        self.assertIn("Authorization", ui)
+        self.assertIn("Bearer credentials require HTTPS", ui)
+        self.assertIn("isLoopbackHostname(target.hostname)", ui)
+        self.assertGreaterEqual(ui.count("assertCredentialTransport(url);"), 2)
+        self.assertIn("redirect:'error'", ui)
+        self.assertIn("localStorage", ui)
+        self.assertIn("full success not confirmed", ui)
+        self.assertNotIn("localStorage.setItem", ui)
+        self.assertNotIn("innerHTML=", ui)
 
 
 if __name__ == "__main__":

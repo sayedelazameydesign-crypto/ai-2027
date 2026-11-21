@@ -12,11 +12,13 @@ intentionally limited and measured, not implied:
     bearer token. Do not put that shared token in public HTML or JavaScript.
   * **A process-local rate limit** applies to write attempts by the peer IP seen
     by Python. Forwarded-IP headers are ignored because clients can spoof them.
-  * **GET endpoints remain public.** Run records, memory summaries, and sandbox
-    artifacts have no per-user access control; never submit sensitive data.
-  * **The underlying local server** still has no user accounts, distributed
-    rate limiting, or proxy-level DDoS protection. Use a real auth/rate-limit
-    proxy for an interactive public service, with HTTPS terminated at the proxy.
+  * **Private API routes fail closed.** Only `GET /api/health` is public and
+    deliberately minimal. All other `/api/` reads use per-principal token hashes;
+    writes require the operator token. This is a bounded interim control, not
+    multi-user identity or authorization.
+  * **No gateway or edge protection is included.** Use a trusted HTTPS gateway
+    for user sessions, authorization, and distributed rate limits before any
+    public interactive service.
   * **No disk cap (upstream).** Every run writes 4 files (~69.5 KB); without
     cleanup, ~7,500 requests fill a 512 MB tier in about 1.4 minutes. This
     launcher caps disk use and the number of runs per process.
@@ -44,8 +46,11 @@ Environment
     AI2027_MAX_RUNS                   hard cap on runs per process (default 5000)
     AI2027_WRITE_TOKEN                >=32-character bearer secret; absent means writes disabled
     AI2027_READ_ONLY                  "1" always disables POST /api/run
-    AI2027_WRITE_RATE_LIMIT           write attempts per peer IP per window (default 10)
-    AI2027_WRITE_RATE_WINDOW_SECONDS  rate-limit window (default 60; max 86400)
+    AI2027_READ_TOKEN_HASHES          JSON map of reader IDs to SHA-256 hex digests; absent denies private reads
+    AI2027_READ_RATE_LIMIT             private read attempts per peer IP/window (default 120)
+    AI2027_READ_RATE_WINDOW_SECONDS    read rate-limit window (default 60; max 86400)
+    AI2027_WRITE_RATE_LIMIT            write attempts per peer IP per window (default 10)
+    AI2027_WRITE_RATE_WINDOW_SECONDS   write rate-limit window (default 60; max 86400)
 
 Runtime files are preserved across process restarts on the same filesystem.
 Survival across instance replacement/redeploy depends on a persistent mount;
@@ -164,6 +169,75 @@ def _respond_json(handler, body: dict, status: int, headers: dict[str, str] | No
         handler.send_header(name, value)
     handler.end_headers()
     handler.wfile.write(raw)
+
+
+def _cleanup_report(prune_result: dict) -> dict:
+    """Return a stable, path-free cleanup outcome suitable for API clients."""
+    raw_failures = prune_result.get("failures", [])
+    failures = [str(item) for item in raw_failures] if isinstance(raw_failures, (list, tuple)) else []
+    warnings: set[str] = set()
+    if raw_failures and not failures:
+        warnings.add("CLEANUP_FAILED")
+    failure_map = (
+        ("unsafe-storage-layout", "UNSAFE_STORAGE_LAYOUT"),
+        ("disk-usage-scan-failed", "DISK_USAGE_SCAN_FAILED"),
+        ("candidate-scan-failed", "CLEANUP_CANDIDATE_SCAN_FAILED"),
+        (":outside-storage", "CLEANUP_PATH_REJECTED"),
+        (":unexpected-file-type", "CLEANUP_PATH_REJECTED"),
+        (":stat-failed", "CLEANUP_METADATA_CHECK_FAILED"),
+        (":invalid-json", "RUN_RECORD_VALIDATION_FAILED"),
+        (":id-mismatch", "RUN_RECORD_VALIDATION_FAILED"),
+        ("ledger:invalid-or-mismatched", "LEDGER_VALIDATION_FAILED"),
+        (":safe-recursive-delete-unavailable", "SAFE_DELETE_UNAVAILABLE"),
+        (":record:delete-failed", "RUN_RECORD_CLEANUP_FAILED"),
+        (":sandbox:delete-failed", "SANDBOX_CLEANUP_FAILED"),
+        (":ledger:delete-failed", "LEDGER_CLEANUP_FAILED"),
+        ("disk-cap-unmet", "DISK_CAP_UNMET"),
+    )
+    for failure in failures:
+        mapped = next((code for marker, code in failure_map if marker in failure), None)
+        warnings.add(mapped or "CLEANUP_FAILED")
+
+    partial_runs = prune_result.get("partial_runs")
+    if not isinstance(partial_runs, (list, tuple, set)):
+        partial_runs = []
+    partial_count = len(partial_runs)
+    removed = prune_result.get("removed", 0)
+    freed = prune_result.get("freed_bytes", 0)
+    removed = removed if isinstance(removed, int) and not isinstance(removed, bool) and removed >= 0 else 0
+    freed = freed if isinstance(freed, int) and not isinstance(freed, bool) and freed >= 0 else 0
+    if partial_count:
+        warnings.add("CLEANUP_PARTIAL")
+    if not warnings:
+        status = "complete"
+    elif partial_runs or removed > 0:
+        status = "partial"
+    else:
+        status = "failed"
+    return {
+        "status": status,
+        "completed": True,
+        "warnings": sorted(warnings),
+        "removed_runs": removed,
+        "partial_run_count": partial_count,
+        "freed_bytes": freed,
+    }
+
+
+def _attach_cleanup_result(server, payload: dict, prune_result: dict) -> tuple[dict, bool]:
+    """Attach and persist the safe cleanup report; return (report, persist_failed)."""
+    cleanup = _cleanup_report(prune_result)
+    payload["cleanup"] = cleanup
+    try:
+        server._persist_run_record(payload)
+        return cleanup, False
+    except Exception:
+        cleanup["warnings"] = sorted(set(cleanup["warnings"] + [
+            "CLEANUP_RESULT_PERSIST_FAILED"
+        ]))
+        if cleanup["status"] == "complete":
+            cleanup["status"] = "partial"
+        return cleanup, True
 
 
 def _human(n: int) -> str:
@@ -591,9 +665,16 @@ def main() -> int:
     server = importlib.util.module_from_spec(spec)
     sys.modules[_MODULE] = server
     spec.loader.exec_module(server)
+    try:
+        server.configure_api_access_from_env()
+    except ValueError:
+        sys.stderr.write("FATAL: invalid API access configuration\n")
+        return 2
+    server._configure_kernel_log_suppression()
     runtime_dir = os.environ.get("AI2027_LIVE_RUNTIME_DIR")
     if runtime_dir:
         server._configure_runtime(runtime_dir)
+    server._restrict_runtime_permissions()
     restore_warnings = server._prepare_state(fresh=args.fresh)
 
     max_disk_bytes = max_disk_mb * 1024 * 1024
@@ -674,54 +755,63 @@ def main() -> int:
             state["runs"] += 1
             payload = real_run_goal(goal_type, params)
             run_id = payload.get("run_id")
-            out = _prune(server, max_disk_bytes, keep_run_id=run_id)
-            state["pruned"] += out["removed"]
-            state["freed"] += out["freed_bytes"]
-            state["partial_prunes"] += len(out["partial_runs"])
-            if out["failures"]:
+            try:
+                prune_out = _prune(server, max_disk_bytes, keep_run_id=run_id)
+            except Exception:
+                prune_out = {
+                    "removed": 0,
+                    "freed_bytes": 0,
+                    "failures": ["cleanup-internal-failure"],
+                    "partial_runs": [],
+                    "disk_bytes": None,
+                    "over_cap_bytes": None,
+                }
+            cleanup, persist_failed = _attach_cleanup_result(server, payload, prune_out)
+            state["pruned"] += prune_out["removed"]
+            state["freed"] += prune_out["freed_bytes"]
+            state["partial_prunes"] += len(prune_out["partial_runs"])
+            if cleanup["warnings"]:
                 state["prune_warnings"] += 1
-                details = ", ".join(out["failures"][:4])
-                if "unsafe-storage-layout" in out["failures"]:
-                    remaining = "storage layout rejected; no paths pruned"
-                elif out["disk_bytes"] is None:
-                    remaining = "disk usage unavailable; cleanup status may be partial"
-                else:
-                    remaining = (
-                        f"usage={_human(out['disk_bytes'])}, "
-                        f"over_cap={out['over_cap_bytes']} bytes"
-                    )
-                print(
-                    f"disk prune warning: {details}; {remaining}",
-                    file=sys.stderr,
-                    flush=True,
-                )
+                cleanup_event = {
+                    "event": "cleanup",
+                    "request_id": server.current_request_id(),
+                    "status": cleanup["status"],
+                    "warnings": cleanup["warnings"],
+                }
+                sys.stderr.write(json.dumps(cleanup_event, separators=(",", ":")) + "\n")
+                sys.stderr.flush()
+            if persist_failed:
+                state["prune_warnings"] += 1
         return payload
 
     server.run_goal = guarded_run_goal
 
-    print("AI-2027 live demo — deployed mode", flush=True)
+    print("AI-2027 Live Agent — deployed mode", flush=True)
     print(f"  bind             : {host}:{port}", flush=True)
-    print(f"  runtime          : {server.RUNS_DIR.parent}", flush=True)
     print(f"  runtime mode     : {'fresh (explicit reset)' if args.fresh else 'preserving existing evidence'}", flush=True)
-    print(f"  storage scope    : same-filesystem process restart only; instance replacement depends on a persistent mount", flush=True)
+    print("  storage scope    : same-filesystem process restart only; mount durability is host-specific", flush=True)
     print(f"  disk cap         : {max_disk_mb} MB (oldest runs pruned after a run)", flush=True)
     print(f"  run budget       : {max_runs} per process", flush=True)
-    for warning in restore_warnings:
-        print(f"  runtime warning  : {warning}", file=sys.stderr, flush=True)
+    if restore_warnings:
+        sys.stderr.write(json.dumps({
+            "event": "runtime_restore",
+            "warning_count": len(restore_warnings),
+        }, separators=(",", ":")) + "\n")
     if forced_read_only:
         write_state = "DISABLED (AI2027_READ_ONLY=1)"
     elif not write_token:
         write_state = "DISABLED (no AI2027_WRITE_TOKEN; fail-closed)"
     else:
-        write_state = "ENABLED (Bearer token required)"
+        write_state = "ENABLED (operator token required)"
     print(f"  write path       : {write_state}", flush=True)
+    print(f"  private reads    : {'per-principal token hashes configured' if server.read_access_configured() else 'fail-closed; no reader configured'}", flush=True)
+    print(f"  read rate limit  : {server._API_READ_RATE_LIMITER.max_requests} per {server._API_READ_RATE_LIMITER.window_seconds}s per peer IP", flush=True)
     print(f"  write rate limit : {rate_limit} per {rate_window}s per observed peer IP", flush=True)
-    print("  limits           : GET data is public; process-local quota; no accounts or proxy-level DDoS protection", flush=True)
+    print("  health endpoint  : public and minimal; all other /api routes require a reader token", flush=True)
+    print("  edge protection  : not provided; use a trusted gateway and edge rate limiting", flush=True)
     print("  kernel           : deterministic planner, NO LLM, stdlib only", flush=True)
-    print(f"  kernel found     : {(ROOT / 'projects' / 'agi-system')}", flush=True)
 
-    from http.server import ThreadingHTTPServer
-    httpd = ThreadingHTTPServer((host, port), server.Handler)
+    httpd = server.SafeThreadingHTTPServer((host, port), server.Handler)
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:

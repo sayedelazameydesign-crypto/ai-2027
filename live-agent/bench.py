@@ -126,8 +126,14 @@ def measure_http() -> dict:
         srv.RUNS_DIR = runtime / "runs"
         srv.SANDBOXES_DIR = runtime / "sandboxes"
         srv.MEMORY_DB = runtime / "state" / "memory.db"
+        old_write_token = srv._WRITE_TOKEN
+        old_read_only = srv._READ_ONLY
+        old_write_limiter = srv._API_WRITE_RATE_LIMITER
+        srv._WRITE_TOKEN = "bench-test-write-" + "x" * 40
+        srv._READ_ONLY = False
+        srv._API_WRITE_RATE_LIMITER = srv.RequestRateLimiter(100, 60)
         srv._prepare_state(fresh=True)
-        httpd = srv.ThreadingHTTPServer(("127.0.0.1", 0), srv.Handler)
+        httpd = srv.SafeThreadingHTTPServer(("127.0.0.1", 0), srv.Handler)
         port = httpd.server_address[1]
         thread = threading.Thread(target=httpd.serve_forever, daemon=True)
         thread.start()
@@ -138,7 +144,8 @@ def measure_http() -> dict:
             for _ in range(N_HTTP):
                 req = urllib.request.Request(
                     f"http://127.0.0.1:{port}/api/run", data=body,
-                    headers={"Content-Type": "application/json"})
+                    headers={"Content-Type": "application/json",
+                             "Authorization": f"Bearer {srv._WRITE_TOKEN}"})
                 t0 = time.perf_counter()
                 with urllib.request.urlopen(req) as r:
                     r.read()
@@ -147,6 +154,9 @@ def measure_http() -> dict:
             httpd.shutdown()
             httpd.server_close()
             thread.join(timeout=5)
+            srv._WRITE_TOKEN = old_write_token
+            srv._READ_ONLY = old_read_only
+            srv._API_WRITE_RATE_LIMITER = old_write_limiter
     return {"run_goal_end_to_end": _stats(lat)}
 
 

@@ -8,39 +8,43 @@ the memory store, or the Command HUD.
 
 ## ⚠️ Read this before you point a public URL at it
 
-`live-agent/server.py` is a **local** demo and must not be exposed directly. The
-deployment launcher now adds a bounded write gate; the remaining limits are explicit:
+`live-agent/server.py` is a **local** demo. The deployment launcher adds bounded,
+fail-closed API controls; these do not make it a multi-user production service:
 
 | Control / gap | Behavior |
 |---|---|
-| Writes without a secret | **Fail closed:** `POST /api/run` is disabled if `AI2027_WRITE_TOKEN` is absent, even when `AI2027_READ_ONLY=0` |
-| Write authentication | Every enabled write requires `Authorization: Bearer …`; tokens must be at least 32 characters |
-| Application rate limit | Default **10 write attempts per 60 seconds per peer IP**, in this process; spoofable `X-Forwarded-For` is ignored |
-| Public reads | Run lists, evidence, memory summaries, and sandbox artifacts have **no user-level access control** |
-| HTTPS | The Python server speaks HTTP; terminate TLS at a trusted host/proxy |
-| Distributed / proxy protection | **Not provided:** no user accounts, shared-token identity, distributed quota, or DDoS protection |
+| Public API | Only `GET /api/health` is public; it returns a minimal status object |
+| Private reads | Every other `/api/` read (runs, run IDs, files, memory, search, metrics, agent card) requires a reader ID plus secret whose SHA-256 digest is configured server-side; an empty reader map denies all reads |
+| Writes | `POST /api/run` requires `Authorization: Bearer <AI2027_WRITE_TOKEN>`; missing configuration fails closed, and `AI2027_READ_ONLY=1` overrides it |
+| Application rate limit | Default **120 reads and 10 write attempts per 60 seconds per peer IP**, in this process; spoofable `X-Forwarded-For` is ignored |
+| TLS | The Python server speaks HTTP; terminate TLS at a trusted host/proxy before sending credentials |
+| Multi-user / edge protection | **Not provided:** bearer credentials are not user sessions or per-object authorization; quotas are process-local and there is no DDoS protection |
 | No disk cap (upstream) | **69.5 KB per run**, 4 files, never deleted → **~7,500 requests fill a 512 MB free tier in ~1.4 min**; ~75,000 fill a 5 GB Space in ~14 min |
 | A global kernel lock | a handful of clients can make the demo unusable for everyone |
 
 Behind a reverse proxy, Python may see the proxy's address rather than each visitor;
-the process-local limiter can then throttle visitors together. Keep the host's edge
-rate limit enabled and configure a trusted per-user auth proxy for public writes.
+the process-local limiter can then throttle visitors together. Keep a trusted edge
+rate limit enabled. For public use, place a real authentication and authorization
+gateway in front of the service and do not distribute a shared bearer token.
 
 The launcher also caps disk use and runs per process. Normal startup preserves
-existing runtime files; `--fresh` is the explicit destructive reset. This does not
-make the service production-ready: the rate limit is process-local, and a shared
-bearer token is not a user-login system.
+existing runtime files; `--fresh` is the explicit destructive reset. The optional
+reader IDs are interim API credentials, not user identity, and should not be used as
+a final multi-user access model.
 
-**Read-only is the default when no write token is configured**, and the Render
-blueprint explicitly sets `AI2027_READ_ONLY=1`. Read-only still serves the UI,
-`/api/health`, and evidence already on disk; it refuses `POST /api/run` with HTTP
-403. To enable a private API client, generate a random token locally with
-`python3 -c 'import secrets; print(secrets.token_urlsafe(32))'`, store it directly
-in the hosting provider's secret manager as `AI2027_WRITE_TOKEN`, and set
-`AI2027_READ_ONLY=0`. Never commit the secret, send it in chat, put it in a URL,
-or embed it in public HTML/JavaScript. For interactive public writes, use a real
-per-user auth proxy and proxy-level rate limiting; do not simply expose a shared
-token or flip the flag.
+**Writes are disabled unless an operator token is configured**, and the Render
+blueprint explicitly sets `AI2027_READ_ONLY=1`. The page and minimal `/api/health`
+remain available; all private read routes fail closed until reader hashes are
+configured. To enable a private *test* client, store an operator write token in the
+host's secret manager as `AI2027_WRITE_TOKEN` and set `AI2027_READ_ONLY=0` only
+when approved. Reader clients send `Authorization: Bearer <token-id>.<secret>`;
+`AI2027_READ_TOKEN_HASHES` contains a JSON object mapping token IDs to SHA-256
+hex digests of high-entropy random secrets. Generate credentials offline, keep the
+plaintext only in the approved secret manager/client, and never commit, chat, log,
+URL-encode, or embed them in public HTML/JavaScript. The static UI accepts them in
+password fields for the current page session only; use it only behind the approved
+HTTPS gateway. A shared bearer token is not a substitute for gateway user identity,
+authorization, or per-user quotas.
 
 ---
 
@@ -93,6 +97,22 @@ production restart. The stdlib process-level regression test is
 against temporary runtime directories, terminates them, starts new OS processes,
 and checks records, history, artifacts, hashes, and memory through the APIs.
 
+The persistence proposal and operational backup/restore runbook are in
+[`PERSISTENCE.md`](PERSISTENCE.md). No Render or hosting settings were changed.
+For a stopped/quiesced runtime, the stdlib snapshot tool creates a checksummed,
+no-overwrite archive and restores only into a new directory:
+
+```bash
+python3 deployment/runtime_snapshot.py backup /secure/runtime /secure/staging/live-agent.tar.gz
+python3 deployment/runtime_snapshot.py restore /secure/staging/live-agent.tar.gz /secure/restore/live-agent
+python3 deployment/test_runtime_snapshot.py -v
+```
+
+The archive is **not encrypted** and contains user data; protect/encrypt it using
+an approved storage system before leaving the trusted host. Checksums detect
+accidental corruption but do not authenticate an archive against a malicious
+replacement.
+
 ## Option B — Hugging Face Spaces (Docker)
 
 Create a Space → **Docker** → blank. Push `Dockerfile`,
@@ -125,13 +145,17 @@ cleanly, and installs nothing.
 | `AI2027_MAX_RUNS` | `5000` | hard cap on runs per process |
 | `AI2027_WRITE_TOKEN` | unset | writes stay disabled unless set to a secret of at least 32 characters |
 | `AI2027_READ_ONLY` | `0` | `1` always disables writes; missing write token also disables writes |
+| `AI2027_READ_TOKEN_HASHES` | unset | JSON map from reader token ID to SHA-256 hex digest; unset means private reads fail closed |
+| `AI2027_READ_RATE_LIMIT` | `120` | private read attempts per observed peer IP per window (1–10,000) |
+| `AI2027_READ_RATE_WINDOW_SECONDS` | `60` | read rate-limit window in seconds (1–86,400) |
 | `AI2027_WRITE_RATE_LIMIT` | `10` | write attempts allowed per observed peer IP per window (1–10,000) |
-| `AI2027_WRITE_RATE_WINDOW_SECONDS` | `60` | rate-limit window in seconds (1–86,400) |
+| `AI2027_WRITE_RATE_WINDOW_SECONDS` | `60` | write rate-limit window in seconds (1–86,400) |
 
 ## Verify it locally before deploying
 
 ```bash
-python3 deployment/test_deployment.py -v      # config, HTTP auth/rate limit, and prune safety
+python3 deployment/test_deployment.py -v      # config, HTTP auth/rate limit, cleanup and prune safety
+python3 deployment/test_runtime_snapshot.py -v # offline backup/restore + storage-safety tests
 AI2027_READ_ONLY=1 AI2027_MAX_DISK_MB=1 PORT=8090 python3 deployment/live_server.py
 ```
 
@@ -141,9 +165,11 @@ valid run IDs with matching records under the configured runtime's direct `runs/
 `sandboxes/`, and `runs/ledgers/` directories. Ledger events must also match that run;
 legacy kernel IDs are accepted only when the ledger's final record matches its sibling
 record. Symlinked storage roots, mismatched records, and mismatched ledgers are left
-untouched. The saved record is removed before the sandbox, and the ledger last; a
-partial cleanup is logged, reported as incomplete, and never counted as a successful
-prune.
+untouched. The saved record is removed before the sandbox, and the ledger last.
+`POST /api/run` returns a path-free `cleanup` object (`complete`, `partial`, or
+`failed`) with stable warning codes; a failed/partial cleanup is never represented
+as complete. Structured logs contain only request IDs, canonical routes, methods,
+status codes, durations, and sanitized cleanup warning codes.
 
 ## What is NOT in this repo
 

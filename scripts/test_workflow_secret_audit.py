@@ -299,6 +299,26 @@ class RealRepositoryTests(unittest.TestCase):
         self.assertIn("names == expected", text)
         self.assertIn("Windows test traceback", text)
 
+    def test_34_service_workflows_own_private_state_and_never_cleanup_through_links(self):
+        workflows = (
+            ("ci.yml", "ai-2027-ci-owned-state-v1"),
+            ("ember.yml", "ai-2027-ember-owned-state-v1"),
+        )
+        for filename, owner_marker in workflows:
+            with self.subTest(workflow=filename):
+                text = (wsa.WORKFLOWS / filename).read_text(encoding="utf-8")
+                self.assertIn("refusing pre-existing .ember-up workflow state", text)
+                self.assertIn("mkdir -m 700 .ember-up", text)
+                self.assertIn("set -o noclobber", text)
+                self.assertIn("os.O_EXCL", text)
+                self.assertIn("workflow-owner", text)
+                self.assertIn(owner_marker, text)
+                self.assertIn("[[ ! -L \"$pid_file\" && -f \"$pid_file\"", text)
+                self.assertIn("refusing symlinked .ember-up during cleanup", text)
+                self.assertNotIn("pkill -f", text)
+                self.assertNotIn("/tmp/live-agent.log", text)
+                self.assertNotIn("/tmp/hud.log", text)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

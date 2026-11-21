@@ -87,6 +87,12 @@ jobs:
         if: always()
         run: python scripts/ember_beat.py --status-file website/status.json
 ```
+
+> **تحديث Phase 2 (2026-11-19):** هذا المقطع التاريخي لا يهيّئ بيانات اعتماد API،
+> لذلك لا يصلح للتشغيل كما هو بعد اعتماد سياسة الإغلاق الافتراضي. الـworkflow الحالي
+> `.github/workflows/ember.yml` ينشئ رموزًا عشوائية مؤقتة لكل job، ويشارك سر القراءة
+> مع smoke/heartbeat عبر بيئة الـjob؛ لا تُستخدم أسرار استضافة ولا تُطبع القيم.
+
 **معيار القبول (مقيس):**
 - `gh workflow list` يُظهر `Ember beat` بحالة `active`.
 - `gh run list --workflow ember.yml --limit 3` ⇒ تشغيلات بلا `actor` يدوي.
