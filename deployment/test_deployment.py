@@ -221,6 +221,14 @@ class LauncherTests(unittest.TestCase):
                     total += p.stat().st_size
         self.assertLessEqual(total, 1024 * 1024,
                              f"disk cap breached: {total / 1024:.0f} KB > 1024 KB")
+        run_records = {p.stem for p in (self.runtime_dir / "runs").glob("run_*.json")}
+        sandbox_ids = {p.name for p in (self.runtime_dir / "sandboxes").glob("run_*")}
+        ledger_ids = {
+            p.name[:-6]
+            for p in (self.runtime_dir / "runs" / "ledgers").glob("run_*.jsonl")
+        }
+        self.assertEqual(run_records, sandbox_ids, "pruning split records from their sandboxes")
+        self.assertEqual(run_records, ledger_ids, "pruning left run ledgers orphaned")
 
     def test_32_run_budget_is_enforced(self):
         """Past AI2027_MAX_RUNS the launcher refuses instead of growing forever."""

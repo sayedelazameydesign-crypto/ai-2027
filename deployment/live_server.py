@@ -90,32 +90,52 @@ def _dir_bytes(*paths: Path) -> int:
 
 
 def _prune(server, max_disk_bytes: int, keep_run_id: str | None = None) -> dict:
-    """Delete the OLDEST runs until the evidence tree fits under the cap.
+    """Delete the OLDEST complete runs until the evidence tree fits the cap.
 
-    Pruning is by run directory mtime, so the newest run — the one a visitor is
-    looking at — survives. `keep_run_id` is an extra guard for the in-flight run.
+    A run's record, sandbox, and append-only ledger are one retention unit. The
+    newest run — especially the in-flight run named by ``keep_run_id`` — survives.
     """
     removed, freed = 0, 0
-    while _dir_bytes(server.RUNS_DIR, server.SANDBOXES_DIR) > max_disk_bytes:
-        candidates = []
-        for d in list(server.SANDBOXES_DIR.glob("run_*")) + list(server.RUNS_DIR.glob("run_*.json")):
-            if keep_run_id and keep_run_id in d.name:
-                continue
-            try:
-                candidates.append((d.stat().st_mtime, d))
-            except OSError:
-                continue
-        if not candidates:
-            break  # nothing prunable: the cap cannot be honoured, do not loop
-        candidates.sort(key=lambda t: t[0])
-        _, victim = candidates[0]
+    groups: dict[str, list[tuple[float, Path]]] = {}
+    candidates = (
+        [(path.name, path) for path in server.SANDBOXES_DIR.glob("run_*")]
+        + [(path.name[:-5], path) for path in server.RUNS_DIR.glob("run_*.json")]
+        + [
+            (path.name[:-6], path)
+            for path in (server.RUNS_DIR / "ledgers").glob("run_*.jsonl")
+        ]
+    )
+    for run_id, path in candidates:
+        if keep_run_id == run_id:
+            continue
         try:
-            if victim.is_dir():
-                freed += _dir_bytes(victim)
-                shutil.rmtree(victim, ignore_errors=True)
-            else:
-                freed += victim.stat().st_size
-                victim.unlink()
+            modified = path.stat().st_mtime
+        except OSError:
+            continue
+        groups.setdefault(run_id, []).append((modified, path))
+
+    oldest_first = sorted(
+        (
+            min(modified for modified, _ in members),
+            run_id,
+            members,
+        )
+        for run_id, members in groups.items()
+    )
+    while _dir_bytes(server.RUNS_DIR, server.SANDBOXES_DIR) > max_disk_bytes and oldest_first:
+        _, _, members = oldest_first.pop(0)
+        try:
+            for _, victim in members:
+                if victim.is_symlink():
+                    size = victim.stat().st_size
+                    victim.unlink()
+                elif victim.is_dir():
+                    size = _dir_bytes(victim)
+                    shutil.rmtree(victim)
+                else:
+                    size = victim.stat().st_size
+                    victim.unlink()
+                freed += size
             removed += 1
         except OSError:
             break
