@@ -19,8 +19,11 @@ import json
 import os
 import sys
 import unittest
+from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+ROOT = Path(__file__).resolve().parent.parent
 
 from kubeconfig_preflight_check import (  # noqa: E402
     CONNECTED,
@@ -63,6 +66,26 @@ class AcceptsSafeKubeconfigTests(unittest.TestCase):
 
     def test_03_minimal_kubeconfig_with_only_clusters_is_accepted(self):
         check_kubeconfig_json(render(clusters=[SAFE_CLUSTER]))
+
+    def test_03b_legitimate_tls_material_is_accepted(self):
+        """Only the dangerous keys are refused.
+
+        ``certificate-authority-data`` and the client certificate fields
+        are ordinary, correct kubeconfig content; refusing them would
+        make the gate unusable without making it any safer.
+        """
+        document = render(
+            clusters=[{"name": "c1", "cluster": {
+                "server": "https://k8s.example",
+                "certificate-authority-data": "LS0tLS1CRUdJTg==",
+                "tls-server-name": "k8s.example",
+            }}],
+            users=[{"name": "u1", "user": {
+                "client-certificate-data": "cert",
+                "client-key-data": "key",
+            }}],
+        )
+        check_kubeconfig_json(document)  # must not raise
 
 
 class RejectsTlsBypassTests(unittest.TestCase):
@@ -204,9 +227,15 @@ class YamlSourceIsNormalisedTests(unittest.TestCase):
     distinction, so every spelling below collapses to one structure and
     one verdict.
 
-    The render here uses PyYAML, which is the same library kubectl uses.
-    When PyYAML is absent the tests skip cleanly, and the JSON-level
-    tests above still provide full coverage of the checker itself.
+    The render here uses PyYAML.  Note that Kubernetes itself parses
+    kubeconfig with ``sigs.k8s.io/yaml``, which converts YAML to JSON
+    and then uses the standard library's JSON decoder - so the JSON
+    normalisation this suite relies on is exactly the normalisation
+    Kubernetes performs.  The key property under test is that every
+    spelling of the key produces one structure, and PyYAML demonstrates
+    that property for the YAML syntax the gate must survive.  These cases
+    skip cleanly when PyYAML is absent; CI installs it for this suite so
+    a skip is never mistaken for a pass on the protection cases.
     """
 
     def setUp(self):
@@ -408,11 +437,11 @@ class VerdictOutputTests(unittest.TestCase):
                     },
                 }
             ],
-            users=[{"name": "u1", "user": {"token": "SUPER-SECRET-TOKEN"}}],
+            users=[{"name": "u1", "user": {"token": "FIXTURE-" + "TOKEN"}}],
         )
         code, output = self._capture(document)
         self.assertEqual(code, 1)
-        self.assertNotIn("SUPER-SECRET-TOKEN", output)
+        self.assertNotIn("FIXTURE-TOKEN", output)
         self.assertNotIn("secret-host.internal", output)
         self.assertEqual(output, FAILED + "\n")
 
@@ -420,6 +449,36 @@ class VerdictOutputTests(unittest.TestCase):
         code, output = self._capture("not json at all")
         self.assertEqual(code, 1)
         self.assertEqual(output, FAILED + "\n")
+
+
+class AdversarialCasesMustNotSkipTests(unittest.TestCase):
+    """A skipped adversarial case is not a passing adversarial case.
+
+    The YAML-level cases need PyYAML.  When it is absent they skip, and a
+    skip reads like a pass in CI output.  These tests make that visible:
+    CI installs PyYAML for this suite, so any skip there means the
+    protection was not actually exercised.
+    """
+
+    def test_25_ci_installs_pyyaml_for_this_suite(self):
+        """The CI job must install PyYAML, or the adversarial cases skip."""
+        workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+        self.assertIn("pip install --quiet --disable-pip-version-check pyyaml", workflow)
+        self.assertIn("scripts/test_kubeconfig_preflight_check.py -v", workflow)
+
+    def test_26_yaml_cases_run_when_pyyaml_is_available(self):
+        """Sanity check that the YAML-level cases are not silently absent."""
+        try:
+            import yaml  # noqa: F401
+        except ImportError:
+            self.skipTest("PyYAML not installed here — CI installs it for this suite")
+        suite = unittest.defaultTestLoader.loadTestsFromTestCase(YamlSourceIsNormalisedTests)
+        self.assertGreater(suite.countTestCases(), 0, "the YAML-level cases must exist")
+        result = unittest.TestResult()
+        suite.run(result)
+        self.assertEqual(result.skipped, [], "no YAML-level adversarial case may skip")
+        self.assertEqual(len(result.failures), 0, f"failures: {result.failures}")
+        self.assertEqual(len(result.errors), 0, f"errors: {result.errors}")
 
 
 if __name__ == "__main__":
