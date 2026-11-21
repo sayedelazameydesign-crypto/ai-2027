@@ -9,7 +9,13 @@ after the verifier independently re-checks the world.
 """
 
 from .clock import DEFAULT_CLOCK, Clock, FrozenClock, SystemClock
-from .config import DEFAULT_CONFIG_FILENAME, SCHEMA_VERSION, Limits, RetryPolicy, Settings
+from .config import (
+    DEFAULT_CONFIG_FILENAME,
+    SCHEMA_VERSION,
+    Limits,
+    RetryPolicy,
+    Settings,
+)
 from .errors import (
     AbortedError,
     CapabilityDeniedError,
@@ -23,8 +29,8 @@ from .errors import (
     PolicyViolation,
     QuotaExceededError,
     RunTimeoutError,
-    UnsupportedGoalError,
     SandboxViolationError,
+    UnsupportedGoalError,
     VerificationError,
 )
 from .event_ledger import EventLedger, LedgerState
@@ -41,6 +47,20 @@ from .models import (
     Observation,
     Plan,
     PolicyDecision,
+)
+from .optimizer_engine import (
+    AuditLogError,
+    BaselineComparison,
+    ConstraintRelation,
+    InvalidOptimizationProblem,
+    ObjectiveDirection,
+    OptimizationAuditStore,
+    OptimizationProblem,
+    OptimizationResult,
+    OptimizationSolver,
+    SolveStatus,
+    solve_and_audit,
+    verify_solution,
 )
 from .planner import Planner, SequentialPlanner
 from .policy import PolicyConfig, PolicyEngine
@@ -72,6 +92,19 @@ __all__ = [
     "Evidence",
     "ExecStatus",
     "DecisionRecord",
+    # exact integer optimization (v1)
+    "OptimizationProblem",
+    "OptimizationSolver",
+    "OptimizationResult",
+    "OptimizationAuditStore",
+    "SolveStatus",
+    "ObjectiveDirection",
+    "ConstraintRelation",
+    "BaselineComparison",
+    "InvalidOptimizationProblem",
+    "AuditLogError",
+    "solve_and_audit",
+    "verify_solution",
     # operations (phase 0)
     "Settings",
     "Limits",

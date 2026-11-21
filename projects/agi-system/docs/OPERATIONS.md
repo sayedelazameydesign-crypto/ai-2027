@@ -4,7 +4,7 @@
 
 ```bash
 python3 -V                    # >= 3.10
-python3 -m unittest discover -s tests -t . -v     # 86 tests
+python3 -m unittest discover -s tests -t . -v     # 104 tests
 python3 demo.py                                    # 6 scenarios
 python3 -m core doctor --sandbox ./sandbox         # health check
 

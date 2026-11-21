@@ -1,6 +1,6 @@
 # agi-system — نواة AGI Kernel (المقطع الرأسي)
 
-نواة عميل ذكاء اصطناعي مستقل مكتوبة بـ **Python 3.10+ صرفة** — **بدون أي اعتمادات خارجية** (لا `pip install`، لا قاعدة بيانات، لا خدمات).
+نواة عميل ذكاء اصطناعي مستقل مكتوبة بـ **Python 3.10+ صرفة** — **بدون أي اعتمادات خارجية** (لا `pip install` ولا خدمات). طبقة التحسين تستخدم `sqlite3` الاختيارية من المكتبة القياسية لتدقيق محلي، ولا تبدأ قاعدة بيانات أو خدمة تلقائيًا.
 تُنفّذ حلقة إدراكية كاملة واحدة:
 
 ```
@@ -19,7 +19,7 @@ git clone https://github.com/sayedelazameydesign-crypto/agi-system.git
 cd agi-system
 
 python3 demo.py                                 # عرض تجريبي كامل (6 سيناريوهات)
-python3 -m unittest discover -s tests -t . -v   # 86 اختبار وحدة
+python3 -m unittest discover -s tests -t . -v   # 104 اختبار وحدة
 python3 -m core doctor --sandbox ./sandbox      # فحص صحة النظام
 ```
 
@@ -69,6 +69,16 @@ kernel.run(Goal("create_file", {"path": "../../OUTSIDE.txt", "content": "x"}))
 
 ---
 
+## التحسين الرياضي الحتمي (v1)
+
+أُضيف `core/optimizer_engine.py` كنواة محلية بلا تبعيات: يستقبل عقد JSON صارمًا، ويفحص تعبيرات خطية عبر AST مسموح فقط (من دون `eval` أو `exec`)، ثم يبحث بحثًا شاملاً دقيقًا في مجال متغيرات صحيحة محدود. بعد الحل يعيد فحص كل قيد مستقلًا، ويمكنه حفظ الطلب والنموذج والنتيجة في سجل SQLite محلي متسلسل ببصمة SHA-256.
+
+في مثال المصنع المرفق، يستنتج حدودًا آمنة `x1 ≤ 25` و`x2 ≤ 20` من قيود الموارد، ويفحص 546 توليفة، ثم يعيد `(x1=18, x2=14)` وربحًا موثّقًا قدره **12,400 جنيه**. ويثبت تحليل الفجوة استهلاك 60/60 ساعة و50/50 كجم. مقارنةً بالخطة `(5,18)`, الزيادة 1,900 جنيه (نحو 18.1%).
+
+> النطاق مقصود ومعلن: v1 يدعم المتغيرات الصحيحة غير السالبة فقط والمجالات الصغيرة؛ إذا تعذّر إثبات حد أعلى أو تجاوز البحث السقف، يرفض إصدار خطة جزئية. لا يدّعي حل LP مستمر أو MILP واسع النطاق. التفاصيل والعقد الكامل في [`docs/OPTIMIZER.md`](docs/OPTIMIZER.md).
+
+---
+
 ## الهيكل
 
 ```
@@ -80,6 +90,7 @@ core/
 ├── policy.py          ← PolicyEngine (allowlist + احتواء sandbox + نموذج مخاطر)
 ├── executor.py        ← Executor (5 قدرات filesystem.*)
 ├── verifier.py        ← Verifier (فحوصات مستقلة لكل قدرة)
+├── optimizer_engine.py ← MILP صحيح محدود: AST آمن + بحث دقيق + بوابة تحقق + سجل SQLite
 ├── event_ledger.py    ← سجل JSONL (append-only + سلسلة هاش + قفل + replay)
 └── kernel.py          ← المحور: الحلقة الكاملة + state management + resume + توازٍ
 demo.py                ← 6 سيناريوهات توضيحية (سعيد، اختراق مسار، منفذ كاذب، ...)
@@ -89,9 +100,10 @@ core/errors.py         ← تصنيف أخطاء بأكواد ثابتة
 core/clock.py          ← ساعة قابلة للحقن (SystemClock / FrozenClock)
 core/metrics.py        ← عدّادات ومقاييس بلا اعتمادات
 core/logging_setup.py  ← تسجيل structured (نص أو JSON)
-tests/                 ← 86 اختبار وحدة، محمولة بالكامل (tempfile — تعمل على Windows)
+tests/                 ← 104 اختبار وحدة، محمولة بالكامل (tempfile — تعمل على Windows)
 docs/ARCHITECTURE.md   ← البنية، الثوابت، نقاط التمديد
 docs/OPERATIONS.md     ← دليل التشغيل والاستعادة ورموز الخروج
+docs/OPTIMIZER.md      ← عقد التحسين الصحيح، الحدود، المثال، وسجل التدقيق
 .github/workflows/ci.yml ← اختبارات على Python 3.10 → 3.13 بلا أي حزمة خارجية
 ```
 
@@ -106,6 +118,7 @@ docs/OPERATIONS.md     ← دليل التشغيل والاستعادة ورمو
 | `policy.py` | allowlist + احتواء المسار + تقدير المخاطر | لا يلمس الملفات |
 | `executor.py` | تنفيذ القدرات المسموحة فقط | لا يتحقق من الصلاحيات (مسؤولية Policy) |
 | `verifier.py` | إعادة قراءة القرص وإنتاج أدلة | لا يثق بـ `Observation` أبدًا |
+| `optimizer_engine.py` | تحسين صحيح محدود + AST آمن + تحقق مستقل + تدقيق محلي | لا ينفذ الكود أو يطبق قرارات على المصنع |
 | `event_ledger.py` | سجل أحداث غير قابل للتعديل | لا يخزّن حالة مخفية |
 | `kernel.py` | التنسيق، الحالة، الاستئناف، التوازي | لا يسمح باستثناء يخرج للخارج |
 
@@ -167,7 +180,7 @@ PROPOSED → AUTHORIZED → EXECUTING → VERIFIED      (الدليل كامل �
 | `fsck` / `quarantine` / `snapshot` / `rotate` للسجل | `core/event_ledger.py` | ✓ |
 | إصدار مخطط الأحداث (`schema_version`) | `core/config.py` | ✓ |
 | فحص صحة شامل `Kernel.health()` | `core/kernel.py` | ✓ |
-| اختبارات التثبيت (86 اختبارًا إجمالًا) | `tests/test_phase0_hardening.py` | ✓ |
+| اختبارات التثبيت (86 اختبارًا في مجموعة hardening) | `tests/test_phase0_hardening.py` | ✓ |
 | وثائق البنية والتشغيل | `docs/ARCHITECTURE.md`, `docs/OPERATIONS.md` | ✓ |
 | واجهة سطر أوامر (`agi-kernel`) | `core/cli.py` | ✓ |
 | حزمة قابلة للتثبيت + CI | `pyproject.toml`, `.github/workflows/ci.yml` | ✓ |
