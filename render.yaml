@@ -77,5 +77,22 @@ services:
       # catalog route reports token_missing when it is absent.
       - key: OPENROUTER_API_KEY
         sync: false
+      # The model id the Studio routes OpenRouter calls to.
+      #
+      # Declared as a dashboard secret so the free model can be changed
+      # without a code change or a re-deploy of the repository. The value is
+      # NOT a secret in the secrecy sense - it is an operator choice that must
+      # not be committed, because a committed id would silently become the
+      # default for every deployment of this blueprint.
+      #
+      # Only a genuinely free id is safe here:
+      #   * "openrouter/free"  - the dynamic free router (recommended), or
+      #   * "<vendor>/<model>:free" - an explicitly free pinned model.
+      # Any other id (a paid model, "openrouter/auto", or a "~latest"
+      # alias) is classified UNKNOWN_COST and is refused under
+      # AI2027_MAX_SPEND_USD=0 above. Leaving this blank is also safe: the
+      # provider falls back to the "openrouter/free" default.
+      - key: OPENROUTER_MODEL
+        sync: false
       - key: CONNECTORS_HUB_API_TOKEN
         sync: false
