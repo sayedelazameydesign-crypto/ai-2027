@@ -42,6 +42,7 @@ if _LIVE_SPEC is None or _LIVE_SPEC.loader is None:
     raise RuntimeError("could not load deployment/live_server.py for prune tests")
 deployment_live_server = importlib.util.module_from_spec(_LIVE_SPEC)
 _LIVE_SPEC.loader.exec_module(deployment_live_server)
+TEST_WRITE_TOKEN = "test-write-token-" + "x" * 40
 
 
 def _free_port() -> int:
@@ -113,6 +114,15 @@ class RenderYamlTests(unittest.TestCase):
         self.assertIn("no persistent disk", doc)
         self.assertIn("instance replacement", doc)
 
+    def test_06_public_blueprint_defaults_to_read_only(self):
+        active_yaml = "\n".join(
+            line for line in self.text.splitlines()
+            if not line.lstrip().startswith("#"))
+        self.assertRegex(
+            active_yaml,
+            r'(?m)^[ \t]*-[ \t]+key: AI2027_READ_ONLY[ \t]*\n[ \t]+value: "1"[ \t]*$',
+        )
+
 
 class RequirementsTests(unittest.TestCase):
     def test_10_no_third_party_requirements(self):
@@ -165,6 +175,33 @@ class DockerfileTests(unittest.TestCase):
         """`pip install` anywhere in the image would break the zero-dep claim."""
         for ln in self.lines:
             self.assertNotIn("pip install", ln.lower(), f"image installs packages: {ln}")
+
+    def test_24_container_defaults_to_read_only(self):
+        self.assertIn("AI2027_READ_ONLY=1", self.text)
+
+
+class WriteGuardUnitTests(unittest.TestCase):
+    def test_sliding_window_expires_old_events_and_isolates_clients(self):
+        limiter = deployment_live_server.SlidingWindowRateLimiter(2, 10)
+        self.assertEqual(limiter.allow("client-a", now=100), (True, 0))
+        self.assertEqual(limiter.allow("client-a", now=101), (True, 0))
+        self.assertEqual(limiter.allow("client-a", now=102), (False, 8))
+        self.assertEqual(limiter.allow("client-b", now=102), (True, 0))
+        self.assertEqual(limiter.allow("client-a", now=111), (True, 0))
+
+    def test_client_table_fails_closed_until_an_entry_expires(self):
+        limiter = deployment_live_server.SlidingWindowRateLimiter(1, 10, max_clients=1)
+        self.assertEqual(limiter.allow("client-a", now=5), (True, 0))
+        self.assertEqual(limiter.allow("client-b", now=6), (False, 10))
+        self.assertEqual(limiter.allow("client-b", now=15), (True, 0))
+
+    def test_bearer_scheme_is_case_insensitive_and_token_is_exact(self):
+        self.assertTrue(deployment_live_server._bearer_token_matches(
+            "bearer " + TEST_WRITE_TOKEN, TEST_WRITE_TOKEN))
+        self.assertFalse(deployment_live_server._bearer_token_matches(
+            "Bearer " + TEST_WRITE_TOKEN + " ", TEST_WRITE_TOKEN))
+        self.assertFalse(deployment_live_server._bearer_token_matches(
+            "Basic " + TEST_WRITE_TOKEN, TEST_WRITE_TOKEN))
 
 
 class PruneSafetyTests(unittest.TestCase):
@@ -497,7 +534,9 @@ class LauncherTests(unittest.TestCase):
         cls.port = _free_port()
         cls.env = {**os.environ, "PORT": str(cls.port), "HOST": "127.0.0.1",
                    "AI2027_LIVE_RUNTIME_DIR": str(cls.runtime_dir),
-                   "AI2027_MAX_DISK_MB": "1", "AI2027_MAX_RUNS": "40"}
+                   "AI2027_MAX_DISK_MB": "1", "AI2027_MAX_RUNS": "40",
+                   "AI2027_WRITE_TOKEN": TEST_WRITE_TOKEN, "AI2027_READ_ONLY": "0",
+                   "AI2027_WRITE_RATE_LIMIT": "100"}
         cls.proc = subprocess.Popen(
             [sys.executable, "deployment/live_server.py"], cwd=ROOT, env=cls.env,
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
@@ -521,10 +560,15 @@ class LauncherTests(unittest.TestCase):
             cls.proc.stdout.close()
         cls.tmp.cleanup()
 
-    def _post(self, payload: dict) -> tuple[int, dict]:
+    def _post(self, payload: dict, token: str | None = TEST_WRITE_TOKEN,
+              extra_headers: dict[str, str] | None = None) -> tuple[int, dict]:
         body = json.dumps(payload).encode()
+        headers = {"Content-Type": "application/json"}
+        if token is not None:
+            headers["Authorization"] = f"Bearer {token}"
+        headers.update(extra_headers or {})
         req = urllib.request.Request(f"http://127.0.0.1:{self.port}/api/run",
-                                     data=body, headers={"Content-Type": "application/json"})
+                                     data=body, headers=headers)
         try:
             return 200, json.loads(urllib.request.urlopen(req, timeout=30).read())
         except urllib.error.HTTPError as e:
@@ -535,6 +579,29 @@ class LauncherTests(unittest.TestCase):
             f"http://127.0.0.1:{self.port}/api/health", timeout=5).read())
         self.assertTrue(d["ok"])
         self.assertIn("agi-system", d["kernel"])
+        page = urllib.request.urlopen(f"http://127.0.0.1:{self.port}/", timeout=5).read().decode()
+        self.assertIn("do not enter credentials", page.lower())
+        self.assertIn("لا تُدخل بيانات اعتماد", page)
+
+    def test_30a_missing_or_wrong_bearer_token_cannot_run_a_goal(self):
+        before = json.loads(urllib.request.urlopen(
+            f"http://127.0.0.1:{self.port}/api/runs", timeout=5).read())
+        code, body = self._post({"goal_type": "create_file",
+                                 "params": {"path": "unauthorized.txt", "content": "x"}},
+                                token=None)
+        self.assertEqual(code, 401)
+        self.assertIn("bearer", body["error"])
+
+        wrong_code, wrong_body = self._post(
+            {"goal_type": "create_file", "params": {"path": "wrong.txt", "content": "x"}},
+            token="wrong-" + "x" * 40)
+        self.assertEqual(wrong_code, 401)
+        self.assertIn("bearer", wrong_body["error"])
+        self.assertNotIn("wrong-", json.dumps(wrong_body))
+
+        after = json.loads(urllib.request.urlopen(
+            f"http://127.0.0.1:{self.port}/api/runs", timeout=5).read())
+        self.assertEqual(before["runs"], after["runs"], "unauthorized requests executed goals")
 
     def test_31_disk_cap_is_enforced_under_load(self):
         """The whole point: 60 runs against a 1 MB cap must not exceed it."""
@@ -575,6 +642,64 @@ class LauncherTests(unittest.TestCase):
                 break
         self.assertEqual(code, 400, "run budget never engaged")
         self.assertIn("budget", body["error"].lower())
+
+
+class RateLimitedLauncherTests(unittest.TestCase):
+    def test_rate_limit_returns_retry_after_and_ignores_untrusted_forwarded_ip(self):
+        port = _free_port()
+        with tempfile.TemporaryDirectory(prefix="ai2027-rate-limit-") as tmp:
+            env = {**os.environ, "PORT": str(port), "HOST": "127.0.0.1",
+                   "AI2027_LIVE_RUNTIME_DIR": str(Path(tmp) / "runtime"),
+                   "AI2027_WRITE_TOKEN": TEST_WRITE_TOKEN, "AI2027_READ_ONLY": "0",
+                   "AI2027_WRITE_RATE_LIMIT": "1",
+                   "AI2027_WRITE_RATE_WINDOW_SECONDS": "60"}
+            proc = subprocess.Popen(
+                [sys.executable, "deployment/live_server.py"], cwd=ROOT, env=env,
+                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                start_new_session=True)
+            try:
+                self.assertTrue(_wait_http(port), "rate-limited launcher did not start")
+                body = json.dumps({"goal_type": "create_file",
+                                   "params": {"path": "one.txt", "content": "ok"}}).encode()
+                headers = {"Content-Type": "application/json",
+                           "Authorization": f"Bearer {TEST_WRITE_TOKEN}"}
+                first = urllib.request.Request(f"http://127.0.0.1:{port}/api/run",
+                                              data=body, headers=headers)
+                with urllib.request.urlopen(first, timeout=10) as response:
+                    self.assertEqual(response.status, 200)
+                    response.read()
+
+                headers["X-Forwarded-For"] = "203.0.113.99"
+                second = urllib.request.Request(f"http://127.0.0.1:{port}/api/run",
+                                               data=body, headers=headers)
+                with self.assertRaises(urllib.error.HTTPError) as ctx:
+                    urllib.request.urlopen(second, timeout=10).read()
+                self.assertEqual(ctx.exception.code, 429)
+                self.assertGreaterEqual(int(ctx.exception.headers["Retry-After"]), 1)
+                self.assertIn("rate limit", ctx.exception.read().decode().lower())
+            finally:
+                if proc.poll() is None:
+                    proc.terminate()
+                try:
+                    proc.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    proc.wait(timeout=5)
+                if proc.stdout:
+                    proc.stdout.close()
+
+
+class WriteTokenConfigurationTests(unittest.TestCase):
+    def test_weak_write_token_fails_startup_without_echoing_secret(self):
+        secret = "too-short"
+        env = {**os.environ, "AI2027_WRITE_TOKEN": secret}
+        result = subprocess.run(
+            [sys.executable, "deployment/live_server.py"], cwd=ROOT, env=env,
+            capture_output=True, text=True, timeout=5)
+        self.assertEqual(result.returncode, 2)
+        output = result.stdout + result.stderr
+        self.assertIn("at least 32 characters", output)
+        self.assertNotIn(secret, output)
 
 
 class FreshResetTests(unittest.TestCase):
@@ -645,8 +770,39 @@ class ReadOnlyTests(unittest.TestCase):
                                              headers={"Content-Type": "application/json"})
                 with self.assertRaises(urllib.error.HTTPError) as ctx:
                     urllib.request.urlopen(req, timeout=10).read()
-                self.assertGreaterEqual(ctx.exception.code, 400)
+                self.assertEqual(ctx.exception.code, 403)
                 self.assertIn("READ-ONLY", ctx.exception.read().decode().upper())
+            finally:
+                if proc.poll() is None:
+                    proc.terminate()
+                try:
+                    proc.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    proc.wait(timeout=5)
+                if proc.stdout:
+                    proc.stdout.close()
+
+    def test_41_missing_token_keeps_writes_disabled_even_when_read_only_flag_is_zero(self):
+        port = _free_port()
+        with tempfile.TemporaryDirectory(prefix="ai2027-no-write-token-") as runtime:
+            env = {k: v for k, v in os.environ.items() if k != "AI2027_WRITE_TOKEN"}
+            env.update({"PORT": str(port), "HOST": "127.0.0.1",
+                        "AI2027_LIVE_RUNTIME_DIR": str(Path(runtime) / "live-agent-runtime"),
+                        "AI2027_READ_ONLY": "0"})
+            proc = subprocess.Popen([sys.executable, "deployment/live_server.py"], cwd=ROOT,
+                                    env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                    text=True, start_new_session=True)
+            try:
+                self.assertTrue(_wait_http(port), "fail-closed launcher did not start")
+                body = json.dumps({"goal_type": "create_file",
+                                   "params": {"path": "x.txt", "content": "y"}}).encode()
+                req = urllib.request.Request(f"http://127.0.0.1:{port}/api/run", data=body,
+                                             headers={"Content-Type": "application/json"})
+                with self.assertRaises(urllib.error.HTTPError) as ctx:
+                    urllib.request.urlopen(req, timeout=10).read()
+                self.assertEqual(ctx.exception.code, 503)
+                self.assertIn("AI2027_WRITE_TOKEN", ctx.exception.read().decode())
             finally:
                 if proc.poll() is None:
                     proc.terminate()
@@ -660,16 +816,23 @@ class ReadOnlyTests(unittest.TestCase):
 
 
 class DocumentationHonestyTests(unittest.TestCase):
-    def test_50_deployment_doc_states_the_missing_controls(self):
-        doc = (DEPLOY / "README.md").read_text(encoding="utf-8")
-        low = doc.lower()
-        for phrase in ("no authentication", "no rate limit", "read-only"):
-            self.assertIn(phrase, low, f"deployment README omits {phrase!r}")
+    def test_50_deployment_doc_states_the_write_controls(self):
+        doc = (DEPLOY / "README.md").read_text(encoding="utf-8").lower()
+        for phrase in ("bearer token", "rate limit", "read-only is the default",
+                       "never commit the", "embed it in public html",
+                       "no user-level access control", "terminate tls"):
+            self.assertIn(phrase, doc, f"deployment README omits {phrase!r}")
 
     def test_51_deployment_doc_quotes_the_measured_fill_rate(self):
         doc = (DEPLOY / "README.md").read_text(encoding="utf-8")
         self.assertIn("69.5 KB", doc, "the measured per-run disk growth is missing")
         self.assertIn("1.4 min", doc, "the measured time-to-fill is missing")
+
+    def test_52_live_ui_warns_that_public_runs_may_expose_user_data(self):
+        ui = (ROOT / "live-agent" / "static" / "index.html").read_text(encoding="utf-8")
+        self.assertIn("do not enter credentials", ui.lower())
+        self.assertIn("لا تُدخل بيانات اعتماد", ui)
+        self.assertIn("not protected by user authentication", ui.lower())
 
 
 if __name__ == "__main__":

@@ -13,6 +13,20 @@ fail or when any GitHub Action is not pinned to a full-length SHA.
 
 ## [Unreleased]
 
+### Security — fail-closed writes for the Live Agent deployment
+- `deployment/live_server.py` disables `POST /api/run` unless an operator supplies
+  `AI2027_WRITE_TOKEN` (minimum 32 characters); enabled writes require a
+  constant-time-checked Bearer token.
+- Added a bounded, process-local sliding-window rate limit (default 10 attempts per
+  60 seconds per observed peer IP). Untrusted forwarded-IP headers are ignored;
+  this is not a substitute for proxy-level controls or per-user authentication.
+- Render and Docker defaults are read-only, and the direct Live Agent CLI now binds
+  to `127.0.0.1` by default. Public GET endpoints still expose run records and
+  sandbox artifacts; the bilingual UI warns users not to submit secrets or
+  confidential data. See `deployment/README.md` for deployment limitations.
+- Verified with 40 deployment tests (one optional YAML-parser test skipped because
+  PyYAML is not installed), 8 Live Agent server tests, and 12 mock-only planner tests.
+
 ### Fixed — P0.1: one writer per session, ordered by a fencing token (2026-11-19)
 - **Gap R1 closed.** The audit measured the defect: four writers saving one
   session lost **59–67 of 240 writes** per run (previously 23–61 by a different

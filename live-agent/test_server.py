@@ -7,6 +7,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
@@ -102,6 +103,27 @@ class TestRunGoal(unittest.TestCase):
         self.assertFalse(run_file.exists())
         self.assertFalse(artifact.exists())
         self.assertFalse(server._run_index)
+
+
+class TestLocalBindDefault(unittest.TestCase):
+    def test_main_binds_loopback_by_default_without_opening_a_socket(self):
+        addresses = []
+
+        class StubHTTPServer:
+            def __init__(self, address, handler):
+                addresses.append(address)
+
+            def serve_forever(self):
+                return None
+
+        with (
+            patch.object(sys, "argv", ["server.py"]),
+            patch.object(server, "_configure_runtime"),
+            patch.object(server, "_prepare_state", return_value=[]),
+            patch.object(server, "ThreadingHTTPServer", StubHTTPServer),
+        ):
+            server.main()
+        self.assertEqual(addresses, [("127.0.0.1", 8090)])
 
 
 if __name__ == "__main__":

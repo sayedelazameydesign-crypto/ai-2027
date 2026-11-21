@@ -59,6 +59,21 @@ Normal boots restore the recent `/api/runs` index from persisted DecisionRecords
 and retain the sandbox artifacts and SQLite evidence memory. A clean reset is
 opt-in via `--fresh`; tests and benchmarks use disposable temporary runtimes.
 
+## Security and privacy
+
+`live-agent/server.py` is a **local-only** demo server: it has no authentication or
+rate limiting and must not be exposed directly to the internet. For deployment,
+use [`deployment/live_server.py`](../deployment/README.md), which disables writes
+without an operator-managed bearer token, applies a process-local write limit, and
+ships read-only defaults for Render and Docker. That is still not a full public
+production auth system: the shared token is not user identity, and a public auth
+proxy is required for interactive writes.
+
+**GET endpoints remain public.** Run lists, DecisionRecords, memory summaries, and
+sandbox artifacts have no per-user access control. Do not submit passwords, API
+keys, personal data, or confidential content to a publicly reachable instance;
+read-only does not mean private. Terminate HTTPS at a trusted hosting proxy.
+
 ## API
 
 | Endpoint | Method | Purpose |
