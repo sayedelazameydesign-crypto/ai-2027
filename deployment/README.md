@@ -118,12 +118,19 @@ cleanly, and installs nothing.
 ## Verify it locally before deploying
 
 ```bash
-python3 deployment/test_deployment.py -v      # 15 tests incl. live HTTP
+python3 deployment/test_deployment.py -v      # 30 tests incl. live HTTP + prune safety
 AI2027_MAX_DISK_MB=1 PORT=8090 python3 deployment/live_server.py
 ```
 
 The disk cap is tested by sending 60 real requests against a 1 MB cap and then
-measuring the directory size — not by reading the config.
+measuring the directory size — not by reading the config. Pruning only considers
+valid run IDs with matching records under the configured runtime's direct `runs/`,
+`sandboxes/`, and `runs/ledgers/` directories. Ledger events must also match that run;
+legacy kernel IDs are accepted only when the ledger's final record matches its sibling
+record. Symlinked storage roots, mismatched records, and mismatched ledgers are left
+untouched. The saved record is removed before the sandbox, and the ledger last; a
+partial cleanup is logged, reported as incomplete, and never counted as a successful
+prune.
 
 ## What is NOT in this repo
 
