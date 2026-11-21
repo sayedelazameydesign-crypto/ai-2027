@@ -221,7 +221,18 @@ class RealRepositoryTests(unittest.TestCase):
         self.assertNotIn("\n  push:", text)
         self.assertIn("if: github.ref == 'refs/heads/main'", text)
         self.assertIn("runs-on: ubuntu-latest", text)
-        self.assertIn("permissions: {}", text)
+        # The job fetches one repository file, so it needs read scope on
+        # the contents.  It must hold no other permission: no write, no
+        # packages, no deployments.
+        self.assertIn("permissions:\n  contents: read\n", text)
+        for forbidden_permission in (
+            "contents: write",
+            "packages: write",
+            "id-token: write",
+            "actions: write",
+            "deployments: write",
+        ):
+            self.assertNotIn(forbidden_permission, text)
         self.assertIn("ACTIONS_STEP_DEBUG: 'false'", text)
         self.assertIn("ACTIONS_RUNNER_DEBUG: 'false'", text)
         self.assertIn("secrets.AGENT_SUBSTRATE_PREFLIGHT_KUBECONFIG", text)
@@ -279,6 +290,28 @@ class RealRepositoryTests(unittest.TestCase):
         # Only CONNECTED or FAILED may ever reach the summary.
         self.assertIn("""printf 'CONNECTED\\n' >> "$GITHUB_STEP_SUMMARY\"""", text)
         self.assertIn("""printf 'FAILED\\n' >> "$GITHUB_STEP_SUMMARY\"""", text)
+
+    def test_38_agent_substrate_preflight_checkout_is_minimal_and_secret_free(self):
+        """The checkout may not be given the secret, and may not persist a token.
+
+        The preflight secret is read only by the connectivity step.  A
+        checkout step that could see it, or that left a usable token in
+        .git/config, would widen the blast radius of the job for no
+        reason.
+        """
+        text = (wsa.WORKFLOWS / "agent-substrate-preflight.yml").read_text(encoding="utf-8")
+        self.assertIn("persist-credentials: false", text)
+        self.assertIn("sparse-checkout: /scripts/kubeconfig_preflight_check.py", text)
+        self.assertIn("sparse-checkout-cone-mode: false", text)
+        # The secret must appear exactly once: in the env of the check step.
+        self.assertEqual(text.count("secrets.AGENT_SUBSTRATE_PREFLIGHT_KUBECONFIG"), 1)
+        self.assertIn("PREFLIGHT_KUBECONFIG: ${{ secrets.AGENT_SUBSTRATE_PREFLIGHT_KUBECONFIG }}", text)
+
+    def test_39_agent_substrate_preflight_pins_the_kubectl_version(self):
+        """``latest`` would change the tool that produces the JSON silently."""
+        text = (wsa.WORKFLOWS / "agent-substrate-preflight.yml").read_text(encoding="utf-8")
+        self.assertNotIn("version: latest", text)
+        self.assertRegex(text, r"version: v\d+\.\d+\.\d+")
 
     def test_30_windows_job_extracts_only_verified_blobs_without_checkout(self):
         if os.name == "nt":
