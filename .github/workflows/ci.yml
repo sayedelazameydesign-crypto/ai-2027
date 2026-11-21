@@ -232,6 +232,36 @@ jobs:
         working-directory: projects/open_source-
         run: python -m unittest discover -s tests -p test_e2b_live_check.py -v
 
+  open-source-mcp:
+    name: Open Source MCP transport · ADR-0017 contract tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
+        with:
+          python-version: "3.11"
+      - name: Install test dependencies (no MCP credentials, no network)
+        working-directory: projects/open_source-
+        run: python -m pip install --editable ".[dev]"
+      # The MCP transport contract (JSON-RPC framing, stdio + Streamable HTTP,
+      # config parsing, env expansion, guardrails bridge) was implemented under
+      # ADR-0017 but never executed by CI, so a regression there would have
+      # reached every deployment unnoticed. These tests are hermetic: no
+      # network, no MCP server, no credential — the stdio and HTTP clients are
+      # driven against an in-process fake server.
+      - name: MCP transport contract tests (hermetic, no network)
+        working-directory: projects/open_source-
+        run: python -m pytest -q tests/test_mcp.py tests/test_tools_mcp_seam.py
+      # The documentation claims are executable contracts: the scripts index
+      # must describe every script, and the README must describe what the
+      # repository actually contains.
+      - name: Documentation claims tests
+        working-directory: projects/open_source-
+        run: python -m pytest -q tests/test_docs_claims.py
+
   browser-handoff-windows:
     name: BrowserSkill local handoff · Windows ACL and process lock (simulated browser)
     runs-on: windows-latest

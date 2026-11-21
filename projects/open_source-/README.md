@@ -293,6 +293,9 @@ cela mcp serve --demo                    # الاتجاه الآخر: المنص
 و`/api/mcp/servers` وتُطلب إعادة التشغيل — التحديث الساخن مؤجَّل صراحة. النطاق: **أدوات فقط**
 (لا `resources`/`prompts`/`sampling`/OAuth). الأسطح: `GET /api/mcp/servers` و`GET /cela/v1/mcp/servers`.
 القرار وحدوده والمؤجَّل منه: [`adr/0017-mcp-transport.md`](adr/0017-mcp-transport.md).
+دليل تشغيلي: قالب `mcp.json` جاهز للنسخ، معنى كل مفتاح، وشاشة الأخطاء الشائعة
+(لماذا خادمي موقوف؟ لماذا رمزي صحيح لكن الاتصال يفشل؟) في
+[`docs/MCP_SETUP.md`](docs/MCP_SETUP.md).
 
 ### خوادم MCP على المضيف (stdio): إذن ثانٍ، وحدّ يبقى مفتوحًا
 
