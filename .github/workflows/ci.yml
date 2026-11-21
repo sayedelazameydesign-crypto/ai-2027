@@ -57,7 +57,7 @@ jobs:
       - name: Kernel unit tests (104)
         run: python -m unittest discover -s projects/agi-system/tests -t projects/agi-system -v
 
-      - name: Live Agent wrapper tests (7)
+      - name: Live Agent wrapper tests (8)
         run: python live-agent/test_server.py -v
 
       - name: CeliaOS verified file bridge and approval tests
@@ -727,7 +727,7 @@ jobs:
               sys.exit(1)
           print("PASS: zero declared dependencies")
           PY
-      - name: Deployment configs + live launcher (30 tests, real HTTP + prune safety)
+      - name: Deployment configs + live launcher (40 tests, 1 optional skip, real HTTP + prune safety)
         run: python deployment/test_deployment.py -v
       - name: Render adapter is stdlib-only (AST gate)
         run: |
