@@ -97,6 +97,20 @@ unset SUBSTRATE_API_TOKEN
 
 The counter should report `5` after the wake. Its state file is on the actor's PVC, not in the container's writable layer. The `requestId` is required so callers can safely retry the counter example; the sample remembers the most recent 4,096 IDs.
 
+## Measure wake latency on a test Agent
+
+After deploying the counter example and opening the loopback port-forward, run this from the repository root. The benchmark suspends the Agent before every sample and invokes the counter with `by: 0`, so use a staging/test Agent rather than one serving real requests.
+
+```sh
+export SUBSTRATE_GATEWAY_URL=http://127.0.0.1:8080
+export SUBSTRATE_API_TOKEN="$(kubectl -n agent-substrate get secret agent-substrate-api \
+  -o jsonpath='{.data.token}' | base64 -d)"
+PYTHONPATH=agent-substrate python3 -m substrate.benchmark counter --cycles 50 --json
+unset SUBSTRATE_API_TOKEN
+```
+
+It waits until status reports both `desiredState=Sleeping` and `phase=Sleeping`, then measures from the `/invoke` request start through the actor's response. The report includes min, mean, P50, P95, P99, max, and individual sample latencies. These are end-to-end wake/invocation measurements—not just Pod startup time—and include controller polling, scheduling, image/storage startup, and actor response. After the final sample it suspends the Agent again. The tool does not assert a 500 ms target or million-Agent capacity; use the results to establish a baseline before making such claims.
+
 ## Gateway API
 
 The Service is `ClusterIP` only. The example port-forward binds to loopback; there is no public Ingress in this MVP.
