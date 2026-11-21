@@ -1,0 +1,12 @@
+# Apply only after building/pushing the counter image and replacing its image reference.
+apiVersion: substrate.ai/v1alpha1
+kind: Agent
+metadata:
+  name: counter
+  namespace: agent-substrate
+spec:
+  image: ghcr.io/example/agent-substrate-counter:0.1.0
+  desiredState: Running
+  runtimeClassName: gvisor
+  workspaceStorage: 1Gi
+  idleTimeoutSeconds: 300
