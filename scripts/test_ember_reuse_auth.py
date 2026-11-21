@@ -175,6 +175,7 @@ class EmberReuseCredentialTests(unittest.TestCase):
         agent, port, runtime = self._start_agent(reader=None, writer=writer)
         result, _, _ = self._run_ember(
             port, credentials=(read_id, read_secret, writer), label="missing-reader",
+            no_smoke=True,
         )
         self.assertNotEqual(result.returncode, 0, result.stdout)
         self.assertIn("could not prove both local reader and operator credentials", result.stdout)
@@ -200,7 +201,7 @@ class EmberReuseCredentialTests(unittest.TestCase):
                 agent, port, runtime = self._start_agent(reader=old_reader, writer=old_writer)
                 result, _, _ = self._run_ember(
                     port, credentials=(new_reader[0], new_reader[1], new_writer),
-                    label=label,
+                    label=label, no_smoke=True,
                 )
                 self.assertNotEqual(result.returncode, 0, result.stdout)
                 self.assertIn(
@@ -228,6 +229,7 @@ class EmberReuseCredentialTests(unittest.TestCase):
                 agent, port, runtime = self._start_agent(reader=reader, writer=writer)
                 result, ember_env, _ = self._run_ember(
                     port, credentials=(reader[0], reader[1], writer), label=label,
+                    no_smoke=True,
                 )
                 self.assertEqual(result.returncode, 0, result.stdout)
                 state = json.loads(result.stdout)
@@ -245,7 +247,9 @@ class EmberReuseCredentialTests(unittest.TestCase):
         reader = ("service-reader", "service-read-secret-" + "s" * 40)
         writer = "service-write-secret-" + "w" * 40
         agent, port, runtime = self._start_agent(reader=reader, writer=writer)
-        result, env, _ = self._run_ember(port, credentials=None, label="no-local-creds")
+        result, env, _ = self._run_ember(
+            port, credentials=None, label="no-local-creds", no_smoke=True,
+        )
         self.assertNotEqual(result.returncode, 0, result.stdout)
         self.assertIn("no local credential file is available", result.stdout)
         self.assertFalse(
