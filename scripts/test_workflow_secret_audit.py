@@ -209,9 +209,42 @@ class RealRepositoryTests(unittest.TestCase):
 
     def test_29_secret_bearing_operations_are_main_only(self):
         for filename in ("ci.yml", "gemini-live-check.yml", "nvidia-live-check.yml",
-                         "e2b-live-check.yml", "deploy.yml", "project-lifecycle.yml"):
+                         "e2b-live-check.yml", "deploy.yml", "project-lifecycle.yml",
+                         "agent-substrate-preflight.yml"):
             text = (wsa.WORKFLOWS / filename).read_text(encoding="utf-8")
             self.assertIn("refs/heads/main", text, filename)
+
+    def test_35_agent_substrate_preflight_is_manual_main_only_and_read_only(self):
+        text = (wsa.WORKFLOWS / "agent-substrate-preflight.yml").read_text(encoding="utf-8")
+        self.assertIn("workflow_dispatch:", text)
+        self.assertNotIn("\n  pull_request:", text)
+        self.assertNotIn("\n  push:", text)
+        self.assertIn("if: github.ref == 'refs/heads/main'", text)
+        self.assertIn("runs-on: ubuntu-latest", text)
+        self.assertIn("permissions: {}", text)
+        self.assertIn("ACTIONS_STEP_DEBUG: 'false'", text)
+        self.assertIn("ACTIONS_RUNNER_DEBUG: 'false'", text)
+        self.assertIn("secrets.AGENT_SUBSTRATE_PREFLIGHT_KUBECONFIG", text)
+        self.assertIn("set +x", text)
+        self.assertNotIn("echo $PREFLIGHT_KUBECONFIG", text)
+        self.assertIn("(exec|insecure-skip-tls-verify)", text)
+        self.assertIn("""trap 'rm -f -- "$kubeconfig_path"' EXIT""", text)
+        self.assertIn(
+            "kubectl --request-timeout=15s get --raw='/api/v1/nodes?limit=1' >/dev/null 2>/dev/null",
+            text,
+        )
+        self.assertIn('echo "CONNECTED"', text)
+        self.assertIn('echo "FAILED"', text)
+        for forbidden in (
+            "kubectl apply",
+            "kubectl create",
+            "kubectl patch",
+            "kubectl delete",
+            "kubectl edit",
+            "kubectl config view",
+            "cluster-info",
+        ):
+            self.assertNotIn(forbidden, text)
 
     def test_30_windows_job_extracts_only_verified_blobs_without_checkout(self):
         if os.name == "nt":
