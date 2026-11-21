@@ -13,6 +13,12 @@ fail or when any GitHub Action is not pinned to a full-length SHA.
 
 ## [Unreleased]
 
+### CI maintenance — GitHub Actions runtime support
+- Updated the full-SHA-pinned checkout, Python, Node, artifact upload, CodeQL, and
+  Pages deployment actions to maintained Node 24-compatible major versions.
+- Workflow logic and permissions are unchanged; the SBOM pinning gate remains in
+  force for every external action reference.
+
 ### Security — fail-closed writes for the Live Agent deployment
 - `deployment/live_server.py` disables `POST /api/run` unless an operator supplies
   `AI2027_WRITE_TOKEN` (minimum 32 characters); enabled writes require a
