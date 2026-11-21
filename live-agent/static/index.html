@@ -46,6 +46,9 @@ pre{background:var(--bg2);border:1px solid var(--line);border-radius:10px;paddin
 .honest{margin-top:18px;font-size:11.5px;color:var(--dim);line-height:1.7;border-top:1px dashed var(--line);padding-top:12px}
 .honest b{color:var(--amber)}
 .notice{margin:0 0 18px;padding:12px 15px;border:1px solid rgba(251,191,36,.45);border-radius:10px;background:rgba(251,191,36,.08);color:#f6d889;font-size:12.5px;line-height:1.6}
+.authbox{margin-bottom:18px}.authgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.authhelp{font-size:11.5px;color:var(--dim);line-height:1.6;margin-top:10px}.clear-auth{background:var(--bg2);border:1px solid var(--line);color:var(--txt);padding:7px 12px;border-radius:8px;margin-top:10px}
+.file button{background:transparent;border:0;color:var(--acc);font:inherit;font-weight:600;white-space:nowrap}
+@media(max-width:640px){.authgrid{grid-template-columns:1fr}}
 .section{margin-top:20px}
 .denial{background:rgba(248,113,113,.08);border:1px solid rgba(248,113,113,.3);border-radius:10px;padding:11px 14px;font-size:12.5px;color:var(--red);margin-top:10px;display:none}
 .denial.show{display:block}
@@ -64,7 +67,23 @@ a.dl{color:var(--acc);font-size:12px;text-decoration:none}
   <button class="lang" id="langBtn" onclick="toggleLang()">العربية</button>
 </header>
 
-<div class="notice" role="note" data-en="Public demo — do not enter credentials, personal, or confidential data. Run records and sandbox artifacts are not protected by user authentication and may be public." data-ar="عرض عام — لا تُدخل بيانات اعتماد أو بيانات شخصية أو سرية. سجلات التشغيل وملفات الصندوق غير محمية بمصادقة المستخدم وقد تكون متاحة للعامة.">Public demo — do not enter credentials, personal, or confidential data. Run records and sandbox artifacts are not protected by user authentication and may be public.</div>
+<div class="notice" role="note" data-en="Private API. Enter credentials only when this page is served over HTTPS behind a trusted gateway that routes /api to the protected service. Never embed shared tokens in public HTML; do not submit confidential data until storage and backup controls are approved." data-ar="واجهة API خاصة. أدخل بيانات الاعتماد فقط عند تقديم الصفحة عبر HTTPS من خلال بوابة موثوقة توجّه /api إلى الخدمة المحمية. لا تضمّن رموزًا مشتركة في HTML عام؛ ولا ترسل بيانات سرية قبل اعتماد التخزين والنسخ الاحتياطي.">Private API. Enter credentials only when this page is served over HTTPS behind a trusted gateway that routes /api to the protected service. Never embed shared tokens in public HTML; do not submit confidential data until storage and backup controls are approved.</div>
+
+<div class="panel authbox" aria-label="API credentials">
+  <h3 data-en="API session — credentials are memory-only" data-ar="جلسة الواجهة — بيانات الاعتماد مؤقتة في الذاكرة">API session — credentials are memory-only</h3>
+  <div class="authgrid">
+    <div>
+      <label for="readToken" data-en="Reader credential (token-id.secret)" data-ar="رمز القراءة (المعرّف.السر)">Reader credential (token-id.secret)</label>
+      <input id="readToken" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" data-lpignore="true">
+    </div>
+    <div>
+      <label for="writeToken" data-en="Run credential (operator token)" data-ar="رمز التشغيل (رمز المشغّل)">Run credential (operator token)</label>
+      <input id="writeToken" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" data-lpignore="true">
+    </div>
+  </div>
+  <button class="clear-auth" type="button" onclick="clearCredentials()" data-en="Clear credentials" data-ar="مسح بيانات الاعتماد">Clear credentials</button>
+  <div class="authhelp" data-en="Values are not written to localStorage, cookies, or URLs; they remain in this page until cleared or closed. Use only short-lived credentials issued by your gateway. A shared bearer token is not multi-user authentication." data-ar="لا تُحفظ القيم في localStorage أو ملفات الارتباط أو عناوين URL؛ تبقى في الصفحة حتى مسحها أو إغلاقها. استخدم رموزًا قصيرة العمر تصدرها البوابة فقط. الرمز المشترك ليس مصادقة متعددة المستخدمين.">Values are not written to localStorage, cookies, or URLs; they remain in this page until cleared or closed. Use only short-lived credentials issued by your gateway. A shared bearer token is not multi-user authentication.</div>
+</div>
 
 <div class="grid">
   <div class="panel">
@@ -126,7 +145,42 @@ a.dl{color:var(--acc);font-size:12px;text-decoration:none}
 <script>
 let lang='en';
 function toggleLang(){lang=lang==='en'?'ar':'en';document.documentElement.lang=lang;document.documentElement.dir=lang==='ar'?'rtl':'ltr';document.getElementById('langBtn').textContent=lang==='ar'?'English':'العربية';document.querySelectorAll('[data-en]').forEach(el=>{el.textContent=lang==='ar'?el.dataset.ar:el.dataset.en});}
+function clearCredentials(){document.getElementById('readToken').value='';document.getElementById('writeToken').value='';}
 function preset(t,p,c){document.getElementById('gtype').value=t;document.getElementById('gpath').value=p;document.getElementById('gcontent').value=c||'';run();}
+function isLoopbackHostname(hostname){
+  const host=String(hostname||'').toLowerCase().replace(/^\[|\]$/g,'');
+  if(host==='localhost'||host==='::1')return true;
+  const parts=host.split('.');
+  return parts.length===4&&parts.every(p=>/^\d+$/.test(p)&&Number(p)>=0&&Number(p)<=255)&&Number(parts[0])===127;
+}
+function assertCredentialTransport(url){
+  const target=new URL(url,window.location.href);
+  if(target.protocol!=='https:'&&!(target.protocol==='http:'&&isLoopbackHostname(target.hostname)))
+    throw new Error('Bearer credentials require HTTPS, except for loopback HTTP');
+}
+async function apiJson(url,options,credential){
+  const headers={...(options&&options.headers||{})};
+  if(credential){assertCredentialTransport(url);headers.Authorization='Bearer '+credential;}
+  const response=await fetch(url,{...(options||{}),headers,redirect:'error'});
+  let data={};
+  try{data=await response.json();}catch(_e){}
+  if(!response.ok)throw new Error(data.error||('HTTP '+response.status));
+  if(!data||typeof data!=='object'||Array.isArray(data))throw new Error('invalid API response');
+  return data;
+}
+async function downloadProtected(url,filename){
+  const credential=document.getElementById('readToken').value.trim();
+  if(!credential)throw new Error(lang==='ar'?'أدخل رمز القراءة أولًا':'Enter a reader credential first');
+  assertCredentialTransport(url);
+  const response=await fetch(url,{headers:{Authorization:'Bearer '+credential},redirect:'error'});
+  if(!response.ok){let data={};try{data=await response.json();}catch(_e){}throw new Error(data.error||('HTTP '+response.status));}
+  const objectUrl=URL.createObjectURL(await response.blob());
+  const link=document.createElement('a');link.href=objectUrl;link.download=filename;link.style.display='none';
+  document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(objectUrl),1000);
+}
+async function tryDownload(url,filename){
+  try{await downloadProtected(url,filename);}catch(e){const v=document.getElementById('verdict');v.className='verdict show INCONCLUSIVE';v.textContent=(lang==='ar'?'تعذر التنزيل: ':'Download unavailable: ')+e.message;}
+}
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 function light(id,cls){const el=document.querySelector(`.st[data-s="${id}"]`);el.classList.remove('on','bad');if(cls)el.classList.add(cls);}
 async function run(){
@@ -135,17 +189,21 @@ async function run(){
   ['goal','plan','policy','exec','verify','evid','report'].forEach(s=>light(s,''));
   const v=document.getElementById('verdict');v.className='verdict';
   document.getElementById('denial').className='denial';
+  document.getElementById('filesBox').style.display='none';
+  document.getElementById('evBox').style.display='none';
+  document.getElementById('files').replaceChildren();
   const t=document.getElementById('gtype').value;
   const params={path:document.getElementById('gpath').value};
   if(t==='create_file'||t==='append_file')params.content=document.getElementById('gcontent').value;
   light('goal','on');
   let rec;
   try{
-    const r=await fetch('/api/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({goal_type:t,params})});
-    rec=await r.json();
-    if(rec.error){throw new Error(rec.error);}
+    const writer=document.getElementById('writeToken').value.trim();
+    if(!writer)throw new Error(lang==='ar'?'أدخل رمز التشغيل أولًا':'Enter a run credential first');
+    rec=await apiJson('/api/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({goal_type:t,params})},writer);
+    if(!rec||typeof rec.status!=='string')throw new Error('invalid API response');
   }catch(e){
-    v.className='verdict show FAILED';v.textContent=(lang==='ar'?'خطأ في الغلاف: ':'Wrapper error: ')+e.message;btn.disabled=false;return;
+    v.className='verdict show FAILED';v.textContent=(lang==='ar'?'تعذر التشغيل: ':'Run unavailable: ')+e.message;btn.disabled=false;return;
   }
   // Cosmetic reveal of REAL data (the record was produced synchronously by the kernel).
   await sleep(250);
@@ -156,20 +214,41 @@ async function run(){
   if(!denied){light('exec',rec.observations&&rec.observations.length&&rec.observations[0].ok?'on':(rec.status==='FAILED'?'bad':'on'));await sleep(250);}
   light('verify',(rec.evidence&&rec.evidence.length)?(rec.evidence.every(evPassed)?'on':'bad'):(denied?'':'bad'));await sleep(250);
   light('evid',(rec.evidence&&rec.evidence.length&&rec.evidence.every(evPassed))?'on':(denied?'':'bad'));await sleep(250);
-  light('report',rec.status==='VERIFIED'?'on':'bad');
-  v.className='verdict show '+rec.status;
+  const cleanupStatus=rec.cleanup&&rec.cleanup.status;
+  const cleanupComplete=cleanupStatus==='complete';
+  const fullSuccess=rec.status==='VERIFIED'&&cleanupComplete;
+  light('report',fullSuccess?'on':'bad');
   const labels={VERIFIED:{en:'✅ VERIFIED — independently confirmed, evidence filed',ar:'✅ تم التحقق — تأكيد مستقل، والأدلة مودعة'},DENIED:{en:'🚫 DENIED — policy refused the action before execution',ar:'🚫 مرفوض — السياسة رفضت الإجراء قبل التنفيذ'},FAILED:{en:'❌ FAILED — reported honestly, nothing faked',ar:'❌ فشل — أُبلغ بصدق، دون تزوير'},INCONCLUSIVE:{en:'⚠ INCONCLUSIVE',ar:'⚠️ غير حاسم'},ABORTED:{en:'⛔ ABORTED',ar:'⛔ أُجهض'}};
   const l=labels[rec.status]||{en:rec.status,ar:rec.status};
-  v.textContent=lang==='ar'?l.ar:l.en;
+  if(cleanupComplete){
+    v.className='verdict show '+rec.status;v.textContent=lang==='ar'?l.ar:l.en;
+  }else{
+    v.className='verdict show '+(rec.status==='VERIFIED'?'INCONCLUSIVE':(rec.status||'INCONCLUSIVE'));
+    const warnings=(rec.cleanup&&Array.isArray(rec.cleanup.warnings))?rec.cleanup.warnings.join(', '):'';
+    const state=cleanupStatus||'unreported';
+    v.textContent=(lang==='ar'?'⚠ نتيجة التشغيل ':'⚠ Run result ')+rec.status+'; cleanup '+state+(warnings?' — '+warnings:'')+'; full success not confirmed';
+  }
   if(rec.denial_reasons&&rec.denial_reasons.length){const d=document.getElementById('denial');d.className='denial show';d.textContent='🛡 '+rec.denial_reasons.join(' · ');}
   const fb=document.getElementById('filesBox');
-  if(rec.sandbox_files&&rec.sandbox_files.length){fb.style.display='block';const fl=document.getElementById('files');fl.innerHTML='';rec.sandbox_files.forEach(f=>{const div=document.createElement('div');div.className='file';div.innerHTML=`<span>📄 ${rec.sandbox}/${f}</span><a href="/api/file?run=${rec.run_id}&path=${encodeURIComponent(f)}">${lang==='ar'?'تنزيل':'download'}</a>`;fl.appendChild(div);});}
-  document.getElementById('recDl').href='/api/run/'+rec.run_id;
+  if(rec.sandbox_files&&rec.sandbox_files.length){
+    fb.style.display='block';
+    const fl=document.getElementById('files');
+    rec.sandbox_files.forEach(f=>{
+      const div=document.createElement('div');div.className='file';
+      const name=document.createElement('span');name.textContent='📄 '+String(rec.sandbox||'')+'/'+String(f);
+      const link=document.createElement('a');link.href='#';link.textContent=lang==='ar'?'تنزيل':'download';
+      const query=new URLSearchParams({run:String(rec.run_id||''),path:String(f)});
+      link.addEventListener('click',event=>{event.preventDefault();tryDownload('/api/file?'+query.toString(),String(f).split('/').pop()||'artifact');});
+      div.append(name,link);fl.appendChild(div);
+    });
+  }
+  const recLink=document.getElementById('recDl');recLink.href='#';
+  recLink.onclick=event=>{event.preventDefault();tryDownload('/api/run/'+encodeURIComponent(String(rec.run_id||'')),'decision-record.json');};
   document.getElementById('evBox').style.display='block';
-  document.getElementById('evJson').textContent=JSON.stringify({status:rec.status,run_id:rec.run_id,duration_ms:rec.duration_ms,plan:rec.plan,policy:rec.policy,observations:rec.observations,evidence:rec.evidence},null,2);
+  document.getElementById('evJson').textContent=JSON.stringify({status:rec.status,cleanup:rec.cleanup||{status:'unreported'},run_id:rec.run_id,duration_ms:rec.duration_ms,plan:rec.plan,policy:rec.policy,observations:rec.observations,evidence:rec.evidence},null,2);
   btn.disabled=false;
 }
-fetch('/api/health').then(r=>r.json()).then(h=>{document.querySelector('.tag').textContent=(lang==='ar'?'النواة: agi-system · الاختبارات: ':'kernel: agi-system · tests: ')+h.kernel_tests;});
+fetch('/api/health').then(async r=>{const h=await r.json();if(!r.ok||h.ok!==true)throw new Error('unavailable');document.querySelector('.tag').textContent=lang==='ar'?'حالة الواجهة البرمجية: متاحة':'API status: available';}).catch(()=>{document.querySelector('.tag').textContent=lang==='ar'?'حالة الواجهة البرمجية: غير متاحة':'API status: unavailable';});
 </script>
 </body>
 </html>

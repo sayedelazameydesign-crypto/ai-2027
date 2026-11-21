@@ -10,7 +10,10 @@ dist/
 env.local
 live-agent/runs/
 live-agent/sandboxes/
+live-agent/state/
+live-agent/runtime/
 live-agent/memory.db
+live-agent/memory.db-*
 # Ember beat output — regenerated every beat; the live series lives on the
 # `heartbeat` branch, so a copy in main would only ever be a stale claim.
 ember/

@@ -24,6 +24,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 STATE_DIR="$ROOT/.ember-up"
 PID_FILE="$STATE_DIR/pids"
 STATE_JSON="$STATE_DIR/state.json"
+CREDENTIALS_FILE="$STATE_DIR/api-credentials.json"
 LIVE_PORT=8090
 HUD_PORT=8091
 CHECK=0
@@ -81,12 +82,111 @@ stop_all() {
   return 0
 }
 
+if [ -L "$STATE_DIR" ] || [ -L "$PID_FILE" ]; then
+  err "FATAL: local state directory or PID file must not be a symbolic link"
+  exit 2
+fi
+
 if [ "$STOP" -eq 1 ]; then
   stop_all
   exit 0
 fi
 
-mkdir -p "$STATE_DIR"
+umask 077
+mkdir -p "$STATE_DIR" || { err "FATAL: cannot create local state directory"; exit 2; }
+chmod 700 "$STATE_DIR" || { err "FATAL: cannot secure local state directory"; exit 2; }
+for local_file in "$CREDENTIALS_FILE" "$STATE_JSON" "$STATE_DIR/live-agent.log" \
+                  "$STATE_DIR/hud.log" "$STATE_DIR/smoke.log" \
+                  "$STATE_DIR/browserskill-probe.json"; do
+  if [ -L "$local_file" ]; then
+    err "FATAL: local state files must not be symbolic links"
+    exit 2
+  fi
+done
+# Local-only services need explicit API credentials too. If the operator did not
+# supply a complete test identity, create and persist random credentials with
+# owner-only permissions; the ignored state directory is never printed or committed.
+if [ -n "${AI2027_WRITE_TOKEN:-}${AI2027_READ_TOKEN_ID:-}${AI2027_READ_TOKEN_SECRET:-}${AI2027_READ_TOKEN_HASHES:-}" ]; then
+  if [ -z "${AI2027_WRITE_TOKEN:-}" ] || [ -z "${AI2027_READ_TOKEN_ID:-}" ] \
+      || [ -z "${AI2027_READ_TOKEN_SECRET:-}" ]; then
+    err "FATAL: provide AI2027_WRITE_TOKEN, AI2027_READ_TOKEN_ID and AI2027_READ_TOKEN_SECRET together"
+    exit 2
+  fi
+  if [ -z "${AI2027_READ_TOKEN_HASHES:-}" ]; then
+    AI2027_READ_TOKEN_HASHES="$(AI2027_READ_TOKEN_ID="$AI2027_READ_TOKEN_ID" \
+      AI2027_READ_TOKEN_SECRET="$AI2027_READ_TOKEN_SECRET" python3 - <<'PY'
+import hashlib, json, os
+identifier = os.environ["AI2027_READ_TOKEN_ID"]
+secret = os.environ["AI2027_READ_TOKEN_SECRET"]
+print(json.dumps({identifier: hashlib.sha256(secret.encode()).hexdigest()}))
+PY
+    )"
+  fi
+else
+  if [ ! -f "$CREDENTIALS_FILE" ]; then
+    python3 - "$CREDENTIALS_FILE" <<'PY'
+import hashlib, json, os, secrets, sys
+if os.name != "posix":
+    raise SystemExit("automatic credential files require verifiable POSIX owner-only modes")
+path = sys.argv[1]
+identifier = "local-" + secrets.token_hex(6)
+reader = secrets.token_urlsafe(32)
+writer = secrets.token_urlsafe(32)
+value = {
+    "read_id": identifier,
+    "read_secret": reader,
+    "write_token": writer,
+    "read_hashes": {identifier: hashlib.sha256(reader.encode()).hexdigest()},
+}
+fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+with os.fdopen(fd, "w", encoding="utf-8") as handle:
+    json.dump(value, handle)
+    handle.write("\n")
+PY
+    if [ "$?" -ne 0 ]; then
+      err "FATAL: could not create local API credentials"
+      exit 2
+    fi
+  fi
+  if ! chmod 600 "$CREDENTIALS_FILE"; then
+    err "FATAL: could not secure local API credentials"
+    exit 2
+  fi
+  credential_values="$(python3 - "$CREDENTIALS_FILE" <<'PY'
+import hashlib, json, os, re, sys
+try:
+    if os.name != "posix":
+        raise ValueError
+    with open(sys.argv[1], encoding="utf-8") as handle:
+        value = json.load(handle)
+    identifier = value.get("read_id") if isinstance(value, dict) else None
+    reader = value.get("read_secret") if isinstance(value, dict) else None
+    writer = value.get("write_token") if isinstance(value, dict) else None
+    hashes = value.get("read_hashes") if isinstance(value, dict) else None
+    if not isinstance(identifier, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", identifier):
+        raise ValueError
+    if not isinstance(reader, str) or not re.fullmatch(r"[A-Za-z0-9_-]{32,256}", reader):
+        raise ValueError
+    if not isinstance(writer, str) or not re.fullmatch(r"[A-Za-z0-9_-]{32,512}", writer):
+        raise ValueError
+    expected = hashlib.sha256(reader.encode()).hexdigest()
+    if not isinstance(hashes, dict) or hashes.get(identifier) != expected:
+        raise ValueError
+except (OSError, UnicodeError, ValueError, TypeError, AttributeError):
+    print("invalid local API credential file", file=sys.stderr)
+    sys.exit(1)
+print("\t".join((identifier, reader, writer, json.dumps(hashes))))
+PY
+  )"
+  if [ "$?" -ne 0 ]; then
+    err "FATAL: local API credential file is invalid"
+    exit 2
+  fi
+  IFS=$'\t' read -r AI2027_READ_TOKEN_ID AI2027_READ_TOKEN_SECRET AI2027_WRITE_TOKEN AI2027_READ_TOKEN_HASHES <<< "$credential_values"
+
+fi
+export AI2027_READ_TOKEN_ID AI2027_READ_TOKEN_SECRET AI2027_READ_TOKEN_HASHES AI2027_WRITE_TOKEN
+
 # Never truncate the pid file: a boot that only *reuses* running services would
 # otherwise lose the pids of the services it is about to be asked to stop.
 if [ -f "$PID_FILE" ]; then

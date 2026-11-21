@@ -6,12 +6,14 @@ Run: python3 scripts/test_ember_beat.py -v
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import tempfile
 import time
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
@@ -111,6 +113,36 @@ class StatusPublishingTests(unittest.TestCase):
         self.assertEqual(proc.returncode, 1)
         self.assertNotIn("PASS", json.dumps(payload["smoke"]["checks"]).replace(
             '"ok": true', "PASS"))
+
+
+class AuthenticatedMemoryCountTests(unittest.TestCase):
+    def test_private_memory_read_uses_explicit_reader_credentials(self):
+        reader_id = "ember-test-reader"
+        secret = "synthetic-ember-read-secret-" + "r" * 40
+        expected = f"Bearer {reader_id}.{secret}"
+
+        class Response:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+            def read(self):
+                return b'{"memories":3,"refused_events":1}'
+
+        def inspect_request(request, timeout=None):
+            self.assertEqual(request.get_header("Authorization"), expected)
+            self.assertEqual(timeout, 7)
+            return Response()
+
+        with patch.dict(os.environ, {
+            "AI2027_READ_TOKEN_ID": reader_id,
+            "AI2027_READ_TOKEN_SECRET": secret,
+        }, clear=True), patch.object(
+            eb, "open_url", side_effect=inspect_request
+        ):
+            self.assertEqual(eb.memory_counts("https://live.example", timeout=7), (3, 1))
 
 
 class BlindedEgressTests(unittest.TestCase):

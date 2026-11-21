@@ -26,6 +26,12 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 _TEST_WRITE_TOKEN = "runtime-restart-test-" + "x" * 40
+_TEST_READ_TOKEN_ID = "restart-reader"
+_TEST_READ_TOKEN = "runtime-restart-reader-secret-" + "r" * 40
+_TEST_READ_HEADERS = {"Authorization": f"Bearer {_TEST_READ_TOKEN_ID}.{_TEST_READ_TOKEN}"}
+_TEST_READ_TOKEN_HASHES = json.dumps({
+    _TEST_READ_TOKEN_ID: hashlib.sha256(_TEST_READ_TOKEN.encode("utf-8")).hexdigest()
+})
 
 
 def _free_port() -> int:
@@ -132,6 +138,7 @@ class RuntimeRestartTests(unittest.TestCase):
             "AI2027_MAX_RUNS": "100",
             "AI2027_READ_ONLY": "0",
             "AI2027_WRITE_TOKEN": _TEST_WRITE_TOKEN,
+            "AI2027_READ_TOKEN_HASHES": _TEST_READ_TOKEN_HASHES,
         }
         self._spawn(
             "live", [sys.executable, "deployment/live_server.py"],
@@ -210,7 +217,8 @@ class RuntimeRestartTests(unittest.TestCase):
         self.assertIsNone(self.current["live"].poll(), "restarted Live Agent process exited")
         self.assertIsNone(self.current["hud"].poll(), "restarted HUD process exited")
 
-        status, live_after = _json_http(self.live_base, f"/api/run/{live_id}")
+        status, live_after = _json_http(
+            self.live_base, f"/api/run/{live_id}", headers=_TEST_READ_HEADERS)
         self.assertEqual(status, 200)
         self.assertEqual(live_after.get("status"), "VERIFIED")
         self.assertEqual(live_after.get("goal", {}).get("params"), {
@@ -219,25 +227,27 @@ class RuntimeRestartTests(unittest.TestCase):
         live_checks = (live_after.get("evidence") or [{}])[0].get("checks", {})
         self.assertTrue(all(live_checks.get(key) is True for key in (
             "claimed_ok", "file_exists", "correct_path", "correct_content", "hash_matches")))
-        status, live_runs = _json_http(self.live_base, "/api/runs")
+        status, live_runs = _json_http(
+            self.live_base, "/api/runs", headers=_TEST_READ_HEADERS)
         self.assertEqual(status, 200)
         self.assertTrue(any(run.get("run_id") == live_id for run in live_runs.get("runs", [])))
         status, live_bytes = _http(self.live_base, "/api/file?" + urllib.parse.urlencode({
             "run": live_id, "path": live_path,
-        }))
+        }), headers=_TEST_READ_HEADERS)
         self.assertEqual(status, 200)
         self.assertEqual(live_bytes, live_content.encode("utf-8"))
         self.assertEqual(hashlib.sha256(live_bytes).hexdigest(), live_expected_hash)
         live_artifact = self.live_runtime / "sandboxes" / live_id / live_path
         self.assertEqual(live_artifact.read_bytes(), live_content.encode("utf-8"))
         self.assertEqual(hashlib.sha256(live_artifact.read_bytes()).hexdigest(), live_expected_hash)
-        status, live_memory = _json_http(self.live_base, "/api/memory")
+        status, live_memory = _json_http(
+            self.live_base, "/api/memory", headers=_TEST_READ_HEADERS)
         self.assertEqual(status, 200)
         self.assertGreaterEqual(live_memory.get("memories", 0), 1)
         status, live_search = _json_http(self.live_base,
                                         "/api/memory/search?" + urllib.parse.urlencode({
                                             "q": "restart proof", "k": 3,
-                                        }))
+                                        }), headers=_TEST_READ_HEADERS)
         self.assertEqual(status, 200)
         self.assertTrue(any(row.get("memory_id") == live_memory_id
                             for row in live_search.get("results", [])))

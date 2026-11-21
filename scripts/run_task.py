@@ -29,7 +29,7 @@ Usage
 
 Exit codes
     0  VERIFIED, evidence verified, inside budget
-    1  the task failed (not VERIFIED) or the artifact did not match
+    1  the task failed, the artifact did not match, or reported cleanup was incomplete
     2  the agent was unreachable
     3  the task succeeded but exceeded the budget
 """
@@ -51,6 +51,9 @@ DEFAULT_EVIDENCE_DIR = ROOT / "launch" / "evidence"
 TIMEOUT = 30
 
 
+from live_agent_auth import authorization_header, open_url  # noqa: E402
+
+
 class Unreachable(Exception):
     pass
 
@@ -58,11 +61,16 @@ class Unreachable(Exception):
 def http_json(base: str, path: str, payload: dict | None = None) -> dict:
     url = base.rstrip("/") + path
     data = None if payload is None else json.dumps(payload).encode("utf-8")
+    headers = {"Content-Type": "application/json"}
+    authorization = authorization_header(
+        base, path, "POST" if payload is not None else "GET")
+    if authorization:
+        headers["Authorization"] = authorization
     req = urllib.request.Request(
         url, data=data, method="POST" if payload is not None else "GET",
-        headers={"Content-Type": "application/json"})
+        headers=headers)
     try:
-        with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
+        with open_url(req, timeout=TIMEOUT) as r:
             return json.loads(r.read())
     except urllib.error.HTTPError as exc:      # 4xx is a legitimate answer
         try:
@@ -75,8 +83,13 @@ def http_json(base: str, path: str, payload: dict | None = None) -> dict:
 
 def http_bytes(base: str, path: str) -> bytes:
     url = base.rstrip("/") + path
+    headers = {}
+    authorization = authorization_header(base, path, "GET")
+    if authorization:
+        headers["Authorization"] = authorization
+    request = urllib.request.Request(url, headers=headers)
     try:
-        with urllib.request.urlopen(url, timeout=TIMEOUT) as r:
+        with open_url(request, timeout=TIMEOUT) as r:
             return r.read()
     except (urllib.error.URLError, OSError) as exc:
         raise Unreachable(f"{path}: {exc}") from exc
@@ -141,6 +154,10 @@ def run_task(base: str, goal_type: str, params: dict, budget: float,
             raise Unreachable(f"agent rejected the request: {record['error']}")
         run_id = record.get("run_id", "")
         status = record.get("status", "")
+        cleanup = record.get("cleanup")
+        if not isinstance(cleanup, dict):
+            cleanup = {"status": "unreported", "warnings": []}
+        cleanup_failed = cleanup.get("status") not in ("complete", "unreported")
 
         fetched = time.time()
         evidence = http_json(base, f"/api/run/{run_id}") if run_id else {}
@@ -172,6 +189,8 @@ def run_task(base: str, goal_type: str, params: dict, budget: float,
             "run_id": run_id,
             "status": status,
             "verified": status == "VERIFIED",
+            "cleanup": cleanup,
+            "cleanup_complete": cleanup.get("status") == "complete",
             "verifier_checks_passed": (bool(checks) and all(bool(c) for c in checks)),
             "claims": {
                 "elapsed_ms": total_ms,
@@ -189,6 +208,8 @@ def run_task(base: str, goal_type: str, params: dict, budget: float,
             "honest_notes": [
                 "The 60 s budget covers this process: submit + evidence re-read + artifact re-hash.",
                 "The artifact hash is recomputed here, not copied from the kernel's claim.",
+                "Cleanup is reported separately; an incomplete reported cleanup cannot be a successful task.",
+                "This direct local server may not report deployment cleanup; unreported is not claimed complete.",
                 "DENIED is a correct kernel outcome — it is reported as a failure of the *task*.",
             ],
         }
@@ -201,6 +222,8 @@ def run_task(base: str, goal_type: str, params: dict, budget: float,
     if not result["verified"] or not result["verifier_checks_passed"]:
         code = 1
     elif artifact is not None and not artifact["hash_verified"]:
+        code = 1
+    elif cleanup_failed:
         code = 1
     elif not result["claims"]["within_budget"]:
         code = 3
@@ -240,6 +263,12 @@ def render(result: dict) -> str:
         f"  elapsed   : {claims.get('elapsed_ms')} ms  "
         f"(budget {claims.get('budget_ms')} ms)",
     ]
+    cleanup = result.get("cleanup") or {}
+    cleanup_status = cleanup.get("status", "unreported")
+    warnings = cleanup.get("warnings")
+    if isinstance(warnings, list) and warnings:
+        cleanup_status += " · " + ", ".join(str(item) for item in warnings)
+    lines.append(f"  cleanup   : {cleanup_status}")
     if art:
         lines += [
             f"  artifact  : {art['path']} · {art['bytes']} bytes",

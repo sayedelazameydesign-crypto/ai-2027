@@ -25,10 +25,14 @@ Topology note: HUD and Live Agent are exercised as separate HTTP services, but
 HUD dispatches through an in-process kernel bridge—not an HTTP call to Live Agent.
 
 Usage:
-    python3 live-agent/server.py --port 8090 &
-    python3 command-hud/server.py --port 8091 &
-    python3 scripts/runtime_smoke.py                       # both
-    python3 scripts/runtime_smoke.py --no-hud              # live agent only
+    ./scripts/ember_up.sh --no-browser                   # provisions local-only credentials
+    python3 scripts/runtime_smoke.py                     # reuses the private local credential file
+    ./scripts/ember_up.sh --stop
+
+For manually launched servers, configure `AI2027_WRITE_TOKEN`,
+`AI2027_READ_TOKEN_HASHES`, `AI2027_READ_TOKEN_ID`, and
+`AI2027_READ_TOKEN_SECRET` in the server/client environments. Without them,
+private API checks fail closed; only the minimal health request is public.
 """
 from __future__ import annotations
 
@@ -42,6 +46,8 @@ import urllib.parse
 import urllib.request
 import uuid
 
+from live_agent_auth import authorization_header, open_url
+
 TIMEOUT = 20
 
 
@@ -52,11 +58,16 @@ class Fail(Exception):
 def call(base: str, path: str, payload: dict | None = None) -> tuple[int, bytes]:
     url = base.rstrip("/") + path
     data = None if payload is None else json.dumps(payload).encode()
+    headers = {"Content-Type": "application/json"}
+    authorization = authorization_header(
+        base, path, "POST" if payload is not None else "GET")
+    if authorization:
+        headers["Authorization"] = authorization
     req = urllib.request.Request(
-        url, data=data, headers={"Content-Type": "application/json"},
+        url, data=data, headers=headers,
         method="POST" if payload is not None else "GET")
     try:
-        with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
+        with open_url(req, timeout=TIMEOUT) as r:
             return r.status, r.read()
     except urllib.error.HTTPError as e:  # 4xx is a legitimate answer here
         return e.code, e.read()
@@ -78,9 +89,9 @@ def expect(cond: bool, msg: str) -> None:
 def check_live_agent(base: str, results: list[tuple[str, bool, str]]) -> None:
     status, health = jcall(base, "/api/health")
     expect(status == 200 and health.get("ok") is True, f"/api/health -> {status} {health}")
-    expect("NO LLM" in json.dumps(health), "health must declare the no-LLM scope")
-    results.append(("live-agent: health + honest scope", True,
-                    health.get("mode", "")[:70]))
+    expect(health == {"ok": True, "service": "ai-2027-live-agent"},
+           f"public health must remain minimal: {list(health)}")
+    results.append(("live-agent: minimal public health", True, health["service"]))
 
     content = "runtime smoke @ 2026-11-17"
     status, rec = jcall(base, "/api/run", {
