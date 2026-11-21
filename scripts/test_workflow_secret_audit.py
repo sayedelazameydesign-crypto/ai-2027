@@ -307,11 +307,23 @@ class RealRepositoryTests(unittest.TestCase):
         self.assertEqual(text.count("secrets.AGENT_SUBSTRATE_PREFLIGHT_KUBECONFIG"), 1)
         self.assertIn("PREFLIGHT_KUBECONFIG: ${{ secrets.AGENT_SUBSTRATE_PREFLIGHT_KUBECONFIG }}", text)
 
-    def test_39_agent_substrate_preflight_pins_the_kubectl_version(self):
-        """``latest`` would change the tool that produces the JSON silently."""
+    def test_39_agent_substrate_preflight_takes_the_kubectl_version_from_an_input(self):
+        """The client version must be chosen for the cluster being probed.
+
+        A hardcoded client can sit outside the Kubernetes version-skew
+        window (kubectl is supported within one minor version of
+        kube-apiserver) and turn a reachable cluster into a FAILED result.
+        The version therefore comes from a required dispatch input, and it
+        is verified against the cluster at run time.
+        """
         text = (wsa.WORKFLOWS / "agent-substrate-preflight.yml").read_text(encoding="utf-8")
         self.assertNotIn("version: latest", text)
-        self.assertRegex(text, r"version: v\d+\.\d+\.\d+")
+        self.assertIn("version: ${{ inputs.kubectl_version }}", text)
+        self.assertIn("kubectl_version:", text)
+        # No literal client version may be baked into the workflow.
+        self.assertNotRegex(text, r"version: v\d+\.\d+\.\d+")
+        # The skew is checked against the live cluster, not assumed.
+        self.assertIn("--check-version", text)
 
     def test_30_windows_job_extracts_only_verified_blobs_without_checkout(self):
         if os.name == "nt":

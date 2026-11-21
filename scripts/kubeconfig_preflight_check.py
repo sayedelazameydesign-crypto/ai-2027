@@ -30,6 +30,8 @@ Deliberate properties:
 from __future__ import annotations
 
 import json
+import os
+import re
 import sys
 
 # Verdict words.  Exactly these are ever printed.
@@ -99,13 +101,23 @@ def check_kubeconfig_json(text: str) -> None:
 
 
 def main(argv: list[str]) -> int:
-    """Read the rendered kubeconfig JSON on stdin and print one verdict.
+    """Check the rendered kubeconfig JSON on stdin, or a version pair.
 
-    Usage: ``kubeconfig_preflight_check.py < rendered.json``
+    Two modes:
 
-    Exit status is ``0`` when the kubeconfig is acceptable and ``1`` when
-    it is refused.  The only output is the verdict word.
+    * ``kubeconfig_preflight_check.py < rendered.json`` - read the rendered
+      kubeconfig and print ``CONNECTED`` or ``FAILED``.
+    * ``kubeconfig_preflight_check.py --check-version`` - read
+      ``kubectl version -o json`` on stdin and compare the server's minor
+      version against ``PREFLIGHT_KUBECTL_VERSION``.  Exit status ``0``
+      when the client is within one minor version of the server.
+
+    Exit status is ``0`` when the input is acceptable and ``1`` when it is
+    refused.  The only output is the verdict word.
     """
+    if argv and argv[0] == "--check-version":
+        return _check_version_mode()
+
     try:
         raw = sys.stdin.read()
     except (OSError, UnicodeDecodeError):
@@ -120,6 +132,93 @@ def main(argv: list[str]) -> int:
 
     print(CONNECTED)
     return 0
+
+
+def _check_version_mode() -> int:
+    """Verify the kubectl client against the cluster's API server version.
+
+    The server minor version comes from ``kubectl version -o json`` on
+    stdin; the client version comes from the ``PREFLIGHT_KUBECTL_VERSION``
+    environment variable.  Anything unreadable is refused.
+    """
+    try:
+        raw = sys.stdin.read()
+    except (OSError, UnicodeDecodeError):
+        return 1
+
+    server_minor = server_minor_from_version_json(raw)
+    if server_minor is None:
+        return 1
+
+    client = os.environ.get("PREFLIGHT_KUBECTL_VERSION", "")
+    if not versions_are_compatible(client, server_minor):
+        return 1
+
+    return 0
+
+
+# --------------------------------------------------------------------------
+# kubectl / kube-apiserver version compatibility
+#
+# The Kubernetes version-skew policy supports kubectl within one minor
+# version (older or newer) of kube-apiserver.  The preflight therefore
+# treats the client version as an operator choice that is verified against
+# the cluster, not assumed.
+# --------------------------------------------------------------------------
+
+_VERSION_RE = re.compile(r"^v?(\d+)\.(\d+)\.(\d+)")
+
+
+def parse_minor(version: str) -> int | None:
+    """Return the minor version number of a ``x.y.z`` version string.
+
+    Returns ``None`` when the string is not a version at all, so that a
+    value such as ``latest`` is refused instead of silently accepted.
+    """
+    match = _VERSION_RE.match(version.strip())
+    if match is None:
+        return None
+    return int(match.group(2))
+
+
+def versions_are_compatible(client: str, server_minor: str) -> bool:
+    """Return whether ``client`` is within one minor version of the server.
+
+    ``server_minor`` is the minor number reported by the API server, which
+    Kubernetes renders with a trailing ``+`` (for example ``37+``).  A
+    client that is more than one minor away from the server is refused.
+    """
+    client_minor = parse_minor(client)
+    if client_minor is None:
+        return False
+    try:
+        # Kubernetes renders the minor version with a trailing "+" (37+),
+        # so the suffix is stripped from both ends before conversion.
+        server = int(server_minor.strip().strip("+").strip())
+    except (TypeError, ValueError):
+        return False
+    return abs(server - client_minor) <= 1
+
+
+def server_minor_from_version_json(text: str) -> str | None:
+    """Extract the server minor version from ``kubectl version -o json``.
+
+    Returns ``None`` when the payload cannot be parsed or carries no
+    server version, so that an unreadable version fails closed.
+    """
+    try:
+        document = json.loads(text)
+    except (ValueError, TypeError):
+        return None
+    if not isinstance(document, dict):
+        return None
+    server_version = document.get("serverVersion")
+    if not isinstance(server_version, dict):
+        return None
+    minor = server_version.get("minor")
+    if minor is None:
+        return None
+    return str(minor)
 
 
 if __name__ == "__main__":  # pragma: no cover - exercised via main()
