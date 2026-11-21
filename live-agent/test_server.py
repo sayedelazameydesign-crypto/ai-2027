@@ -48,6 +48,7 @@ class TestRunGoal(unittest.TestCase):
         })
         self.assertEqual(server._run_index[rec["run_id"]]["cleanup"], {
             "status": "not_applicable",
+            "reason": "direct_live_agent_mode",
         })
         self.assertTrue(rec["evidence"])
         for e in rec["evidence"]:
@@ -148,7 +149,10 @@ class TestRunGoal(unittest.TestCase):
         self.assertEqual(warnings, [])
         self.assertEqual(server.read_run(run_id)["status"], "VERIFIED")
         self.assertEqual(server._run_index[run_id]["status"], "VERIFIED")
-        self.assertEqual(server._run_index[run_id]["cleanup"], {"status": "not_applicable"})
+        self.assertEqual(server._run_index[run_id]["cleanup"], {
+            "status": "not_applicable",
+            "reason": "direct_live_agent_mode",
+        })
         self.assertEqual(artifact.read_bytes(), b"durable-run")
         self.assertGreaterEqual(server.memory().stats()["memories"], 1)
 

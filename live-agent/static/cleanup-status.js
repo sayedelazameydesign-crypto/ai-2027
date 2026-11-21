@@ -12,7 +12,8 @@
   function assessCleanup(cleanup, runStatus) {
     var raw = cleanup && typeof cleanup.status === 'string' ? cleanup.status : '';
     var status = KNOWN.indexOf(raw) !== -1 ? raw : 'unreported';
-    var accepted = status === 'complete' || status === 'not_applicable';
+    var directMode = status === 'not_applicable' && cleanup.reason === 'direct_live_agent_mode';
+    var accepted = status === 'complete' || directMode;
     return {
       status: status,
       accepted: accepted,

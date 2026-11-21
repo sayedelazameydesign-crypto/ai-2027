@@ -337,7 +337,10 @@ def _cleanup_status_summary(cleanup: object) -> dict[str, str] | None:
         "complete", "not_applicable", "partial", "failed"
     }:
         return None
-    return {"status": status}
+    summary = {"status": status}
+    if status == "not_applicable" and cleanup.get("reason") == "direct_live_agent_mode":
+        summary["reason"] = "direct_live_agent_mode"
+    return summary
 
 
 def _reject_symlink_components(path: str | Path) -> Path:

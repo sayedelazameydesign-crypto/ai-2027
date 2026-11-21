@@ -117,7 +117,7 @@ it misses synonyms. That number is published, not hidden: [`memory/README.md`](m
 | Actions pinned to full SHAs (36 components) | every workflow | `python3 scripts/sbom.py --assert-pinned` |
 | A beat is judged against its own history, not against itself | `scripts/health_gate.py` | `python3 scripts/test_health_gate.py` (24) |
 | Recovery is one command, timed | `scripts/ember_up.sh` | Isolated local boot + 17/17 real HTTP checks in CI |
-| The 60 s task promise is falsifiable | `scripts/run_task.py` | `python3 scripts/test_run_task.py` (7) |
+| The 60 s task promise is falsifiable | `scripts/run_task.py` | `python3 scripts/test_run_task.py` (10) |
 | Static analysis on every PR | `.github/workflows/codeql.yml` | CodeQL badge |
 | Dependency proposals automated | `.github/dependabot.yml` | Dependabot tab |
 | Ownership + review expectations | `.github/CODEOWNERS` | file |

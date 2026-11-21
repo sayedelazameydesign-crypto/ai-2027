@@ -6,7 +6,8 @@ const { assessCleanup } = require('./cleanup-status.js');
 
 const cases = [
   [{ status: 'complete' }, 'VERIFIED', 'complete', true, true],
-  [{ status: 'not_applicable' }, 'VERIFIED', 'not_applicable', true, true],
+  [{ status: 'not_applicable', reason: 'direct_live_agent_mode' }, 'VERIFIED', 'not_applicable', true, true],
+  [{ status: 'not_applicable' }, 'VERIFIED', 'not_applicable', false, false],
   [{ status: 'partial' }, 'VERIFIED', 'partial', false, false],
   [{ status: 'failed' }, 'VERIFIED', 'failed', false, false],
   [undefined, 'VERIFIED', 'unreported', false, false],
