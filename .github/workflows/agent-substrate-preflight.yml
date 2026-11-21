@@ -3,7 +3,11 @@ name: Agent Substrate connectivity preflight
 on:
   workflow_dispatch:
 
-permissions: {}
+# Read-only repository access: the job needs to fetch exactly one file
+# (the kubeconfig checker) and nothing else. No write scope, no deploy
+# scope, and no other token permission is granted.
+permissions:
+  contents: read
 
 concurrency:
   group: agent-substrate-preflight-${{ github.ref }}
@@ -19,10 +23,26 @@ jobs:
       ACTIONS_STEP_DEBUG: 'false'
       ACTIONS_RUNNER_DEBUG: 'false'
     steps:
+      # The checker script has to exist in the workspace before the test
+      # step can run it. Only that one file is fetched: a sparse checkout
+      # keeps the rest of the repository off the runner, and
+      # persist-credentials: false leaves no token in .git/config.
+      - name: Fetch the kubeconfig checker
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+          # A leading slash marks this as one file rather than a path
+          # prefix; without it git treats the pattern as a directory and
+          # warns about it in non-cone mode.
+          sparse-checkout: /scripts/kubeconfig_preflight_check.py
+          sparse-checkout-cone-mode: false
+
       - name: Set up kubectl
         uses: azure/setup-kubectl@776406bce94f63e41d621b960d78ee25c8b76ede # v4
         with:
-          version: latest
+          # Pinned so the checker is reproducible across runs; "latest"
+          # would change the tool that produces the JSON without notice.
+          version: v1.29.0
 
       - name: Check read-only API access without logging details
         shell: bash
@@ -31,6 +51,12 @@ jobs:
         run: |
           set -euo pipefail
           set +x
+
+          checker="$GITHUB_WORKSPACE/scripts/kubeconfig_preflight_check.py"
+          if [[ ! -f "$checker" ]]; then
+            echo "FAILED"
+            exit 1
+          fi
 
           if [[ -z "${PREFLIGHT_KUBECONFIG:-}" ]]; then
             echo "FAILED"
@@ -63,7 +89,7 @@ jobs:
           # contains credential material, so it is piped straight into the
           # checker and never printed.
           if ! kubectl config view --raw -o json 2>/dev/null \
-               | python3 "$GITHUB_WORKSPACE/scripts/kubeconfig_preflight_check.py" \
+               | python3 "$checker" \
                | grep -qx CONNECTED; then
             echo "FAILED"
             exit 1

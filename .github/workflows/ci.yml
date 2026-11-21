@@ -181,8 +181,16 @@ jobs:
           python scripts/test_workflow_secret_audit.py -v
           python scripts/workflow_secret_audit.py --assert
 
-      - name: Agent Substrate kubeconfig gate — adversarial (29)
-        run: python scripts/test_kubeconfig_preflight_check.py -v
+      - name: Agent Substrate kubeconfig gate — adversarial (32)
+        run: |
+          # PyYAML is installed so the YAML-level adversarial cases really
+          # run here. Without it those cases would skip, and a skip must
+          # never be mistaken for a pass on the protection cases.
+          pip install --quiet --disable-pip-version-check pyyaml
+          python scripts/test_kubeconfig_preflight_check.py -v
+
+      - name: Agent Substrate preflight runtime — the workflow must actually run (16)
+        run: python scripts/test_preflight_workflow_runtime.py -v
 
       - name: Every GitHub Action must be pinned to a full SHA (SBOM verifier)
         run: python scripts/sbom.py --assert-pinned --out /tmp/sbom.json
