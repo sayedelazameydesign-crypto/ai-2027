@@ -55,21 +55,20 @@ function localGatewayCredentials(filePath: string): GatewayCredentials | null {
   let descriptor: number | undefined;
   try {
     const parent = lstatSync(dirname(filePath));
-    const before = lstatSync(filePath);
     const owner = process.getuid();
     const isPrivateRegularFile = (info: ReturnType<typeof lstatSync>) =>
       info.isFile() && !info.isSymbolicLink() && info.uid === owner && info.nlink === 1 &&
       (info.mode & 0o077) === 0 && info.size > 0 && info.size <= 16_384;
     if (
       !parent.isDirectory() || parent.isSymbolicLink() || parent.uid !== owner ||
-      (parent.mode & 0o077) !== 0 || !isPrivateRegularFile(before)
+      (parent.mode & 0o077) !== 0
     ) return null;
 
+    // Open with O_NOFOLLOW first, then authorize the exact descriptor read below.
+    // Never stat one file and open its path later: that creates a TOCTOU window.
     descriptor = openSync(filePath, fsConstants.O_RDONLY | noFollow);
     const after = fstatSync(descriptor);
-    if (
-      !isPrivateRegularFile(after) || before.dev !== after.dev || before.ino !== after.ino
-    ) return null;
+    if (!isPrivateRegularFile(after)) return null;
     const raw = readFileSync(descriptor, 'utf8');
     closeSync(descriptor);
     descriptor = undefined;
