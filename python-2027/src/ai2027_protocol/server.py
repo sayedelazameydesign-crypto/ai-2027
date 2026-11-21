@@ -36,6 +36,8 @@ from .contracts import (
 )
 from .ollama_layer import OllamaRuntimeClient
 from .ollama_readiness import OllamaVerificationReport, verify_ollama_capabilities
+from .research_api import build_research_router
+from .research_contracts import ResearchGateway
 from .router import AllProvidersFailedError, FreeFirstRouter
 from .security import SecurityValidationError
 from .studio import build_studio_router
@@ -83,6 +85,7 @@ def create_app(
     router: FreeFirstRouter | None = None,
     telemetry: TelemetrySink | None = None,
     read_only: bool | None = None,
+    research_gateway: ResearchGateway | None = None,
 ) -> FastAPI:
     """Build a configured FastAPI application with replaceable router and telemetry."""
     root = (workspace_root or _DEFAULT_ROOT).resolve()
@@ -132,6 +135,18 @@ def create_app(
         read_only=is_read_only,
     )
     app.include_router(studio_router)
+
+    topics_path = root / "research" / "topics.toml"
+    if not topics_path.is_file():
+        topics_path = Path(__file__).resolve().parents[3] / "research" / "topics.toml"
+    research_router, research_store = build_research_router(
+        store_path=resolved_studio_dir / "research.sqlite3",
+        topics_path=topics_path,
+        read_only=is_read_only,
+        gateway=research_gateway,
+    )
+    app.include_router(research_router)
+    app.state.research_store = research_store
 
     @app.get("/health")
     async def health() -> dict[str, Any]:
