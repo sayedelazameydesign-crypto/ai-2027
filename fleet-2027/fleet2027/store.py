@@ -57,7 +57,7 @@ from .contracts import (
     utc_now,
 )
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 logger = logging.getLogger("fleet2027.store")
 
@@ -167,6 +167,28 @@ CREATE TABLE IF NOT EXISTS audit_log (
     prev_sha   TEXT NOT NULL,
     sha256     TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS awr_ops_workflows (
+    task_id                 TEXT PRIMARY KEY,
+    request_json            TEXT NOT NULL,
+    request_sha256          TEXT NOT NULL CHECK(length(request_sha256) = 64),
+    state                   TEXT NOT NULL CHECK(state IN (
+                                'requested', 'proposed', 'approved', 'rejected'
+                            )),
+    current_proposal_sha256 TEXT,
+    approval_json           TEXT,
+    created_at              TEXT NOT NULL,
+    updated_at              TEXT NOT NULL,
+    last_checked_at         TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS awr_ops_proposals (
+    task_id        TEXT NOT NULL REFERENCES awr_ops_workflows(task_id) ON DELETE CASCADE,
+    revision       INTEGER NOT NULL CHECK(revision > 0),
+    proposal_sha256 TEXT NOT NULL CHECK(length(proposal_sha256) = 64),
+    proposal_json  TEXT NOT NULL,
+    created_at     TEXT NOT NULL,
+    PRIMARY KEY(task_id, revision),
+    UNIQUE(task_id, proposal_sha256)
+);
 CREATE TABLE IF NOT EXISTS workers (
     worker_id      TEXT PRIMARY KEY,
     hostname       TEXT NOT NULL,
@@ -197,6 +219,15 @@ class StoreError(RuntimeError):
 
 class TransactionError(StoreError):
     """Raised when a transaction could not be opened or committed."""
+
+
+class AwrExecutionDeniedError(StoreError):
+    """Raised when an AWR-linked task lacks trusted execution authorization."""
+
+    def __init__(self, task_id: str, reason_code: str) -> None:
+        self.task_id = task_id
+        self.reason_code = reason_code
+        super().__init__(f"AWR execution denied for {task_id!r}: {reason_code}")
 
 
 class LeaseLostError(StoreError):
@@ -246,10 +277,11 @@ class DurableTaskStore:
     def _migrate(self) -> None:
         """Bring a pre-existing database up to :data:`SCHEMA_VERSION`.
 
-        ``CREATE TABLE IF NOT EXISTS`` never alters an existing table, so an
-        older database would silently lack the write-ahead effect columns. The
-        migration is additive and idempotent: adding a column that already
-        exists is a no-op, and no row is rewritten.
+        ``_SCHEMA`` creates newly introduced tables before this migration runs;
+        this method adds columns that cannot be expressed through
+        ``CREATE TABLE IF NOT EXISTS`` (currently the write-ahead effect fields).
+        The migration is additive and idempotent: an existing column is a no-op,
+        and no row is rewritten.
         """
         wanted = {
             "state": "TEXT NOT NULL DEFAULT 'completed'",
@@ -288,6 +320,19 @@ class DurableTaskStore:
         """
         with self._lock:
             self._conn.execute("BEGIN IMMEDIATE")
+            try:
+                yield self._conn
+            except BaseException:
+                self._conn.execute("ROLLBACK")
+                raise
+            else:
+                self._conn.execute("COMMIT")
+
+    @contextmanager
+    def read_transaction(self) -> Iterator[sqlite3.Connection]:
+        """Run a consistent read snapshot without reserving the SQLite write lock."""
+        with self._lock:
+            self._conn.execute("BEGIN")
             try:
                 yield self._conn
             except BaseException:
@@ -335,6 +380,27 @@ class DurableTaskStore:
             (at, task_id, kind, body, prev, digest),
         )
         return digest
+
+    def append_audit_in_transaction(
+        self,
+        conn: sqlite3.Connection,
+        *,
+        kind: str,
+        task_id: str | None,
+        payload: Mapping[str, Any],
+        at: str,
+    ) -> str:
+        """Append a domain event to Fleet's shared chain in the caller's transaction.
+
+        Domain layers that add rows to this database must commit their state and
+        audit event atomically. This is the public transactional surface over
+        the existing hash chain; it deliberately creates no second audit log.
+        """
+        if conn is not self._conn or not conn.in_transaction:
+            raise TransactionError("audit append requires this store's open transaction")
+        return self._append_audit(
+            conn, kind=kind, task_id=task_id, payload=payload, at=at
+        )
 
     def _meta(self, conn: sqlite3.Connection, key: str) -> str:
         row = conn.execute("SELECT value FROM meta WHERE key = ?", (key,)).fetchone()
@@ -416,71 +482,186 @@ class DurableTaskStore:
     # Submission
     # ------------------------------------------------------------------ #
 
+    @staticmethod
+    def _awr_submission_denial(
+        conn: sqlite3.Connection,
+        spec: TaskSpec,
+        spec_json: str,
+    ) -> tuple[str, str | None] | None:
+        """Return a fail-closed AWR admission reason for this stable task ID.
+
+        This check runs under the same ``BEGIN IMMEDIATE`` transaction as task
+        insertion. ``approver_id`` is only caller-supplied data in the current
+        schema; Fleet has no trusted individual principal/permission source, so
+        even a well-formed ``APPROVED`` record cannot authorize execution.
+        """
+        row = conn.execute(
+            "SELECT w.state, w.request_json, w.request_sha256,"
+            " w.current_proposal_sha256, w.approval_json,"
+            " p.proposal_sha256 AS stored_proposal_sha256, p.proposal_json"
+            " FROM awr_ops_workflows AS w LEFT JOIN awr_ops_proposals AS p"
+            " ON p.task_id = w.task_id AND p.proposal_sha256 = w.current_proposal_sha256"
+            " WHERE w.task_id = ?",
+            (spec.task_id,),
+        ).fetchone()
+        if row is None:
+            return None
+
+        current_sha = row["current_proposal_sha256"]
+        if (
+            row["state"] != "approved"
+            or not isinstance(current_sha, str)
+            or row["approval_json"] is None
+        ):
+            return (
+                "approval_missing_or_stale",
+                current_sha if isinstance(current_sha, str) else None,
+            )
+
+        try:
+            request_payload = json.loads(row["request_json"])
+            proposal_payload = json.loads(row["proposal_json"])
+            approval_payload = json.loads(row["approval_json"])
+            if not all(
+                isinstance(payload, dict)
+                for payload in (request_payload, proposal_payload, approval_payload)
+            ):
+                return "awr_integrity_invalid", current_sha
+            request_sha = sha256_text(canonical_json(request_payload))
+            proposal_sha = sha256_text(canonical_json(proposal_payload))
+        except (TypeError, ValueError):
+            return "awr_integrity_invalid", current_sha
+
+        if (
+            request_sha != row["request_sha256"]
+            or request_payload.get("task_id") != spec.task_id
+            or row["stored_proposal_sha256"] != current_sha
+            or proposal_sha != current_sha
+            or proposal_payload.get("task_id") != spec.task_id
+            or proposal_payload.get("request_sha256") != request_sha
+        ):
+            return "proposal_fingerprint_mismatch", current_sha
+
+        if (
+            approval_payload.get("task_id") != spec.task_id
+            or approval_payload.get("approved") is not True
+            or approval_payload.get("proposal_sha256") != current_sha
+            or not isinstance(approval_payload.get("approver_id"), str)
+            or not approval_payload["approver_id"].strip()
+        ):
+            return "approval_missing_or_stale", current_sha
+
+        proposal_spec = proposal_payload.get("task_spec")
+        if not isinstance(proposal_spec, dict):
+            return "awr_integrity_invalid", current_sha
+        try:
+            bound_spec_json = canonical_json(proposal_spec)
+        except (TypeError, ValueError):
+            return "awr_integrity_invalid", current_sha
+        if bound_spec_json != spec_json:
+            return "submitted_spec_mismatch", current_sha
+
+        # Never infer identity or permission from approver_id, approval state,
+        # or a caller-built object. No trusted individual identity source is
+        # currently connected to Fleet, therefore the gate remains closed.
+        return "trusted_identity_source_unavailable", current_sha
+
     def submit(self, spec: TaskSpec, *, now: str | None = None, worker: str = "cli") -> bool:
-        """Idempotently persist a task. Returns ``True`` when newly created.
+        """Idempotently persist a task, subject to the atomic AWR admission gate.
 
         Re-submitting the same ``task_id`` with the same content is a no-op;
-        with different content it raises :class:`TaskConflictError` — the store
-        never silently replaces work that may already be half-executed.
+        with different content it raises :class:`TaskConflictError`. A task ID
+        already registered as an AWR workflow is checked under this same write
+        transaction and denied unless trusted approver identity and permission
+        are verifiable. No such identity source is currently wired to Fleet, so
+        AWR-linked work remains closed and the denial is audited.
         """
         at = now or utc_now()
         spec_json = canonical_json(spec.to_dict())
         spec_hash = sha256_text(spec_json)
+        denial: tuple[str, str | None] | None = None
         with self.transaction() as conn:
-            existing = conn.execute(
-                "SELECT spec_sha256, status FROM tasks WHERE task_id = ?", (spec.task_id,)
-            ).fetchone()
-            if existing is not None:
-                if existing["spec_sha256"] != spec_hash:
-                    raise TaskConflictError(
-                        f"task {spec.task_id!r} already exists with a different "
-                        "specification; refusing to overwrite live work"
-                    )
-                return False
-            conn.execute(
-                "INSERT INTO tasks(task_id, goal, spec_json, spec_sha256, status, created_by,"
-                " created_at, updated_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?)",
-                (
-                    spec.task_id,
-                    spec.goal,
-                    spec_json,
-                    spec_hash,
-                    TaskStatus.QUEUED.value,
-                    spec.created_by,
-                    at,
-                    at,
-                ),
-            )
-            for ordinal, step in enumerate(spec.steps):
-                deps = step.depends_on
+            denial = self._awr_submission_denial(conn, spec, spec_json)
+            if denial is not None:
+                reason_code, proposal_sha = denial
                 conn.execute(
-                    "INSERT INTO steps(task_id, step_id, ordinal, agent, action, depends_on_json,"
-                    " inputs_json, verification_json, critical, max_attempts, timeout_s,"
-                    " idempotency_key, status) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    "UPDATE awr_ops_workflows SET last_checked_at = ? WHERE task_id = ?",
+                    (at, spec.task_id),
+                )
+                self._append_audit(
+                    conn,
+                    kind="awr.execution.denied",
+                    task_id=spec.task_id,
+                    payload={
+                        "reason_code": reason_code,
+                        "proposal_sha256": proposal_sha,
+                        "spec_sha256": spec_hash,
+                    },
+                    at=at,
+                )
+            else:
+                existing = conn.execute(
+                    "SELECT spec_sha256, status FROM tasks WHERE task_id = ?", (spec.task_id,)
+                ).fetchone()
+                if existing is not None:
+                    if existing["spec_sha256"] != spec_hash:
+                        raise TaskConflictError(
+                            f"task {spec.task_id!r} already exists with a different "
+                            "specification; refusing to overwrite live work"
+                        )
+                    return False
+                conn.execute(
+                    "INSERT INTO tasks(task_id, goal, spec_json, spec_sha256, status, created_by,"
+                    " created_at, updated_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?)",
                     (
                         spec.task_id,
-                        step.step_id,
-                        ordinal,
-                        step.agent,
-                        step.action,
-                        canonical_json(list(deps)),
-                        canonical_json(dict(step.inputs)),
-                        canonical_json(list(step.verification)),
-                        1 if step.critical else 0,
-                        step.max_attempts or 3,
-                        step.timeout_s,
-                        self.idempotency_key(spec.task_id, step.step_id),
-                        StepStatus.READY.value if not deps else StepStatus.PENDING.value,
+                        spec.goal,
+                        spec_json,
+                        spec_hash,
+                        TaskStatus.QUEUED.value,
+                        spec.created_by,
+                        at,
+                        at,
                     ),
                 )
-            self._event(conn, spec.task_id, "submitted", f"{len(spec.steps)} step(s) queued", at=at)
-            self._append_audit(
-                conn,
-                kind="task.submitted",
-                task_id=spec.task_id,
-                payload={"spec_sha256": spec_hash, "steps": len(spec.steps)},
-                at=at,
-            )
+                for ordinal, step in enumerate(spec.steps):
+                    deps = step.depends_on
+                    conn.execute(
+                        "INSERT INTO steps(task_id, step_id, ordinal, agent, action, depends_on_json,"
+                        " inputs_json, verification_json, critical, max_attempts, timeout_s,"
+                        " idempotency_key, status) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                        (
+                            spec.task_id,
+                            step.step_id,
+                            ordinal,
+                            step.agent,
+                            step.action,
+                            canonical_json(list(deps)),
+                            canonical_json(dict(step.inputs)),
+                            canonical_json(list(step.verification)),
+                            1 if step.critical else 0,
+                            step.max_attempts or 3,
+                            step.timeout_s,
+                            self.idempotency_key(spec.task_id, step.step_id),
+                            StepStatus.READY.value if not deps else StepStatus.PENDING.value,
+                        ),
+                    )
+                self._event(
+                    conn,
+                    spec.task_id,
+                    "submitted",
+                    f"{len(spec.steps)} step(s) queued",
+                    at=at,
+                )
+                self._append_audit(
+                    conn,
+                    kind="task.submitted",
+                    task_id=spec.task_id,
+                    payload={"spec_sha256": spec_hash, "steps": len(spec.steps)},
+                    at=at,
+                )
+        if denial is not None:
+            raise AwrExecutionDeniedError(spec.task_id, denial[0])
         return True
 
     @staticmethod
