@@ -242,3 +242,170 @@ async def test_zero_spend_budget_is_reported_and_blocks_paid_calls(
     # The key being present must not be reported as proof of free usage.
     assert payload["budget"]["api_key_never_implies_free"] is True
     assert FIXTURE_KEY not in response.text
+
+
+# --------------------------------------------------------------------------
+# The model id the published Studio routes OpenRouter calls to.
+#
+# The blueprint declares OPENROUTER_MODEL as a dashboard value (sync: false)
+# so the free model can be changed without a code change.  Two properties
+# have to hold for that to be safe, and both are asserted below:
+#
+#   * the declared id is a genuinely free one - a paid id, "openrouter/auto"
+#     or a "~latest" alias is UNKNOWN_COST and is refused at MAX_SPEND_USD=0;
+#   * AI2027_FREE_MODELS cannot be used to reclassify OpenRouter.  That
+#     allowlist is deliberately ignored for this provider, because the
+#     presence of an API key does not prove $0.
+# --------------------------------------------------------------------------
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+RENDER_YAML = REPO_ROOT / "render.yaml"
+
+
+def _studio_env_block() -> list[str]:
+    """Return the envVar lines of the ai-2027-studio service.
+
+    The blueprint is parsed by line rather than with PyYAML on purpose:
+    PyYAML is NOT a dependency of this package (it is absent from uv.lock),
+    so importing it here would break CI, which installs only ``.[dev]``.
+    The CI workflow parses render.yaml with PyYAML in a separate job that
+    installs it explicitly; these tests must run without it.
+
+    The block runs from the service's ``name:`` line to the next service
+    (a line starting with ``- type:``) or to the end of the file.
+    """
+    lines = RENDER_YAML.read_text(encoding="utf-8").splitlines()
+
+    start: int | None = None
+    for index, line in enumerate(lines):
+        if line.strip() == "name: ai-2027-studio":
+            start = index
+            break
+    assert start is not None, "render.yaml does not declare the ai-2027-studio service"
+
+    block: list[str] = []
+    for line in lines[start + 1 :]:
+        if line.startswith("  - type:"):
+            break
+        block.append(line)
+    return block
+
+
+def _env_var(block: list[str], key: str) -> dict[str, str]:
+    """Return the properties of one env var declared in the service block."""
+    lines = [line.strip() for line in block]
+    assert f"- key: {key}" in lines, f"{key} is not declared for ai-2027-studio"
+
+    index = lines.index(f"- key: {key}")
+    properties: dict[str, str] = {}
+    for line in lines[index + 1 :]:
+        if line.startswith("- key:"):
+            break
+        if ":" in line:
+            name, _, value = line.partition(":")
+            properties[name.strip()] = value.strip().strip('"')
+    return properties
+
+
+def test_blueprint_declares_the_openrouter_model_as_a_dashboard_value() -> None:
+    """OPENROUTER_MODEL must be declared, and must not carry a committed value."""
+    properties = _env_var(_studio_env_block(), "OPENROUTER_MODEL")
+
+    # sync: false -> Render prompts for it and it never lands in Git.
+    assert properties.get("sync") == "false", "OPENROUTER_MODEL must be sync: false"
+    # No committed value: a value here would become the default for every
+    # deployment of this blueprint.
+    assert "value" not in properties, "OPENROUTER_MODEL must not carry a committed value"
+
+
+def test_blueprint_keeps_the_studio_read_only_and_zero_spend() -> None:
+    """The public instance must stay unable to write and unable to spend."""
+    block = _studio_env_block()
+
+    assert _env_var(block, "AI2027_READ_ONLY").get("value") == "1"
+    assert _env_var(block, "AI2027_MAX_SPEND_USD").get("value") == "0"
+
+
+def test_openrouter_free_router_is_classified_free_tier() -> None:
+    """The recommended free id is admitted at zero spend."""
+    from ai2027_protocol.budget import classify_billing_tier
+    from ai2027_protocol.contracts import ProviderKind
+
+    tier, _reason = classify_billing_tier(
+        kind=ProviderKind.OPENROUTER, model="openrouter/free", is_remote=True
+    )
+
+    assert tier.value == "free_tier"
+
+
+@pytest.mark.parametrize(
+    "model",
+    [
+        "meta-llama/llama-3.3-70b-instruct:free",
+        "qwen/qwen3-235b-a22b:free",
+    ],
+)
+def test_explicit_free_suffixed_models_are_classified_free_tier(model: str) -> None:
+    """A pinned ':free' id is admitted too."""
+    from ai2027_protocol.budget import classify_billing_tier
+    from ai2027_protocol.contracts import ProviderKind
+
+    tier, _reason = classify_billing_tier(kind=ProviderKind.OPENROUTER, model=model, is_remote=True)
+
+    assert tier.value == "free_tier"
+
+
+@pytest.mark.parametrize(
+    "model",
+    [
+        "openrouter/auto",
+        "openrouter/auto-code",
+        "anthropic/claude-sonnet-4",
+        "openrouter/meta-llama/llama-3.3-70b-instruct",
+    ],
+)
+def test_non_free_openrouter_models_remain_unknown_cost(model: str) -> None:
+    """A paid id, an auto router or a latest alias is never free-tier."""
+    from ai2027_protocol.budget import classify_billing_tier
+    from ai2027_protocol.contracts import ProviderKind
+
+    tier, _reason = classify_billing_tier(kind=ProviderKind.OPENROUTER, model=model, is_remote=True)
+
+    assert tier.value == "unknown_cost", f"{model} must not be free-tier"
+
+
+def test_free_models_allowlist_cannot_reclassify_openrouter(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """AI2027_FREE_MODELS must not open a paid model at zero spend."""
+    from ai2027_protocol.budget import classify_billing_tier
+    from ai2027_protocol.contracts import ProviderKind
+
+    monkeypatch.setenv("AI2027_FREE_MODELS", "openrouter/auto,anthropic/claude-sonnet-4")
+
+    for model in ("openrouter/auto", "anthropic/claude-sonnet-4"):
+        tier, _reason = classify_billing_tier(
+            kind=ProviderKind.OPENROUTER, model=model, is_remote=True
+        )
+        assert tier.value == "unknown_cost", f"{model} was reclassified via AI2027_FREE_MODELS"
+
+
+def test_unset_or_blank_openrouter_model_falls_back_to_the_free_router(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Leaving the dashboard field blank must stay free, not become a paid id."""
+    from ai2027_protocol.ai_providers import create_openrouter_free_provider
+    from ai2027_protocol.budget import classify_billing_tier
+
+    for value in (None, "", "   "):
+        monkeypatch.delenv("OPENROUTER_MODEL", raising=False)
+        if value is not None:
+            monkeypatch.setenv("OPENROUTER_MODEL", value)
+
+        provider = create_openrouter_free_provider(api_key="k")
+        tier, _reason = classify_billing_tier(
+            kind=provider.kind, model=provider.model, is_remote=True
+        )
+
+        assert provider.model == "openrouter/free"
+        assert tier.value == "free_tier"
