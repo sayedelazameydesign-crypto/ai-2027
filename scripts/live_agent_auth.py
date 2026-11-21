@@ -5,7 +5,9 @@ returned for HTTPS targets, except that loopback HTTP is allowed for local
 services (and bypasses configured HTTP proxies). A generated credential file is
 read only for loopback URLs, and only when it is a private regular file under the
 ignored `.ember-up/` local state directory. No credential is ever inferred for a
-remote host.
+remote host. Operator write tokens follow the shared contract: 32-512 visible
+ASCII characters (`0x21`-`0x7e`), with no whitespace; symbols such as `+`, `/`,
+and `=` are valid.
 """
 from __future__ import annotations
 
@@ -23,7 +25,8 @@ ROOT = Path(__file__).resolve().parent.parent
 _LOCAL_CREDENTIALS = ROOT / ".ember-up" / "api-credentials.json"
 _TOKEN_ID = re.compile(r"[A-Za-z0-9_-]{1,64}\Z")
 _TOKEN_SECRET = re.compile(r"[A-Za-z0-9_-]{32,256}\Z")
-_WRITE_TOKEN = re.compile(r"[!-~]{32,512}\Z")
+# Shared operator-token contract: visible ASCII 0x21-0x7e, 32-512 chars.
+_WRITE_TOKEN_RE = re.compile(r"[!-~]{32,512}\Z")
 
 
 class _NoAuthenticatedRedirect(urllib.request.HTTPRedirectHandler):
@@ -139,7 +142,7 @@ def _local_credentials(base: str) -> tuple[str, str, str] | None:
     if (
         not isinstance(token_id, str) or not _TOKEN_ID.fullmatch(token_id)
         or not isinstance(reader, str) or not _TOKEN_SECRET.fullmatch(reader)
-        or not isinstance(writer, str) or not _WRITE_TOKEN.fullmatch(writer)
+        or not isinstance(writer, str) or not _WRITE_TOKEN_RE.fullmatch(writer)
         or not isinstance(hashes, dict)
         or hashes.get(token_id) != hashlib.sha256(reader.encode("utf-8")).hexdigest()
     ):
@@ -166,7 +169,7 @@ def authorization_header(base: str, path: str, method: str) -> str | None:
             return None
         token = os.environ.get("AI2027_WRITE_TOKEN", "")
         if token:
-            return f"Bearer {token}" if _WRITE_TOKEN.fullmatch(token) else None
+            return f"Bearer {token}" if _WRITE_TOKEN_RE.fullmatch(token) else None
         credentials = _local_credentials(base)
         return f"Bearer {credentials[2]}" if credentials else None
     if verb != "GET":

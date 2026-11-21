@@ -143,7 +143,7 @@ cleanly, and installs nothing.
 | `HOST` | `0.0.0.0` on PaaS, `127.0.0.1` locally | bind address |
 | `AI2027_MAX_DISK_MB` | `256` | cap for generated evidence; oldest runs pruned first |
 | `AI2027_MAX_RUNS` | `5000` | hard cap on runs per process |
-| `AI2027_WRITE_TOKEN` | unset | writes stay disabled unless set to a secret of at least 32 characters |
+| `AI2027_WRITE_TOKEN` | unset | writes stay disabled unless set to 32-512 visible ASCII characters (`0x21`-`0x7e`), with no whitespace; symbols such as `+`, `/`, and `=` are accepted |
 | `AI2027_READ_ONLY` | `0` | `1` always disables writes; missing write token also disables writes |
 | `AI2027_READ_TOKEN_HASHES` | unset | JSON map from reader token ID to SHA-256 hex digest; unset means private reads fail closed |
 | `AI2027_READ_RATE_LIMIT` | `120` | private read attempts per observed peer IP per window (1–10,000) |

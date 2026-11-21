@@ -44,7 +44,7 @@ Environment
     AI2027_LIVE_RUNTIME_DIR           runtime root; default keeps the existing live-agent/ paths
     AI2027_MAX_DISK_MB                cap for generated evidence (default 256)
     AI2027_MAX_RUNS                   hard cap on runs per process (default 5000)
-    AI2027_WRITE_TOKEN                >=32-character bearer secret; absent means writes disabled
+    AI2027_WRITE_TOKEN                32-512 visible-ASCII bearer secret; absent means writes disabled
     AI2027_READ_ONLY                  "1" always disables POST /api/run
     AI2027_READ_TOKEN_HASHES          JSON map of reader IDs to SHA-256 hex digests; absent denies private reads
     AI2027_READ_RATE_LIMIT             private read attempts per peer IP/window (default 120)
@@ -80,6 +80,12 @@ ROOT = Path(__file__).resolve().parent.parent
 SERVER_PY = ROOT / "live-agent" / "server.py"
 _MODULE = "ai2027_live_agent_server"
 _RUN_ID = re.compile(r"run_\d+_[0-9a-f]{8}\Z")
+# Shared operator-token contract: visible ASCII 0x21-0x7e, 32-512 chars.
+_WRITE_TOKEN_RE = re.compile(r"[!-~]{32,512}\Z")
+
+
+def _valid_write_token(token: str) -> bool:
+    return bool(_WRITE_TOKEN_RE.fullmatch(token))
 
 
 def _env_int(name: str, default: int) -> int:
@@ -652,8 +658,10 @@ def main() -> int:
     max_disk_mb = _env_int("AI2027_MAX_DISK_MB", 256)
     max_runs = _env_int("AI2027_MAX_RUNS", 5000)
     write_token = os.environ.get("AI2027_WRITE_TOKEN", "")
-    if write_token and (len(write_token) < 32 or write_token.strip() != write_token):
-        sys.stderr.write("FATAL: AI2027_WRITE_TOKEN must be at least 32 characters with no surrounding whitespace\n")
+    if write_token and not _valid_write_token(write_token):
+        sys.stderr.write(
+            "FATAL: AI2027_WRITE_TOKEN must be 32-512 visible ASCII characters with no whitespace\n"
+        )
         return 2
     try:
         rate_limit = _bounded_env_int("AI2027_WRITE_RATE_LIMIT", 10, 1, 10000)

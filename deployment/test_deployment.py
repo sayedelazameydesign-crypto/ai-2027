@@ -949,8 +949,26 @@ class WriteTokenConfigurationTests(unittest.TestCase):
             capture_output=True, text=True, timeout=5)
         self.assertEqual(result.returncode, 2)
         output = result.stdout + result.stderr
-        self.assertIn("at least 32 characters", output)
+        self.assertIn("32-512 visible ASCII", output)
         self.assertNotIn(secret, output)
+
+    def test_shared_write_token_contract_includes_symbols_and_exact_boundaries(self):
+        valid = ("+/=" + "A" * 29, "+/=" + "A" * 509)
+        self.assertEqual(tuple(map(len, valid)), (32, 512))
+        for token in valid:
+            with self.subTest(valid_length=len(token)):
+                self.assertTrue(deployment_live_server._valid_write_token(token))
+        invalid = (
+            "A" * 31,
+            "A" * 513,
+            "A" * 16 + " " + "A" * 16,
+            "A" * 16 + "\t" + "A" * 16,
+            "A" * 32 + "\n",
+            "A" * 31 + "é",
+        )
+        for token in invalid:
+            with self.subTest(invalid_length=len(token)):
+                self.assertFalse(deployment_live_server._valid_write_token(token))
 
 
 class FreshResetTests(unittest.TestCase):

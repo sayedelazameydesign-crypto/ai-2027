@@ -496,6 +496,8 @@ jobs:
         run: |
           npm run typecheck
           npm run build
+      - name: Live Agent credential-compatible reuse (no smoke and no test writes)
+        run: python scripts/test_ember_reuse_auth.py -v
       - name: Real ember_up.sh → Vite → Live Agent/HUD regression
         run: python scripts/test_workspace_local_gateway.py -v
 
@@ -752,9 +754,9 @@ jobs:
               sys.exit(1)
           print("PASS: zero declared dependencies")
           PY
-      - name: Deployment configs + live launcher (46 tests, 1 optional skip, real HTTP + prune safety)
+      - name: Deployment configs + live launcher (47 tests, 1 optional skip, real HTTP + prune safety)
         run: python deployment/test_deployment.py -v
-      - name: Live Agent client transport policy (8 tests)
+      - name: Live Agent client transport and token policy (9 tests)
         run: python scripts/test_live_agent_auth.py -v
       - name: Offline runtime snapshot compatibility and safety (9 tests)
         run: python deployment/test_runtime_snapshot.py -v

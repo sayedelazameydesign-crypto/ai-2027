@@ -103,13 +103,21 @@ for local_file in "$CREDENTIALS_FILE" "$STATE_JSON" "$STATE_DIR/live-agent.log" 
     exit 2
   fi
 done
+# Do not mint a new identity for an already-running service when there is no
+# trusted local credential set to check against it. Never kill that service.
+if [ -z "${AI2027_WRITE_TOKEN:-}${AI2027_READ_TOKEN_ID:-}${AI2027_READ_TOKEN_SECRET:-}${AI2027_READ_TOKEN_HASHES:-}" ] \
+    && [ ! -f "$CREDENTIALS_FILE" ] \
+    && health "http://127.0.0.1:$LIVE_PORT/api/health"; then
+  err "FATAL: a Live Agent is already responding but no local credential file is available; refusing to mint credentials for an unverified service. Supply matching credentials or stop/reconfigure it manually."
+  exit 1
+fi
 # Local-only services need explicit API credentials too. If the operator did not
 # supply a complete test identity, create and persist random credentials with
 # owner-only permissions; the ignored state directory is never printed or committed.
 if [ -n "${AI2027_WRITE_TOKEN:-}${AI2027_READ_TOKEN_ID:-}${AI2027_READ_TOKEN_SECRET:-}${AI2027_READ_TOKEN_HASHES:-}" ]; then
   if [ -z "${AI2027_WRITE_TOKEN:-}" ] || [ -z "${AI2027_READ_TOKEN_ID:-}" ] \
       || [ -z "${AI2027_READ_TOKEN_SECRET:-}" ]; then
-    err "FATAL: provide AI2027_WRITE_TOKEN, AI2027_READ_TOKEN_ID and AI2027_READ_TOKEN_SECRET together"
+    err "FATAL: provide AI2027_WRITE_TOKEN, AI2027_READ_TOKEN_ID and AI2027_READ_TOKEN_SECRET together; if a Live Agent is already running, supply its matching credentials or stop/reconfigure it manually."
     exit 2
   fi
   if [ -z "${AI2027_READ_TOKEN_HASHES:-}" ]; then
@@ -152,6 +160,8 @@ PY
     err "FATAL: could not secure local API credentials"
     exit 2
   fi
+  # Keep the shared operator-token contract in sync: visible ASCII 0x21-0x7e,
+  # length 32-512; this accepts symbols such as +, /, and = but no whitespace.
   credential_values="$(python3 - "$CREDENTIALS_FILE" <<'PY'
 import hashlib, json, os, re, sys
 try:
@@ -167,7 +177,7 @@ try:
         raise ValueError
     if not isinstance(reader, str) or not re.fullmatch(r"[A-Za-z0-9_-]{32,256}", reader):
         raise ValueError
-    if not isinstance(writer, str) or not re.fullmatch(r"[A-Za-z0-9_-]{32,512}", writer):
+    if not isinstance(writer, str) or not re.fullmatch(r"[!-~]{32,512}", writer):
         raise ValueError
     expected = hashlib.sha256(reader.encode()).hexdigest()
     if not isinstance(hashes, dict) or hashes.get(identifier) != expected:
@@ -179,7 +189,7 @@ print("\t".join((identifier, reader, writer, json.dumps(hashes))))
 PY
   )"
   if [ "$?" -ne 0 ]; then
-    err "FATAL: local API credential file is invalid"
+    err "FATAL: local API credential file is invalid; repair it or supply matching credentials, and stop/reconfigure any existing Live Agent manually before retrying."
     exit 2
   fi
   IFS=$'\t' read -r AI2027_READ_TOKEN_ID AI2027_READ_TOKEN_SECRET AI2027_WRITE_TOKEN AI2027_READ_TOKEN_HASHES <<< "$credential_values"
@@ -206,7 +216,7 @@ expected = hashlib.sha256(reader.encode()).hexdigest()
 if (
     not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", identifier)
     or not re.fullmatch(r"[A-Za-z0-9_-]{32,256}", reader)
-    or not re.fullmatch(r"[A-Za-z0-9_-]{32,512}", writer)
+    or not re.fullmatch(r"[!-~]{32,512}", writer)
     or not isinstance(hashes, dict)
     or hashes.get(identifier) != expected
 ):
@@ -231,7 +241,7 @@ finally:
         pass
 PY
 then
-  err "FATAL: could not secure local workspace gateway credentials"
+  err "FATAL: local workspace credentials are invalid or could not be secured; correct them and stop/reconfigure any existing Live Agent manually before retrying."
   exit 2
 fi
 
@@ -249,13 +259,49 @@ else
 fi
 REUSED=""
 PIDS=""
+LIVE_AGENT_REUSED=0
+
+verify_live_agent_credentials() { # non-mutating, loopback-only compatibility proof
+  if ! python3 - "$LIVE_PORT" <<'PY'
+import json, os, sys, urllib.error, urllib.request
+
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *_args, **_kwargs):
+        return None
+
+url = f"http://127.0.0.1:{int(sys.argv[1])}/api/local/credentials-check"
+request = urllib.request.Request(url, headers={
+    "Authorization": "Bearer " + os.environ["AI2027_READ_TOKEN_ID"] + "." + os.environ["AI2027_READ_TOKEN_SECRET"],
+    "X-AI2027-Operator-Authorization": "Bearer " + os.environ["AI2027_WRITE_TOKEN"],
+}, method="GET")
+try:
+    opener = urllib.request.build_opener(
+        urllib.request.ProxyHandler({}), NoRedirect(),
+    )
+    with opener.open(request, timeout=3) as response:
+        value = json.loads(response.read())
+    if value != {"ok": True, "service": "ai-2027-live-agent"}:
+        raise SystemExit(1)
+except (OSError, ValueError, urllib.error.URLError):
+    raise SystemExit(1)
+PY
+  then
+    err "FATAL: a Live Agent answered health but could not prove both local reader and operator credentials. No service was stopped. Supply matching credentials, or stop/reconfigure the service manually, then retry."
+    return 1
+  fi
+  return 0
+}
 
 boot_one() { # boot_one <name> <port> <command...>
   local name="$1" port="$2"; shift 2
   local url="http://127.0.0.1:$port/api/health"
   if health "$url"; then
+    if [ "$name" = "live-agent" ] && ! verify_live_agent_credentials; then
+      return 1
+    fi
     say "  $name :$port already healthy — reusing the running service"
     REUSED="$REUSED $name"
+    if [ "$name" = "live-agent" ]; then LIVE_AGENT_REUSED=1; fi
     return 0
   fi
   if python3 - "$port" <<'PY'
@@ -298,6 +344,11 @@ if ! wait_health "http://127.0.0.1:$LIVE_PORT/api/health" 30; then
   err "FATAL: live-agent did not become healthy in 30s"
   tail -30 "$STATE_DIR/live-agent.log" 2>/dev/null
   stop_all; exit 1
+fi
+# Also prove a newly started server's credentials. This closes the race where
+# another process occupies the port after the pre-start availability check.
+if [ "$LIVE_AGENT_REUSED" -eq 0 ] && ! verify_live_agent_credentials; then
+  exit 1
 fi
 if ! wait_health "http://127.0.0.1:$HUD_PORT/api/health" 30; then
   err "FATAL: HUD did not become healthy in 30s"

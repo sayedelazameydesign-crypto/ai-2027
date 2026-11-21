@@ -207,6 +207,49 @@ class TestRunGoal(unittest.TestCase):
             server._memory = None
 
 
+class TestWriteTokenContract(unittest.TestCase):
+    def setUp(self):
+        self.saved_access = (
+            server._READ_TOKEN_HASHES, server._WRITE_TOKEN, server._READ_ONLY,
+            server._API_READ_RATE_LIMITER, server._API_WRITE_RATE_LIMITER,
+        )
+
+    def tearDown(self):
+        (server._READ_TOKEN_HASHES, server._WRITE_TOKEN, server._READ_ONLY,
+         server._API_READ_RATE_LIMITER, server._API_WRITE_RATE_LIMITER) = self.saved_access
+
+    def test_visible_ascii_symbols_and_exact_length_boundaries_are_accepted(self):
+        tokens = ("+/=" + "A" * 29, "+/=" + "A" * 509)
+        self.assertEqual(tuple(map(len, tokens)), (32, 512))
+        for token in tokens:
+            with self.subTest(length=len(token)):
+                with patch.dict(os.environ, {
+                    "AI2027_READ_TOKEN_HASHES": "{}",
+                    "AI2027_WRITE_TOKEN": token,
+                }, clear=True):
+                    server.configure_api_access_from_env()
+                self.assertEqual(server._WRITE_TOKEN, token)
+
+    def test_out_of_range_whitespace_and_non_ascii_tokens_fail_closed_without_echo(self):
+        invalid = (
+            "A" * 31,
+            "A" * 513,
+            "A" * 16 + " " + "A" * 16,
+            "A" * 16 + "\t" + "A" * 16,
+            "A" * 32 + "\n",
+            "A" * 31 + "é",
+        )
+        for token in invalid:
+            with self.subTest(length=len(token), whitespace=any(c.isspace() for c in token)):
+                with patch.dict(os.environ, {
+                    "AI2027_READ_TOKEN_HASHES": "{}",
+                    "AI2027_WRITE_TOKEN": token,
+                }, clear=True):
+                    with self.assertRaisesRegex(ValueError, "32-512 visible ASCII") as caught:
+                        server.configure_api_access_from_env()
+                self.assertNotIn(token, str(caught.exception))
+
+
 class TestAPIProtectionAndLogging(unittest.TestCase):
     READ_ID = "unit-reader"
     READ_SECRET = "unit-read-secret-" + "r" * 40
@@ -220,6 +263,7 @@ class TestAPIProtectionAndLogging(unittest.TestCase):
         self.saved_access = (
             server._READ_TOKEN_HASHES, server._WRITE_TOKEN, server._READ_ONLY,
             server._API_READ_RATE_LIMITER, server._API_WRITE_RATE_LIMITER,
+            server._LOCAL_AUTH_PROBE_RATE_LIMITER,
         )
         self.logger = logging.getLogger("agi.kernel")
         self.saved_logger = (list(self.logger.handlers), self.logger.propagate,
@@ -252,7 +296,8 @@ class TestAPIProtectionAndLogging(unittest.TestCase):
         server._run_index.update(self.saved_index)
         server._memory = self.saved_memory
         (server._READ_TOKEN_HASHES, server._WRITE_TOKEN, server._READ_ONLY,
-         server._API_READ_RATE_LIMITER, server._API_WRITE_RATE_LIMITER) = self.saved_access
+         server._API_READ_RATE_LIMITER, server._API_WRITE_RATE_LIMITER,
+         server._LOCAL_AUTH_PROBE_RATE_LIMITER) = self.saved_access
         self.logger.handlers[:] = self.saved_logger[0]
         self.logger.propagate = self.saved_logger[1]
         self.logger.setLevel(self.saved_logger[2])
@@ -260,8 +305,8 @@ class TestAPIProtectionAndLogging(unittest.TestCase):
         self.tmp.cleanup()
 
     def request(self, method: str, path: str, *, credential: str | None = None,
-                payload: dict | None = None):
-        headers = {}
+                payload: dict | None = None, headers: dict[str, str] | None = None):
+        headers = dict(headers or {})
         if credential is not None:
             headers["Authorization"] = f"Bearer {credential}"
         if payload is not None:
@@ -275,6 +320,45 @@ class TestAPIProtectionAndLogging(unittest.TestCase):
                 return response.status, response.headers, response.read()
         except urllib.error.HTTPError as exc:
             return exc.code, exc.headers, exc.read()
+
+    def test_local_credential_check_requires_both_credentials_without_running_a_goal(self):
+        path = server.LOCAL_CREDENTIALS_CHECK_PATH
+        reader = f"{self.READ_ID}.{self.READ_SECRET}"
+        valid_headers = {
+            "Authorization": f"Bearer {reader}",
+            "X-AI2027-Operator-Authorization": f"Bearer {self.WRITE_SECRET}",
+        }
+        accepted = self.request("GET", path, headers=valid_headers)
+        self.assertEqual(accepted[0], 200)
+        self.assertEqual(json.loads(accepted[2]), {
+            "ok": True, "service": "ai-2027-live-agent",
+        })
+
+        wrong_reader = self.request("GET", path, headers={
+            **valid_headers, "Authorization": "Bearer another-reader." + "x" * 40,
+        })
+        wrong_operator = self.request("GET", path, headers={
+            **valid_headers,
+            "X-AI2027-Operator-Authorization": "Bearer another-operator-" + "x" * 40,
+        })
+        self.assertEqual((wrong_reader[0], wrong_operator[0]), (401, 401))
+        for response in (wrong_reader, wrong_operator):
+            text = response[2].decode("utf-8", errors="replace")
+            self.assertNotIn(self.READ_SECRET, text)
+            self.assertNotIn(self.WRITE_SECRET, text)
+
+        with patch.object(server, "_READ_TOKEN_HASHES", {}):
+            no_reader = self.request("GET", path, headers=valid_headers)
+        self.assertEqual(no_reader[0], 503)
+        with patch.object(server, "_READ_ONLY", True):
+            read_only = self.request("GET", path, headers=valid_headers)
+        self.assertEqual(read_only[0], 200,
+                         "the probe verifies credentials, not the separate read-only policy")
+        with patch.object(server, "_is_loopback_peer", return_value=False):
+            remote = self.request("GET", path, headers=valid_headers)
+        self.assertEqual(remote[0], 404)
+        self.assertEqual(list(server.RUNS_DIR.glob("*.json")), [],
+                         "the compatibility probe must not execute a run")
 
     def test_all_private_read_routes_require_a_reader_and_health_is_minimal(self):
         health_status, _, health_raw = self.request("GET", "/api/health")
@@ -425,6 +509,8 @@ class TestAPIProtectionAndLogging(unittest.TestCase):
         query_marker = "synthetic-query-do-not-log"
         body_marker = "synthetic-body-do-not-log"
         auth_marker = "synthetic-wrong-auth-do-not-log"
+        probe_reader_marker = "synthetic-probe-reader-secret-do-not-log-" + "p" * 32
+        probe_operator_marker = "synthetic-probe-operator-secret-do-not-log-" + "o" * 32
         kernel_marker = "synthetic-kernel-error-do-not-log"
         read_credential = f"{self.READ_ID}.{self.READ_SECRET}"
         wrong_writer = auth_marker + "-" + "x" * 40
@@ -440,6 +526,11 @@ class TestAPIProtectionAndLogging(unittest.TestCase):
             self.assertEqual(self.request("POST", "/api/run", payload=body)[0], 401)
             self.assertEqual(self.request("POST", "/api/run", credential=wrong_writer,
                                           payload=body)[0], 401)
+            probe = self.request("GET", server.LOCAL_CREDENTIALS_CHECK_PATH, headers={
+                "Authorization": f"Bearer {self.READ_ID}.{probe_reader_marker}",
+                "X-AI2027-Operator-Authorization": f"Bearer {probe_operator_marker}",
+            })
+            self.assertEqual(probe[0], 401)
             method_status, _, method_body = self.request(
                 "DELETE", "/api/run?" + query_marker)
             self.assertEqual(method_status, 501)
@@ -485,7 +576,7 @@ class TestAPIProtectionAndLogging(unittest.TestCase):
             # Handler access logs are emitted as each worker closes its response;
             # wait for the final worker while stderr is still redirected.
             deadline = time.monotonic() + 2
-            while errors.getvalue().count('"method"') < 7 and time.monotonic() < deadline:
+            while errors.getvalue().count('"method"') < 8 and time.monotonic() < deadline:
                 time.sleep(0.01)
 
         global_logger_after = (
@@ -495,6 +586,7 @@ class TestAPIProtectionAndLogging(unittest.TestCase):
         self.assertEqual(global_logger_after, global_logger_before)
         captured = output.getvalue() + errors.getvalue()
         for marker in (query_marker, body_marker, auth_marker, kernel_marker,
+                       probe_reader_marker, probe_operator_marker,
                        self.READ_SECRET, self.WRITE_SECRET):
             self.assertNotIn(marker, captured)
         log_records = [
@@ -502,7 +594,7 @@ class TestAPIProtectionAndLogging(unittest.TestCase):
         ]
         kernel_records = [r for r in log_records if r.get("source") == "agi.kernel"]
         records = [r for r in log_records if "method" in r]
-        self.assertGreaterEqual(len(records), 7)
+        self.assertGreaterEqual(len(records), 8)
         self.assertTrue(kernel_records, "the Live Agent should retain redacted kernel events")
         kernel_events = {r["event"] for r in kernel_records}
         self.assertIn("run started", kernel_events)
