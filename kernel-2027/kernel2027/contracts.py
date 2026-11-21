@@ -50,8 +50,10 @@ def require_safe_id(value: str, *, where: str) -> str:
 
 
 def canonical_json(payload: Any) -> str:
-    """Serialise deterministically, so a digest over it is reproducible."""
-    return json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    """Serialise strict JSON deterministically, so a digest is reproducible."""
+    return json.dumps(
+        payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False
+    )
 
 
 def sha256_bytes(raw: bytes) -> str:

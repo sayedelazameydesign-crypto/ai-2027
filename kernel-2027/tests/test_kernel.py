@@ -60,6 +60,12 @@ class ContractTests(unittest.TestCase):
         with self.assertRaises(TypeError):
             canonical_json({"a": object()})
 
+    def test_canonical_json_rejects_non_finite_numbers(self) -> None:
+        for value in (float("nan"), float("inf"), float("-inf")):
+            with self.subTest(value=value):
+                with self.assertRaises(ValueError):
+                    canonical_json({"a": value})
+
     def test_sha256_text_matches_known_vector(self) -> None:
         self.assertEqual(
             sha256_text("abc"),
