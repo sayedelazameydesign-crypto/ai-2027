@@ -1,0 +1,21 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: isolate-agent-pods
+  namespace: agent-substrate
+  labels:
+    app.kubernetes.io/part-of: agent-substrate
+spec:
+  podSelector:
+    matchLabels:
+      agent-substrate.io/managed: "true"
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: agent-substrate-controller
+      ports:
+        - protocol: TCP
+          port: 8080
+  egress: []
