@@ -9,6 +9,7 @@ import {
   ChevronDown,
   ChevronLeft,
   Circle,
+  Cable,
   Clock3,
   Copy,
   FilePlus2,
@@ -31,11 +32,17 @@ import {
   X,
   Zap,
 } from 'lucide-react';
+import { ConnectorsWorkspace } from './ConnectorsWorkspace';
+import { StudioWorkspace } from './StudioWorkspace';
+import type { ConnectionState } from './integrations';
 
 type Language = 'ar' | 'en';
 const dictionaries = {
   ar: {
     workspace: 'مساحة العمل',
+    studioNav: 'Agent Studio',
+    connectorsNav: 'الموصلات',
+    kernelNav: 'مساحة النواة',
     productTag: 'تنفيذ موثّق',
     newTask: 'مهمة جديدة',
     recentRuns: 'عمليات حديثة',
@@ -44,6 +51,11 @@ const dictionaries = {
     loading: 'جارٍ تحميل النظام…',
     connected: 'النواة متصلة',
     offline: 'النواة غير متصلة',
+    studioConnected: 'Agent Studio متصل',
+    studioOffline: 'Agent Studio غير متاح',
+    hubConnected: 'Connectors Hub متصل',
+    hubOffline: 'Connectors Hub غير متاح',
+    checkingConnection: 'جارٍ التحقق من الاتصال…',
     refresh: 'تحديث',
     switchLanguage: 'English',
     eyebrow: 'AI-2027 WORKSPACE · المرحلة الأولى',
@@ -145,6 +157,9 @@ const dictionaries = {
   },
   en: {
     workspace: 'Workspace',
+    studioNav: 'Agent Studio',
+    connectorsNav: 'Connectors',
+    kernelNav: 'Kernel workspace',
     productTag: 'Verified execution',
     newTask: 'New task',
     recentRuns: 'Recent runs',
@@ -153,6 +168,11 @@ const dictionaries = {
     loading: 'Loading the system…',
     connected: 'Kernel connected',
     offline: 'Kernel offline',
+    studioConnected: 'Agent Studio connected',
+    studioOffline: 'Agent Studio unavailable',
+    hubConnected: 'Connectors Hub connected',
+    hubOffline: 'Connectors Hub unavailable',
+    checkingConnection: 'Checking connection…',
     refresh: 'Refresh',
     switchLanguage: 'العربية',
     eyebrow: 'AI-2027 WORKSPACE · PHASE ONE',
@@ -256,6 +276,7 @@ const dictionaries = {
 
 type Copy = { [Key in keyof (typeof dictionaries)['ar']]: string };
 type Operation = 'create_file' | 'ensure_dir' | 'list_dir';
+type WorkspaceView = 'studio' | 'connectors' | 'kernel';
 
 interface HealthPayload {
   ok?: boolean;
@@ -447,6 +468,10 @@ function App() {
   const [lang, setLang] = useState<Language>(languageFromStorage);
   const t = dictionaries[lang];
   const direction = lang === 'ar' ? 'rtl' : 'ltr';
+  const [activeView, setActiveView] = useState<WorkspaceView>('studio');
+  const [studioConnection, setStudioConnection] = useState<ConnectionState>('checking');
+  const [hubConnection, setHubConnection] = useState<ConnectionState>('checking');
+  const [studioResetKey, setStudioResetKey] = useState(0);
   const [health, setHealth] = useState<HealthPayload | null>(null);
   const [runs, setRuns] = useState<RunSummary[]>([]);
   const [overviewLoading, setOverviewLoading] = useState(true);
@@ -487,8 +512,8 @@ function App() {
   }, []);
 
   useEffect(() => {
-    void refreshOverview();
-  }, [refreshOverview]);
+    if (activeView === 'kernel') void refreshOverview();
+  }, [activeView, refreshOverview]);
 
   useEffect(() => {
     document.documentElement.lang = lang;
@@ -523,6 +548,7 @@ function App() {
   }, []);
 
   const startNewTask = useCallback(() => {
+    setActiveView('kernel');
     recordRequestRef.current += 1;
     previewRequestRef.current += 1;
     setSelectedRunId(null);
@@ -537,16 +563,22 @@ function App() {
     setMobileMenuOpen(false);
   }, [lang]);
 
+  const startStudioTask = useCallback(() => {
+    setActiveView('studio');
+    setStudioResetKey((current) => current + 1);
+    setMobileMenuOpen(false);
+  }, []);
+
   useEffect(() => {
     const onShortcut = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
         event.preventDefault();
-        startNewTask();
+        startStudioTask();
       }
     };
     window.addEventListener('keydown', onShortcut);
     return () => window.removeEventListener('keydown', onShortcut);
-  }, [startNewTask]);
+  }, [startStudioTask]);
 
   const executeGoal = useCallback(async (
     goalType: Operation,
@@ -655,6 +687,24 @@ function App() {
 
   const supportedGoalCount = health?.supported_goals?.length ?? 0;
   const connectionOnline = Boolean(health?.ok);
+  const pageConnection: ConnectionState = activeView === 'studio'
+    ? studioConnection
+    : activeView === 'connectors'
+      ? hubConnection
+      : overviewLoading ? 'checking' : connectionOnline ? 'online' : 'offline';
+  const pageConnectionLabel = pageConnection === 'checking'
+    ? t.checkingConnection
+    : pageConnection === 'online'
+      ? activeView === 'studio' ? t.studioConnected : activeView === 'connectors' ? t.hubConnected : t.connected
+      : activeView === 'studio' ? t.studioOffline : activeView === 'connectors' ? t.hubOffline : t.offline;
+  const pageTitle = activeView === 'studio'
+    ? t.studioNav
+    : activeView === 'connectors'
+      ? t.connectorsNav
+      : record ? t.resultTitle : t.newTask;
+
+  const onStudioConnectionChange = useCallback((state: ConnectionState) => setStudioConnection(state), []);
+  const onHubConnectionChange = useCallback((state: ConnectionState) => setHubConnection(state), []);
 
   return (
     <div className="app-frame" dir={direction}>
@@ -669,17 +719,27 @@ function App() {
           <button className="icon-button mobile-close" aria-label="Close menu" onClick={() => setMobileMenuOpen(false)}><X size={17} /></button>
         </div>
 
-        <button className="new-task-button" onClick={startNewTask}>
+        <button className="new-task-button" onClick={startStudioTask}>
           <Plus size={17} />
           <span>{t.newTask}</span>
           <span className="shortcut">⌘ K</span>
         </button>
 
         <div className="side-label">{t.workspace}</div>
-        <button className="nav-item active" onClick={startNewTask}>
+        <button className={`nav-item ${activeView === 'studio' ? 'active' : ''}`} onClick={() => { setActiveView('studio'); setMobileMenuOpen(false); }} aria-current={activeView === 'studio' ? 'page' : undefined}>
           <Sparkles size={16} />
-          <span>{t.workspace}</span>
-          <span className="nav-indicator" />
+          <span>{t.studioNav}</span>
+          {activeView === 'studio' && <span className="nav-indicator" />}
+        </button>
+        <button className={`nav-item ${activeView === 'connectors' ? 'active' : ''}`} onClick={() => { setActiveView('connectors'); setMobileMenuOpen(false); }} aria-current={activeView === 'connectors' ? 'page' : undefined}>
+          <Cable size={16} />
+          <span>{t.connectorsNav}</span>
+          {activeView === 'connectors' && <span className="nav-indicator" />}
+        </button>
+        <button className={`nav-item ${activeView === 'kernel' ? 'active' : ''}`} onClick={startNewTask} aria-current={activeView === 'kernel' ? 'page' : undefined}>
+          <HardDrive size={16} />
+          <span>{t.kernelNav}</span>
+          {activeView === 'kernel' && <span className="nav-indicator" />}
         </button>
         <a className="nav-item nav-link" href="/ops/" onClick={() => setMobileMenuOpen(false)}>
           <TerminalSquare size={16} />
@@ -687,39 +747,41 @@ function App() {
           <ArrowUpLeft size={14} className="nav-external" />
         </a>
 
-        <div className="history-heading">
-          <span className="side-label">{t.recentRuns}</span>
-          <button className="tiny-icon-button" aria-label={t.refresh} title={t.refresh} onClick={() => void refreshOverview()} disabled={overviewLoading}>
-            <RefreshCw size={13} className={overviewLoading ? 'spin' : ''} />
-          </button>
-        </div>
-        <div className="run-history" aria-label={t.recentRuns}>
-          {runs.length === 0 ? (
-            <div className="history-empty"><History size={15} /><span>{overviewLoading ? t.loading : t.emptyHistory}</span></div>
-          ) : runs.slice(0, 16).map((run) => {
-            const selected = selectedRunId === run.run_id;
-            const runStatus = statusClass(run.status);
-            return (
-              <button key={run.run_id} className={`history-item ${selected ? 'history-selected' : ''}`} onClick={() => void openRun(run.run_id)}>
-                <span className={`history-status ${runStatus}`}>{run.status === 'VERIFIED' ? <Check size={12} /> : run.status === 'DENIED' ? <ShieldAlert size={12} /> : <Circle size={9} />}</span>
-                <span className="history-copy">
-                  <span className="history-name">{operationCopy(run.goal_type, t)}</span>
-                  <span className="history-meta">{formatTime(run.ts, lang)} <i>·</i> {run.run_id.slice(-8)}</span>
-                </span>
-                <ChevronLeft size={13} className="history-chevron" />
-              </button>
-            );
-          })}
-        </div>
+        {activeView === 'kernel' && <>
+          <div className="history-heading">
+            <span className="side-label">{t.recentRuns}</span>
+            <button className="tiny-icon-button" aria-label={t.refresh} title={t.refresh} onClick={() => void refreshOverview()} disabled={overviewLoading}>
+              <RefreshCw size={13} className={overviewLoading ? 'spin' : ''} />
+            </button>
+          </div>
+          <div className="run-history" aria-label={t.recentRuns}>
+            {runs.length === 0 ? (
+              <div className="history-empty"><History size={15} /><span>{overviewLoading ? t.loading : t.emptyHistory}</span></div>
+            ) : runs.slice(0, 16).map((run) => {
+              const selected = selectedRunId === run.run_id;
+              const runStatus = statusClass(run.status);
+              return (
+                <button key={run.run_id} className={`history-item ${selected ? 'history-selected' : ''}`} onClick={() => void openRun(run.run_id)}>
+                  <span className={`history-status ${runStatus}`}>{run.status === 'VERIFIED' ? <Check size={12} /> : run.status === 'DENIED' ? <ShieldAlert size={12} /> : <Circle size={9} />}</span>
+                  <span className="history-copy">
+                    <span className="history-name">{operationCopy(run.goal_type, t)}</span>
+                    <span className="history-meta">{formatTime(run.ts, lang)} <i>·</i> {run.run_id.slice(-8)}</span>
+                  </span>
+                  <ChevronLeft size={13} className="history-chevron" />
+                </button>
+              );
+            })}
+          </div>
+        </>}
 
         <div className="sidebar-bottom">
           <div className="sidebar-runtime">
-            <span className={`runtime-indicator ${connectionOnline ? 'online' : overviewLoading ? 'checking' : 'offline'}`} />
+            <span className={`runtime-indicator ${pageConnection === 'online' ? 'online' : pageConnection === 'checking' ? 'checking' : 'offline'}`} />
             <div>
-              <strong>{overviewLoading ? t.loading : connectionOnline ? t.connected : t.offline}</strong>
-              <span>{t.runtimeMode}</span>
+              <strong>{pageConnectionLabel}</strong>
+              <span>{activeView === 'studio' ? 'Agent Studio · API' : activeView === 'connectors' ? 'Connectors Hub · API' : t.runtimeMode}</span>
             </div>
-            <button className="tiny-icon-button" aria-label={t.refresh} title={t.refresh} onClick={() => void refreshOverview()}><RefreshCw size={13} /></button>
+            {activeView === 'kernel' && <button className="tiny-icon-button" aria-label={t.refresh} title={t.refresh} onClick={() => void refreshOverview()}><RefreshCw size={13} /></button>}
           </div>
           <div className="sidebar-footer"><ShieldCheck size={13} />{t.footer}</div>
         </div>
@@ -728,11 +790,11 @@ function App() {
       <main className="main-area">
         <header className="topbar">
           <button className="icon-button mobile-menu-button" aria-label="Open menu" onClick={() => setMobileMenuOpen(true)}><Menu size={19} /></button>
-          <div className="breadcrumbs"><span>{t.workspace}</span><ChevronLeft size={13} /><strong>{record ? t.resultTitle : t.newTask}</strong></div>
+          <div className="breadcrumbs"><span>{t.workspace}</span><ChevronLeft size={13} /><strong>{pageTitle}</strong></div>
           <div className="topbar-actions">
-            <div className={`connection-pill ${connectionOnline ? 'is-online' : overviewLoading ? 'is-checking' : 'is-offline'}`}>
+            <div className={`connection-pill ${pageConnection === 'online' ? 'is-online' : pageConnection === 'checking' ? 'is-checking' : 'is-offline'}`}>
               <span className="connection-dot" />
-              <span>{overviewLoading ? t.loading : connectionOnline ? t.connected : t.offline}</span>
+              <span>{pageConnectionLabel}</span>
             </div>
             <button className="language-button" onClick={() => setLang((current) => current === 'ar' ? 'en' : 'ar')} aria-label={t.switchLanguage}>
               <Languages size={15} />
@@ -742,7 +804,10 @@ function App() {
           </div>
         </header>
 
-        <div className="content-grid">
+        <div className="page-view-shell">
+          <div hidden={activeView !== 'studio'}><StudioWorkspace lang={lang} resetKey={studioResetKey} onConnectionChange={onStudioConnectionChange} /></div>
+          <div hidden={activeView !== 'connectors'}><ConnectorsWorkspace lang={lang} onConnectionChange={onHubConnectionChange} /></div>
+          {activeView === 'kernel' && <div className="content-grid">
           <section className="conversation-column">
             {!record && !recordLoading && !submitting && !overviewError && (
               <section className="welcome-panel">
@@ -892,6 +957,7 @@ function App() {
             </section>
             <p className="privacy-note"><ShieldCheck size={12} />{t.privacy}</p>
           </aside>
+          </div>}
         </div>
       </main>
     </div>

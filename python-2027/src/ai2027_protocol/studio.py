@@ -6,14 +6,18 @@ import asyncio
 import hashlib
 import json
 import mimetypes
+import os
 import shutil
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
+from urllib.parse import urlsplit
 
+import httpx
 from fastapi import APIRouter, HTTPException, Query, Response
 from fastapi.responses import HTMLResponse, StreamingResponse
-from pydantic import Field
+from pydantic import ConfigDict, Field, ValidationError
 
 from .agent import (
     AgentSessionState,
@@ -75,6 +79,129 @@ class StudioStatusResponse(StrictModel):
     connectors: tuple[ConnectorDescriptor, ...]
     sessions_count: int
     pending_approvals: int
+
+
+class ConnectorHubCatalogItem(StrictModel):
+    """Sanitized connector metadata copied from the authenticated Connectors Hub."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    id: str = Field(min_length=1, max_length=64)
+    name: str = Field(min_length=1, max_length=120)
+    state: Literal["unconfigured", "configured", "needs_resource_config"]
+    auth_group: str = Field(min_length=1, max_length=64)
+    search_supported: bool
+    read_supported: bool
+    notes: tuple[str, ...] = Field(default=(), max_length=12)
+
+
+class ConnectorHubCatalogResponse(StrictModel):
+    """Connection state and safe catalog data from the distinct Connectors Hub service."""
+
+    source: Literal["connectors-hub"] = "connectors-hub"
+    available: bool
+    reason: Literal[
+        "connected",
+        "token_missing",
+        "unauthorized",
+        "service_unavailable",
+        "upstream_error",
+        "invalid_endpoint",
+        "invalid_payload",
+    ]
+    checked_at: str
+    connectors: tuple[ConnectorHubCatalogItem, ...] = ()
+
+
+def _connector_hub_base_url() -> str:
+    """Validate the server-side Connectors Hub URL; callers cannot supply a URL."""
+    raw = os.environ.get("CONNECTORS_HUB_URL", "http://127.0.0.1:8765").strip()
+    try:
+        parsed = urlsplit(raw)
+        host = (parsed.hostname or "").lower()
+        port = parsed.port
+    except ValueError as exc:
+        raise ValueError("invalid Connectors Hub endpoint") from exc
+    loopback_host = host in {"localhost", "127.0.0.1", "::1"}
+    if (
+        parsed.scheme not in {"http", "https"}
+        or not host
+        or parsed.username
+        or parsed.password
+        or parsed.query
+        or parsed.fragment
+        or parsed.path not in {"", "/"}
+        or (parsed.scheme == "http" and not loopback_host)
+        or (port is not None and not 1 <= port <= 65535)
+    ):
+        raise ValueError("invalid Connectors Hub endpoint")
+    return raw.rstrip("/")
+
+
+def _catalog_result(
+    reason: Literal[
+        "connected",
+        "token_missing",
+        "unauthorized",
+        "service_unavailable",
+        "upstream_error",
+        "invalid_endpoint",
+        "invalid_payload",
+    ],
+    connectors: tuple[ConnectorHubCatalogItem, ...] = (),
+) -> ConnectorHubCatalogResponse:
+    """Create a catalog result with an explicit, truthful check timestamp."""
+    return ConnectorHubCatalogResponse(
+        available=reason == "connected",
+        reason=reason,
+        checked_at=datetime.now(UTC).isoformat(),
+        connectors=connectors,
+    )
+
+
+async def fetch_connectors_hub_catalog(
+    *,
+    base_url: str,
+    token: str,
+    transport: httpx.AsyncBaseTransport | None = None,
+) -> ConnectorHubCatalogResponse:
+    """Fetch only the authenticated, read-only connector catalog from the Hub."""
+    body = bytearray()
+    try:
+        async with httpx.AsyncClient(
+            transport=transport,
+            timeout=httpx.Timeout(3.0, connect=1.0),
+            follow_redirects=False,
+            trust_env=False,
+        ) as client:
+            async with client.stream(
+                "GET",
+                f"{base_url.rstrip('/')}/v1/connectors",
+                headers={"Accept": "application/json", "Authorization": f"Bearer {token}"},
+            ) as response:
+                if response.status_code in {401, 403}:
+                    return _catalog_result("unauthorized")
+                if response.status_code == 503:
+                    return _catalog_result("service_unavailable")
+                if response.status_code != 200:
+                    return _catalog_result("upstream_error")
+                async for chunk in response.aiter_bytes():
+                    if len(body) + len(chunk) > 256_000:
+                        return _catalog_result("invalid_payload")
+                    body.extend(chunk)
+    except (httpx.TimeoutException, httpx.TransportError):
+        return _catalog_result("service_unavailable")
+    except (ValueError, httpx.InvalidURL):
+        return _catalog_result("invalid_endpoint")
+
+    try:
+        payload = json.loads(body)
+        if not isinstance(payload, list) or len(payload) > 100:
+            return _catalog_result("invalid_payload")
+        connectors = tuple(ConnectorHubCatalogItem.model_validate(item) for item in payload)
+    except (ValueError, ValidationError, TypeError):
+        return _catalog_result("invalid_payload")
+    return _catalog_result("connected", connectors)
 
 
 def _load_studio_html() -> str:
@@ -141,6 +268,21 @@ def build_studio_router(
             sessions_count=len(sessions),
             pending_approvals=pending,
         )
+
+    @api.get(
+        "/v1/studio/connectors/catalog",
+        response_model=ConnectorHubCatalogResponse,
+    )
+    async def connector_hub_catalog() -> ConnectorHubCatalogResponse:
+        """Expose the real Hub catalog without revealing its bearer token or proxying tools."""
+        token = os.environ.get("CONNECTORS_HUB_API_TOKEN", "").strip()
+        if not token:
+            return _catalog_result("token_missing")
+        try:
+            base_url = _connector_hub_base_url()
+        except ValueError:
+            return _catalog_result("invalid_endpoint")
+        return await fetch_connectors_hub_catalog(base_url=base_url, token=token)
 
     @api.get("/v1/studio/sessions", response_model=list[AgentSessionState])
     async def list_sessions() -> list[AgentSessionState]:
@@ -364,6 +506,7 @@ def build_studio_router(
                 "evidence": "/v1/studio/sessions/{session_id}/evidence",
                 "approvals": "/v1/studio/approvals",
                 "memory_search": "/v1/studio/memory/search?q={query}",
+                "connectors_catalog": "/v1/studio/connectors/catalog",
                 "connectors_search": "/v1/studio/connectors/search",
             },
             "honest_limits": [

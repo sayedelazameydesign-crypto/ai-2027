@@ -73,6 +73,20 @@ def git(*args: str) -> str:
     return out.strip() if rc == 0 else "unknown"
 
 
+def documented_kernel_test_count() -> int:
+    """Read the published unittest count so evidence cannot drift from the README."""
+    readme = ROOT / "projects" / "agi-system" / "README.md"
+    try:
+        text = readme.read_text(encoding="utf-8")
+    except OSError:
+        return 0
+    match = re.search(
+        r"python3\s+-m\s+unittest discover[^#\n]*#\s*(\d+)\s+اختبار وحدة",
+        text,
+    )
+    return int(match.group(1)) if match else 0
+
+
 def build() -> dict:
     d: dict = {
         "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
@@ -156,10 +170,15 @@ def build() -> dict:
                   "name": wheels[-1].name if wheels else None}
 
     # 7) gates
+    documented_test_count = documented_kernel_test_count()
     d["gates"] = {
         "bench_ran": d.get("bench_exit") == 0 and "error" not in d["kernel"],
         "all_test_suites_pass": all(t["ok"] and t["count"] > 0 for t in tests.values()),
-        "kernel_86_tests": tests["kernel"]["count"] == 86 and tests["kernel"]["ok"],
+        "kernel_tests_match_documented_count": (
+            documented_test_count > 0
+            and tests["kernel"]["count"] == documented_test_count
+            and tests["kernel"]["ok"]
+        ),
         "watchdog_44_tests": tests["watchdog"]["count"] == 44 and tests["watchdog"]["ok"],
         "phase2b_9_tests": tests["phase2b"]["count"] == 9 and tests["phase2b"]["ok"],
         "zero_third_party_imports": d["zero_deps"]["ok"],
