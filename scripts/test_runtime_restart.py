@@ -25,6 +25,7 @@ import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+_TEST_WRITE_TOKEN = "runtime-restart-test-" + "x" * 40
 
 
 def _free_port() -> int:
@@ -33,11 +34,14 @@ def _free_port() -> int:
         return int(sock.getsockname()[1])
 
 
-def _http(base: str, path: str, payload: dict | None = None) -> tuple[int, bytes]:
+def _http(base: str, path: str, payload: dict | None = None,
+          headers: dict[str, str] | None = None) -> tuple[int, bytes]:
     data = None if payload is None else json.dumps(payload).encode("utf-8")
+    request_headers = {"Content-Type": "application/json"}
+    request_headers.update(headers or {})
     req = urllib.request.Request(
         base + path, data=data,
-        headers={"Content-Type": "application/json"},
+        headers=request_headers,
         method="POST" if payload is not None else "GET",
     )
     try:
@@ -47,8 +51,9 @@ def _http(base: str, path: str, payload: dict | None = None) -> tuple[int, bytes
         return exc.code, exc.read()
 
 
-def _json_http(base: str, path: str, payload: dict | None = None) -> tuple[int, dict]:
-    status, raw = _http(base, path, payload)
+def _json_http(base: str, path: str, payload: dict | None = None,
+               headers: dict[str, str] | None = None) -> tuple[int, dict]:
+    status, raw = _http(base, path, payload, headers=headers)
     try:
         value = json.loads(raw)
     except (ValueError, UnicodeDecodeError) as exc:
@@ -126,6 +131,7 @@ class RuntimeRestartTests(unittest.TestCase):
             "AI2027_MAX_DISK_MB": "32",
             "AI2027_MAX_RUNS": "100",
             "AI2027_READ_ONLY": "0",
+            "AI2027_WRITE_TOKEN": _TEST_WRITE_TOKEN,
         }
         self._spawn(
             "live", [sys.executable, "deployment/live_server.py"],
@@ -166,7 +172,7 @@ class RuntimeRestartTests(unittest.TestCase):
         status, live_before = _json_http(self.live_base, "/api/run", {
             "goal_type": "create_file",
             "params": {"path": live_path, "content": live_content},
-        })
+        }, headers={"Authorization": f"Bearer {_TEST_WRITE_TOKEN}"})
         self.assertEqual(status, 200)
         self.assertEqual(live_before.get("status"), "VERIFIED")
         live_id = live_before["run_id"]
