@@ -141,3 +141,30 @@ python3 -m compileall -q agent-substrate/substrate agent-substrate/examples/coun
 ```
 
 No live Kubernetes cluster is required for unit tests. A passing unit suite proves the local controller/gateway contracts, not a production cluster, sandbox runtime, or NetworkPolicy enforcement.
+
+## Zero-additional-spend path for 2027 (within free quotas)
+
+This repository can avoid an added SaaS bill when development uses an existing computer and the repository/usage fit GitHub's current free quotas. It cannot make always-on compute, persistent disks, bandwidth, electricity, or model-provider API calls universally free.
+
+### Build and distribute with GitHub
+
+The `Agent Substrate images` workflow runs on version tags, reruns the unit suite, and publishes both images to GitHub Container Registry (GHCR). It uses the short-lived `GITHUB_TOKEN` supplied by Actions; do not create or commit a personal access token for this workflow.
+
+```sh
+git tag agent-substrate-v0.1.0
+git push origin agent-substrate-v0.1.0
+```
+
+The resulting tags are `ghcr.io/<owner>/agent-substrate:v0.1.0` and `ghcr.io/<owner>/agent-substrate-counter:v0.1.0`. After the first publish, set each package's visibility to **Public** in GitHub's package settings if the cluster should pull without registry credentials. Private packages need a separate image-pull credential, which the deploy workflow does not configure. GHCR and Actions remain subject to GitHub's plan, quotas, and terms.
+
+### Deploy to an existing cluster using Actions Secrets
+
+The `Agent Substrate manual deploy` workflow is manual and targets a Linux x64 **self-hosted GitHub Actions runner**. Put that runner on a computer that can securely reach the Kubernetes API; this avoids exposing a home/lab cluster API to GitHub-hosted runners. On the repository's **Settings → Secrets and variables → Actions**, add:
+
+- `AGENT_SUBSTRATE_KUBECONFIG` — the kubeconfig file contents for the target cluster, with permissions to create the namespace, CRD, RBAC, Deployment, Service, NetworkPolicy, and Secrets.
+- `SUBSTRATE_API_TOKEN` — a random value of at least 32 characters.
+- `SUBSTRATE_ACTOR_MASTER_KEY` — a separate random value of at least 32 characters; keep it stable.
+
+Generate the two application secrets independently with `python3 -c 'import secrets; print(secrets.token_urlsafe(48))'`, then store them directly in GitHub Secrets. Never print them in CI logs or commit them. From **Actions → Agent Substrate manual deploy → Run workflow**, provide the published image tag such as `v0.1.0`; the counter example is optional. The target cluster still needs the requirements listed above, including persistent storage, an installed gVisor/Kata RuntimeClass for the counter, and a NetworkPolicy-enforcing CNI.
+
+GitHub Secrets only store credentials—they do not provide a Kubernetes cluster or pay for its runtime. A $0 cloud invoice therefore requires existing hardware or a provider whose current free tier genuinely supports the required runtime, persistent storage, and network policy. Free tiers and quotas can change; a public, always-on service cannot be promised free indefinitely.
