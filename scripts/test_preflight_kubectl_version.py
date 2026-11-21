@@ -77,6 +77,34 @@ def step_body(text: str, marker: str) -> str:
     return "\n".join(body)
 
 
+def input_block(text: str) -> list[str]:
+    """Return the lines of the ``kubectl_version`` input mapping.
+
+    The mapping is read line by line rather than with a regular
+    expression: a pattern with nested quantifiers over an indented YAML
+    block backtracks exponentially on a long input.
+    """
+    lines = text.splitlines()
+    start = None
+    for index, line in enumerate(lines):
+        if line.strip() == "kubectl_version:":
+            start = index
+            break
+    if start is None:
+        raise AssertionError("kubectl_version input not found")
+
+    block = []
+    for line in lines[start + 1:]:
+        if line.strip() == "":
+            continue
+        # The mapping ends at the first line that is not indented further
+        # than the key itself.
+        if not line.startswith("        "):
+            break
+        block.append(line)
+    return block
+
+
 class VersionInputTests(unittest.TestCase):
     """The client version is an explicit operator choice."""
 
@@ -85,29 +113,17 @@ class VersionInputTests(unittest.TestCase):
         self.assertIn("kubectl_version:", workflow_text())
 
     def test_02_kubectl_version_is_required(self):
-        text = workflow_text()
-        block = re.search(
-            r"kubectl_version:\n(?:\s+.*\n)*?\s+required:\s*(\S+)\n", text
-        )
-        self.assertIsNotNone(block, "the input must declare required:")
-        self.assertEqual(block.group(1), "true")
+        block = input_block(workflow_text())
+        required = [line for line in block if line.strip().startswith("required:")]
+        self.assertEqual(len(required), 1, f"expected one required: line, got {required}")
+        self.assertEqual(required[0].split(":", 1)[1].strip(), "true")
 
     def test_03_kubectl_version_has_no_default(self):
         """A default would be a guess, and a guess can be outside the
         supported skew window."""
-        text = workflow_text()
-        block = re.search(
-            r"kubectl_version:\n(?:\s+.*\n)*?\s+required:\s*true\n(?:\s+.*\n)*?", text
-        )
-        self.assertIsNotNone(block)
-        # No `default:` may appear between the input declaration and the
-        # end of that mapping.
-        segment = text[text.index("kubectl_version:"):]
-        segment = segment[: segment.index("\n\n")]
-        # Match the YAML key form only; the description prose mentions
-        # the word "default" but is not a key.
-        self.assertNotRegex(segment, r"^\s*default:",
-                             "the input must not carry a default")
+        block = input_block(workflow_text())
+        defaults = [line for line in block if line.strip().startswith("default:")]
+        self.assertEqual(defaults, [], "the input must not carry a default")
 
     def test_04_the_workflow_uses_the_input_not_a_literal(self):
         text = workflow_text()
@@ -115,9 +131,7 @@ class VersionInputTests(unittest.TestCase):
         self.assertNotIn("version: v1.29.0", text)
 
     def test_05_the_input_documentation_states_the_skew_rule(self):
-        text = workflow_text()
-        block = text[text.index("kubectl_version:"):]
-        block = block[: block.index("\n\n")]
+        block = "\n".join(input_block(workflow_text()))
         self.assertIn("minor version", block)
         self.assertIn("kube-apiserver", block)
 

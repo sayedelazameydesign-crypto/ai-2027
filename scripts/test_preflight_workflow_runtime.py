@@ -109,11 +109,23 @@ class WorkspaceProvisioningTests(unittest.TestCase):
         """The job must not gain any write scope."""
         text = workflow_text()
         self.assertIn("permissions:", text)
-        # contents: read, and no other permission key at the top level.
-        block = re.search(r"^permissions:\n((?:  .*\n)*)", text, re.MULTILINE)
-        self.assertIsNotNone(block, "a top-level permissions block is required")
-        lines = [line.strip() for line in block.group(1).splitlines() if line.strip()]
-        self.assertEqual(lines, ["contents: read"], f"unexpected permissions: {lines}")
+        # Read the block line by line; a regular expression over an
+        # indented YAML block backtracks exponentially on a long input.
+        lines = text.splitlines()
+        start = None
+        for index, line in enumerate(lines):
+            if line == "permissions:":
+                start = index
+                break
+        self.assertIsNotNone(start, "a top-level permissions block is required")
+        block = []
+        for line in lines[start + 1:]:
+            if line.strip() == "":
+                continue
+            if not line.startswith("  "):
+                break
+            block.append(line.strip())
+        self.assertEqual(block, ["contents: read"], f"unexpected permissions: {block}")
 
     def test_06_the_checkout_step_runs_before_the_check(self):
         """Ordering matters: the file must be fetched before it is used."""
