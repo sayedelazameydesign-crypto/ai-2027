@@ -1,0 +1,134 @@
+name: Agent Substrate connectivity preflight
+
+on:
+  workflow_dispatch:
+    inputs:
+      kubectl_version:
+        description: >-
+          kubectl client version to use, matching the target cluster's
+          kube-apiserver minor version (for example v1.37.0). The Kubernetes
+          version-skew policy supports kubectl within one minor version of
+          kube-apiserver, so the client must be chosen for the cluster that
+          is actually being probed. There is deliberately no default: a
+          guessed version could sit outside the supported window and turn a
+          working cluster into a FAILED result.
+        required: true
+        type: string
+
+# Read-only repository access: the job needs to fetch exactly one file
+# (the kubeconfig checker) and nothing else. No write scope, no deploy
+# scope, and no other token permission is granted.
+permissions:
+  contents: read
+
+concurrency:
+  group: agent-substrate-preflight-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    if: github.ref == 'refs/heads/main'
+    name: Read-only Kubernetes API reachability check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      ACTIONS_STEP_DEBUG: 'false'
+      ACTIONS_RUNNER_DEBUG: 'false'
+    steps:
+      # The checker script has to exist in the workspace before the test
+      # step can run it. Only that one file is fetched: a sparse checkout
+      # keeps the rest of the repository off the runner, and
+      # persist-credentials: false leaves no token in .git/config.
+      - name: Fetch the kubeconfig checker
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+          # A leading slash marks this as one file rather than a path
+          # prefix; without it git treats the pattern as a directory and
+          # warns about it in non-cone mode.
+          sparse-checkout: /scripts/kubeconfig_preflight_check.py
+          sparse-checkout-cone-mode: false
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@776406bce94f63e41d621b960d78ee25c8b76ede # v4
+        with:
+          # The client version is chosen per run for the cluster being
+          # probed, and pinned so the tool that produces the JSON cannot
+          # change silently under the check.
+          version: ${{ inputs.kubectl_version }}
+
+      - name: Check read-only API access without logging details
+        shell: bash
+        env:
+          PREFLIGHT_KUBECONFIG: ${{ secrets.AGENT_SUBSTRATE_PREFLIGHT_KUBECONFIG }}
+          PREFLIGHT_KUBECTL_VERSION: ${{ inputs.kubectl_version }}
+        run: |
+          set -euo pipefail
+          set +x
+
+          checker="$GITHUB_WORKSPACE/scripts/kubeconfig_preflight_check.py"
+          if [[ ! -f "$checker" ]]; then
+            echo "FAILED"
+            exit 1
+          fi
+
+          if [[ -z "${PREFLIGHT_KUBECONFIG:-}" ]]; then
+            echo "FAILED"
+            exit 1
+          fi
+
+          umask 077
+          if ! kubeconfig_path="$(mktemp "$RUNNER_TEMP/agent-substrate-preflight.XXXXXX" 2>/dev/null)"; then
+            echo "FAILED"
+            exit 1
+          fi
+          trap 'rm -f -- "$kubeconfig_path"' EXIT
+          chmod 600 "$kubeconfig_path"
+          printf '%s' "$PREFLIGHT_KUBECONFIG" > "$kubeconfig_path"
+          unset PREFLIGHT_KUBECONFIG
+          export KUBECONFIG="$kubeconfig_path"
+
+          # The client version is an operator choice, so it is verified
+          # against the cluster instead of trusted.  The Kubernetes
+          # version-skew policy supports kubectl within one minor version
+          # of kube-apiserver, so a client more than one minor away is
+          # refused.  Only the two version numbers are read; nothing about
+          # the API address or the credentials is printed.
+          if ! kubectl version -o json 2>/dev/null \
+               | PREFLIGHT_KUBECTL_VERSION="$PREFLIGHT_KUBECTL_VERSION" \
+                 python3 "$checker" --check-version >/dev/null 2>&1; then
+            echo "FAILED"
+            exit 1
+          fi
+
+          # Accept only a static kubeconfig that keeps TLS verification on.
+          #
+          # The kubeconfig is rendered to JSON and inspected by structure.
+          # An earlier version grepped the raw YAML text, which was
+          # bypassable: YAML resolves a quoted key ("insecure-skip-tls-verify")
+          # and a Flow-style mapping to the same key as the plain form, so a
+          # re-spelled setting passed the grep while kubectl still honoured
+          # it. JSON carries no quoting distinction, so every spelling
+          # collapses to one structure and one verdict here.
+          #
+          # `config view` only reads and renders the file; it performs no
+          # request and runs no credential plugin. The rendered JSON still
+          # contains credential material, so it is piped straight into the
+          # checker and never printed.
+          if ! kubectl config view --raw -o json 2>/dev/null \
+               | python3 "$checker" \
+               | grep -qx CONNECTED; then
+            echo "FAILED"
+            exit 1
+          fi
+
+          # One GET only. Discard both response and diagnostics so the API
+          # address, resource data, and credential-related errors stay private.
+          if kubectl --request-timeout=15s get --raw='/api/v1/nodes?limit=1' >/dev/null 2>/dev/null; then
+            echo "CONNECTED"
+            printf 'CONNECTED\n' >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "FAILED"
+            printf 'FAILED\n' >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi

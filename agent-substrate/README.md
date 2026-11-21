@@ -182,3 +182,25 @@ The `Agent Substrate manual deploy` workflow is manual and targets a Linux x64 *
 Generate the two application secrets independently with `python3 -c 'import secrets; print(secrets.token_urlsafe(48))'`, then store them directly in GitHub Secrets. Never print them in CI logs or commit them. From **Actions → Agent Substrate manual deploy → Run workflow**, provide the published image tag such as `v0.1.0`; the counter example is optional. The target cluster still needs the requirements listed above, including persistent storage, an installed gVisor/Kata RuntimeClass for the counter, and a NetworkPolicy-enforcing CNI.
 
 GitHub Secrets only store credentials—they do not provide a Kubernetes cluster or pay for its runtime. A $0 cloud invoice therefore requires existing hardware or a provider whose current free tier genuinely supports the required runtime, persistent storage, and network policy. Free tiers and quotas can change; a public, always-on service cannot be promised free indefinitely.
+
+### Browser-only Kubernetes connectivity preflight (read-only)
+
+The manual `Agent Substrate connectivity preflight` runs on GitHub-hosted `ubuntu-latest` from `main`; it does not require a runner on your device. Give it a **separate YAML kubeconfig** in the `AGENT_SUBSTRATE_PREFLIGHT_KUBECONFIG` Actions Secret. The associated Kubernetes identity needs only `list` access to Nodes. Use static credentials; kubeconfigs containing an `exec` plugin or `insecure-skip-tls-verify` are rejected. The workflow makes one read-only GET request, discards response and error details, prints only `CONNECTED` or `FAILED`, and deletes its temporary kubeconfig. It does not apply, patch, create, or delete resources and does not deploy Agent Substrate. It only tests whether GitHub's hosted runner can reach the cluster API with that read-only identity.
+
+The kubeconfig is checked by **structure, not by text**. The workflow renders it with `kubectl config view --raw -o json` and inspects the parsed result, so a key written as `"insecure-skip-tls-verify"`, `'insecure-skip-tls-verify'` or in YAML Flow style is rejected exactly like the plain spelling — YAML resolves all of them to the same key, and a text search would have missed them. The rendered JSON still contains credential material, so it is piped straight into the checker and never printed or written to the job summary. The check itself lives in `scripts/kubeconfig_preflight_check.py` and is covered by adversarial tests in `scripts/test_kubeconfig_preflight_check.py`.
+
+The job needs that checker file in its workspace, so it performs a **sparse checkout of exactly one file** (`scripts/kubeconfig_preflight_check.py`) with `persist-credentials: false`, leaving no token in `.git/config` and nothing else from the repository on the runner. The workflow token therefore holds `contents: read` and no other permission — no write scope, no packages, no deployments. The preflight secret is read only by the connectivity step; the checkout never sees it. `scripts/test_preflight_workflow_runtime.py` runs the workflow's own shell body against a modelled runner, so a workflow that references a file the checkout does not provide fails the suite instead of failing only in production.
+
+### Choosing the kubectl version
+
+The preflight takes a required `kubectl_version` input and has **no default**. The Kubernetes version-skew policy supports `kubectl` within one minor version (older or newer) of `kube-apiserver`, so the client has to be chosen for the cluster that is actually being probed. A hardcoded version can sit outside that window and turn a reachable cluster into a `FAILED` result, which reads as "the cluster is unreachable" when it is not.
+
+The current maintenance branches are 1.37, 1.36 and 1.35. To find the version your cluster reports, run this from an administrative environment — no credentials are shared with anyone:
+
+```
+kubectl version -o json
+```
+
+Read `serverVersion.gitVersion` (for example `v1.37.3`) and pass the matching client version to the workflow. The chosen client is then **verified against the cluster at run time**: the workflow reads the server's own minor version and refuses a client more than one minor away, so an incorrect input fails as a version mismatch rather than as a false connectivity failure. Only the two version numbers are read; the API address and the credentials are never printed. `scripts/test_preflight_kubectl_version.py` covers the input rules and the skew boundaries.
+
+Do not put the deployment kubeconfig in this preflight secret. Keep TLS verification enabled in the kubeconfig, and ensure GitHub Actions debug logging is not enabled for the repository. A `FAILED` result does not print the API address or explain whether the cause was network reachability or read authorization. Passing this check does **not** change the manual deployment workflow, which still requires its configured self-hosted Linux x64 runner.

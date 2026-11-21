@@ -209,9 +209,121 @@ class RealRepositoryTests(unittest.TestCase):
 
     def test_29_secret_bearing_operations_are_main_only(self):
         for filename in ("ci.yml", "gemini-live-check.yml", "nvidia-live-check.yml",
-                         "e2b-live-check.yml", "deploy.yml", "project-lifecycle.yml"):
+                         "e2b-live-check.yml", "deploy.yml", "project-lifecycle.yml",
+                         "agent-substrate-preflight.yml"):
             text = (wsa.WORKFLOWS / filename).read_text(encoding="utf-8")
             self.assertIn("refs/heads/main", text, filename)
+
+    def test_35_agent_substrate_preflight_is_manual_main_only_and_read_only(self):
+        text = (wsa.WORKFLOWS / "agent-substrate-preflight.yml").read_text(encoding="utf-8")
+        self.assertIn("workflow_dispatch:", text)
+        self.assertNotIn("\n  pull_request:", text)
+        self.assertNotIn("\n  push:", text)
+        self.assertIn("if: github.ref == 'refs/heads/main'", text)
+        self.assertIn("runs-on: ubuntu-latest", text)
+        # The job fetches one repository file, so it needs read scope on
+        # the contents.  It must hold no other permission: no write, no
+        # packages, no deployments.
+        self.assertIn("permissions:\n  contents: read\n", text)
+        for forbidden_permission in (
+            "contents: write",
+            "packages: write",
+            "id-token: write",
+            "actions: write",
+            "deployments: write",
+        ):
+            self.assertNotIn(forbidden_permission, text)
+        self.assertIn("ACTIONS_STEP_DEBUG: 'false'", text)
+        self.assertIn("ACTIONS_RUNNER_DEBUG: 'false'", text)
+        self.assertIn("secrets.AGENT_SUBSTRATE_PREFLIGHT_KUBECONFIG", text)
+        self.assertIn("set +x", text)
+        self.assertNotIn("echo $PREFLIGHT_KUBECONFIG", text)
+        self.assertIn("""trap 'rm -f -- "$kubeconfig_path"' EXIT""", text)
+        self.assertIn(
+            "kubectl --request-timeout=15s get --raw='/api/v1/nodes?limit=1' >/dev/null 2>/dev/null",
+            text,
+        )
+        self.assertIn('echo "CONNECTED"', text)
+        self.assertIn('echo "FAILED"', text)
+        for forbidden in (
+            "kubectl apply",
+            "kubectl create",
+            "kubectl patch",
+            "kubectl delete",
+            "kubectl edit",
+            "cluster-info",
+        ):
+            self.assertNotIn(forbidden, text)
+
+    def test_36_agent_substrate_preflight_checks_the_kubeconfig_structurally(self):
+        """The kubeconfig gate must inspect parsed structure, not raw text.
+
+        Grepping the YAML for ``insecure-skip-tls-verify:`` was bypassable:
+        YAML resolves a quoted key and a Flow-style mapping to the same key
+        as the plain form, so a re-spelled setting passed the grep while
+        kubectl still honoured it.  The workflow must therefore render the
+        kubeconfig to JSON and hand it to the checker, and the old
+        text-matching gate must be gone.
+        """
+        text = (wsa.WORKFLOWS / "agent-substrate-preflight.yml").read_text(encoding="utf-8")
+        self.assertIn("kubectl config view --raw -o json", text)
+        self.assertIn("scripts/kubeconfig_preflight_check.py", text)
+        self.assertIn("grep -qx CONNECTED", text)
+        # The bypassable text-matching gate must not return.
+        self.assertNotIn("insecure-skip-tls-verify:", text)
+        self.assertNotIn("grep -Eiq", text)
+
+    def test_37_agent_substrate_preflight_never_prints_the_rendered_kubeconfig(self):
+        """``config view --raw`` output carries credential material.
+
+        It must be piped straight into the checker, never redirected to a
+        file, echoed, or appended to the job summary.
+        """
+        text = (wsa.WORKFLOWS / "agent-substrate-preflight.yml").read_text(encoding="utf-8")
+        for forbidden in (
+            "config view --raw -o json >",
+            "config view --raw -o json | tee",
+            "config view --raw -o json | cat",
+            "config view --raw -o json >>",
+        ):
+            self.assertNotIn(forbidden, text)
+        # Only CONNECTED or FAILED may ever reach the summary.
+        self.assertIn("""printf 'CONNECTED\\n' >> "$GITHUB_STEP_SUMMARY\"""", text)
+        self.assertIn("""printf 'FAILED\\n' >> "$GITHUB_STEP_SUMMARY\"""", text)
+
+    def test_38_agent_substrate_preflight_checkout_is_minimal_and_secret_free(self):
+        """The checkout may not be given the secret, and may not persist a token.
+
+        The preflight secret is read only by the connectivity step.  A
+        checkout step that could see it, or that left a usable token in
+        .git/config, would widen the blast radius of the job for no
+        reason.
+        """
+        text = (wsa.WORKFLOWS / "agent-substrate-preflight.yml").read_text(encoding="utf-8")
+        self.assertIn("persist-credentials: false", text)
+        self.assertIn("sparse-checkout: /scripts/kubeconfig_preflight_check.py", text)
+        self.assertIn("sparse-checkout-cone-mode: false", text)
+        # The secret must appear exactly once: in the env of the check step.
+        self.assertEqual(text.count("secrets.AGENT_SUBSTRATE_PREFLIGHT_KUBECONFIG"), 1)
+        self.assertIn("PREFLIGHT_KUBECONFIG: ${{ secrets.AGENT_SUBSTRATE_PREFLIGHT_KUBECONFIG }}", text)
+
+    def test_39_agent_substrate_preflight_takes_the_kubectl_version_from_an_input(self):
+        """The client version must be chosen for the cluster being probed.
+
+        A hardcoded client can sit outside the Kubernetes version-skew
+        window (kubectl is supported within one minor version of
+        kube-apiserver) and turn a reachable cluster into a FAILED result.
+        The version therefore comes from a required dispatch input, and it
+        is verified against the cluster at run time.
+        """
+        text = (wsa.WORKFLOWS / "agent-substrate-preflight.yml").read_text(encoding="utf-8")
+        self.assertNotIn("version: latest", text)
+        self.assertIn("version: ${{ inputs.kubectl_version }}", text)
+        self.assertIn("kubectl_version:", text)
+        # No literal client version may be baked into the workflow.
+        self.assertNotRegex(text, r"version: v\d+\.\d+\.\d+")
+        # The skew is checked against the live cluster, not assumed.
+        self.assertIn("--check-version", text)
 
     def test_30_windows_job_extracts_only_verified_blobs_without_checkout(self):
         if os.name == "nt":
