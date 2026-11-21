@@ -914,21 +914,30 @@ jobs:
           printf '{"status":"live","deploy":"d-1"}' > monitoring/e2e_fixture.json
           python monitoring/e2e_demo.py
           rm -f monitoring/e2e_fixture.json
-      - name: YAML structure must parse to exactly one service
+      - name: YAML structure must parse to complete services
         run: |
-          pip install --quiet --disable-pip-version-check pyyaml
+          pip install --quiet --disable-pip-version-check "pyyaml==6.0.4"
           python - <<'PY'
           import sys, yaml
           d = yaml.safe_load(open("render.yaml"))
           svcs = d.get("services") or []
-          ok = len(svcs) == 1 and all(
-              k in svcs[0] for k in ("type", "name", "runtime", "startCommand"))
+          # Every service must be complete. The blueprint now carries the
+          # live-agent demo and the Agent Studio, so the count is no longer
+          # fixed at one; what must hold is that no service is half-declared.
+          required = ("type", "name", "runtime", "startCommand")
+          incomplete = [
+              s.get("name", "<unnamed>")
+              for s in svcs
+              if not all(k in s for k in required)
+          ]
           print(f"services in render.yaml: {len(svcs)}")
-          if not ok:
-              print("FAIL: render.yaml does not describe one complete service",
-                    file=sys.stderr)
+          if not svcs or incomplete:
+              print(f"FAIL: incomplete services: {incomplete}", file=sys.stderr)
               sys.exit(1)
-          print("PASS: one complete service")
+          for s in svcs:
+              print(f"  {s['name']}: plan={s.get('plan', '?')} "
+                    f"health={s.get('healthCheckPath', '-')}")
+          print("PASS: every service is complete")
           PY
       - name: The Dockerfile must not COPY files that are absent
         run: |
