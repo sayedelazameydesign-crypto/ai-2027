@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "ai2027-inspector": {
+      "command": "python",
+      "args": ["-m", "ai2027_protocol", "--root", ".", "mcp"],
+      "cwd": "python-2027",
+      "env": {
+        "PYTHONPATH": "src",
+        "AI2027_MCP_SIGNING_KEY": "${AI2027_MCP_SIGNING_KEY}"
+      },
+      "enabled": false,
+      "timeout": 20,
+      "description": "AI-2027 bounded read-only file inspector over local stdio MCP."
+    }
+  }
+}
