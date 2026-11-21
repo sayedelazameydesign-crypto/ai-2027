@@ -416,17 +416,20 @@ function statusClass(status: string): string {
   return status.toLowerCase().replace(/[^a-z0-9-]/g, '-');
 }
 
+function cleanupAccepted(cleanup?: CleanupPayload): boolean {
+  return cleanup?.status === 'complete' || (
+    cleanup?.status === 'not_applicable' && cleanup?.reason === 'direct_live_agent_mode'
+  );
+}
+
 function displayRunStatus(status: string, cleanup?: CleanupPayload): string {
   if (status !== 'VERIFIED') return status;
-  const cleanupStatus = cleanup?.status;
-  return cleanupStatus === 'complete' || cleanupStatus === 'not_applicable'
-    ? status
-    : 'INCONCLUSIVE';
+  return cleanupAccepted(cleanup) ? status : 'INCONCLUSIVE';
 }
 
 function cleanupMessage(cleanup: CleanupPayload | undefined, t: Copy): string {
   if (cleanup?.status === 'complete') return t.cleanupComplete;
-  if (cleanup?.status === 'not_applicable') return t.cleanupNotApplicable;
+  if (cleanupAccepted(cleanup) && cleanup?.status === 'not_applicable') return t.cleanupNotApplicable;
   const status = cleanup?.status || 'unreported';
   const warnings = Array.isArray(cleanup?.warnings) ? cleanup.warnings.join(', ') : '';
   return `${t.cleanupNotConfirmed} (${status}${warnings ? `: ${warnings}` : ''})`;

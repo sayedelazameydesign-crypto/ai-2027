@@ -29,7 +29,8 @@ Usage
 
 Exit codes
     0  VERIFIED, evidence verified, inside budget
-    1  the task failed, the artifact did not match, or reported cleanup was incomplete
+    1  task/evidence failure or partial/failed/unreported cleanup; not_applicable is
+       accepted only when the direct Live Agent mode is explicitly reported
     2  the agent was unreachable
     3  the task succeeded but exceeded the budget
 """
@@ -157,7 +158,12 @@ def run_task(base: str, goal_type: str, params: dict, budget: float,
         cleanup = record.get("cleanup")
         if not isinstance(cleanup, dict):
             cleanup = {"status": "unreported", "warnings": []}
-        cleanup_failed = cleanup.get("status") not in ("complete", "unreported")
+        cleanup_status = cleanup.get("status")
+        cleanup_accepted = cleanup_status == "complete" or (
+            cleanup_status == "not_applicable"
+            and cleanup.get("reason") == "direct_live_agent_mode"
+        )
+        cleanup_failed = not cleanup_accepted
 
         fetched = time.time()
         evidence = http_json(base, f"/api/run/{run_id}") if run_id else {}
@@ -190,7 +196,8 @@ def run_task(base: str, goal_type: str, params: dict, budget: float,
             "status": status,
             "verified": status == "VERIFIED",
             "cleanup": cleanup,
-            "cleanup_complete": cleanup.get("status") == "complete",
+            "cleanup_complete": cleanup_status == "complete",
+            "cleanup_accepted": cleanup_accepted,
             "verifier_checks_passed": (bool(checks) and all(bool(c) for c in checks)),
             "claims": {
                 "elapsed_ms": total_ms,
@@ -208,8 +215,8 @@ def run_task(base: str, goal_type: str, params: dict, budget: float,
             "honest_notes": [
                 "The 60 s budget covers this process: submit + evidence re-read + artifact re-hash.",
                 "The artifact hash is recomputed here, not copied from the kernel's claim.",
-                "Cleanup is reported separately; an incomplete reported cleanup cannot be a successful task.",
-                "This direct local server may not report deployment cleanup; unreported is not claimed complete.",
+                "Cleanup is reported separately; only complete or direct-mode not_applicable cleanup is accepted.",
+                "An unreported cleanup status fails closed; a wrapper must report its prune outcome.",
                 "DENIED is a correct kernel outcome — it is reported as a failure of the *task*.",
             ],
         }

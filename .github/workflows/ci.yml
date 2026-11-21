@@ -155,7 +155,7 @@ jobs:
       - name: Health gate tests — the gate must be able to refuse (24)
         run: python scripts/test_health_gate.py -v
 
-      - name: Task runner tests — the 60 s budget must be falsifiable (7)
+      - name: Task runner tests — the 60 s budget must be falsifiable (10)
         run: python scripts/test_run_task.py -v
 
       - name: Secret-handling tests — the key must never reach the output (15)

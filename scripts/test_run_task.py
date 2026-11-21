@@ -102,8 +102,10 @@ class RealTaskTests(unittest.TestCase):
         self.assertTrue(res["claims"]["within_budget"])
         self.assertLess(res["claims"]["elapsed_ms"], 60_000)
         self.assertTrue(res["artifact"]["hash_verified"])
-        self.assertEqual(res["cleanup"]["status"], "unreported")
+        self.assertEqual(res["cleanup"]["status"], "not_applicable")
+        self.assertEqual(res["cleanup"]["reason"], "direct_live_agent_mode")
         self.assertFalse(res["cleanup_complete"])
+        self.assertTrue(res["cleanup_accepted"])
         self.assertIn("/api/run/", res["evidence_link"])
         self.assertIsNotNone(bundle)
 
@@ -152,7 +154,7 @@ class RealTaskTests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(res["claims"]["budget_ms"], 60_000)
 
-    def test_07_reported_incomplete_cleanup_cannot_be_a_success(self):
+    def test_07_partial_cleanup_cannot_be_a_success(self):
         run_id = "run_1700000000_abcdef01"
         submitted = {
             "run_id": run_id,
@@ -170,8 +172,70 @@ class RealTaskTests(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertEqual(result["cleanup"]["status"], "partial")
         self.assertFalse(result["cleanup_complete"])
+        self.assertFalse(result["cleanup_accepted"])
         self.assertEqual(result["verdict"], "TASK-FAILED")
         self.assertIn("cleanup   : partial · CLEANUP_PARTIAL", rt.render(result))
+
+    def test_08_missing_cleanup_report_fails_closed(self):
+        run_id = "run_1700000000_abcdef02"
+        submitted = {
+            "run_id": run_id,
+            "status": "VERIFIED",
+            "evidence": [{"checks": {"independent_check": True}}],
+        }
+        reread = {"run_id": run_id, "status": "VERIFIED"}
+        with tempfile.TemporaryDirectory() as td:
+            with patch.object(rt, "wait_for_agent", return_value=True), patch.object(
+                rt, "http_json", side_effect=[submitted, reread]
+            ):
+                result, code = rt.run_task(
+                    self.base, "list_dir", {"path": "."}, 60, Path(td), None)
+        self.assertEqual(code, 1)
+        self.assertEqual(result["cleanup"]["status"], "unreported")
+        self.assertFalse(result["cleanup_complete"])
+        self.assertFalse(result["cleanup_accepted"])
+        self.assertEqual(result["verdict"], "TASK-FAILED")
+
+    def test_09_not_applicable_requires_direct_mode_marker(self):
+        run_id = "run_1700000000_abcdef03"
+        submitted = {
+            "run_id": run_id,
+            "status": "VERIFIED",
+            "evidence": [{"checks": {"independent_check": True}}],
+            "cleanup": {"status": "not_applicable", "reason": "unknown_mode"},
+        }
+        reread = {"run_id": run_id, "status": "VERIFIED"}
+        with tempfile.TemporaryDirectory() as td:
+            with patch.object(rt, "wait_for_agent", return_value=True), patch.object(
+                rt, "http_json", side_effect=[submitted, reread]
+            ):
+                result, code = rt.run_task(
+                    self.base, "list_dir", {"path": "."}, 60, Path(td), None)
+        self.assertEqual(code, 1)
+        self.assertFalse(result["cleanup_complete"])
+        self.assertFalse(result["cleanup_accepted"])
+        self.assertEqual(result["verdict"], "TASK-FAILED")
+
+    def test_10_wrapped_complete_cleanup_is_accepted_as_complete(self):
+        run_id = "run_1700000000_abcdef04"
+        submitted = {
+            "run_id": run_id,
+            "status": "VERIFIED",
+            "evidence": [{"checks": {"independent_check": True}}],
+            "cleanup": {"status": "complete", "warnings": []},
+        }
+        reread = {"run_id": run_id, "status": "VERIFIED"}
+        with tempfile.TemporaryDirectory() as td:
+            with patch.object(rt, "wait_for_agent", return_value=True), patch.object(
+                rt, "http_json", side_effect=[submitted, reread]
+            ):
+                result, code = rt.run_task(
+                    self.base, "list_dir", {"path": "."}, 60, Path(td), None)
+        self.assertEqual(code, 0)
+        self.assertEqual(result["cleanup"]["status"], "complete")
+        self.assertTrue(result["cleanup_complete"])
+        self.assertTrue(result["cleanup_accepted"])
+        self.assertEqual(result["verdict"], "VERIFIED-AND-WITHIN-BUDGET")
 
 
 if __name__ == "__main__":

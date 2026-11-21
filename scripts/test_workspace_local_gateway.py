@@ -229,17 +229,23 @@ class LocalWorkspaceGatewayTests(unittest.TestCase):
         record = json_body(created)
         self.assertEqual(record.get("status"), "VERIFIED")
         self.assertEqual(record.get("cleanup", {}).get("status"), "not_applicable")
+        self.assertEqual(
+            record.get("cleanup", {}).get("reason"), "direct_live_agent_mode")
         run_id = record["run_id"]
 
         fetched = request(self.base, f"/api/run/{run_id}", headers=headers)
         self.assertEqual(fetched[0], 200)
-        self.assertEqual(json_body(fetched).get("cleanup", {}).get("status"), "not_applicable")
+        fetched_cleanup = json_body(fetched).get("cleanup", {})
+        self.assertEqual(fetched_cleanup.get("status"), "not_applicable")
+        self.assertEqual(fetched_cleanup.get("reason"), "direct_live_agent_mode")
         artifact = request(self.base, "/api/file?run=" + run_id +
                            "&path=gateway%2Fregression-proof.txt", headers=headers)
         self.assertEqual(artifact[0], 200)
         self.assertEqual(artifact[2], b"trusted local proxy")
         summaries = json_body(request(self.base, "/api/runs"))["runs"]
-        self.assertEqual(summaries[0].get("cleanup", {}).get("status"), "not_applicable")
+        summary_cleanup = summaries[0].get("cleanup", {})
+        self.assertEqual(summary_cleanup.get("status"), "not_applicable")
+        self.assertEqual(summary_cleanup.get("reason"), "direct_live_agent_mode")
 
     def test_local_host_origin_and_write_method_guards_precede_the_proxy(self):
         cross_origin = request(
