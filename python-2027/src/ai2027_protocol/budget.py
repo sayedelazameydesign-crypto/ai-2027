@@ -22,6 +22,22 @@ from .model_catalog import (
     retirement_reason,
 )
 
+#: Providers whose cost classification must never be asserted by a caller.
+#:
+#: ``classify_billing_tier`` honours an ``explicit_tier`` for every kind except
+#: OpenRouter's ``:free`` check, and ``AI2027_FREE_MODELS`` can allowlist any
+#: model id. For a provider that is not free-guaranteed, either route would let
+#: a caller label a paid endpoint ``FREE_TIER`` — or worse, ``LOCAL``, which
+#: reports a remote call as proven-zero-cost. OmniRouters accounts receive no
+#: free credit by default and its catalogue is per-account, so its cost is
+#: genuinely unknown until an operator verifies it against a price list.
+#:
+#: These kinds are therefore classified only by policy: an explicit tier and the
+#: free-model allowlist are both refused, and the result is always
+#: ``UNKNOWN_COST``. A provider in this set is admitted only under an explicit
+#: non-zero spend policy with ``allow_unknown_cost=True``.
+NON_RECLASSIFIABLE_PROVIDERS: frozenset[ProviderKind] = frozenset({ProviderKind.OMNIROUTERS})
+
 #: Policy-declared free-tier IDs. Only IDs the provider still serves belong here:
 #: a retired ID that lingers in this map is how a "free" check starts failing with
 #: HTTP 404/410. Groq has no free Llama model left after the 2026-08-16 retirement,
@@ -76,6 +92,25 @@ def classify_billing_tier(
     if retired is not None:
         return BillingTier.UNKNOWN_COST, retirement_reason(retired)
 
+    if kind in NON_RECLASSIFIABLE_PROVIDERS:
+        # The cost of these providers is unverified by construction. Refuse
+        # both ways a caller could assert otherwise — an explicit tier and the
+        # free-model allowlist — so the only route to an allowed call is an
+        # explicit non-zero spend policy.
+        if explicit_tier is not None:
+            return (
+                BillingTier.UNKNOWN_COST,
+                f"{kind.value} cost cannot be asserted by the caller: an explicit "
+                f"billing tier is refused (got {explicit_tier.value}). Declare the "
+                "cost against a verified price list instead.",
+            )
+        return (
+            BillingTier.UNKNOWN_COST,
+            f"{kind.value} is not free-guaranteed: its cost is unverified, and "
+            "AI2027_FREE_MODELS cannot reclassify it. Only an explicit non-zero "
+            "spend policy admits it.",
+        )
+
     if explicit_tier is not None:
         if explicit_tier == BillingTier.FREE_TIER and kind == ProviderKind.OPENROUTER:
             if not is_openrouter_free_model(model):
@@ -127,6 +162,14 @@ class BudgetPolicy(StrictModel):
     """Execution policy controlling zero-spend and remote free-tier admission."""
 
     max_spend_usd: float = Field(default=0.0, ge=0.0, le=1000.0)
+    #: Permit calls whose cost cannot be estimated. NOTE: this is an
+    #: authorisation, NOT a financial ceiling. An UNKNOWN_COST decision carries
+    #: no ``estimated_cost_usd``, so ``record_completed`` never advances
+    #: ``spent_usd`` and the ``max_spend_usd`` budget is never consumed by
+    #: these calls. With this flag enabled, every unknown-cost call is
+    #: admitted and repeated calls do not approach the ceiling; the limit only
+    #: binds providers that report a cost estimate. Use it as an explicit
+    #: operator authorisation for a bounded experiment, never as a spend cap.
     allow_unknown_cost: bool = False
     allow_declared_free_tier: bool = True
 
