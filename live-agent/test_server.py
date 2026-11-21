@@ -74,6 +74,8 @@ class TestRunGoal(unittest.TestCase):
         rec = server.run_goal("ensure_dir", {"path": "d1"})
         loaded = server.read_run(rec["run_id"])
         self.assertEqual(loaded["status"], "VERIFIED")
+        self.assertIsNone(server.read_run("../outside"))
+        self.assertIsNone(server.read_run(f"{rec['run_id']}/../../outside"))
         ledger = server.RUNS_DIR / "ledgers" / f"{rec['run_id']}.jsonl"
         events = [json.loads(line) for line in ledger.read_text(encoding="utf-8").splitlines()]
         self.assertTrue(events)
@@ -84,6 +86,8 @@ class TestRunGoal(unittest.TestCase):
         got = server.sandbox_file(rec["run_id"], "pub.txt")
         self.assertEqual(got[0], b"42")
         self.assertIsNone(server.sandbox_file(rec["run_id"], "../pub.txt"))
+        self.assertIsNone(server.sandbox_file(rec["run_id"], "/pub.txt"))
+        self.assertIsNone(server.sandbox_file(rec["run_id"], "..\\pub.txt"))
         self.assertIsNone(server.sandbox_file(rec["run_id"], "ledger.jsonl"))
         self.assertIsNone(server.sandbox_file("bad id", "pub.txt"))
         self.assertIsNone(server.sandbox_file("run_0_00000000", "pub.txt"))
@@ -142,10 +146,10 @@ class TestRunGoal(unittest.TestCase):
         old_sandbox.mkdir()
         old_artifact = old_sandbox / "artifact.txt"
         old_artifact.write_text("synthetic-old-artifact", encoding="utf-8")
-        os.chmod(server.RUNS_DIR, 0o755)
-        os.chmod(server.SANDBOXES_DIR, 0o755)
-        os.chmod(old_sandbox, 0o755)
-        os.chmod(old_artifact, 0o644)
+        os.chmod(server.RUNS_DIR, 0o750)
+        os.chmod(server.SANDBOXES_DIR, 0o750)
+        os.chmod(old_sandbox, 0o750)
+        os.chmod(old_artifact, 0o640)
 
         previous_umask = os.umask(0o022)
         try:
@@ -271,6 +275,21 @@ class TestAPIProtectionAndLogging(unittest.TestCase):
                 self.assertEqual(wrong_status, 401)
                 self.assertNotIn(wrong, wrong_body.decode("utf-8", errors="replace"))
         self.assertEqual(self.request("GET", "/api/runs", credential=valid)[0], 200)
+
+    def test_file_download_filename_is_encoded_before_header_use(self):
+        read_credential = f"{self.READ_ID}.{self.READ_SECRET}"
+        malicious_name = "bad\r\nX-Injected: yes.bin"
+        with patch.object(server, "sandbox_file", return_value=(b"proof", malicious_name)):
+            status, headers, body = self.request(
+                "GET",
+                "/api/file?run=run_1700000000_abcdef01&path=artifact.bin",
+                credential=read_credential,
+            )
+        self.assertEqual(status, 200)
+        self.assertEqual(body, b"proof")
+        disposition = headers.get("Content-Disposition", "")
+        self.assertIn("filename*=UTF-8''bad%0D%0AX-Injected%3A%20yes.bin", disposition)
+        self.assertIsNone(headers.get("X-Injected"))
 
     def test_read_rate_limit_includes_health_and_returns_retry_after(self):
         limiter = server.RequestRateLimiter(2, 60)

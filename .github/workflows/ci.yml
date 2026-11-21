@@ -57,7 +57,7 @@ jobs:
       - name: Kernel unit tests (104)
         run: python -m unittest discover -s projects/agi-system/tests -t projects/agi-system -v
 
-      - name: Live Agent wrapper tests (16)
+      - name: Live Agent wrapper tests (17)
         run: python live-agent/test_server.py -v
 
       - name: CeliaOS verified file bridge and approval tests

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import io
 import json
 import stat
@@ -14,11 +15,24 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT / "deployment"))
-sys.path.insert(0, str(ROOT / "live-agent"))
 
-import runtime_snapshot  # noqa: E402
-import server as live_server  # noqa: E402
+
+def _load_local_module(name: str, source: Path):
+    spec = importlib.util.spec_from_file_location(name, source)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"cannot load test module {source}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+runtime_snapshot = _load_local_module(
+    "ai2027_runtime_snapshot_test", ROOT / "deployment" / "runtime_snapshot.py"
+)
+live_server = _load_local_module(
+    "ai2027_live_agent_server_snapshot_test", ROOT / "live-agent" / "server.py"
+)
 
 
 class RuntimeSnapshotTests(unittest.TestCase):

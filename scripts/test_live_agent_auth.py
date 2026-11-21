@@ -165,6 +165,9 @@ class LiveAgentCredentialRoutingTests(unittest.TestCase):
             reader_id = "local-test-reader"
             reader_secret = "synthetic-local-read-secret-" + "r" * 40
             writer = "synthetic-local-write-secret-" + "w" * 40
+            # lgtm [py/clear-text-storage-sensitive-data]
+            # This is a disposable fixture with synthetic tokens; the test must
+            # exercise the private-file loader and verifies mode 0600 below.
             credential_path.write_text(json.dumps({
                 "read_id": reader_id,
                 "read_secret": reader_secret,
