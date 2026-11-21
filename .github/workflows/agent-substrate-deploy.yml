@@ -1,0 +1,106 @@
+name: Agent Substrate manual deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: Versioned GHCR tag published by agent-substrate-images (for example v0.1.0)
+        required: true
+        type: string
+      kubectl_version:
+        description: kubectl version compatible with the target cluster (latest or a semantic version)
+        required: true
+        default: latest
+        type: string
+      deploy_counter:
+        description: Also create the counter example Agent (requires the configured sandbox RuntimeClass and StorageClass)
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    name: Apply to the configured Kubernetes cluster
+    runs-on: [self-hosted, linux, x64]
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+
+      - uses: azure/setup-kubectl@776406bce94f63e41d621b960d78ee25c8b76ede # v4
+        with:
+          version: ${{ inputs.kubectl_version }}
+
+      - name: Deploy Agent Substrate
+        shell: bash
+        env:
+          AGENT_SUBSTRATE_KUBECONFIG: ${{ secrets.AGENT_SUBSTRATE_KUBECONFIG }}
+          SUBSTRATE_API_TOKEN: ${{ secrets.SUBSTRATE_API_TOKEN }}
+          SUBSTRATE_ACTOR_MASTER_KEY: ${{ secrets.SUBSTRATE_ACTOR_MASTER_KEY }}
+          IMAGE_TAG: ${{ inputs.image_tag }}
+          DEPLOY_COUNTER: ${{ inputs.deploy_counter }}
+          IMAGE_OWNER: ${{ github.repository_owner }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$AGENT_SUBSTRATE_KUBECONFIG" ]]; then
+            echo "::error::Set the AGENT_SUBSTRATE_KUBECONFIG Actions secret"
+            exit 1
+          fi
+          if [[ ${#SUBSTRATE_API_TOKEN} -lt 32 ]]; then
+            echo "::error::SUBSTRATE_API_TOKEN must be at least 32 characters"
+            exit 1
+          fi
+          if [[ ${#SUBSTRATE_ACTOR_MASTER_KEY} -lt 32 ]]; then
+            echo "::error::SUBSTRATE_ACTOR_MASTER_KEY must be at least 32 characters"
+            exit 1
+          fi
+          if [[ ! "$IMAGE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::image_tag must look like v1.2.3"
+            exit 1
+          fi
+
+          kubeconfig_path="$RUNNER_TEMP/agent-substrate-kubeconfig"
+          secret_file="$RUNNER_TEMP/agent-substrate-api.env"
+          trap 'rm -f "$kubeconfig_path" "$secret_file"' EXIT
+          printf '%s' "$AGENT_SUBSTRATE_KUBECONFIG" > "$kubeconfig_path"
+          chmod 600 "$kubeconfig_path"
+          printf 'token=%s\nactor-master=%s\n' "$SUBSTRATE_API_TOKEN" "$SUBSTRATE_ACTOR_MASTER_KEY" > "$secret_file"
+          chmod 600 "$secret_file"
+          export KUBECONFIG="$kubeconfig_path"
+
+          owner="$(printf '%s' "$IMAGE_OWNER" | tr '[:upper:]' '[:lower:]')"
+          controller_image="ghcr.io/${owner}/agent-substrate:${IMAGE_TAG}"
+          counter_image="ghcr.io/${owner}/agent-substrate-counter:${IMAGE_TAG}"
+
+          kubectl apply -f agent-substrate/manifests/namespace.yaml
+          kubectl -n agent-substrate create secret generic agent-substrate-api \
+            --from-env-file="$secret_file" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+          sed -i "s|ghcr.io/example/agent-substrate:0.1.0|${controller_image}|" \
+            agent-substrate/manifests/controller.yaml
+          if ! grep -Fq "image: ${controller_image}" agent-substrate/manifests/controller.yaml; then
+            echo "::error::Could not set the controller image in the deployment manifest"
+            exit 1
+          fi
+          kubectl apply -k agent-substrate/manifests
+          kubectl wait --for=condition=Established crd/agents.substrate.ai --timeout=120s
+          kubectl rollout restart -n agent-substrate deployment/agent-substrate-controller
+          kubectl rollout status -n agent-substrate deployment/agent-substrate-controller --timeout=180s
+
+          if [[ "$DEPLOY_COUNTER" == "true" ]]; then
+            sed -i "s|ghcr.io/example/agent-substrate-counter:0.1.0|${counter_image}|" \
+              agent-substrate/examples/counter/agent.yaml
+            if ! grep -Fq "image: ${counter_image}" agent-substrate/examples/counter/agent.yaml; then
+              echo "::error::Could not set the counter image in the Agent manifest"
+              exit 1
+            fi
+            kubectl apply -f agent-substrate/examples/counter/agent.yaml
+            kubectl wait -n agent-substrate \
+              --for="jsonpath='{.status.phase}'=Running" agent/counter --timeout=300s
+          fi
