@@ -52,8 +52,35 @@ class Result:
         return 0
 
 
-def fetch(url: str, timeout: int = 90) -> tuple[int, str, dict[str, str]]:
-    """GET a URL. Returns (status, body, headers).
+class Response:
+    """The facts about one HTTP response that are safe to reason about.
+
+    The raw body is deliberately NOT retained here. A response body is
+    untrusted input that could carry a credential, so it is inspected once,
+    inside ``fetch``, and only derived facts are kept: its length, whether
+    it looked like HTML, and whether it matched the credential shape. That
+    way no substring of a response body ever reaches a printed line.
+    """
+
+    def __init__(self, status: int, body: str, headers: dict[str, str]) -> None:
+        self.status = status
+        self.headers = headers
+        self.length = len(body)
+        self.looks_like_html = "<html" in body.lower() and self.length > 1000
+        self.contains_credential = bool(SECRET_PATTERN.search(body))
+        # Only a JSON body is parsed, and only into a structure the caller
+        # reads field by field. A non-JSON body leaves this as None.
+        self.json: Any = None
+        stripped = body.strip()
+        if stripped.startswith("{"):
+            try:
+                self.json = json.loads(stripped)
+            except json.JSONDecodeError:
+                self.json = None
+
+
+def fetch(url: str, timeout: int = 90) -> Response:
+    """GET a URL and reduce it to the facts that are safe to report.
 
     The timeout is generous on purpose: a free Render instance sleeps after
     roughly 15 minutes of inactivity, so the first request of a session can
@@ -65,10 +92,10 @@ def fetch(url: str, timeout: int = 90) -> tuple[int, str, dict[str, str]]:
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
             body = response.read().decode("utf-8", errors="replace")
-            return response.status, body, dict(response.headers)
+            return Response(response.status, body, dict(response.headers))
     except urllib.error.HTTPError as exc:
         body = exc.read().decode("utf-8", errors="replace")
-        return exc.code, body, dict(exc.headers or {})
+        return Response(exc.code, body, dict(exc.headers or {}))
     except Exception as exc:  # the message is the useful part
         raise SystemExit(
             f"could not reach {url}: {exc}\n"
@@ -89,36 +116,39 @@ def main(argv: list[str]) -> int:
     print(f"Verifying {base}\n")
 
     # ---- the UI ----------------------------------------------------------
-    status, body, headers = fetch(f"{base}/studio")
-    result.check(status == 200, "GET /studio returns 200", f"got {status}")
+    ui = fetch(f"{base}/studio")
+    result.check(ui.status == 200, "GET /studio returns 200", f"got {ui.status}")
     result.check(
-        "<html" in body.lower() and len(body) > 1000,
+        ui.looks_like_html,
         "GET /studio serves a real HTML page",
-        f"{len(body)} bytes",
+        f"{ui.length} bytes",
     )
     # The UI must not ship a credential to the browser.
     result.check(
-        not SECRET_PATTERN.search(body),
+        not ui.contains_credential,
         "GET /studio contains no credential-shaped text",
     )
 
     # ---- the status API --------------------------------------------------
-    status, body, headers = fetch(f"{base}/v1/studio/status")
-    result.check(status == 200, "GET /v1/studio/status returns 200", f"got {status}")
+    api = fetch(f"{base}/v1/studio/status")
+    result.check(
+        api.status == 200, "GET /v1/studio/status returns 200", f"got {api.status}"
+    )
 
-    try:
-        payload: dict[str, Any] = json.loads(body)
-    except json.JSONDecodeError:
-        print("  [FAIL] the status route did not return JSON")
+    payload = api.json
+    if not isinstance(payload, dict):
+        print("  [FAIL] the status route did not return a JSON object")
         return 2
 
     result.check(
-        not SECRET_PATTERN.search(body),
+        not api.contains_credential,
         "status payload contains no credential-shaped text",
     )
 
     # ---- same-origin, not CORS-open --------------------------------------
-    cors = [k for k in headers if k.lower().startswith("access-control-allow-origin")]
+    cors = [
+        k for k in api.headers if k.lower().startswith("access-control-allow-origin")
+    ]
     result.check(not cors, "no Access-Control-Allow-Origin header", ", ".join(cors))
 
     # ---- the safety posture ---------------------------------------------
