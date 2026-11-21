@@ -21,7 +21,7 @@
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-STATE_DIR="$ROOT/.ember-up"
+STATE_DIR="${AI2027_EMBER_STATE_DIR:-$ROOT/.ember-up}"
 PID_FILE="$STATE_DIR/pids"
 STATE_JSON="$STATE_DIR/state.json"
 CREDENTIALS_FILE="$STATE_DIR/api-credentials.json"
@@ -186,6 +186,54 @@ PY
 
 fi
 export AI2027_READ_TOKEN_ID AI2027_READ_TOKEN_SECRET AI2027_READ_TOKEN_HASHES AI2027_WRITE_TOKEN
+# Keep the Vite gateway's server-side reader/writer material aligned with the
+# Live Agent. The browser never reads this owner-only file.
+if ! python3 - "$CREDENTIALS_FILE" <<'PY'
+import hashlib, json, os, re, secrets, sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+if os.name != "posix" or path.is_symlink() or path.parent.is_symlink():
+    raise SystemExit("local workspace credentials require a regular POSIX-only file")
+identifier = os.environ.get("AI2027_READ_TOKEN_ID", "")
+reader = os.environ.get("AI2027_READ_TOKEN_SECRET", "")
+writer = os.environ.get("AI2027_WRITE_TOKEN", "")
+try:
+    hashes = json.loads(os.environ.get("AI2027_READ_TOKEN_HASHES", ""))
+except (TypeError, ValueError):
+    raise SystemExit("invalid local API credentials")
+expected = hashlib.sha256(reader.encode()).hexdigest()
+if (
+    not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", identifier)
+    or not re.fullmatch(r"[A-Za-z0-9_-]{32,256}", reader)
+    or not re.fullmatch(r"[A-Za-z0-9_-]{32,512}", writer)
+    or not isinstance(hashes, dict)
+    or hashes.get(identifier) != expected
+):
+    raise SystemExit("invalid local API credentials")
+value = {"read_id": identifier, "read_secret": reader,
+         "write_token": writer, "read_hashes": hashes}
+temporary = path.with_name(f".{path.name}.{secrets.token_hex(8)}.tmp")
+fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+try:
+    with os.fdopen(fd, "w", encoding="utf-8") as handle:
+        json.dump(value, handle, separators=(",", ":"))
+        handle.write("\n")
+        handle.flush()
+        os.fsync(handle.fileno())
+    os.chmod(temporary, 0o600)
+    os.replace(temporary, path)
+    os.chmod(path, 0o600)
+finally:
+    try:
+        temporary.unlink()
+    except FileNotFoundError:
+        pass
+PY
+then
+  err "FATAL: could not secure local workspace gateway credentials"
+  exit 2
+fi
 
 # Never truncate the pid file: a boot that only *reuses* running services would
 # otherwise lose the pids of the services it is about to be asked to stop.

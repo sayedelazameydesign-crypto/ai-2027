@@ -142,6 +142,7 @@ a.dl{color:var(--acc);font-size:12px;text-decoration:none}
 </div>
 </div>
 
+<script src="/cleanup-status.js"></script>
 <script>
 let lang='en';
 function toggleLang(){lang=lang==='en'?'ar':'en';document.documentElement.lang=lang;document.documentElement.dir=lang==='ar'?'rtl':'ltr';document.getElementById('langBtn').textContent=lang==='ar'?'English':'العربية';document.querySelectorAll('[data-en]').forEach(el=>{el.textContent=lang==='ar'?el.dataset.ar:el.dataset.en});}
@@ -214,19 +215,25 @@ async function run(){
   if(!denied){light('exec',rec.observations&&rec.observations.length&&rec.observations[0].ok?'on':(rec.status==='FAILED'?'bad':'on'));await sleep(250);}
   light('verify',(rec.evidence&&rec.evidence.length)?(rec.evidence.every(evPassed)?'on':'bad'):(denied?'':'bad'));await sleep(250);
   light('evid',(rec.evidence&&rec.evidence.length&&rec.evidence.every(evPassed))?'on':(denied?'':'bad'));await sleep(250);
-  const cleanupStatus=rec.cleanup&&rec.cleanup.status;
-  const cleanupComplete=cleanupStatus==='complete';
-  const fullSuccess=rec.status==='VERIFIED'&&cleanupComplete;
-  light('report',fullSuccess?'on':'bad');
+  const cleanupAssessment=window.AI2027CleanupStatus
+    ? window.AI2027CleanupStatus.assessCleanup(rec.cleanup,rec.status)
+    : {status:'unreported',accepted:false,fullSuccess:false};
+  const cleanupStatus=cleanupAssessment.status;
+  light('report',cleanupAssessment.fullSuccess?'on':'bad');
   const labels={VERIFIED:{en:'✅ VERIFIED — independently confirmed, evidence filed',ar:'✅ تم التحقق — تأكيد مستقل، والأدلة مودعة'},DENIED:{en:'🚫 DENIED — policy refused the action before execution',ar:'🚫 مرفوض — السياسة رفضت الإجراء قبل التنفيذ'},FAILED:{en:'❌ FAILED — reported honestly, nothing faked',ar:'❌ فشل — أُبلغ بصدق، دون تزوير'},INCONCLUSIVE:{en:'⚠ INCONCLUSIVE',ar:'⚠️ غير حاسم'},ABORTED:{en:'⛔ ABORTED',ar:'⛔ أُجهض'}};
   const l=labels[rec.status]||{en:rec.status,ar:rec.status};
-  if(cleanupComplete){
-    v.className='verdict show '+rec.status;v.textContent=lang==='ar'?l.ar:l.en;
+  if(rec.status!=='VERIFIED'){
+    v.className='verdict show '+(rec.status||'INCONCLUSIVE');v.textContent=lang==='ar'?l.ar:l.en;
+  }else if(cleanupAssessment.accepted){
+    v.className='verdict show VERIFIED';
+    const directNote=cleanupStatus==='not_applicable'
+      ?(lang==='ar'?' · التنظيف غير منطبق في نمط Live Agent المباشر':' · cleanup not applicable in direct Live Agent mode')
+      :'';
+    v.textContent=(lang==='ar'?l.ar:l.en)+directNote;
   }else{
-    v.className='verdict show '+(rec.status==='VERIFIED'?'INCONCLUSIVE':(rec.status||'INCONCLUSIVE'));
+    v.className='verdict show INCONCLUSIVE';
     const warnings=(rec.cleanup&&Array.isArray(rec.cleanup.warnings))?rec.cleanup.warnings.join(', '):'';
-    const state=cleanupStatus||'unreported';
-    v.textContent=(lang==='ar'?'⚠ نتيجة التشغيل ':'⚠ Run result ')+rec.status+'; cleanup '+state+(warnings?' — '+warnings:'')+'; full success not confirmed';
+    v.textContent=(lang==='ar'?'⚠ نتيجة التشغيل ':'⚠ Run result ')+rec.status+'; cleanup '+cleanupStatus+(warnings?' — '+warnings:'')+'; full success not confirmed';
   }
   if(rec.denial_reasons&&rec.denial_reasons.length){const d=document.getElementById('denial');d.className='denial show';d.textContent='🛡 '+rec.denial_reasons.join(' · ');}
   const fb=document.getElementById('filesBox');

@@ -89,13 +89,17 @@ per-user authorization, or production multi-user system. Use a trusted HTTPS
 identity gateway for real users and edge rate limiting. Never embed secrets in
 public HTML, query strings, committed files, or logs.
 
-The static UI's credential fields are transient page inputs; this page does not
-write them to localStorage, cookies, or URLs and sends them only in Authorization
-headers. Enter credentials only when the UI is served over HTTPS behind an approved
-gateway routing `/api` to this service. Browser-based authorization does not make a
-shared token safe for public multi-user access. Run records, artifacts, memory, and
-backup archives may contain user content; do not submit confidential material until
-the gateway, persistent storage, encryption, and retention policies are approved.
+The direct Live Agent static UI's credential fields are transient page inputs; this
+page does not write them to localStorage, cookies, or URLs and sends them only in
+Authorization headers. Use that form only over loopback HTTP for local development
+or over HTTPS behind an approved identity gateway. Browser-based authorization does
+not make a shared token safe for public multi-user access. The Workspace UI's Vite
+credential proxy is a separate, loopback-only single-user development bridge; it
+reads `.ember-up/api-credentials.json` server-side and never sends those tokens to
+browser code. Do not expose that proxy through a public preview or deployment. Run
+records, artifacts, memory, and backup archives may contain user content; do not
+submit confidential material until the gateway, persistent storage, encryption, and
+retention policies are approved.
 
 See [`deployment/PERSISTENCE.md`](../deployment/PERSISTENCE.md) for the offline
 backup/restore design and its limits. No hosting configuration is changed by that
@@ -107,6 +111,7 @@ design.
 |---|---|---|
 | `/` | GET | Bilingual (EN/AR) static UI; it contains no API credentials |
 | `/api/health` | GET | Minimal public service status |
+| `/api/capabilities` | GET | Supported goals and memory count; reader token required |
 | `/api/run` | POST | `{goal_type, params}` → DecisionRecord JSON; operator Bearer token required |
 | `/api/run/<id>` | GET | Download persisted evidence; reader token required |
 | `/api/file?run=..&path=..` | GET | Download sandbox artifact (traversal-safe); reader token required |
@@ -119,7 +124,15 @@ unknown routes and future additions. Private reads require a configured token ID
 secret; an empty `AI2027_READ_TOKEN_HASHES` map denies them.
 
 Capabilities (kernel-defined): `create_file` · `read_file` · `append_file` · `list_dir` ·
-`ensure_dir` · `delete_file` — all confined to a fresh sandbox per run.
+`ensure_dir` · `delete_file` — all confined to a fresh sandbox per run. Public health
+stays minimal; `/api/capabilities` is a separate reader-protected UI contract.
+
+Every DecisionRecord explicitly reports cleanup: direct `server.py` runs use
+`cleanup.status = "not_applicable"` because no deployment pruning wrapper runs;
+`deployment/live_server.py` replaces that with `complete`, `partial`, or `failed`.
+Missing or unknown cleanup status is not success. UI result surfaces preserve the
+kernel's raw `status` in the record but show `INCONCLUSIVE` for a `VERIFIED` run when
+cleanup is partial, failed, or unreported.
 
 ## Why this matters for the launch
 

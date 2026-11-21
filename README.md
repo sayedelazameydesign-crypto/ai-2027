@@ -88,7 +88,7 @@ Full categorized catalog with per-project features: **below in Arabic** ⬇ and 
 - 🔐 **Secrets scan**: one exposed key found → redacted here (rotation tracked in AUDIT.md)
 - 📄 **Readiness review**: what's proven vs. declared vs. simulated → [docs/PHASE-0-READINESS.md](docs/PHASE-0-READINESS.md) (with the 2026-11-17 correction addendum)
 - 🧪 **Try it in your browser**: the [public kernel demo](https://sayedelazameydesign-crypto.github.io/ai-2027/demo.html) runs the 7-stage loop with a real policy wall, an independent verifier and SHA-256 evidence. Honest scope: a dependency-free JS **port** on an in-memory sandbox, not the Python kernel and not an LLM (12 contract tests in [`website/kernel-demo.test.js`](website/kernel-demo.test.js)).
-- 🤖 **CI on every push** → [`.github/workflows/ci.yml`](.github/workflows/ci.yml): 104 kernel tests + 17 Live Agent wrapper tests across Python 3.10/3.11/3.12, Live Agent credential-transport and runtime-snapshot regression suites, CLI VERIFIED/DENIED contract, AST zero-dependency gate (+ 9 self-tests for the gates themselves), 12 demo tests, `bench.py` with raw JSON artifacts, and a wheel smoke test. Regression gate is jitter-aware by design → [`scripts/ci_guard.py`](scripts/ci_guard.py).
+- 🤖 **CI on every push** → [`.github/workflows/ci.yml`](.github/workflows/ci.yml): 104 kernel tests + 20 Live Agent wrapper tests across Python 3.10/3.11/3.12, Live Agent credential-transport and runtime-snapshot regression suites, CLI VERIFIED/DENIED contract, AST zero-dependency gate (+ 9 self-tests for the gates themselves), 12 demo tests, the real loopback Workspace/Vite/Live Agent gateway regression, `bench.py` with raw JSON artifacts, and a wheel smoke test. Regression gate is jitter-aware by design → [`scripts/ci_guard.py`](scripts/ci_guard.py).
 - 🧭 **Project lifecycle control plane** → [`.github/workflows/project-lifecycle.yml`](.github/workflows/project-lifecycle.yml): one manual entry point for the full CI gate, optional Gemini/NVIDIA/E2B checks, and a gated Render deployment with exact service-name confirmation in the `production` environment (configure required reviewers there for human approval). Provider secrets are passed only to their reusable workflow; model/service routing lives in non-secret Actions Variables. Live checks and deployment are main-only and never run from a PR.
 
 ## 🧠 Cumulative memory that only remembers what was proven
@@ -116,7 +116,7 @@ it misses synonyms. That number is published, not hidden: [`memory/README.md`](m
 | A version exists only with a Release + SBOM + checksums | `.github/workflows/release.yml` | tags `v1.0.0`, `v1.0.1` assets |
 | Actions pinned to full SHAs (36 components) | every workflow | `python3 scripts/sbom.py --assert-pinned` |
 | A beat is judged against its own history, not against itself | `scripts/health_gate.py` | `python3 scripts/test_health_gate.py` (24) |
-| Recovery is one command, timed | `scripts/ember_up.sh` | `./scripts/ember_up.sh --check` → 2.46 s · 15/15 |
+| Recovery is one command, timed | `scripts/ember_up.sh` | Isolated local boot + 17/17 real HTTP checks in CI |
 | The 60 s task promise is falsifiable | `scripts/run_task.py` | `python3 scripts/test_run_task.py` (7) |
 | Static analysis on every PR | `.github/workflows/codeql.yml` | CodeQL badge |
 | Dependency proposals automated | `.github/dependabot.yml` | Dependabot tab |
@@ -182,17 +182,17 @@ uptime). Both are private reads and require a reader credential. The smoke test 
 an agent card whose endpoints are not real `/api/` paths or that hides its limits.
 
 **It also runs without you:** `.github/workflows/ember.yml` beats every 6 hours —
-boots both servers, runs the 15 checks, recomputes a measured **Heat Index**, publishes
+boots both servers, runs the 17 checks, recomputes a measured **Heat Index**, publishes
 `ember/status.json` + `STATUS.md` to the `heartbeat` branch, opens one issue when
 degraded and closes it on recovery.
 
 **…and it refuses its own good news.** `scripts/health_gate.py` judges every beat
-against `ember/history.jsonl`: a beat that says `15/15` while having measured only 3
+against `ember/history.jsonl`: a beat that says `17/17` while having measured only 3
 checks is *degraded*. The ladder is one retry → one issue → `escalation/s3` with the
 code owner mentioned (see [ADR 0004](docs/adr/0004-health-gate-escalation.md)).
 
 ```bash
-./scripts/ember_up.sh --check             # boot everything, 15 checks, shut down (2.46 s)
+./scripts/ember_up.sh --check             # boot everything, 17 checks, shut down
 ./scripts/ember_up.sh                     # leave it running: live agent :8090 · HUD :8091
 ./scripts/ember_up.sh --stop              # stop what it started
 python3 scripts/ember_beat.py --write     # one beat, right now

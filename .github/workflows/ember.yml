@@ -6,7 +6,7 @@
 #
 # What each run does (all of it real, none of it simulated):
 #   1. boots the real live-agent (real kernel) + the real Command HUD;
-#   2. runs `scripts/runtime_smoke.py` (15 checks over real HTTP);
+#   2. runs `scripts/runtime_smoke.py` (17 checks over real HTTP);
 #   3. computes the Heat Index from measured history and writes ember/status.json
 #      + STATUS.md from the same variables;
 #   4. judges that beat with `scripts/health_gate.py` against the recorded past —
