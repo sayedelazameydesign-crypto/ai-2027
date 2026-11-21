@@ -227,7 +227,6 @@ class RealRepositoryTests(unittest.TestCase):
         self.assertIn("secrets.AGENT_SUBSTRATE_PREFLIGHT_KUBECONFIG", text)
         self.assertIn("set +x", text)
         self.assertNotIn("echo $PREFLIGHT_KUBECONFIG", text)
-        self.assertIn("(exec|insecure-skip-tls-verify)", text)
         self.assertIn("""trap 'rm -f -- "$kubeconfig_path"' EXIT""", text)
         self.assertIn(
             "kubectl --request-timeout=15s get --raw='/api/v1/nodes?limit=1' >/dev/null 2>/dev/null",
@@ -241,10 +240,45 @@ class RealRepositoryTests(unittest.TestCase):
             "kubectl patch",
             "kubectl delete",
             "kubectl edit",
-            "kubectl config view",
             "cluster-info",
         ):
             self.assertNotIn(forbidden, text)
+
+    def test_36_agent_substrate_preflight_checks_the_kubeconfig_structurally(self):
+        """The kubeconfig gate must inspect parsed structure, not raw text.
+
+        Grepping the YAML for ``insecure-skip-tls-verify:`` was bypassable:
+        YAML resolves a quoted key and a Flow-style mapping to the same key
+        as the plain form, so a re-spelled setting passed the grep while
+        kubectl still honoured it.  The workflow must therefore render the
+        kubeconfig to JSON and hand it to the checker, and the old
+        text-matching gate must be gone.
+        """
+        text = (wsa.WORKFLOWS / "agent-substrate-preflight.yml").read_text(encoding="utf-8")
+        self.assertIn("kubectl config view --raw -o json", text)
+        self.assertIn("scripts/kubeconfig_preflight_check.py", text)
+        self.assertIn("grep -qx CONNECTED", text)
+        # The bypassable text-matching gate must not return.
+        self.assertNotIn("insecure-skip-tls-verify:", text)
+        self.assertNotIn("grep -Eiq", text)
+
+    def test_37_agent_substrate_preflight_never_prints_the_rendered_kubeconfig(self):
+        """``config view --raw`` output carries credential material.
+
+        It must be piped straight into the checker, never redirected to a
+        file, echoed, or appended to the job summary.
+        """
+        text = (wsa.WORKFLOWS / "agent-substrate-preflight.yml").read_text(encoding="utf-8")
+        for forbidden in (
+            "config view --raw -o json >",
+            "config view --raw -o json | tee",
+            "config view --raw -o json | cat",
+            "config view --raw -o json >>",
+        ):
+            self.assertNotIn(forbidden, text)
+        # Only CONNECTED or FAILED may ever reach the summary.
+        self.assertIn("""printf 'CONNECTED\\n' >> "$GITHUB_STEP_SUMMARY\"""", text)
+        self.assertIn("""printf 'FAILED\\n' >> "$GITHUB_STEP_SUMMARY\"""", text)
 
     def test_30_windows_job_extracts_only_verified_blobs_without_checkout(self):
         if os.name == "nt":

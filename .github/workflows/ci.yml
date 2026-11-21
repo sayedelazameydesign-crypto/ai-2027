@@ -181,6 +181,9 @@ jobs:
           python scripts/test_workflow_secret_audit.py -v
           python scripts/workflow_secret_audit.py --assert
 
+      - name: Agent Substrate kubeconfig gate — adversarial (29)
+        run: python scripts/test_kubeconfig_preflight_check.py -v
+
       - name: Every GitHub Action must be pinned to a full SHA (SBOM verifier)
         run: python scripts/sbom.py --assert-pinned --out /tmp/sbom.json
 
