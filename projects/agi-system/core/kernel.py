@@ -17,10 +17,11 @@ from __future__ import annotations
 
 import os
 import threading
+from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from .clock import DEFAULT_CLOCK, Clock, SystemClock
 from .config import Settings
@@ -200,6 +201,10 @@ class Kernel:
             )
             return self._finalize(record, ExecStatus.FAILED, error=str(exc), code=exc.code)
 
+        # Planners may call bounded external providers. Never authorize or execute
+        # a plan returned after the run deadline, even if the provider ignored its
+        # own transport timeout.
+        self._check_deadline(deadline)
         max_actions = self.settings.limits.max_actions_per_plan
         plans = [p for p in plans if len(p.actions) <= max_actions]
         if not plans:

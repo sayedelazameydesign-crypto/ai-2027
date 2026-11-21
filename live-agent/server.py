@@ -40,7 +40,7 @@ import time
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import parse_qs, urlparse
 
 # --------------------------------------------------------------------------- #
 # Import the kernel in place — projects/ stays untouched.
@@ -52,12 +52,12 @@ if not (AGI_DIR / "core" / "kernel.py").is_file():
     sys.exit(1)
 sys.path.insert(0, str(AGI_DIR))
 
-from core.kernel import Kernel, KernelConfig          # noqa: E402
-from core.models import Goal                          # noqa: E402
-from core.planner import SequentialPlanner            # noqa: E402
+from core.kernel import Kernel, KernelConfig  # noqa: E402
+from core.models import Goal  # noqa: E402
+from core.planner import Planner, SequentialPlanner  # noqa: E402
 
 sys.path.insert(0, str(HERE.parent))
-from memory.store import EvidenceMemoryStore          # noqa: E402
+from memory.store import EvidenceMemoryStore  # noqa: E402
 
 RUNS_DIR = HERE / "runs"
 SANDBOXES_DIR = HERE / "sandboxes"
@@ -165,8 +165,13 @@ def _sanitize_params(params: object) -> dict:
     return clean
 
 
-def run_goal(goal_type: str, params: dict) -> dict:
-    """Execute one goal through the real kernel and persist the evidence."""
+def run_goal(goal_type: str, params: dict, *, planner: Planner | None = None) -> dict:
+    """Execute one goal through the real kernel and persist the evidence.
+
+    ``planner`` is an in-process test/extension seam only; the HTTP API does not
+    expose provider configuration. With no planner supplied, the existing
+    deterministic planner remains the default.
+    """
     if goal_type not in SUPPORTED_GOALS:
         raise ValueError(
             f"unsupported goal_type {goal_type!r}; supported={SUPPORTED_GOALS}"
@@ -179,7 +184,9 @@ def run_goal(goal_type: str, params: dict) -> dict:
     with _lock:
         kernel = Kernel(
             sandbox_dir=sandbox,
-            ledger_path=sandbox / "ledger.jsonl",
+            # Keep the append-only audit ledger outside the model-accessible sandbox.
+            ledger_path=RUNS_DIR / "ledgers" / f"{run_id}.jsonl",
+            planner=planner,
             config=KernelConfig(),
         )
         record = kernel.run(Goal(goal_type=goal_type, params=params))
@@ -284,7 +291,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({
                 "ok": True,
                 "kernel": "agi-system (in place, projects/agi-system)",
-                "kernel_tests": "86 passing (verified 2026-11-17)",
+                "kernel_tests": "104-test suite (last run 2026-11-19; not measured live)",
                 "mode": "REAL execution — deterministic planner, NO LLM (Phase 1)",
                 "supported_goals": SUPPORTED_GOALS,
                 "memory": memory().stats()["memories"],
