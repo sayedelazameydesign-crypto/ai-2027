@@ -3,44 +3,49 @@
 
 WHY THIS EXISTS
 ===============
-`live-agent/server.py` was written as a *local* demo. Exposed to the internet it
-is not safe, and the numbers are measured, not assumed:
+`live-agent/server.py` is a *local* demo and must not be exposed directly. The
+launcher adds a bounded deployment boundary; its security guarantees are
+intentionally limited and measured, not implied:
 
-  * **No authentication.** `POST /api/run` is open to anyone.
-  * **No rate limiting.** ~90 runs/second per connection.
-  * **No disk cap.** Every run writes 4 files (~69.5 KB) and they are never
-    deleted, so **~7,500 requests fill a 512 MB free tier in about 1.4 minutes**,
-    and ~75,000 fill a 5 GB Hugging Face Space in about 14 minutes. After that
-    the container dies and the site goes down.
+  * **Writes fail closed.** `POST /api/run` is disabled unless a strong
+    `AI2027_WRITE_TOKEN` is configured; when enabled, every request needs its
+    bearer token. Do not put that shared token in public HTML or JavaScript.
+  * **A process-local rate limit** applies to write attempts by the peer IP seen
+    by Python. Forwarded-IP headers are ignored because clients can spoof them.
+  * **GET endpoints remain public.** Run records, memory summaries, and sandbox
+    artifacts have no per-user access control; never submit sensitive data.
+  * **The underlying local server** still has no user accounts, distributed
+    rate limiting, or proxy-level DDoS protection. Use a real auth/rate-limit
+    proxy for an interactive public service, with HTTPS terminated at the proxy.
+  * **No disk cap (upstream).** Every run writes 4 files (~69.5 KB); without
+    cleanup, ~7,500 requests fill a 512 MB tier in about 1.4 minutes. This
+    launcher caps disk use and the number of runs per process.
   * **The kernel lock serialises every run** (`_lock` in `server.py`), so a
-    handful of clients also makes the demo unusable for everyone.
+    handful of clients can also make the demo unusable for everyone.
 
-This launcher does not pretend to fix the missing auth — that is a deliberate,
-documented decision (an unauthenticated public demo should stay *read-mostly*,
-and the write path should be capped or disabled). What it does fix is the part
-that would silently take the service down:
-
-  1. reads `PORT` from the environment (Render/HF/Fly all inject it),
-  2. binds `0.0.0.0` (a container must, or nothing is reachable),
-  3. caps total disk usage of `runs/` + `sandboxes/`, pruning oldest first,
-  4. caps the total number of runs per process,
-  5. prints one honest banner stating exactly what IS and IS NOT protected.
+The launcher also reads `PORT`, binds `0.0.0.0` on a PaaS, prunes only validated
+run groups under its managed storage directories, and prints an honest startup
+banner. A public deployment stays read-only unless its operator deliberately
+configures the write token and disables the read-only override.
 
 Usage
 -----
-    python3 deployment/live_server.py                 # preserve evidence on normal start
+    python3 deployment/live_server.py                 # read-only unless a token is configured
     python3 deployment/live_server.py --fresh          # explicit destructive reset
-    PORT=10000 python3 deployment/live_server.py      # any PaaS
+    AI2027_WRITE_TOKEN=<secret> python3 deployment/live_server.py
     AI2027_READ_ONLY=1 python3 deployment/live_server.py
 
 Environment
 -----------
-    PORT                     listening port (default 8090)
-    HOST                     bind address (default 0.0.0.0 in PaaS, else 127.0.0.1)
-    AI2027_LIVE_RUNTIME_DIR   runtime root; default keeps the existing live-agent/ paths
-    AI2027_MAX_DISK_MB        cap for generated evidence (default 256)
-    AI2027_MAX_RUNS           hard cap on runs per process (default 5000)
-    AI2027_READ_ONLY          "1" disables POST /api/run entirely
+    PORT                             listening port (default 8090)
+    HOST                             bind address (default 0.0.0.0 in PaaS, else 127.0.0.1)
+    AI2027_LIVE_RUNTIME_DIR           runtime root; default keeps the existing live-agent/ paths
+    AI2027_MAX_DISK_MB                cap for generated evidence (default 256)
+    AI2027_MAX_RUNS                   hard cap on runs per process (default 5000)
+    AI2027_WRITE_TOKEN                >=32-character bearer secret; absent means writes disabled
+    AI2027_READ_ONLY                  "1" always disables POST /api/run
+    AI2027_WRITE_RATE_LIMIT           write attempts per peer IP per window (default 10)
+    AI2027_WRITE_RATE_WINDOW_SECONDS  rate-limit window (default 60; max 86400)
 
 Runtime files are preserved across process restarts on the same filesystem.
 Survival across instance replacement/redeploy depends on a persistent mount;
@@ -51,8 +56,10 @@ Stdlib only — this file adds no dependency to a zero-dependency project.
 from __future__ import annotations
 
 import argparse
+import hmac
 import importlib.util
 import json
+import math
 import os
 import re
 import shutil
@@ -60,7 +67,9 @@ import stat
 import sys
 import threading
 import time
+from collections import deque
 from pathlib import Path
+from urllib.parse import urlsplit
 
 ROOT = Path(__file__).resolve().parent.parent
 SERVER_PY = ROOT / "live-agent" / "server.py"
@@ -73,6 +82,88 @@ def _env_int(name: str, default: int) -> int:
         return int(os.environ.get(name, "") or default)
     except ValueError:
         return default
+
+
+def _bounded_env_int(name: str, default: int, minimum: int, maximum: int) -> int:
+    raw = os.environ.get(name)
+    if raw is None or not raw.strip():
+        return default
+    try:
+        value = int(raw)
+    except ValueError as exc:
+        raise ValueError(f"{name} must be an integer") from exc
+    if not minimum <= value <= maximum:
+        raise ValueError(f"{name} must be between {minimum} and {maximum}")
+    return value
+
+
+class SlidingWindowRateLimiter:
+    """Bound write attempts per observed peer IP in a process-local time window."""
+
+    def __init__(self, max_requests: int, window_seconds: int, max_clients: int = 4096):
+        if max_requests < 1 or window_seconds < 1 or max_clients < 1:
+            raise ValueError("rate limiter bounds must be positive")
+        self.max_requests = max_requests
+        self.window_seconds = window_seconds
+        self.max_clients = max_clients
+        self._events: dict[str, deque[float]] = {}
+        self._lock = threading.Lock()
+
+    @staticmethod
+    def _expire(events: deque[float], cutoff: float) -> None:
+        while events and events[0] <= cutoff:
+            events.popleft()
+
+    def allow(self, client: str, now: float | None = None) -> tuple[bool, int]:
+        """Return ``(allowed, retry_after_seconds)``; ``now`` enables deterministic tests."""
+        now = time.monotonic() if now is None else now
+        cutoff = now - self.window_seconds
+        with self._lock:
+            events = self._events.get(client)
+            if events is not None:
+                self._expire(events, cutoff)
+                if not events:
+                    self._events.pop(client, None)
+                    events = None
+
+            if events is None:
+                if len(self._events) >= self.max_clients:
+                    # Expire inactive peers before failing closed at the bounded table size.
+                    for peer, peer_events in list(self._events.items()):
+                        self._expire(peer_events, cutoff)
+                        if not peer_events:
+                            self._events.pop(peer, None)
+                    if len(self._events) >= self.max_clients:
+                        return False, max(1, math.ceil(self.window_seconds))
+                events = deque()
+                self._events[client] = events
+
+            if len(events) >= self.max_requests:
+                retry_after = math.ceil(events[0] + self.window_seconds - now)
+                return False, max(1, retry_after)
+            events.append(now)
+            return True, 0
+
+
+def _bearer_token_matches(header: str, expected: str) -> bool:
+    scheme, separator, supplied = header.partition(" ")
+    if not separator or scheme.casefold() != "bearer" or not supplied or any(
+        char.isspace() for char in supplied
+    ):
+        return False
+    return hmac.compare_digest(supplied.encode("utf-8"), expected.encode("utf-8"))
+
+
+def _respond_json(handler, body: dict, status: int, headers: dict[str, str] | None = None) -> None:
+    raw = json.dumps(body, ensure_ascii=False).encode("utf-8")
+    handler.send_response(status)
+    handler.send_header("Content-Type", "application/json; charset=utf-8")
+    handler.send_header("Content-Length", str(len(raw)))
+    handler.send_header("Cache-Control", "no-store")
+    for name, value in (headers or {}).items():
+        handler.send_header(name, value)
+    handler.end_headers()
+    handler.wfile.write(raw)
 
 
 def _human(n: int) -> str:
@@ -478,7 +569,19 @@ def main() -> int:
     host = os.environ.get("HOST") or ("0.0.0.0" if on_paas else "127.0.0.1")
     max_disk_mb = _env_int("AI2027_MAX_DISK_MB", 256)
     max_runs = _env_int("AI2027_MAX_RUNS", 5000)
-    read_only = os.environ.get("AI2027_READ_ONLY", "") == "1"
+    write_token = os.environ.get("AI2027_WRITE_TOKEN", "")
+    if write_token and (len(write_token) < 32 or write_token.strip() != write_token):
+        sys.stderr.write("FATAL: AI2027_WRITE_TOKEN must be at least 32 characters with no surrounding whitespace\n")
+        return 2
+    try:
+        rate_limit = _bounded_env_int("AI2027_WRITE_RATE_LIMIT", 10, 1, 10000)
+        rate_window = _bounded_env_int("AI2027_WRITE_RATE_WINDOW_SECONDS", 60, 1, 86400)
+    except ValueError as exc:
+        sys.stderr.write(f"FATAL: {exc}\n")
+        return 2
+    forced_read_only = os.environ.get("AI2027_READ_ONLY", "") == "1"
+    writes_enabled = bool(write_token) and not forced_read_only
+    rate_limiter = SlidingWindowRateLimiter(rate_limit, rate_window)
 
     # Import the server as a module so we can wrap run_goal before it starts.
     spec = importlib.util.spec_from_file_location(_MODULE, SERVER_PY)
@@ -505,22 +608,61 @@ def main() -> int:
     lock = threading.Lock()
     real_run_goal = server.run_goal
     real_do_get = server.Handler.do_GET
+    real_do_post = server.Handler.do_POST
 
     def guarded_do_get(handler):
         """Keep run records and artifacts stable while a prune is in progress."""
         with lock:
             return real_do_get(handler)
 
+    def reject_post(handler, status: int, message: str, headers: dict[str, str] | None = None):
+        with lock:
+            state["rejected"] += 1
+        handler.close_connection = True
+        response_headers = {"Connection": "close"}
+        response_headers.update(headers or {})
+        return _respond_json(handler, {"error": message}, status, response_headers)
+
+    def guarded_do_post(handler):
+        """Require an operator token and bound write attempts before parsing input."""
+        if urlsplit(handler.path).path != "/api/run":
+            return real_do_post(handler)
+        if forced_read_only:
+            return reject_post(
+                handler, 403,
+                "this deployment is READ-ONLY: POST /api/run is disabled",
+            )
+        if not write_token:
+            return reject_post(
+                handler, 503,
+                "write endpoint unavailable: AI2027_WRITE_TOKEN is not configured",
+            )
+        allowed, retry_after = rate_limiter.allow(str(handler.client_address[0]))
+        if not allowed:
+            return reject_post(
+                handler, 429,
+                "write rate limit exceeded; retry after the advertised interval",
+                {"Retry-After": str(retry_after)},
+            )
+        if not _bearer_token_matches(handler.headers.get("Authorization", ""), write_token):
+            return reject_post(
+                handler, 401,
+                "valid bearer token required",
+                {"WWW-Authenticate": 'Bearer realm="ai-2027-live-agent"'},
+            )
+        return real_do_post(handler)
+
     server.Handler.do_GET = guarded_do_get
+    server.Handler.do_POST = guarded_do_post
 
     def guarded_run_goal(goal_type, params):
         """Serialize writes, preserve the run budget, and report prune failures."""
-        if read_only:
+        if not writes_enabled:
             with lock:
                 state["rejected"] += 1
             raise ValueError(
-                "this deployment is READ-ONLY: POST /api/run is disabled "
-                "(set AI2027_READ_ONLY=0 to enable writes)")
+                "writes are disabled: configure AI2027_WRITE_TOKEN and set "
+                "AI2027_READ_ONLY=0")
         # Keep the run and its following prune in one critical section. Otherwise
         # another request could be pruning a run that has a sandbox but no record yet.
         with lock:
@@ -566,8 +708,15 @@ def main() -> int:
     print(f"  run budget       : {max_runs} per process", flush=True)
     for warning in restore_warnings:
         print(f"  runtime warning  : {warning}", file=sys.stderr, flush=True)
-    print(f"  write path       : {'DISABLED (read-only)' if read_only else 'ENABLED, unauthenticated'}", flush=True)
-    print("  NOT protected    : no login, no rate limit, no per-IP quota", flush=True)
+    if forced_read_only:
+        write_state = "DISABLED (AI2027_READ_ONLY=1)"
+    elif not write_token:
+        write_state = "DISABLED (no AI2027_WRITE_TOKEN; fail-closed)"
+    else:
+        write_state = "ENABLED (Bearer token required)"
+    print(f"  write path       : {write_state}", flush=True)
+    print(f"  write rate limit : {rate_limit} per {rate_window}s per observed peer IP", flush=True)
+    print("  limits           : GET data is public; process-local quota; no accounts or proxy-level DDoS protection", flush=True)
     print("  kernel           : deterministic planner, NO LLM, stdlib only", flush=True)
     print(f"  kernel found     : {(ROOT / 'projects' / 'agi-system')}", flush=True)
 

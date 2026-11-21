@@ -30,6 +30,11 @@ services:
         value: "256"
       - key: AI2027_MAX_RUNS
         value: "5000"
-      # Flip to "1" to serve a read-only demo (recommended for a public URL).
+      - key: AI2027_WRITE_RATE_LIMIT
+        value: "10"
+      - key: AI2027_WRITE_RATE_WINDOW_SECONDS
+        value: "60"
+      # Public blueprint is read-only. No write secret is stored in this file.
+      # Only an operator-managed secret plus an explicit override can enable writes.
       - key: AI2027_READ_ONLY
-        value: "0"
+        value: "1"

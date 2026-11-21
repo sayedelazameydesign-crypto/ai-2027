@@ -401,7 +401,8 @@ class Handler(BaseHTTPRequestHandler):
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, default=8090)
-    ap.add_argument("--host", default="0.0.0.0")
+    ap.add_argument("--host", default="127.0.0.1",
+                    help="bind address (loopback by default; use deployment/live_server.py for hosting)")
     ap.add_argument("--runtime-dir", default=os.environ.get("AI2027_LIVE_RUNTIME_DIR"),
                     help="isolate persistent runs/sandboxes/memory under this directory")
     ap.add_argument("--fresh", action="store_true",
