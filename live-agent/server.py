@@ -47,7 +47,7 @@ import uuid
 from collections import deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, quote, urlparse
 
 # --------------------------------------------------------------------------- #
 # Import the kernel in place — projects/ stays untouched.
@@ -625,30 +625,108 @@ def _persist_run_record(payload: dict) -> None:
             pass
 
 
-def read_run(run_id: str) -> dict | None:
-    f = RUNS_DIR / f"{run_id}.json"
-    if f.is_file():
-        return json.loads(f.read_text(encoding="utf-8"))
+def _find_runtime_child(parent: Path, name: str) -> Path | None:
+    """Find an existing child by exact name without joining request text to a path."""
+    try:
+        if not stat.S_ISDIR(parent.lstat().st_mode):
+            return None
+        for child in parent.iterdir():
+            if child.name == name:
+                return child
+    except OSError:
+        return None
     return None
 
 
+def _read_private_regular_file(path: Path, max_bytes: int) -> bytes | None:
+    """Read a bounded regular file without following a final symlink."""
+    descriptor: int | None = None
+    try:
+        if not stat.S_ISREG(path.lstat().st_mode):
+            return None
+        flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+        flags |= getattr(os, "O_CLOEXEC", 0)
+        descriptor = os.open(path, flags)
+        metadata = os.fstat(descriptor)
+        if not stat.S_ISREG(metadata.st_mode) or metadata.st_size > max_bytes:
+            return None
+        with os.fdopen(descriptor, "rb", closefd=False) as handle:
+            data = handle.read(max_bytes + 1)
+        return data if len(data) <= max_bytes else None
+    except OSError:
+        return None
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+
+
+def read_run(run_id: str) -> dict | None:
+    if not isinstance(run_id, str) or not re.fullmatch(r"run_\d+_[0-9a-f]{8}", run_id):
+        return None
+    path = _find_runtime_child(RUNS_DIR, f"{run_id}.json")
+    if path is None:
+        return None
+    contents = _read_private_regular_file(path, 8 * 1024 * 1024)
+    if contents is None:
+        return None
+    try:
+        record = json.loads(contents.decode("utf-8"))
+    except (UnicodeError, ValueError):
+        return None
+    return record if isinstance(record, dict) else None
+
+
 def sandbox_file(run_id: str, rel: str) -> tuple[bytes, str] | None:
-    """Serve a file from a run sandbox — traversal-safe (defense in depth:
-    the kernel policy is the first wall, this is the second)."""
-    if not re.fullmatch(r"run_\d+_[0-9a-f]{8}", run_id or ""):
+    """Serve a file from a run sandbox without using request text as a path."""
+    if not isinstance(run_id, str) or not re.fullmatch(r"run_\d+_[0-9a-f]{8}", run_id):
         return None
-    root = (SANDBOXES_DIR / run_id).resolve()
-    if not root.is_dir():
+    if not isinstance(rel, str) or not rel or len(rel) > 4096 or "\\" in rel or "\x00" in rel:
         return None
-    target = (root / rel).resolve()
-    if root not in target.parents and target != root:
+    components = rel.split("/")
+    if any(
+        component in {"", ".", ".."}
+        or ":" in component
+        or any(ord(char) < 0x20 for char in component)
+        for component in components
+    ):
         return None
-    if not target.is_file() or target.name == "ledger.jsonl":
+
+    root = _find_runtime_child(SANDBOXES_DIR, run_id)
+    if root is None:
         return None
-    data = target.read_bytes()
-    if len(data) > 4 * 1024 * 1024:
+    try:
+        if not stat.S_ISDIR(root.lstat().st_mode):
+            return None
+        root_resolved = root.resolve(strict=True)
+    except OSError:
         return None
-    return data, target.name
+
+    target = root
+    for index, component in enumerate(components):
+        child = _find_runtime_child(target, component)
+        if child is None:
+            return None
+        try:
+            mode = child.lstat().st_mode
+        except OSError:
+            return None
+        if stat.S_ISLNK(mode):
+            return None
+        if index < len(components) - 1:
+            if not stat.S_ISDIR(mode):
+                return None
+        elif not stat.S_ISREG(mode) or child.name == "ledger.jsonl":
+            return None
+        target = child
+
+    try:
+        resolved = target.resolve(strict=True)
+        if root_resolved not in resolved.parents:
+            return None
+    except OSError:
+        return None
+    data = _read_private_regular_file(target, 4 * 1024 * 1024)
+    return (data, target.name) if data is not None else None
 
 
 # --------------------------------------------------------------------------- #
@@ -888,8 +966,12 @@ class Handler(BaseHTTPRequestHandler):
             data, name = got
             self.send_response(200)
             self.send_header("Content-Type", "application/octet-stream")
-            self.send_header("Content-Disposition",
-                             f"attachment; filename=\"{name}\"")
+            # RFC 5987 encoding percent-escapes CR/LF and other header metacharacters.
+            encoded_name = quote(name, safe="")
+            self.send_header(
+                "Content-Disposition",
+                f"attachment; filename=\"artifact\"; filename*=UTF-8''{encoded_name}",
+            )
             self.send_header("Content-Length", str(len(data)))
             self.end_headers()
             return self.wfile.write(data)
