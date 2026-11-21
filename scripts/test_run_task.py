@@ -14,7 +14,9 @@ Run: python3 scripts/test_run_task.py -v
 """
 from __future__ import annotations
 
+import hashlib
 import json
+import os
 import socket
 import subprocess
 import sys
@@ -22,12 +24,28 @@ import tempfile
 import time
 import unittest
 import urllib.request
+from unittest.mock import patch
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
 sys.path.insert(0, str(HERE))
 import run_task as rt  # noqa: E402
+
+_TEST_WRITE_TOKEN = "run-task-test-write-" + "w" * 40
+_TEST_READ_ID = "run-task-reader"
+_TEST_READ_SECRET = "run-task-test-read-" + "r" * 40
+_TEST_READ_HASHES = json.dumps({
+    _TEST_READ_ID: hashlib.sha256(_TEST_READ_SECRET.encode()).hexdigest()
+})
+_TEST_ENV = {
+    **os.environ,
+    "AI2027_WRITE_TOKEN": _TEST_WRITE_TOKEN,
+    "AI2027_READ_TOKEN_HASHES": _TEST_READ_HASHES,
+    "AI2027_READ_TOKEN_ID": _TEST_READ_ID,
+    "AI2027_READ_TOKEN_SECRET": _TEST_READ_SECRET,
+    "AI2027_READ_ONLY": "0",
+}
 
 
 def free_port() -> int:
@@ -44,7 +62,7 @@ class RealTaskTests(unittest.TestCase):
         cls.proc = subprocess.Popen(
             [sys.executable, str(ROOT / "live-agent" / "server.py"),
              "--port", str(cls.port), "--host", "127.0.0.1"],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            env=_TEST_ENV, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         deadline = time.time() + 30
         while time.time() < deadline:
             try:
@@ -68,7 +86,7 @@ class RealTaskTests(unittest.TestCase):
             proc = subprocess.run(
                 [sys.executable, str(HERE / "run_task.py"),
                  "--live-agent", self.base, "--evidence-dir", td, "--json", *args],
-                capture_output=True, text=True, timeout=120)
+                env=_TEST_ENV, capture_output=True, text=True, timeout=120)
             payload = json.loads(proc.stdout.strip().splitlines()[-1])  # one JSON line
             bundles = sorted(Path(td).glob("*.json"))
             bundle_text = bundles[-1].read_text() if bundles else None
@@ -84,6 +102,10 @@ class RealTaskTests(unittest.TestCase):
         self.assertTrue(res["claims"]["within_budget"])
         self.assertLess(res["claims"]["elapsed_ms"], 60_000)
         self.assertTrue(res["artifact"]["hash_verified"])
+        self.assertEqual(res["cleanup"]["status"], "not_applicable")
+        self.assertEqual(res["cleanup"]["reason"], "direct_live_agent_mode")
+        self.assertFalse(res["cleanup_complete"])
+        self.assertTrue(res["cleanup_accepted"])
         self.assertIn("/api/run/", res["evidence_link"])
         self.assertIsNotNone(bundle)
 
@@ -131,6 +153,89 @@ class RealTaskTests(unittest.TestCase):
                                     "--param", "content=default budget")
         self.assertEqual(code, 0)
         self.assertEqual(res["claims"]["budget_ms"], 60_000)
+
+    def test_07_partial_cleanup_cannot_be_a_success(self):
+        run_id = "run_1700000000_abcdef01"
+        submitted = {
+            "run_id": run_id,
+            "status": "VERIFIED",
+            "evidence": [{"checks": {"independent_check": True}}],
+            "cleanup": {"status": "partial", "warnings": ["CLEANUP_PARTIAL"]},
+        }
+        reread = {"run_id": run_id, "status": "VERIFIED"}
+        with tempfile.TemporaryDirectory() as td:
+            with patch.object(rt, "wait_for_agent", return_value=True), patch.object(
+                rt, "http_json", side_effect=[submitted, reread]
+            ):
+                result, code = rt.run_task(
+                    self.base, "list_dir", {"path": "."}, 60, Path(td), None)
+        self.assertEqual(code, 1)
+        self.assertEqual(result["cleanup"]["status"], "partial")
+        self.assertFalse(result["cleanup_complete"])
+        self.assertFalse(result["cleanup_accepted"])
+        self.assertEqual(result["verdict"], "TASK-FAILED")
+        self.assertIn("cleanup   : partial · CLEANUP_PARTIAL", rt.render(result))
+
+    def test_08_missing_cleanup_report_fails_closed(self):
+        run_id = "run_1700000000_abcdef02"
+        submitted = {
+            "run_id": run_id,
+            "status": "VERIFIED",
+            "evidence": [{"checks": {"independent_check": True}}],
+        }
+        reread = {"run_id": run_id, "status": "VERIFIED"}
+        with tempfile.TemporaryDirectory() as td:
+            with patch.object(rt, "wait_for_agent", return_value=True), patch.object(
+                rt, "http_json", side_effect=[submitted, reread]
+            ):
+                result, code = rt.run_task(
+                    self.base, "list_dir", {"path": "."}, 60, Path(td), None)
+        self.assertEqual(code, 1)
+        self.assertEqual(result["cleanup"]["status"], "unreported")
+        self.assertFalse(result["cleanup_complete"])
+        self.assertFalse(result["cleanup_accepted"])
+        self.assertEqual(result["verdict"], "TASK-FAILED")
+
+    def test_09_not_applicable_requires_direct_mode_marker(self):
+        run_id = "run_1700000000_abcdef03"
+        submitted = {
+            "run_id": run_id,
+            "status": "VERIFIED",
+            "evidence": [{"checks": {"independent_check": True}}],
+            "cleanup": {"status": "not_applicable", "reason": "unknown_mode"},
+        }
+        reread = {"run_id": run_id, "status": "VERIFIED"}
+        with tempfile.TemporaryDirectory() as td:
+            with patch.object(rt, "wait_for_agent", return_value=True), patch.object(
+                rt, "http_json", side_effect=[submitted, reread]
+            ):
+                result, code = rt.run_task(
+                    self.base, "list_dir", {"path": "."}, 60, Path(td), None)
+        self.assertEqual(code, 1)
+        self.assertFalse(result["cleanup_complete"])
+        self.assertFalse(result["cleanup_accepted"])
+        self.assertEqual(result["verdict"], "TASK-FAILED")
+
+    def test_10_wrapped_complete_cleanup_is_accepted_as_complete(self):
+        run_id = "run_1700000000_abcdef04"
+        submitted = {
+            "run_id": run_id,
+            "status": "VERIFIED",
+            "evidence": [{"checks": {"independent_check": True}}],
+            "cleanup": {"status": "complete", "warnings": []},
+        }
+        reread = {"run_id": run_id, "status": "VERIFIED"}
+        with tempfile.TemporaryDirectory() as td:
+            with patch.object(rt, "wait_for_agent", return_value=True), patch.object(
+                rt, "http_json", side_effect=[submitted, reread]
+            ):
+                result, code = rt.run_task(
+                    self.base, "list_dir", {"path": "."}, 60, Path(td), None)
+        self.assertEqual(code, 0)
+        self.assertEqual(result["cleanup"]["status"], "complete")
+        self.assertTrue(result["cleanup_complete"])
+        self.assertTrue(result["cleanup_accepted"])
+        self.assertEqual(result["verdict"], "VERIFIED-AND-WITHIN-BUDGET")
 
 
 if __name__ == "__main__":

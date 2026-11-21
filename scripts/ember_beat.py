@@ -43,6 +43,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import network_preflight  # noqa: E402  (same-directory helper, stdlib only)
+from live_agent_auth import authorization_header, open_url  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 EMBER_DIR = ROOT / "ember"
@@ -82,8 +83,13 @@ def run_smoke(base: str, hud: str | None, timeout: int = 180) -> dict:
 def memory_counts(base: str, timeout: int = 10) -> tuple[int, int]:
     """(memories, refusals) from the live agent, or (-1, -1) if unreachable."""
     try:
-        with urllib.request.urlopen(base.rstrip("/") + "/api/memory",
-                                    timeout=timeout) as r:
+        url = base.rstrip("/") + "/api/memory"
+        headers = {}
+        authorization = authorization_header(base, "/api/memory", "GET")
+        if authorization:
+            headers["Authorization"] = authorization
+        request = urllib.request.Request(url, headers=headers)
+        with open_url(request, timeout=timeout) as r:
             d = json.loads(r.read())
         return int(d.get("memories", 0)), int(d.get("refused_events", 0))
     except (urllib.error.URLError, OSError, ValueError, json.JSONDecodeError):

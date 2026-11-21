@@ -4,7 +4,7 @@
 Why this file exists
   `scripts/ember_beat.py` measures one beat. It cannot, on its own, tell the
   difference between "healthy" and "healthy-looking". A beat that reports
-  `15/15` today, then `3/3` tomorrow (because three checks silently vanished),
+  `17/17` today, then `3/3` tomorrow (because checks silently vanished),
   is *degraded* while every field it prints is technically true. This gate
   compares the current beat with the recorded past and fails when the ember
   lost capability without saying so.
@@ -41,8 +41,9 @@ Checks (each one is a promise the repository makes in public)
 Honest limits
   * The gate judges the beat it is given. It cannot see a server that never
     reported at all — that shows up as `beat_freshness` going stale.
-  * "Expected total" is learned from history. On a brand-new clone with no
-    history the gate can only say "retry", never "healthy".
+  * The required smoke total is the larger of the measured 17-check floor and
+    recent history; older 15-check history cannot lower the current contract.
+    A brand-new clone still needs a prior beat before freshness can be healthy.
   * Stage 3 is an escalation *signal*, not a pager: if the webhook is not
     configured the gate says so in its own output instead of claiming success.
 
@@ -71,7 +72,7 @@ HISTORY = EMBER_DIR / "history.jsonl"
 GATE_LOG = EMBER_DIR / "gate.jsonl"
 
 WINDOW_S = 7 * 24 * 3600
-DEFAULT_TOTAL = 15          # the smoke surface as of v1.0.0 (measured, not hoped)
+DEFAULT_TOTAL = 17          # the current measured smoke surface (not a guessed target)
 CADENCE_H = 6.0             # ember.yml runs every 6 hours
 TOLERANCE_H = 2.0           # GitHub delays cron under load; 2h is the published slack
 MAX_PATH_IMPACT = 0.07      # T4 gate: losing one of 3 paths costs <= 0.07 heat

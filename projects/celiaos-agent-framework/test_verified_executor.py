@@ -67,7 +67,10 @@ class VerifiedExecutorTests(unittest.TestCase):
     def test_memory_failure_is_not_success(self):
         state = self.root / 'execution' / 'state'
         state.mkdir(parents=True)
-        (state / 'memory.db').mkdir()
+        # Keep the SQLite path a regular file so startup's runtime-layout
+        # validation passes; corrupt contents exercise the nonfatal memory
+        # ingestion failure after the kernel has completed the run.
+        (state / 'memory.db').write_bytes(b'not-a-sqlite-database')
         result = self.run_file('file.txt')
         self.assertEqual(result['state'], 'FAILED')
         self.assertEqual(result['result']['status'], 'VERIFIED')

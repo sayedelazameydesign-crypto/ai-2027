@@ -69,6 +69,6 @@ L5 (إنتاج)  ✗ غير موصول — بلا بيانات
 python3 memory/test_memory.py -v        # 16 tests (L1)
 python3 memory/evaluate.py --markdown   # recall/FP — including the 5/16 miss set
 python3 memory/store.py demo            # admission + refusal + tamper + noise floor
-python3 command-hud/test_hud.py -v      # 17 tests (L2)
+python3 command-hud/test_hud.py -v      # 19 tests (L2; loopback-only control surface)
 python3 scripts/generate_launch_evidence.py --assert
 ```

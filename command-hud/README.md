@@ -7,20 +7,23 @@ of all 48 projects. **Stdlib only. Zero third-party imports. No LLM.**
 ## Run it
 
 ```bash
-# From the repository root:
-python3 command-hud/server.py --port 8090 --host 0.0.0.0
+# From the repository root; binds only to the local machine:
+python3 command-hud/server.py --port 8090
 ```
 
-Then open the **live preview URL** provided by Arena. If you are running it on
-your own machine, `http://localhost:8090` works.
+Open `http://localhost:8090` in a browser on the same machine. This service has
+unauthenticated dispatch and control endpoints, so it is intentionally restricted
+to an IPv4 loopback bind. `0.0.0.0`, LAN addresses, and hostnames are refused;
+foreign `Host`/`Origin` requests are rejected to reduce DNS-rebinding and browser
+CSRF exposure. **It is not available through Arena's remote preview or as a
+network-shared service.** Do not tunnel or reverse-proxy it for remote use. A
+remote control UI needs a separately designed authenticated HTTPS gateway first.
 
-> ⚠️ **Two corrections to the command that was circulating:**
-> 1. `python -m live_agent.server --port 8090` **does not exist** — there is no
->    `live_agent` package. The original Phase-1 wrapper is
->    `python3 live-agent/server.py --port 8090` (hyphen, script, not a module).
-> 2. `localhost:8090` points at **your** machine, not at this sandbox. In Arena
->    the server runs remotely; use the preview URL. All browser-side API calls
->    here are **relative** (`api/state`), so they work behind the proxy.
+> `python -m live_agent.server --port 8090` **does not exist** — there is no
+> `live_agent` package. The original Phase-1 wrapper is
+> `python3 live-agent/server.py --port 8090` (hyphen, script, not a module).
+> Browser-side API calls use relative paths; that does not make the HUD safe to
+> publish through an unauthenticated proxy.
 
 ## What is real (and what is not)
 
@@ -35,7 +38,12 @@ your own machine, `http://localhost:8090` works.
 | Timings | Measured here with `perf_counter`, jitter shown. **NOT** the published `bench.py` reference numbers and not an SLA. |
 | 48-project audit | Read-only. `PROVEN` requires a command actually executed here; `DECLARED` means documented but **not** executed. Only 1 project is PROVEN. |
 
-## Endpoints (all relative-friendly)
+## Endpoints (operator-local only)
+
+The routes below have no bearer authentication; every state/read endpoint and every
+dispatch/control route is reachable only via the local loopback listener. Browser
+POSTs must also have a matching loopback `Host` and `Origin`; command-line requests
+without an `Origin` are supported for local operator use.
 
 | Method | Path | Purpose |
 |---|---|---|
@@ -56,8 +64,11 @@ your own machine, `http://localhost:8090` works.
 Normal starts preserve the gitignored `command-hud/runtime/` evidence, isolated
 memory, and append-only `state/hud-history.jsonl`; the HUD restores its latest
 400 events and backfills a run from its persisted DecisionRecord if shutdown
-interrupts the HUD-history append. Use `--fresh` only for an intentional,
-destructive reset of this HUD's local runtime.
+interrupts the HUD-history append. On POSIX, the service keeps its runtime data
+owner-only, including the HUD-specific root-level `memory.sqlite` and its
+sidecars, and refuses symlinked runtime or SQLite paths. `--fresh` is an
+intentional, destructive reset and is also refused through a symlinked runtime
+alias.
 
 The HUD and Live Agent are separate HTTP surfaces, but **the HUD does not call
 the Live Agent service over HTTP**. `kernel_bridge.py` imports the Live Agent
@@ -69,7 +80,7 @@ boundary actually requires it.
 ## Verification (reproducible)
 
 ```bash
-python3 command-hud/test_hud.py -v          # 17 end-to-end tests, real HTTP + real kernel
+python3 command-hud/test_hud.py -v          # 19 end-to-end tests, real HTTP + real kernel
 python3 command-hud/redteam.py --markdown --assert
 python3 command-hud/audit.py --report docs/REPOSITORY-AUDIT.md --assert-probes
 python3 scripts/ci_guard.py imports         # HUD itself is stdlib-only too
@@ -99,7 +110,7 @@ fake "100/100 DENIED" badge and publishes the 9.
 | `audit.py` | **Read-only** 48-project inspection + 5 executed probes → classified JSON/Markdown |
 | `redteam.py` | 100 adversarial inputs + 10 controls against the real policy wall |
 | `static/` | Dark bilingual HUD, zero external requests |
-| `test_hud.py` | 17 end-to-end tests (real HTTP, real kernel, restore + artifact hash) |
+| `test_hud.py` | 19 end-to-end tests (real HTTP, real kernel, local exposure boundary, restore + artifact hash) |
 | `runtime/` | Generated evidence, isolated memory, and HUD history — **gitignored**, preserved across normal restarts; `--fresh` is destructive opt-in |
 
 ## Scope discipline
