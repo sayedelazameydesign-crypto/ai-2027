@@ -18,16 +18,18 @@ Honest limits:
     endpoints (red-team / audit) — those must keep working to prove the wall.
   * the planner is deterministic; there is NO LLM in this loop (Phase 2 is a
     separate, still-undecided decision).
-  * browser-facing code uses RELATIVE urls only, so it works behind the Arena
-    preview proxy as well as on localhost.
+  * browser-facing code uses RELATIVE urls, but this unauthenticated control
+    surface is deliberately loopback-only and cannot be exposed through a proxy.
 
-Run: python3 command-hud/server.py --port 8090 --host 0.0.0.0
+Run: python3 command-hud/server.py --port 8090
+Loopback-only: unauthenticated control plane; remote binds are refused.
 Stdlib only. Python 3.10+.
 """
 from __future__ import annotations
 
 import argparse
 import hashlib
+import ipaddress
 import json
 import os
 import platform
@@ -40,7 +42,7 @@ import time
 from collections import deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlsplit
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
@@ -433,6 +435,64 @@ def state_payload() -> dict:
         }
 
 
+def _prepare_hud_memory_db(server_module, runtime_root: Path, *, fresh: bool) -> Path:
+    """Validate and privatize the HUD's separate root-level SQLite memory bundle."""
+    database = runtime_root / "memory.sqlite"
+    server_module._validate_runtime_layout(memory_db=database)
+    paths = [Path(str(database) + suffix)
+             for suffix in server_module._SQLITE_SUFFIXES]
+    present = [server_module._set_private_file_mode(path) for path in paths]
+    if fresh:
+        for path, exists in zip(paths, present):
+            if exists:
+                path.unlink()
+    elif not present[0] and any(present[1:]):
+        raise ValueError("HUD SQLite sidecar exists without its database")
+    return database
+
+
+def _loopback_bind_host(host: str) -> str:
+    """Normalize a local bind request; the unauthenticated HUD is loopback-only."""
+    if host.casefold() == "localhost":
+        return "127.0.0.1"
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError as exc:
+        raise ValueError("Command HUD only supports a literal loopback bind address") from exc
+    if not isinstance(address, ipaddress.IPv4Address) or not address.is_loopback:
+        raise ValueError("Command HUD is operator-local; non-loopback binds are refused")
+    return str(address)
+
+
+def _loopback_authority_identity(authority: str, expected_port: int):
+    """Parse a local HTTP Host/Origin authority and return normalized identity."""
+    if not authority or any(char.isspace() for char in authority):
+        return None
+    try:
+        parsed = urlsplit("//" + authority)
+        host = parsed.hostname
+        port = parsed.port
+    except (ValueError, UnicodeError):
+        return None
+    if (
+        not host or parsed.username is not None or parsed.password is not None
+        or parsed.path or parsed.query or parsed.fragment
+    ):
+        return None
+    port = 80 if port is None else port
+    if port != expected_port:
+        return None
+    if host.casefold() == "localhost":
+        return ("localhost", port)
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        return None
+    if not isinstance(address, ipaddress.IPv4Address) or not address.is_loopback:
+        return None
+    return (str(address), port)
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "AI2027CommandHUD/1.0"
     protocol_version = "HTTP/1.1"
@@ -477,8 +537,32 @@ class Handler(BaseHTTPRequestHandler):
         except (ValueError, UnicodeDecodeError):
             return {}
 
+    def _local_request_allowed(self) -> bool:
+        port = self.server.server_port
+        host_identity = _loopback_authority_identity(self.headers.get("Host", ""), port)
+        if host_identity is None:
+            return False
+        if self.headers.get("Sec-Fetch-Site", "").casefold() == "cross-site":
+            return False
+        origin = self.headers.get("Origin")
+        if origin is None:
+            return True  # local command-line clients do not send browser Origin headers
+        try:
+            parsed = urlsplit(origin)
+        except (ValueError, UnicodeError):
+            return False
+        if (
+            parsed.scheme.casefold() != "http" or not parsed.netloc
+            or parsed.path or parsed.query or parsed.fragment
+        ):
+            return False
+        origin_identity = _loopback_authority_identity(parsed.netloc, port)
+        return origin_identity is not None and origin_identity == host_identity
+
     # ------------------------------ GET ---------------------------------- #
     def do_GET(self) -> None:
+        if not self._local_request_allowed():
+            return self._json({"error": "operator-local access only"}, 403)
         u = urlparse(self.path)
         p = u.path
         if p in ("/", "/index.html"):
@@ -523,6 +607,8 @@ class Handler(BaseHTTPRequestHandler):
 
     # ------------------------------ POST --------------------------------- #
     def do_POST(self) -> None:
+        if not self._local_request_allowed():
+            return self._json({"error": "operator-local access only"}, 403)
         u = urlparse(self.path)
         p = u.path
         body = self._body()
@@ -574,7 +660,8 @@ def main() -> None:
     global SRV
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, default=8090)
-    ap.add_argument("--host", default="0.0.0.0")
+    ap.add_argument("--host", default="127.0.0.1",
+                    help="loopback-only bind address (the HUD has no remote authentication)")
     ap.add_argument("--runtime-dir", default=os.environ.get("AI2027_HUD_RUNTIME_DIR"),
                     help="isolate persistent HUD evidence/history/memory under this directory")
     ap.add_argument("--fast-audit", action="store_true",
@@ -582,16 +669,18 @@ def main() -> None:
     ap.add_argument("--fresh", action="store_true",
                     help="DESTRUCTIVE: delete this HUD runtime's evidence, history, and memory before starting")
     args = ap.parse_args()
+    try:
+        args.host = _loopback_bind_host(args.host)
+    except ValueError as exc:
+        ap.error(str(exc))
 
     global MEM
-    runtime_root = (Path(args.runtime_dir).expanduser().resolve()
+    runtime_root = (Path(args.runtime_dir).expanduser()
                     if args.runtime_dir else kernel_bridge.RUNTIME)
     SRV = kernel_bridge.load(runtime=runtime_root, fresh=args.fresh)
+    runtime_root = SRV.RUNS_DIR.parent
     STATE["history"] = restore_history()
-    hud_memory_db = runtime_root / "memory.sqlite"
-    if args.fresh:
-        for suffix in ("", "-wal", "-shm"):
-            Path(str(hud_memory_db) + suffix).unlink(missing_ok=True)
+    hud_memory_db = _prepare_hud_memory_db(SRV, runtime_root, fresh=args.fresh)
     MEM = memory_store.EvidenceMemoryStore(
         hud_memory_db, sandbox_root=SRV.SANDBOXES_DIR)
     STATE["audit"] = audit_mod.build(fast=True)

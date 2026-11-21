@@ -29,7 +29,7 @@ import health_gate as hg  # noqa: E402
 NOW = 1_800_000_000.0
 
 
-def make_status(passed: int = 15, total: int = 15, *, memories: int = 3,
+def make_status(passed: int = 17, total: int = 17, *, memories: int = 3,
                 live_paths: int = 1, n_paths: int = 1, heat: float = 0.8,
                 checks: int | None = None, beat_ts: float = NOW) -> dict:
     rows = [{"name": f"check_{i}", "ok": i < passed} for i in range(
@@ -48,7 +48,7 @@ def make_status(passed: int = 15, total: int = 15, *, memories: int = 3,
     }
 
 
-def make_history(n: int = 2, *, passed: int = 15, total: int = 15,
+def make_history(n: int = 2, *, passed: int = 17, total: int = 17,
                  heat: float = 0.8, spacing_h: float = 6.0) -> list[dict]:
     return [{"ts": NOW - spacing_h * 3600 * (n - i), "ok": passed == total,
              "passed": passed, "total": total, "memories": 1, "heat": heat}
@@ -57,6 +57,7 @@ def make_history(n: int = 2, *, passed: int = 15, total: int = 15,
 
 class ContractTests(unittest.TestCase):
     def test_01_healthy_beat_passes_with_a_fixed_check_list(self):
+        self.assertEqual(hg.DEFAULT_TOTAL, 17)
         res = hg.evaluate(make_status(), make_history(), now=NOW)
         self.assertEqual(tuple(c["id"] for c in res["checks"]), hg.CHECK_IDS)
         self.assertEqual(res["verdict"], "healthy")
@@ -64,16 +65,16 @@ class ContractTests(unittest.TestCase):
         self.assertTrue(res["healthy"])
         self.assertEqual(res["failures"], [])
 
-    def test_02_a_beat_that_lost_checks_is_caught_even_though_it_says_15_of_15(self):
+    def test_02_a_beat_that_lost_checks_is_caught_even_though_it_says_3_of_3(self):
         # passed == total, so every printed field looks perfect — but the
-        # historical bar is 15 and this beat only ever measured 3.
+        # historical bar is 17 and this beat only ever measured 3.
         res = hg.evaluate(make_status(passed=3, total=3), make_history(), now=NOW)
         self.assertEqual(res["verdict"], "degraded")
         self.assertIn("smoke_complete", res["failures"])
         self.assertEqual(res["exit_code"], 1)
 
     def test_03_a_real_failed_check_degrades(self):
-        res = hg.evaluate(make_status(passed=14, total=15), make_history(), now=NOW)
+        res = hg.evaluate(make_status(passed=16, total=17), make_history(), now=NOW)
         self.assertEqual(res["verdict"], "degraded")
         self.assertIn("smoke_complete", res["failures"])
         self.assertIn("smoke_no_regression", res["failures"])
@@ -122,7 +123,7 @@ class FreshnessTests(unittest.TestCase):
         self.assertNotIn("beat_freshness", res["failures"])
 
     def test_11_history_reset_is_a_warning_not_a_page(self):
-        future = [{"ts": NOW + 3600, "ok": True, "passed": 15, "total": 15, "heat": 0.8}]
+        future = [{"ts": NOW + 3600, "ok": True, "passed": 17, "total": 17, "heat": 0.8}]
         res = hg.evaluate(make_status(), future, now=NOW)
         warning = next(c for c in res["checks"] if c["id"] == "history_monotonic")
         self.assertFalse(warning["ok"])
@@ -242,7 +243,7 @@ class CliTests(unittest.TestCase):
             self.assertFalse(hg.append_beat({"smoke": {}}, hist))  # no beat_ts
             rows = [json.loads(line) for line in hist.read_text().splitlines()]
             self.assertEqual(len(rows), 1)
-            self.assertEqual(rows[0]["passed"], 15)
+            self.assertEqual(rows[0]["passed"], 17)
 
     def test_20_self_test_runs_the_gate_on_synthetic_evidence(self):
         proc = subprocess.run([sys.executable, str(HERE / "health_gate.py"), "--self-test"],

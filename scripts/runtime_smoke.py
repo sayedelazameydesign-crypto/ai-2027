@@ -20,15 +20,21 @@ Covered promises:
  10. Prometheus metrics expose real counters (no derived "health score")
  11. the HUD returns a real plan, an independently re-hashed artifact, and a
      durable history/DecisionRecord over its own HTTP API; its red-team gate passes
+ 12. public health stays minimal while reader-protected capabilities support the UI
+ 13. direct Live Agent runs explicitly report that deployment cleanup is not applicable
 
 Topology note: HUD and Live Agent are exercised as separate HTTP services, but
 HUD dispatches through an in-process kernel bridge—not an HTTP call to Live Agent.
 
 Usage:
-    python3 live-agent/server.py --port 8090 &
-    python3 command-hud/server.py --port 8091 &
-    python3 scripts/runtime_smoke.py                       # both
-    python3 scripts/runtime_smoke.py --no-hud              # live agent only
+    ./scripts/ember_up.sh --no-browser                   # provisions local-only credentials
+    python3 scripts/runtime_smoke.py                     # reuses the private local credential file
+    ./scripts/ember_up.sh --stop
+
+For manually launched servers, configure `AI2027_WRITE_TOKEN`,
+`AI2027_READ_TOKEN_HASHES`, `AI2027_READ_TOKEN_ID`, and
+`AI2027_READ_TOKEN_SECRET` in the server/client environments. Without them,
+private API checks fail closed; only the minimal health request is public.
 """
 from __future__ import annotations
 
@@ -42,6 +48,8 @@ import urllib.parse
 import urllib.request
 import uuid
 
+from live_agent_auth import authorization_header, open_url
+
 TIMEOUT = 20
 
 
@@ -52,11 +60,16 @@ class Fail(Exception):
 def call(base: str, path: str, payload: dict | None = None) -> tuple[int, bytes]:
     url = base.rstrip("/") + path
     data = None if payload is None else json.dumps(payload).encode()
+    headers = {"Content-Type": "application/json"}
+    authorization = authorization_header(
+        base, path, "POST" if payload is not None else "GET")
+    if authorization:
+        headers["Authorization"] = authorization
     req = urllib.request.Request(
-        url, data=data, headers={"Content-Type": "application/json"},
+        url, data=data, headers=headers,
         method="POST" if payload is not None else "GET")
     try:
-        with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
+        with open_url(req, timeout=TIMEOUT) as r:
             return r.status, r.read()
     except urllib.error.HTTPError as e:  # 4xx is a legitimate answer here
         return e.code, e.read()
@@ -78,9 +91,18 @@ def expect(cond: bool, msg: str) -> None:
 def check_live_agent(base: str, results: list[tuple[str, bool, str]]) -> None:
     status, health = jcall(base, "/api/health")
     expect(status == 200 and health.get("ok") is True, f"/api/health -> {status} {health}")
-    expect("NO LLM" in json.dumps(health), "health must declare the no-LLM scope")
-    results.append(("live-agent: health + honest scope", True,
-                    health.get("mode", "")[:70]))
+    expect(health == {"ok": True, "service": "ai-2027-live-agent"},
+           f"public health must remain minimal: {list(health)}")
+    results.append(("live-agent: minimal public health", True, health["service"]))
+
+    status, capabilities = jcall(base, "/api/capabilities")
+    expect(status == 200, f"/api/capabilities -> HTTP {status}")
+    expect(isinstance(capabilities.get("supported_goals"), list),
+           "protected capabilities has no supported goal list")
+    expect(isinstance(capabilities.get("memory"), int),
+           "protected capabilities has no memory count")
+    results.append(("live-agent: reader-protected capabilities contract", True,
+                    f"goals={len(capabilities['supported_goals'])}"))
 
     content = "runtime smoke @ 2026-11-17"
     status, rec = jcall(base, "/api/run", {
@@ -89,11 +111,15 @@ def check_live_agent(base: str, results: list[tuple[str, bool, str]]) -> None:
     })
     expect(status == 200, f"run -> HTTP {status}")
     expect(rec.get("status") == "VERIFIED", f"expected VERIFIED, got {rec.get('status')}: {rec.get('error')}")
+    cleanup_status = (rec.get("cleanup") or {}).get("status")
+    expect(cleanup_status == "not_applicable",
+           f"direct Live Agent run must report cleanup as not_applicable, got {cleanup_status}")
     checks = (rec.get("evidence") or [{}])[0].get("checks", {})
     for key in ("claimed_ok", "file_exists", "correct_path", "correct_content", "hash_matches"):
         expect(checks.get(key) is True, f"verifier check {key} was not true: {checks}")
     run_id = rec["run_id"]
     results.append(("live-agent: create_file -> VERIFIED (5/5 checks)", True, run_id))
+    results.append(("live-agent: cleanup contract is explicit", True, cleanup_status))
 
     status, raw = call(base, "/api/file?" + urllib.parse.urlencode(
         {"run": run_id, "path": "smoke/proof.txt"}))
