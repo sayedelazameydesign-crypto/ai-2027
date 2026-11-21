@@ -295,6 +295,33 @@ class LocalWorkspaceGatewayTests(unittest.TestCase):
         finally:
             unavailable.replace(self.credentials_path)
 
+    def test_symlinked_local_credentials_fail_closed(self):
+        if os.name != "posix":
+            self.skipTest("owner-only file symlink behavior requires POSIX")
+        original = self.credentials_path
+        private_target = self.state_dir / "api-credentials.private"
+        original.replace(private_target)
+        try:
+            original.symlink_to(private_target)
+            self.assertEqual(request(self.base, "/api/health")[0], 200)
+            protected = request(self.base, "/api/runs")
+            self.assertEqual(protected[0], 503)
+            self.assertEqual(
+                json_body(protected).get("error"),
+                "local reader credentials unavailable",
+            )
+            write = request(
+                self.base, "/api/run", method="POST",
+                payload={"goal_type": "create_file", "params": {"path": "blocked-symlink.txt"}},
+                headers={"Origin": self.base},
+            )
+            self.assertEqual(write[0], 503)
+        finally:
+            if original.is_symlink():
+                original.unlink()
+            if private_target.exists():
+                private_target.replace(original)
+
     def test_ops_proxy_rewrites_only_validated_local_origin_for_hud(self):
         hud_page = request(self.base, "/ops/")
         self.assertEqual(hud_page[0], 200)
