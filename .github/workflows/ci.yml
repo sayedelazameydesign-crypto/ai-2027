@@ -1,5 +1,5 @@
 # Evidence-First CI — Phase 2 / Week 1 of the 2027 roadmap.
-# Gates: 104 kernel tests + 16 Live Agent wrapper tests + authenticated client and
+# Gates: 104 kernel tests + 20 Live Agent wrapper tests + authenticated client and
 # snapshot regressions + CLI contract, AST zero-deps proof, reproducible benchmarks,
 # 12 demo contract tests, 44 watchdog tests + 9 Phase 2B alerting tests, and
 # an installable-wheel smoke test.
@@ -57,7 +57,7 @@ jobs:
       - name: Kernel unit tests (104)
         run: python -m unittest discover -s projects/agi-system/tests -t projects/agi-system -v
 
-      - name: Live Agent wrapper tests (17)
+      - name: Live Agent wrapper tests (20)
         run: python live-agent/test_server.py -v
 
       - name: CeliaOS verified file bridge and approval tests
@@ -441,7 +441,7 @@ jobs:
           assert task["artifact"]["hash_verified"] is True, task["artifact"]
           lines = [
               "### T4 — one-command recovery",
-              f"- boot + 15-check smoke + shutdown: {up['elapsed_ms']} ms · {up['smoke']}",
+              f"- boot + 17-check smoke + shutdown: {up['elapsed_ms']} ms · {up['smoke']}",
               "",
               "### T6 — one real task, measured",
               f"- run_id `{task['run_id']}` · status **{task['status']}** · "
@@ -473,6 +473,31 @@ jobs:
           test -f website/demo.html
           test -f website/kernel-demo.js
           grep -q 'demo.html' website/index.html
+
+  local-workspace-gateway:
+    name: Workspace UI local gateway + cleanup contract (real loopback HTTP)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
+        with:
+          python-version: "3.11"
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444  # v5
+        with:
+          node-version: "20"
+      - name: Install the locked Workspace UI dependencies
+        working-directory: workspace-ui
+        run: npm ci
+      - name: Cleanup status contract — direct, wrapped, failure, unknown
+        run: node live-agent/static/cleanup-status.test.cjs
+      - name: Workspace UI TypeScript check and production build
+        working-directory: workspace-ui
+        run: |
+          npm run typecheck
+          npm run build
+      - name: Real ember_up.sh → Vite → Live Agent/HUD regression
+        run: python scripts/test_workspace_local_gateway.py -v
 
   benchmark:
     name: Measured benchmarks + regression guard
@@ -1039,7 +1064,7 @@ jobs:
           tail -30 .ember-up/live-agent.log 2>/dev/null || true
           tail -30 .ember-up/command-hud.log 2>/dev/null || true
           exit 1
-      - name: End-to-end smoke against the running servers (15 checks)
+      - name: End-to-end smoke against the running servers (17 checks)
         run: python scripts/runtime_smoke.py
       - name: Process restart persistence (Live Agent + Command HUD)
         run: python scripts/test_runtime_restart.py -v

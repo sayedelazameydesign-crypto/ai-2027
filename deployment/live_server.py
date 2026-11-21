@@ -228,16 +228,24 @@ def _attach_cleanup_result(server, payload: dict, prune_result: dict) -> tuple[d
     """Attach and persist the safe cleanup report; return (report, persist_failed)."""
     cleanup = _cleanup_report(prune_result)
     payload["cleanup"] = cleanup
+    persist_failed = False
     try:
         server._persist_run_record(payload)
-        return cleanup, False
     except Exception:
         cleanup["warnings"] = sorted(set(cleanup["warnings"] + [
             "CLEANUP_RESULT_PERSIST_FAILED"
         ]))
         if cleanup["status"] == "complete":
             cleanup["status"] = "partial"
-        return cleanup, True
+        persist_failed = True
+
+    run_index = getattr(server, "_run_index", None)
+    run_id = payload.get("run_id")
+    if isinstance(run_index, dict) and isinstance(run_id, str):
+        entry = run_index.get(run_id)
+        if isinstance(entry, dict):
+            entry["cleanup"] = {"status": cleanup["status"]}
+    return cleanup, persist_failed
 
 
 def _human(n: int) -> str:
@@ -670,7 +678,6 @@ def main() -> int:
     except ValueError:
         sys.stderr.write("FATAL: invalid API access configuration\n")
         return 2
-    server._configure_kernel_log_suppression()
     runtime_dir = os.environ.get("AI2027_LIVE_RUNTIME_DIR")
     if runtime_dir:
         server._configure_runtime(runtime_dir)
@@ -753,7 +760,7 @@ def main() -> int:
                     f"run budget exhausted ({max_runs} per process); the demo "
                     "restarts with a fresh budget")
             state["runs"] += 1
-            payload = real_run_goal(goal_type, params)
+            payload = real_run_goal(goal_type, params, cleanup_mode="wrapped")
             run_id = payload.get("run_id")
             try:
                 prune_out = _prune(server, max_disk_bytes, keep_run_id=run_id)

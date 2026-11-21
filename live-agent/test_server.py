@@ -41,6 +41,14 @@ class TestRunGoal(unittest.TestCase):
     def test_create_file_is_verified_with_evidence(self):
         rec = server.run_goal("create_file", {"path": "a/b.txt", "content": "hi"})
         self.assertEqual(rec["status"], "VERIFIED")
+        self.assertEqual(rec["cleanup"], {
+            "status": "not_applicable",
+            "reason": "direct_live_agent_mode",
+            "warnings": [],
+        })
+        self.assertEqual(server._run_index[rec["run_id"]]["cleanup"], {
+            "status": "not_applicable",
+        })
         self.assertTrue(rec["evidence"])
         for e in rec["evidence"]:
             self.assertTrue(e["checks"])
@@ -50,6 +58,16 @@ class TestRunGoal(unittest.TestCase):
         self.assertTrue(
             (server.SANDBOXES_DIR / rec["run_id"] / "a" / "b.txt").is_file()
         )
+
+    def test_wrapped_execution_keeps_missing_cleanup_unknown_until_pruning_finishes(self):
+        rec = server.run_goal(
+            "create_file", {"path": "wrapped/pending.txt", "content": "pending"},
+            cleanup_mode="wrapped",
+        )
+        self.assertNotIn("cleanup", rec)
+        persisted = server.read_run(rec["run_id"])
+        self.assertNotIn("cleanup", persisted)
+        self.assertNotIn("cleanup", server._run_index[rec["run_id"]])
 
     def test_traversal_is_denied_by_kernel_policy(self):
         rec = server.run_goal("create_file",
@@ -130,6 +148,7 @@ class TestRunGoal(unittest.TestCase):
         self.assertEqual(warnings, [])
         self.assertEqual(server.read_run(run_id)["status"], "VERIFIED")
         self.assertEqual(server._run_index[run_id]["status"], "VERIFIED")
+        self.assertEqual(server._run_index[run_id]["cleanup"], {"status": "not_applicable"})
         self.assertEqual(artifact.read_bytes(), b"durable-run")
         self.assertGreaterEqual(server.memory().stats()["memories"], 1)
 
@@ -262,7 +281,7 @@ class TestAPIProtectionAndLogging(unittest.TestCase):
         paths = (
             "/api/agent-card", "/api/metrics", "/api/memory",
             "/api/memory/search?q=synthetic-query-marker",
-            "/api/runs", "/api/run/run_1700000000_abcdef01",
+            "/api/capabilities", "/api/runs", "/api/run/run_1700000000_abcdef01",
             "/api/file?run=run_1700000000_abcdef01&path=synthetic-file-marker",
             "/api/unregistered-private-route",
         )
@@ -277,6 +296,70 @@ class TestAPIProtectionAndLogging(unittest.TestCase):
                 self.assertEqual(wrong_status, 401)
                 self.assertNotIn(wrong, wrong_body.decode("utf-8", errors="replace"))
         self.assertEqual(self.request("GET", "/api/runs", credential=valid)[0], 200)
+        capabilities_status, _, capabilities_raw = self.request(
+            "GET", "/api/capabilities", credential=valid
+        )
+        self.assertEqual(capabilities_status, 200)
+        capabilities = json.loads(capabilities_raw)
+        self.assertEqual(capabilities["supported_goals"], list(server.SUPPORTED_GOALS))
+        self.assertIsInstance(capabilities["memory"], int)
+        self.assertNotIn("supported_goals", json.loads(health_raw))
+        self.assertNotIn("memory", json.loads(health_raw))
+
+    def test_direct_live_agent_static_ui_reads_and_runs_with_transient_credentials(self):
+        # This is the distinct direct path: browser-loadable assets stay public,
+        # but private metadata, run records, and files still require credentials.
+        status, _, html = self.request("GET", "/")
+        self.assertEqual(status, 200)
+        self.assertIn(b'<script src="/cleanup-status.js"></script>', html)
+        self.assertIn(b'id="readToken"', html)
+        self.assertIn(b'id="writeToken"', html)
+        self.assertIn(b"Authorization", html)
+        self.assertNotIn(b"localStorage.setItem", html)
+        self.assertNotIn(self.READ_SECRET.encode(), html)
+        self.assertNotIn(self.WRITE_SECRET.encode(), html)
+
+        script_status, headers, script = self.request("GET", "/cleanup-status.js")
+        self.assertEqual(script_status, 200)
+        self.assertIn("javascript", headers.get("Content-Type", ""))
+        self.assertIn(b"not_applicable", script)
+        self.assertIn(b"fullSuccess", html)
+
+        health_status, _, health_raw = self.request("GET", "/api/health")
+        self.assertEqual(health_status, 200)
+        self.assertEqual(json.loads(health_raw), {
+            "ok": True, "service": "ai-2027-live-agent",
+        })
+        self.assertEqual(self.request("GET", "/api/capabilities")[0], 401)
+        reader = f"{self.READ_ID}.{self.READ_SECRET}"
+        caps_status, _, caps_raw = self.request(
+            "GET", "/api/capabilities", credential=reader,
+        )
+        self.assertEqual(caps_status, 200)
+        self.assertIn("supported_goals", json.loads(caps_raw))
+
+        run_status, _, run_raw = self.request(
+            "POST", "/api/run", credential=self.WRITE_SECRET,
+            payload={"goal_type": "create_file", "params": {
+                "path": "direct-ui/proof.txt", "content": "static UI round trip",
+            }},
+        )
+        self.assertEqual(run_status, 200)
+        run = json.loads(run_raw)
+        self.assertEqual(run["status"], "VERIFIED")
+        self.assertEqual(run["cleanup"]["status"], "not_applicable")
+
+        record_status, _, record_raw = self.request(
+            "GET", f"/api/run/{run['run_id']}", credential=reader,
+        )
+        self.assertEqual(record_status, 200)
+        self.assertEqual(json.loads(record_raw)["cleanup"]["status"], "not_applicable")
+        artifact_status, _, artifact = self.request(
+            "GET", "/api/file?run=" + run["run_id"] +
+            "&path=direct-ui%2Fproof.txt", credential=reader,
+        )
+        self.assertEqual(artifact_status, 200)
+        self.assertEqual(artifact, b"static UI round trip")
 
     def test_file_download_filename_is_encoded_before_header_use(self):
         read_credential = f"{self.READ_ID}.{self.READ_SECRET}"
@@ -344,6 +427,10 @@ class TestAPIProtectionAndLogging(unittest.TestCase):
         body = {"goal_type": "create_file", "params": {
             "path": "safe.txt", "content": body_marker,
         }}
+        global_logger_before = (
+            list(self.logger.handlers), list(self.logger.filters), self.logger.propagate,
+            self.logger.level, self.logger.disabled,
+        )
         output, errors = io.StringIO(), io.StringIO()
         with redirect_stdout(output), redirect_stderr(errors):
             self.assertEqual(self.request("POST", "/api/run", payload=body)[0], 401)
@@ -374,13 +461,13 @@ class TestAPIProtectionAndLogging(unittest.TestCase):
 
             class ExplodingKernel:
                 def __init__(self, *_args, **_kwargs):
-                    pass
+                    self.logger = None
 
                 def run(self, *_args, **_kwargs):
                     try:
                         raise RuntimeError(kernel_marker)
                     except RuntimeError:
-                        logging.getLogger("agi.kernel").exception("kernel execution failed")
+                        self.logger.exception("kernel execution failed: %s", kernel_marker)
                         raise
 
             with patch.object(server, "Kernel", ExplodingKernel):
@@ -394,15 +481,28 @@ class TestAPIProtectionAndLogging(unittest.TestCase):
             # Handler access logs are emitted as each worker closes its response;
             # wait for the final worker while stderr is still redirected.
             deadline = time.monotonic() + 2
-            while errors.getvalue().count("\n") < 7 and time.monotonic() < deadline:
+            while errors.getvalue().count('"method"') < 7 and time.monotonic() < deadline:
                 time.sleep(0.01)
 
+        global_logger_after = (
+            list(self.logger.handlers), list(self.logger.filters), self.logger.propagate,
+            self.logger.level, self.logger.disabled,
+        )
+        self.assertEqual(global_logger_after, global_logger_before)
         captured = output.getvalue() + errors.getvalue()
         for marker in (query_marker, body_marker, auth_marker, kernel_marker,
                        self.READ_SECRET, self.WRITE_SECRET):
             self.assertNotIn(marker, captured)
-        records = [json.loads(line) for line in errors.getvalue().splitlines() if line.strip()]
+        log_records = [
+            json.loads(line) for line in errors.getvalue().splitlines() if line.strip()
+        ]
+        kernel_records = [r for r in log_records if r.get("source") == "agi.kernel"]
+        records = [r for r in log_records if "method" in r]
         self.assertGreaterEqual(len(records), 7)
+        self.assertTrue(kernel_records, "the Live Agent should retain redacted kernel events")
+        kernel_events = {r["event"] for r in kernel_records}
+        self.assertIn("run started", kernel_events)
+        self.assertIn("kernel event", kernel_events)
         for record in records:
             self.assertEqual(set(record), {
                 "request_id", "method", "route", "status", "duration_ms"
@@ -433,6 +533,26 @@ class TestLocalBindDefault(unittest.TestCase):
         ):
             self.assertEqual(server.main(), 0)
         self.assertEqual(addresses, [("127.0.0.1", 8090)])
+
+    def test_main_refuses_a_non_loopback_bind_without_opening_a_socket(self):
+        addresses = []
+
+        class StubHTTPServer:
+            def __init__(self, address, handler):
+                addresses.append(address)
+
+            def serve_forever(self):
+                return None
+
+        errors = io.StringIO()
+        with (
+            patch.object(sys, "argv", ["server.py", "--host", "0.0.0.0"]),
+            patch.object(server, "SafeThreadingHTTPServer", StubHTTPServer),
+            redirect_stderr(errors),
+        ):
+            self.assertEqual(server.main(), 2)
+        self.assertEqual(addresses, [])
+        self.assertIn("loopback-only", errors.getvalue())
 
 
 if __name__ == "__main__":

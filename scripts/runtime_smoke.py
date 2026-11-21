@@ -20,6 +20,8 @@ Covered promises:
  10. Prometheus metrics expose real counters (no derived "health score")
  11. the HUD returns a real plan, an independently re-hashed artifact, and a
      durable history/DecisionRecord over its own HTTP API; its red-team gate passes
+ 12. public health stays minimal while reader-protected capabilities support the UI
+ 13. direct Live Agent runs explicitly report that deployment cleanup is not applicable
 
 Topology note: HUD and Live Agent are exercised as separate HTTP services, but
 HUD dispatches through an in-process kernel bridge—not an HTTP call to Live Agent.
@@ -93,6 +95,15 @@ def check_live_agent(base: str, results: list[tuple[str, bool, str]]) -> None:
            f"public health must remain minimal: {list(health)}")
     results.append(("live-agent: minimal public health", True, health["service"]))
 
+    status, capabilities = jcall(base, "/api/capabilities")
+    expect(status == 200, f"/api/capabilities -> HTTP {status}")
+    expect(isinstance(capabilities.get("supported_goals"), list),
+           "protected capabilities has no supported goal list")
+    expect(isinstance(capabilities.get("memory"), int),
+           "protected capabilities has no memory count")
+    results.append(("live-agent: reader-protected capabilities contract", True,
+                    f"goals={len(capabilities['supported_goals'])}"))
+
     content = "runtime smoke @ 2026-11-17"
     status, rec = jcall(base, "/api/run", {
         "goal_type": "create_file",
@@ -100,11 +111,15 @@ def check_live_agent(base: str, results: list[tuple[str, bool, str]]) -> None:
     })
     expect(status == 200, f"run -> HTTP {status}")
     expect(rec.get("status") == "VERIFIED", f"expected VERIFIED, got {rec.get('status')}: {rec.get('error')}")
+    cleanup_status = (rec.get("cleanup") or {}).get("status")
+    expect(cleanup_status == "not_applicable",
+           f"direct Live Agent run must report cleanup as not_applicable, got {cleanup_status}")
     checks = (rec.get("evidence") or [{}])[0].get("checks", {})
     for key in ("claimed_ok", "file_exists", "correct_path", "correct_content", "hash_matches"):
         expect(checks.get(key) is True, f"verifier check {key} was not true: {checks}")
     run_id = rec["run_id"]
     results.append(("live-agent: create_file -> VERIFIED (5/5 checks)", True, run_id))
+    results.append(("live-agent: cleanup contract is explicit", True, cleanup_status))
 
     status, raw = call(base, "/api/file?" + urllib.parse.urlencode(
         {"run": run_id, "path": "smoke/proof.txt"}))

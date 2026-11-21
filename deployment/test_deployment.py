@@ -583,7 +583,9 @@ class CleanupReportTests(unittest.TestCase):
     def test_partial_report_is_attached_to_caller_payload(self):
         run_id = "run_1700000001_abcdef02"
         persisted = []
+        run_index = {run_id: {"status": "VERIFIED", "cleanup": {"status": "not_applicable"}}}
         fake_server = SimpleNamespace(
+            _run_index=run_index,
             _persist_run_record=lambda payload: persisted.append(
                 json.loads(json.dumps(payload))
             )
@@ -599,20 +601,25 @@ class CleanupReportTests(unittest.TestCase):
         self.assertEqual(report["status"], "partial")
         self.assertEqual(payload["cleanup"], report)
         self.assertEqual(persisted[0]["cleanup"]["status"], "partial")
+        self.assertEqual(run_index[run_id]["cleanup"], {"status": "partial"})
         self.assertNotIn("/private/ledger", json.dumps(payload))
         self.assertNotIn(run_id, json.dumps(payload["cleanup"]))
 
     def test_cleanup_report_persistence_failure_downgrades_complete_result(self):
+        run_id = "run_1700000002_abcdef03"
+        run_index = {run_id: {"status": "VERIFIED"}}
         fake_server = SimpleNamespace(
+            _run_index=run_index,
             _persist_run_record=lambda _payload: (_ for _ in ()).throw(OSError("synthetic"))
         )
-        payload = {"run_id": "run_1700000002_abcdef03", "status": "VERIFIED"}
+        payload = {"run_id": run_id, "status": "VERIFIED"}
         report, persist_failed = deployment_live_server._attach_cleanup_result(
             fake_server, payload, {"failures": [], "partial_runs": [],
                               "removed": 0, "freed_bytes": 0}
         )
         self.assertTrue(persist_failed)
         self.assertEqual(report["status"], "partial")
+        self.assertEqual(run_index[run_id]["cleanup"], {"status": "partial"})
         self.assertIn("CLEANUP_RESULT_PERSIST_FAILED", report["warnings"])
 
 
@@ -705,6 +712,7 @@ class LauncherTests(unittest.TestCase):
             "/api/metrics",
             "/api/memory",
             "/api/memory/search?q=" + marker,
+            "/api/capabilities",
             "/api/runs",
             "/api/run/run_1700000000_abcdef01",
             "/api/file?run=run_1700000000_abcdef01&path=" + marker,
@@ -837,6 +845,18 @@ class SecureLoggingLauncherTests(unittest.TestCase):
                         result = json.loads(response.read())
                         self.assertEqual(response.status, 200)
                     self.assertEqual(result["cleanup"]["status"], "complete")
+                    run_id = result["run_id"]
+                    record_status, _, record_raw = _get_http(
+                        port, f"/api/run/{run_id}")
+                    self.assertEqual(record_status, 200)
+                    self.assertEqual(
+                        json.loads(record_raw)["cleanup"]["status"], "complete")
+                    runs_status, _, runs_raw = _get_http(port, "/api/runs")
+                    self.assertEqual(runs_status, 200)
+                    listed = json.loads(runs_raw)["runs"]
+                    self.assertEqual(
+                        next(row for row in listed if row["run_id"] == run_id)
+                        ["cleanup"]["status"], "complete")
 
                     bad_payload = {"goal_type": error_marker, "params": {}}
                     bad_request = urllib.request.Request(

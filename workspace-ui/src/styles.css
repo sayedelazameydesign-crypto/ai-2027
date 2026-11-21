@@ -292,6 +292,7 @@ a { color: inherit; }
 .run-verified .run-status-mark { color: var(--mint); border-color: rgba(126,230,163,.2); background: rgba(126,230,163,.09); }
 .run-denied .run-status-mark { color: var(--amber); border-color: rgba(245,198,108,.18); background: rgba(245,198,108,.08); }
 .run-failed .run-status-mark, .run-aborted .run-status-mark { color: var(--rose); border-color: rgba(255,130,148,.18); background: rgba(255,130,148,.08); }
+.run-inconclusive .run-status-mark { color: var(--amber); border-color: rgba(245,198,108,.18); background: rgba(245,198,108,.08); }
 .run-title-group { min-width: 0; flex: 1; }
 .result-kicker { display: flex; align-items: center; gap: 6px; color: #8991a0; font-size: 9px; }
 .result-kicker i { color: #555c68; font-style: normal; }
@@ -311,6 +312,11 @@ a { color: inherit; }
 .summary-metric > strong small { color: #7e8796; font-size: 9px; font-weight: 500; }
 .summary-metric > strong.metric-good { color: var(--mint); font-family: inherit; font-size: 9px; }
 .summary-metric > strong.metric-neutral { color: #abb2c0; font-family: inherit; font-size: 9px; }
+.cleanup-notice { margin: 0 18px 15px; padding: 9px 11px; display: flex; align-items: flex-start; gap: 7px; border: 1px solid rgba(197,207,232,.1); border-radius: 8px; color: #aab2c1; background: rgba(255,255,255,.018); font-size: 9px; line-height: 1.55; }
+.cleanup-notice svg { flex: 0 0 auto; margin-top: 1px; }
+.cleanup-notice strong { margin-inline-end: 3px; }
+.cleanup-complete, .cleanup-not-applicable { color: #aee5b9; border-color: rgba(126,230,163,.16); background: rgba(126,230,163,.035); }
+.cleanup-partial, .cleanup-failed, .cleanup-unreported { color: #e5ca88; border-color: rgba(245,198,108,.17); background: rgba(245,198,108,.04); }
 .run-stages { padding: 0 18px 16px; display: grid; grid-template-columns: repeat(5, minmax(0,1fr)); gap: 6px; }
 .run-stage { min-width: 0; min-height: 54px; padding: 8px; display: flex; flex-direction: column; gap: 5px; border: 1px solid rgba(197,207,232,.07); border-radius: 8px; background: rgba(255,255,255,.014); }
 .stage-index { width: 18px; height: 18px; display: grid; place-items: center; border-radius: 6px; color: #7d8595; background: rgba(255,255,255,.05); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 8px; }
@@ -422,6 +428,7 @@ a { color: inherit; }
 .status-chip.verified { color: #aee5b9; border-color: rgba(126,230,163,.17); background: rgba(126,230,163,.055); }
 .status-chip.denied { color: #e5ca88; border-color: rgba(245,198,108,.17); background: rgba(245,198,108,.055); }
 .status-chip.failed, .status-chip.aborted { color: #f3a8b4; border-color: rgba(255,130,148,.17); background: rgba(255,130,148,.055); }
+.status-chip.inconclusive { color: #e5ca88; border-color: rgba(245,198,108,.17); background: rgba(245,198,108,.055); }
 .proof-empty { min-height: 100px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 9px; text-align: center; }
 .proof-empty-mark { width: 33px; height: 33px; display: grid; place-items: center; border: 1px solid var(--stroke); border-radius: 10px; color: #879385; background: rgba(126,230,163,.035); }
 .proof-empty p { max-width: 190px; margin: 0; color: #77808f; font-size: 9px; line-height: 1.7; }
@@ -431,6 +438,7 @@ a { color: inherit; }
 .proof-status-icon.verified { color: var(--mint); background: rgba(126,230,163,.09); }
 .proof-status-icon.denied { color: var(--amber); background: rgba(245,198,108,.08); }
 .proof-status-icon.failed { color: var(--rose); background: rgba(255,130,148,.08); }
+.proof-status-icon.inconclusive { color: var(--amber); background: rgba(245,198,108,.08); }
 .proof-run-short { margin-inline-start: auto; color: #727b8a; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 8px; }
 .proof-stat-row, .proof-hash { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: #7d8594; font-size: 8px; }
 .proof-stat-row strong { color: #d1d7e0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 9px; }
@@ -515,6 +523,7 @@ a { color: inherit; }
   .run-result-header { flex-wrap: wrap; padding: 14px; }
   .run-header-actions { width: 100%; flex-direction: row; justify-content: flex-start; }
   .run-summary-grid { padding-inline: 14px; gap: 5px; }
+  .cleanup-notice { margin-inline: 14px; }
   .summary-metric { padding: 7px; }
   .summary-metric > span { font-size: 7px; }
   .run-stages { padding-inline: 14px; gap: 4px; }

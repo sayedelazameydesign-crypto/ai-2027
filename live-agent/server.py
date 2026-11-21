@@ -249,8 +249,8 @@ def _canonical_route(path: str) -> str:
     if path in ("/", "/index.html"):
         return "/"
     if path in {
-        "/api/health", "/api/agent-card", "/api/metrics", "/api/memory",
-        "/api/memory/search", "/api/runs", "/api/file", "/api/run",
+        "/api/health", "/api/capabilities", "/api/agent-card", "/api/metrics",
+        "/api/memory", "/api/memory/search", "/api/runs", "/api/file", "/api/run",
     }:
         return path
     if path.startswith("/api/run/"):
@@ -264,12 +264,80 @@ def _safe_method(method: str | None) -> str:
     return method if method and re.fullmatch(r"[A-Z]{1,12}", method) else "OTHER"
 
 
-def _configure_kernel_log_suppression() -> None:
-    """Keep core exception text out of service stdout/stderr without editing core."""
-    logger = logging.getLogger("agi.kernel")
-    logger.handlers.clear()
-    logger.addHandler(logging.NullHandler())
+_SAFE_KERNEL_LOG_EVENTS = {
+    "run %s started: %s": "run started",
+    "run %s crashed": "run failed",
+    "retry %d/%d for %s: %s": "action retry",
+    "stop requested: %s": "stop requested",
+    "ledger append failed (%s): %s": "ledger append failed",
+    "metrics flush failed: %s": "metrics flush failed",
+}
+
+
+class _KernelLogRedactionFilter(logging.Filter):
+    """Keep useful kernel event names while dropping request-controlled details."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        # Only known format templates are retained. Never format args, tracebacks,
+        # exception messages, paths, goal contents, or provider-controlled values.
+        template = record.msg if isinstance(record.msg, str) else ""
+        record.msg = _SAFE_KERNEL_LOG_EVENTS.get(template, "kernel event")
+        record.args = ()
+        record.exc_info = None
+        record.exc_text = None
+        record.stack_info = None
+        return True
+
+
+class _KernelLogFormatter(logging.Formatter):
+    """Emit an allowlisted JSON event, never the original LogRecord message."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        return json.dumps({
+            "source": "agi.kernel",
+            "level": record.levelname,
+            "event": record.getMessage(),
+        }, separators=(",", ":"))
+
+
+def _live_agent_kernel_logger() -> logging.Logger:
+    """Give this service a private, redacting logger without changing agi.kernel."""
+    logger = logging.Logger("ai2027.live-agent.kernel", level=logging.INFO)
     logger.propagate = False
+    handler = logging.StreamHandler(sys.stderr)
+    handler.addFilter(_KernelLogRedactionFilter())
+    handler.setFormatter(_KernelLogFormatter())
+    logger.addHandler(handler)
+    return logger
+
+
+def _close_live_agent_kernel_logger(logger: logging.Logger) -> None:
+    for handler in list(logger.handlers):
+        try:
+            handler.flush()
+        finally:
+            logger.removeHandler(handler)
+            handler.close()
+
+
+def _cleanup_not_applicable() -> dict[str, object]:
+    """Report the direct server's explicit no-cleanup mode in the shared contract."""
+    return {
+        "status": "not_applicable",
+        "reason": "direct_live_agent_mode",
+        "warnings": [],
+    }
+
+
+def _cleanup_status_summary(cleanup: object) -> dict[str, str] | None:
+    if not isinstance(cleanup, dict):
+        return None
+    status = cleanup.get("status")
+    if not isinstance(status, str) or status not in {
+        "complete", "not_applicable", "partial", "failed"
+    }:
+        return None
+    return {"status": status}
 
 
 def _reject_symlink_components(path: str | Path) -> Path:
@@ -502,11 +570,15 @@ def _restore_run_index() -> list[str]:
             run_id = rec["run_id"]
             goal = rec.get("goal") if isinstance(rec.get("goal"), dict) else {}
             stamp = rec.get("finished_at") or rec.get("started_at") or path.stat().st_mtime
-            _run_index[run_id] = {
+            restored = {
                 "ts": float(stamp),
                 "status": str(rec.get("status") or "UNKNOWN"),
                 "goal_type": str(goal.get("goal_type") or "unknown"),
             }
+            cleanup = _cleanup_status_summary(rec.get("cleanup"))
+            if cleanup is not None:
+                restored["cleanup"] = cleanup
+            _run_index[run_id] = restored
         except (OSError, UnicodeError, ValueError, TypeError, AttributeError) as exc:
             warnings.append(f"could not restore {path.name}: {type(exc).__name__}")
     return warnings
@@ -536,13 +608,18 @@ def _sanitize_params(params: object) -> dict:
     return clean
 
 
-def run_goal(goal_type: str, params: dict, *, planner: Planner | None = None) -> dict:
+def run_goal(goal_type: str, params: dict, *, planner: Planner | None = None,
+             cleanup_mode: str = "direct") -> dict:
     """Execute one goal through the real kernel and persist the evidence.
 
     ``planner`` is an in-process test/extension seam only; the HTTP API does not
     expose provider configuration. With no planner supplied, the existing
-    deterministic planner remains the default.
+    deterministic planner remains the default. The deployment wrapper uses
+    ``cleanup_mode="wrapped"`` so an unpersisted prune result can never inherit
+    the direct mode's ``not_applicable`` success report.
     """
+    if cleanup_mode not in {"direct", "wrapped"}:
+        raise ValueError("invalid cleanup mode")
     if goal_type not in SUPPORTED_GOALS:
         raise ValueError(
             f"unsupported goal_type {goal_type!r}; supported={SUPPORTED_GOALS}"
@@ -553,7 +630,6 @@ def run_goal(goal_type: str, params: dict, *, planner: Planner | None = None) ->
     sandbox.mkdir(mode=_PRIVATE_DIR_MODE)
     _set_private_directory_mode(sandbox)
 
-    _configure_kernel_log_suppression()
     with _lock:
         kernel = Kernel(
             sandbox_dir=sandbox,
@@ -562,9 +638,16 @@ def run_goal(goal_type: str, params: dict, *, planner: Planner | None = None) ->
             planner=planner,
             config=KernelConfig(),
         )
-        # Use the public run ID in the kernel ledger too, so the sandbox,
-        # persisted record, and append-only ledger share one verifiable ID.
-        record = kernel.run(Goal(goal_type=goal_type, params=params), run_id=run_id)
+        # Keep the kernel's process-wide logger untouched. This request-local
+        # logger preserves allowlisted event names while redacting all details.
+        kernel_logger = _live_agent_kernel_logger()
+        kernel.logger = kernel_logger
+        try:
+            # Use the public run ID in the kernel ledger too, so the sandbox,
+            # persisted record, and append-only ledger share one verifiable ID.
+            record = kernel.run(Goal(goal_type=goal_type, params=params), run_id=run_id)
+        finally:
+            _close_live_agent_kernel_logger(kernel_logger)
 
     payload = record.to_dict()
     payload["run_id"] = run_id
@@ -591,9 +674,24 @@ def run_goal(goal_type: str, params: dict, *, planner: Planner | None = None) ->
             "error_code": "MEMORY_STORE_ERROR",
         }
 
+    # Direct runs have no deployment cleanup wrapper, so report that fact. The
+    # deployment wrapper starts with cleanup omitted (unknown), then replaces it
+    # with the prune result; a crash or persistence failure must never inherit
+    # direct mode's successful not_applicable status.
+    if cleanup_mode == "direct":
+        payload["cleanup"] = _cleanup_not_applicable()
+    else:
+        payload.pop("cleanup", None)
     _persist_run_record(payload)
-    _run_index[run_id] = {"ts": time.time(), "status": payload["status"],
-                          "goal_type": goal_type}
+    index_entry = {
+        "ts": time.time(),
+        "status": payload["status"],
+        "goal_type": goal_type,
+    }
+    cleanup_summary = _cleanup_status_summary(payload.get("cleanup"))
+    if cleanup_summary is not None:
+        index_entry["cleanup"] = cleanup_summary
+    _run_index[run_id] = index_entry
     return payload
 
 
@@ -893,6 +991,10 @@ class Handler(BaseHTTPRequestHandler):
         u = urlparse(self.path)
         if u.path in ("/", "/index.html"):
             return self._static(STATIC_DIR / "index.html", "text/html; charset=utf-8")
+        if u.path == "/cleanup-status.js":
+            return self._static(
+                STATIC_DIR / "cleanup-status.js", "application/javascript; charset=utf-8"
+            )
         if _is_api_path(u.path):
             if not self._check_api_rate_limit():
                 return
@@ -900,6 +1002,11 @@ class Handler(BaseHTTPRequestHandler):
                 return
         if u.path == "/api/health":
             return self._json({"ok": True, "service": "ai-2027-live-agent"})
+        if u.path == "/api/capabilities":
+            return self._json({
+                "supported_goals": list(SUPPORTED_GOALS),
+                "memory": memory().stats()["memories"],
+            })
         if u.path == "/api/agent-card":
             card_path = HERE.parent / "agent-card.json"
             if not card_path.is_file():
@@ -1035,18 +1142,20 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, default=8090)
     ap.add_argument("--host", default="127.0.0.1",
-                    help="bind address (loopback by default; use deployment/live_server.py for hosting)")
+                    help="bind address (the direct Live Agent is loopback-only; use deployment/live_server.py for hosting)")
     ap.add_argument("--runtime-dir", default=os.environ.get("AI2027_LIVE_RUNTIME_DIR"),
                     help="isolate persistent runs/sandboxes/memory under this directory")
     ap.add_argument("--fresh", action="store_true",
                     help="DESTRUCTIVE: delete this service's runs, sandboxes, and memory before starting")
     args = ap.parse_args()
+    if args.host != "127.0.0.1":
+        sys.stderr.write("FATAL: direct Live Agent is loopback-only; use deployment/live_server.py for hosting\n")
+        return 2
     try:
         configure_api_access_from_env()
     except ValueError:
         sys.stderr.write("FATAL: invalid API access configuration\n")
         return 2
-    _configure_kernel_log_suppression()
     if args.runtime_dir:
         _configure_runtime(args.runtime_dir)
     _restrict_runtime_permissions()
