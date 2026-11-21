@@ -8,7 +8,8 @@ model and approves spend:
 * it is classified ``UNKNOWN_COST``, never ``FREE_TIER``;
 * ``MAX_SPEND=0`` blocks it before any request is attempted;
 * a missing ``OMNIROUTERS_MODEL`` prevents construction entirely;
-* the factory cannot be handed an explicit ``billing_tier``;
+* neither the public constructor nor the free-model allowlist can reclassify
+  it, so the guarantee holds for every caller and not only for the factory;
 * an API key alone never proves free usage;
 * no policy setting lets it through by accident.
 
@@ -24,6 +25,7 @@ from typing import Any
 import pytest
 
 from ai2027_protocol.ai_providers import (
+    DeterministicFallbackProvider,
     HttpJsonResult,
     MissingProviderModelError,
     OpenAICompatibleFreeProvider,
@@ -36,6 +38,7 @@ from ai2027_protocol.budget import (
 )
 from ai2027_protocol.contracts import BillingTier, PromptRequest, ProviderKind
 from ai2027_protocol.model_catalog import DEFAULT_MODELS, MODEL_ENV_VARS
+from ai2027_protocol.router import AllProvidersFailedError, FreeFirstRouter
 
 _OMNI_ENV_VARS = (
     "OMNIROUTERS_MODEL",
@@ -67,6 +70,26 @@ class _ExplodingTransport:
         raise AssertionError(f"no outbound request expected, got {url}")
 
 
+class _CountingTransport:
+    """Transport that records every call, so "no request was sent" is observable."""
+
+    def __init__(self) -> None:
+        self.call_count = 0
+        self.urls: list[str] = []
+
+    async def post_json(
+        self,
+        url: str,
+        *,
+        headers: Mapping[str, str],
+        json_body: Mapping[str, Any],
+        timeout_s: float,
+    ) -> HttpJsonResult:
+        self.call_count += 1
+        self.urls.append(url)
+        raise AssertionError(f"no outbound request expected, got {url}")
+
+
 def _provider(**kwargs: Any) -> OpenAICompatibleFreeProvider:
     """Build an OmniRouters provider with an explicit model and no network."""
     return create_omnirouters_provider(
@@ -90,7 +113,7 @@ def test_omnirouters_is_classified_unknown_cost_not_free_tier() -> None:
         is_remote=True,
     )
     assert tier == BillingTier.UNKNOWN_COST
-    assert "does not prove" in reason
+    assert "not free-guaranteed" in reason
 
 
 def test_max_spend_zero_blocks_before_any_request() -> None:
@@ -127,30 +150,25 @@ def test_factory_cannot_receive_an_explicit_billing_tier() -> None:
         )
 
 
-def test_the_general_classifier_cannot_reclassify_an_omnirouters_provider() -> None:
-    """The bypass is closed on the real path, not merely by omitting a parameter.
+def test_the_general_classifier_refuses_to_reclassify_an_omnirouters_provider() -> None:
+    """Classification itself refuses an asserted tier for this provider.
 
-    ``classify_billing_tier`` honours an explicit tier for any kind other than
-    OpenRouter's ``:free`` check, so the classifier alone would still let a
-    caller assert ``FREE_TIER``. The guarantee therefore rests on the factory
-    never passing ``explicit_tier``: the provider object it returns has already
-    been classified by policy, and ``BudgetGuard`` reads that classification
-    rather than re-deriving one from caller input.
-
-    This test pins both halves: the classifier's general behaviour, and the
-    provider's policy-derived classification that BudgetGuard actually uses.
+    ``classify_billing_tier`` honours an explicit tier for most kinds, so
+    before the central fix a caller could assert ``FREE_TIER`` for OmniRouters
+    and the guard would admit it at ``MAX_SPEND=0``. The provider is now on the
+    non-reclassifiable list, so the classifier refuses outright — the guarantee
+    no longer depends on which constructor the caller happened to use.
     """
-    # The general classifier is permissive by design — this is the bypass that
-    # the factory must never route through.
-    explicit_tier, _ = classify_billing_tier(
+    explicit_tier, reason = classify_billing_tier(
         kind=ProviderKind.OMNIROUTERS,
         model="account/model-v1",
         is_remote=True,
         explicit_tier=BillingTier.FREE_TIER,
     )
-    assert explicit_tier == BillingTier.FREE_TIER
+    assert explicit_tier == BillingTier.UNKNOWN_COST
+    assert "cannot be asserted by the caller" in reason
 
-    # The provider the factory returns is never classified that way.
+    # The provider the factory returns is never classified that way either.
     provider = _provider()
     assert provider.billing_tier == BillingTier.UNKNOWN_COST
 
@@ -173,7 +191,7 @@ def test_api_key_presence_alone_never_means_free() -> None:
         is_remote=True,
     )
     assert tier == BillingTier.UNKNOWN_COST
-    assert "key presence does not prove" in reason
+    assert "not free-guaranteed" in reason
 
 
 def test_no_policy_combination_admits_the_provider_by_accident() -> None:
@@ -196,16 +214,131 @@ def test_no_policy_combination_admits_the_provider_by_accident() -> None:
 
 
 async def test_no_network_attempt_occurs_for_a_blocked_provider() -> None:
-    """A blocked provider must fail before the transport is ever called."""
+    """The budget must block the call BEFORE any request leaves the process.
+
+    This has to go through ``FreeFirstRouter``: ``provider.complete()`` does
+    not consult ``BudgetGuard`` at all, so calling the provider directly would
+    attempt the request and prove nothing about the guard. The router evaluates
+    the budget first, records ``budget_blocked``, and never reaches the
+    transport. The counting transport is what makes "no request was sent"
+    observable rather than merely asserted.
+    """
+    transport = _CountingTransport()
+    provider = create_omnirouters_provider(
+        api_key="omni-fixture-key",
+        model="account/model-v1",
+        transport=transport,
+    )
+    router = FreeFirstRouter(
+        providers=[provider],
+        budget_policy=BudgetPolicy(max_spend_usd=0.0),
+    )
+
+    with pytest.raises(AllProvidersFailedError) as excinfo:
+        await router.route(PromptRequest(prompt="pong"))
+
+    attempt = excinfo.value.attempts[0]
+    assert attempt.error_code == "budget_blocked"
+    assert attempt.billing_tier == BillingTier.UNKNOWN_COST
+    assert attempt.cost_status.value == "unknown_cost_blocked"
+
+    # The decisive assertion: the transport was never invoked.
+    assert transport.call_count == 0
+
+
+async def test_a_blocked_provider_makes_no_request_even_alongside_others() -> None:
+    """A blocked OmniRouters entry must not send a request even when a
+    deterministic fallback is available and succeeds."""
+    transport = _CountingTransport()
+    provider = create_omnirouters_provider(
+        api_key="omni-fixture-key",
+        model="account/model-v1",
+        transport=transport,
+    )
+    router = FreeFirstRouter(
+        providers=[provider, DeterministicFallbackProvider()],
+        budget_policy=BudgetPolicy(max_spend_usd=0.0),
+    )
+
+    result = await router.route(PromptRequest(prompt="pong"))
+
+    assert transport.call_count == 0
+    blocked = [a for a in result.attempts if a.provider == ProviderKind.OMNIROUTERS]
+    assert blocked and blocked[0].error_code == "budget_blocked"
+
+
+def test_the_general_constructor_cannot_assert_a_free_or_local_tier() -> None:
+    """The bypass is closed at the policy layer, not only at the factory.
+
+    ``OpenAICompatibleFreeProvider`` is public and accepts ``billing_tier``.
+    Before this was enforced centrally, a caller could construct an OmniRouters
+    provider directly with ``FREE_TIER`` — or ``LOCAL``, which would report a
+    remote call as proven-zero-cost — and the guard would admit it at
+    ``MAX_SPEND=0``. Both must now be refused by classification itself.
+    """
+    for tier in (BillingTier.FREE_TIER, BillingTier.LOCAL, BillingTier.PAID):
+        provider = OpenAICompatibleFreeProvider(
+            kind=ProviderKind.OMNIROUTERS,
+            endpoint_url="https://omnirouters.com/v1/chat/completions",
+            api_key="omni-fixture-key",
+            model="account/model-v1",
+            env_var="OMNIROUTERS_API_KEY",
+            billing_tier=tier,
+        )
+        assert provider.billing_tier == BillingTier.UNKNOWN_COST
+
+        decision = BudgetGuard(BudgetPolicy(max_spend_usd=0.0)).evaluate_provider(provider)
+        assert decision.allowed is False
+        assert decision.cost_status.value == "unknown_cost_blocked"
+
+
+def test_the_free_model_allowlist_cannot_reclassify_the_provider(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``AI2027_FREE_MODELS`` is a second route to ``FREE_TIER``; it is refused."""
+    monkeypatch.setenv("AI2027_FREE_MODELS", "account/model-v1")
+
+    tier, reason = classify_billing_tier(
+        kind=ProviderKind.OMNIROUTERS,
+        model="account/model-v1",
+        is_remote=True,
+    )
+    assert tier == BillingTier.UNKNOWN_COST
+    assert "AI2027_FREE_MODELS cannot reclassify" in reason
+
     provider = _provider()
-    guard = BudgetGuard(BudgetPolicy(max_spend_usd=0.0))
-    decision = guard.evaluate_provider(provider)
+    assert provider.billing_tier == BillingTier.UNKNOWN_COST
+    decision = BudgetGuard(BudgetPolicy(max_spend_usd=0.0)).evaluate_provider(provider)
     assert decision.allowed is False
 
-    # The transport raises on any call, so reaching this point proves the
-    # provider was rejected without touching the network.
-    with pytest.raises(AssertionError):
-        await provider.complete(PromptRequest(prompt="pong"), timeout_s=1.0)
+
+def test_other_providers_keep_their_explicit_tier_and_allowlist_paths(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The central fix must not weaken the providers that are allowed to assert."""
+    monkeypatch.setenv("AI2027_FREE_MODELS", "account/model-v1")
+
+    allowed, _ = classify_billing_tier(
+        kind=ProviderKind.GEMINI,
+        model="account/model-v1",
+        is_remote=True,
+    )
+    assert allowed == BillingTier.FREE_TIER
+
+    explicit, _ = classify_billing_tier(
+        kind=ProviderKind.OPENROUTER,
+        model="openrouter/free",
+        is_remote=True,
+        explicit_tier=BillingTier.FREE_TIER,
+    )
+    assert explicit == BillingTier.FREE_TIER
+
+    local, _ = classify_billing_tier(
+        kind=ProviderKind.OLLAMA,
+        model="qwen3.5:0.8b",
+        is_remote=False,
+    )
+    assert local == BillingTier.LOCAL
 
 
 def test_omnirouters_has_no_default_model() -> None:
