@@ -25,7 +25,10 @@ listed as not enforced.** Aspirations live in `docs/ROADMAP-2027.md`, not here.
 
 ## NOT enforced — needs repository admin (the automation token gets HTTP 403)
 
-Attempted on 2026-11-17 and refused:
+Attempted on 2026-11-17 and refused. Re-attempted on 2026-11-21 with a
+full payload and with a minimal one; both refused identically, and so was
+`PATCH /repos/…`, while code-level writes (PR comments, branch pushes)
+worked. It is the token's scope, not the request:
 
 ```
 $ gh api -X PUT repos/…/branches/main/protection --input - <<< '{…}'
@@ -33,7 +36,15 @@ $ gh api -X PUT repos/…/branches/main/protection --input - <<< '{…}'
 ```
 
 Run these yourself (30 seconds), or enable the same thing in
-**Settings → Branches → Add branch protection rule**:
+**Settings → Branches → Add branch protection rule**.
+
+The context list below is every check that actually runs on `main`. It was
+read from the API (`GET /commits/{sha}/check-runs`) and verified to match
+the live set exactly — 21 check runs, 20 passing, 1 skipped.
+
+`Live Gemini call · opt-in (needs GEMINI_API_KEY)` is deliberately **not**
+in the list. It skips unless that secret is present, and a required check
+that skips never reports success — requiring it would block every merge.
 
 ```bash
 gh api -X PUT repos/sayedelazameydesign-crypto/ai-2027/branches/main/protection \
@@ -42,13 +53,30 @@ gh api -X PUT repos/sayedelazameydesign-crypto/ai-2027/branches/main/protection 
   "required_status_checks": {
     "strict": true,
     "contexts": [
-      "Tests · Python 3.11",
+      "Analyze (javascript-typescript)",
+      "Analyze (python)",
+      "BrowserSkill local handoff · Windows ACL and process lock (simulated browser)",
+      "Build + smoke-test the wheel",
+      "Command HUD · real kernel + 100-attack gate + 48-project audit",
+      "Connectors Hub tests · Python 3.11 (mock providers only)",
+      "Connectors Hub tests · Python 3.12 (mock providers only)",
+      "Deployment configs · must parse, must start, must cap the disk",
+      "L1 memory · admission gate + measured retrieval honesty",
+      "Measured benchmarks + regression guard",
+      "One-command recovery + real task under 60 s (T4 + T6)",
+      "Open Source MCP transport · ADR-0017 contract tests",
+      "Open Source code execution · offline E2B policy tests",
+      "Public demo contract (12 tests)",
+      "Publish kit · regenerate every claim + verify evidence links",
       "Runtime smoke · real servers over HTTP",
-      "L1 memory · admission gate + measured retrieval honesty"
+      "Tests · Python 3.10",
+      "Tests · Python 3.11",
+      "Tests · Python 3.12",
+      "Workspace UI local gateway + cleanup contract (real loopback HTTP)"
     ]
   },
-  "enforce_admins": true,
-  "required_pull_request_reviews": { "required_approving_review_count": 0 },
+  "enforce_admins": false,
+  "required_pull_request_reviews": { "required_approving_review_count": 1 },
   "required_conversation_resolution": true,
   "allow_force_pushes": false,
   "allow_deletions": false,
