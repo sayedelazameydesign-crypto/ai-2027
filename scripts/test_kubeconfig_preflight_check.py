@@ -461,9 +461,15 @@ class AdversarialCasesMustNotSkipTests(unittest.TestCase):
     """
 
     def test_25_ci_installs_pyyaml_for_this_suite(self):
-        """The CI job must install PyYAML, or the adversarial cases skip."""
+        """The CI job must install PyYAML, or the adversarial cases skip.
+
+        The version is pinned so the suite is reproducible; an unpinned
+        install would let the parser change between runs.
+        """
         workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
-        self.assertIn("pip install --quiet --disable-pip-version-check pyyaml", workflow)
+        self.assertIn(
+            'pip install --quiet --disable-pip-version-check "pyyaml==', workflow
+        )
         self.assertIn("scripts/test_kubeconfig_preflight_check.py -v", workflow)
 
     def test_26_yaml_cases_run_when_pyyaml_is_available(self):

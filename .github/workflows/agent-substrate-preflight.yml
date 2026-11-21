@@ -2,6 +2,18 @@ name: Agent Substrate connectivity preflight
 
 on:
   workflow_dispatch:
+    inputs:
+      kubectl_version:
+        description: >-
+          kubectl client version to use, matching the target cluster's
+          kube-apiserver minor version (for example v1.37.0). The Kubernetes
+          version-skew policy supports kubectl within one minor version of
+          kube-apiserver, so the client must be chosen for the cluster that
+          is actually being probed. There is deliberately no default: a
+          guessed version could sit outside the supported window and turn a
+          working cluster into a FAILED result.
+        required: true
+        type: string
 
 # Read-only repository access: the job needs to fetch exactly one file
 # (the kubeconfig checker) and nothing else. No write scope, no deploy
@@ -40,14 +52,16 @@ jobs:
       - name: Set up kubectl
         uses: azure/setup-kubectl@776406bce94f63e41d621b960d78ee25c8b76ede # v4
         with:
-          # Pinned so the checker is reproducible across runs; "latest"
-          # would change the tool that produces the JSON without notice.
-          version: v1.29.0
+          # The client version is chosen per run for the cluster being
+          # probed, and pinned so the tool that produces the JSON cannot
+          # change silently under the check.
+          version: ${{ inputs.kubectl_version }}
 
       - name: Check read-only API access without logging details
         shell: bash
         env:
           PREFLIGHT_KUBECONFIG: ${{ secrets.AGENT_SUBSTRATE_PREFLIGHT_KUBECONFIG }}
+          PREFLIGHT_KUBECTL_VERSION: ${{ inputs.kubectl_version }}
         run: |
           set -euo pipefail
           set +x
@@ -73,6 +87,19 @@ jobs:
           printf '%s' "$PREFLIGHT_KUBECONFIG" > "$kubeconfig_path"
           unset PREFLIGHT_KUBECONFIG
           export KUBECONFIG="$kubeconfig_path"
+
+          # The client version is an operator choice, so it is verified
+          # against the cluster instead of trusted.  The Kubernetes
+          # version-skew policy supports kubectl within one minor version
+          # of kube-apiserver, so a client more than one minor away is
+          # refused.  Only the two version numbers are read; nothing about
+          # the API address or the credentials is printed.
+          if ! kubectl version -o json 2>/dev/null \
+               | PREFLIGHT_KUBECTL_VERSION="$PREFLIGHT_KUBECTL_VERSION" \
+                 python3 "$checker" --check-version >/dev/null 2>&1; then
+            echo "FAILED"
+            exit 1
+          fi
 
           # Accept only a static kubeconfig that keeps TLS verification on.
           #

@@ -193,6 +193,10 @@ class RunBehaviourTests(unittest.TestCase):
             # would miss.
             (bindir / "kubectl").write_text(
                 "#!/usr/bin/env bash\n"
+                "if [[ \"$1\" == \"version\" ]]; then\n"
+                "  printf '%s' '{\"serverVersion\":{\"minor\":\"37+\"}}'\n"
+                "  exit 0\n"
+                "fi\n"
                 "if [[ \"$1\" == \"config\" && \"$2\" == \"view\" ]]; then\n"
                 "  python3 - \"$KUBECONFIG\" <<'PY'\n"
                 "import json, re, sys\n"
@@ -240,6 +244,7 @@ class RunBehaviourTests(unittest.TestCase):
                 "GITHUB_STEP_SUMMARY": str(tmp_path / "summary.md"),
                 "RUNNER_TEMP": str(tmp_path),
                 "PREFLIGHT_KUBECONFIG": document,
+                "PREFLIGHT_KUBECTL_VERSION": "v1.37.0",
                 "HOME": str(tmp_path),
             }
             (tmp_path / "summary.md").write_text("", encoding="utf-8")
@@ -346,6 +351,7 @@ class RunBehaviourTests(unittest.TestCase):
                 "GITHUB_STEP_SUMMARY": str(tmp_path / "summary.md"),
                 "RUNNER_TEMP": str(tmp_path),
                 "PREFLIGHT_KUBECONFIG": self.SAFE_KUBECONFIG,
+                "PREFLIGHT_KUBECTL_VERSION": "v1.37.0",
                 "HOME": str(tmp_path),
             }
             (tmp_path / "summary.md").write_text("", encoding="utf-8")
