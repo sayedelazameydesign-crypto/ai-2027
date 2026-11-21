@@ -208,7 +208,76 @@ The blueprint sets `AI2027_READ_ONLY=1` and `AI2027_MAX_SPEND_USD=0`. The first 
 
 #### Bringing it up
 
-Render reads `render.yaml` as a Blueprint: connect the repository, apply the blueprint, then fill in the two secret values under **Environment**. The first request after an idle period can take 30–50 seconds, because a free instance sleeps after roughly 15 minutes of inactivity.
+Render reads `render.yaml` as a Blueprint: connect the repository, apply the blueprint, then fill in the secret values under **Environment**. The first request after an idle period can take 30–50 seconds, because a free instance sleeps after roughly 15 minutes of inactivity.
+
+The steps below are deliberately manual. Provisioning a Render service needs a
+Render account and an API credential that CI must not hold, so it is not
+automated here; `scripts/render_deploy.py` deploys an *existing* service and
+cannot create one.
+
+##### Runbook: activating the Studio on Render
+
+1. **Create the Blueprint.** In the Render dashboard choose **New + → Blueprint**,
+   then select `sayedelazameydesign-crypto/ai-2027` on branch `main`. Render reads
+   `render.yaml` and proposes both services, `ai-2027-live-agent` and
+   `ai-2027-studio`. Confirm the region (Frankfurt) and the free plan.
+
+2. **Fill in the environment values.** For `ai-2027-studio`, every value marked
+   `sync: false` must be supplied here; none of them is stored in Git.
+
+   | Variable | Value | Notes |
+   |---|---|---|
+   | `OPENROUTER_API_KEY` | your OpenRouter key | Presence only — the value never leaves the server |
+   | `OPENROUTER_MODEL` | `openrouter/free` | Only a free id is safe; see below |
+   | `CONNECTORS_HUB_API_TOKEN` | your token, or leave blank | Blank yields `token_missing`, not an error |
+
+   `OPENROUTER_MODEL` accepts only ids that are genuinely free:
+   `openrouter/free` (the dynamic free router — recommended) or a pinned
+   `<vendor>/<model>:free`. A paid id, `openrouter/auto`, or a `~latest` alias
+   is classified `UNKNOWN_COST` and is refused while `AI2027_MAX_SPEND_USD=0`.
+   Leaving the field blank is also safe: the provider falls back to the
+   `openrouter/free` default.
+
+   Do **not** try to widen this with `AI2027_FREE_MODELS`. That allowlist is
+   deliberately ignored for OpenRouter: key presence does not prove $0, and
+   admitting a paid id that way would reopen a hole the budget policy closes.
+
+3. **Apply and wait for Live.** Press **Apply**. The Studio build runs
+   `pip install -e python-2027`; the service becomes **Live** when the health
+   check at `/v1/studio/status` passes.
+
+4. **Smoke test the public instance.** Copy the service URL from the dashboard
+   (it is *not* guaranteed to be `ai-2027-studio.onrender.com`):
+
+   ```bash
+   export STUDIO_URL="<the URL shown in your Render dashboard>"
+
+   # readiness, budget posture and credential presence — no values are printed
+   curl -sS "$STUDIO_URL/v1/studio/status" | python3 -m json.tool
+
+   # the UI itself
+   curl -sS -o /dev/null -w "%{http_code}\n" "$STUDIO_URL/studio"
+   ```
+
+   Expect `200` for both, and in the status payload:
+
+   - `"read_only": true`
+   - `"max_spend_usd": 0.0` and `"spent_usd": 0.0`
+   - `configured: true` for the `openrouter` provider **only if** its key was set
+   - no `Access-Control-Allow-Origin` header — the UI and API are same-origin,
+     so the browser's own policy is the protection
+
+   If a provider shows `configured: false`, its key is absent or still a
+   placeholder. If the connectors route reports `token_missing`, that token was
+   left blank. Neither is an error state.
+
+5. **Open the UI.** Visit `$STUDIO_URL/studio` in a browser. The UI and the API
+   are the same origin, so no credential is ever present in the browser.
+
+The deployed instance is write-refused and spend-free by construction. Opening
+writes or a non-zero budget is a separate, explicit change to
+`AI2027_READ_ONLY` / `AI2027_MAX_SPEND_USD` — do it deliberately, and never
+together with a paid model id.
 
 #### The published UI versus `workspace-ui`
 
