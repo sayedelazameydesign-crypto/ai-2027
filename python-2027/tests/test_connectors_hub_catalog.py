@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import httpx
 import pytest
 
@@ -98,7 +100,7 @@ async def test_fetch_connectors_hub_catalog_does_not_follow_redirects() -> None:
 
 @pytest.mark.asyncio
 async def test_studio_catalog_route_reports_missing_server_token_without_leaking_it(
-    tmp_path, monkeypatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.delenv("CONNECTORS_HUB_API_TOKEN", raising=False)
     app = create_app(workspace_root=tmp_path, studio_dir=tmp_path / "studio")
@@ -116,7 +118,9 @@ async def test_studio_catalog_route_reports_missing_server_token_without_leaking
 
 
 @pytest.mark.asyncio
-async def test_studio_catalog_route_refuses_plain_http_to_remote_hub(tmp_path, monkeypatch) -> None:
+async def test_studio_catalog_route_refuses_plain_http_to_remote_hub(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.setenv("CONNECTORS_HUB_API_TOKEN", "test-token")
     monkeypatch.setenv("CONNECTORS_HUB_URL", "http://hub.example:8765")
     app = create_app(workspace_root=tmp_path, studio_dir=tmp_path / "studio")
@@ -132,12 +136,17 @@ async def test_studio_catalog_route_refuses_plain_http_to_remote_hub(tmp_path, m
 
 @pytest.mark.asyncio
 async def test_studio_catalog_route_uses_server_config_and_returns_hub_catalog(
-    tmp_path, monkeypatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("CONNECTORS_HUB_API_TOKEN", _test_token())
     monkeypatch.setenv("CONNECTORS_HUB_URL", "https://hub.example")
 
-    async def fake_fetch(*, base_url: str, token: str, transport=None):
+    async def fake_fetch(
+        *,
+        base_url: str,
+        token: str,
+        transport: httpx.AsyncBaseTransport | None = None,
+    ) -> studio_module.ConnectorHubCatalogResponse:
         assert base_url == "https://hub.example"
         assert token == _test_token()
         return studio_module.ConnectorHubCatalogResponse(
