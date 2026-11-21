@@ -48,10 +48,23 @@ jobs:
           unset PREFLIGHT_KUBECONFIG
           export KUBECONFIG="$kubeconfig_path"
 
-          # Accept only a static YAML kubeconfig: never run an exec plugin or
-          # disable TLS verification from user-supplied config.
-          first_non_space="$(awk 'NF { sub(/^[[:space:]]+/, ""); print substr($0, 1, 1); exit }' "$kubeconfig_path")"
-          if [[ "$first_non_space" == "{" ]] || grep -Eiq '^[[:space:]]*(exec|insecure-skip-tls-verify):' "$kubeconfig_path"; then
+          # Accept only a static kubeconfig that keeps TLS verification on.
+          #
+          # The kubeconfig is rendered to JSON and inspected by structure.
+          # An earlier version grepped the raw YAML text, which was
+          # bypassable: YAML resolves a quoted key ("insecure-skip-tls-verify")
+          # and a Flow-style mapping to the same key as the plain form, so a
+          # re-spelled setting passed the grep while kubectl still honoured
+          # it. JSON carries no quoting distinction, so every spelling
+          # collapses to one structure and one verdict here.
+          #
+          # `config view` only reads and renders the file; it performs no
+          # request and runs no credential plugin. The rendered JSON still
+          # contains credential material, so it is piped straight into the
+          # checker and never printed.
+          if ! kubectl config view --raw -o json 2>/dev/null \
+               | python3 "$GITHUB_WORKSPACE/scripts/kubeconfig_preflight_check.py" \
+               | grep -qx CONNECTED; then
             echo "FAILED"
             exit 1
           fi
