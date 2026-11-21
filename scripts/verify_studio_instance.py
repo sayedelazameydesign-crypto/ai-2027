@@ -53,20 +53,28 @@ class Result:
 
 
 class Response:
-    """The facts about one HTTP response that are safe to reason about.
+    """The facts about one HTTP response that are safe to report.
 
-    The raw body is deliberately NOT retained here. A response body is
-    untrusted input that could carry a credential, so it is inspected once,
-    inside ``fetch``, and only derived facts are kept: its length, whether
-    it looked like HTML, and whether it matched the credential shape. That
-    way no substring of a response body ever reaches a printed line.
+    The raw body is deliberately NOT retained here, and nothing printed by
+    this program is derived from it. A response body is untrusted input
+    that could carry a credential, so it is inspected once and reduced to
+    facts that cannot leak its contents:
+
+    * ``size_bytes`` is the length of the raw bytes read off the socket,
+      measured before the body is decoded into text;
+    * ``looks_like_html`` is a boolean, never a substring;
+    * ``contains_credential`` is a boolean;
+    * ``json`` is the parsed structure, which the caller reads field by
+      field rather than printing.
     """
 
-    def __init__(self, status: int, body: str, headers: dict[str, str]) -> None:
+    def __init__(
+        self, status: int, body: str, headers: dict[str, str], size_bytes: int
+    ) -> None:
         self.status = status
         self.headers = headers
-        self.length = len(body)
-        self.looks_like_html = "<html" in body.lower() and self.length > 1000
+        self.size_bytes = size_bytes
+        self.looks_like_html = "<html" in body.lower() and size_bytes > 1000
         self.contains_credential = bool(SECRET_PATTERN.search(body))
         # Only a JSON body is parsed, and only into a structure the caller
         # reads field by field. A non-JSON body leaves this as None.
@@ -91,11 +99,13 @@ def fetch(url: str, timeout: int = 90) -> Response:
     )
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
-            body = response.read().decode("utf-8", errors="replace")
-            return Response(response.status, body, dict(response.headers))
+            raw = response.read()
+            body = raw.decode("utf-8", errors="replace")
+            return Response(response.status, body, dict(response.headers), len(raw))
     except urllib.error.HTTPError as exc:
-        body = exc.read().decode("utf-8", errors="replace")
-        return Response(exc.code, body, dict(exc.headers or {}))
+        raw = exc.read()
+        body = raw.decode("utf-8", errors="replace")
+        return Response(exc.code, body, dict(exc.headers or {}), len(raw))
     except Exception as exc:  # the message is the useful part
         raise SystemExit(
             f"could not reach {url}: {exc}\n"
@@ -121,7 +131,7 @@ def main(argv: list[str]) -> int:
     result.check(
         ui.looks_like_html,
         "GET /studio serves a real HTML page",
-        f"{ui.length} bytes",
+        f"{ui.size_bytes} bytes",
     )
     # The UI must not ship a credential to the browser.
     result.check(
@@ -191,10 +201,14 @@ def main(argv: list[str]) -> int:
             "openrouter is allowed under a zero budget",
         )
         model = str(openrouter.get("model") or "")
+        # The model id is reported, but only after it has been checked
+        # against the credential shape: if a payload ever carried a
+        # credential in that field, it must not be printed back out.
+        model_is_safe = not SECRET_PATTERN.search(model)
         result.check(
-            model == "openrouter/free" or model.endswith(":free"),
+            model_is_safe and (model == "openrouter/free" or model.endswith(":free")),
             "the openrouter model id is a free one",
-            model,
+            model if model_is_safe else "<redacted>",
         )
         # configured is a boolean; the value itself must not be present.
         result.check(
