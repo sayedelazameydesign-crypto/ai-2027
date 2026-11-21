@@ -51,6 +51,12 @@ The one-command script starts Live Agent and Command HUD on loopback and creates
 ./scripts/ember_up.sh --no-browser
 ```
 
+Before reusing an already healthy Live Agent—and again after starting a new
+one—Ember verifies both the configured reader and operator credentials with the
+loopback-only, read-only `GET /api/local/credentials-check` probe. This check also runs with `--no-smoke`;
+if both credentials cannot be proven, Ember fails closed and leaves the existing
+service running for the operator to reconfigure or stop manually.
+
 In another terminal:
 
 ```bash
@@ -61,7 +67,7 @@ npm run dev
 
 Open `http://127.0.0.1:4173`. Vite binds to `127.0.0.1` and accepts only local Host/Origin values; attempts to bind this credential proxy to a public interface are rejected. Same-origin `/api/*` requests go to Live Agent `8090`: the server-side Vite middleware reads the owner-only file, injects the reader credential for GETs, and injects the operator credential only for `POST /api/run`. Browser-supplied Authorization headers are overwritten. No bearer credential is included in the JavaScript bundle, browser storage, cookies, or URLs. `/ops/*` is similarly restricted to validated local same-origin requests; the proxy rewrites the already-validated Origin for Command HUD's loopback guard. `/studio-api/*` remains a relative proxy to Agent Studio `8080`.
 
-Missing, malformed, symlinked, or non-private credential files fail closed for private API calls. The gateway requires verifiable POSIX owner-only file/directory modes; platforms where those permissions cannot be verified fail closed (this is not native Windows validation). The Live Agent still enforces `AI2027_READ_ONLY=1`, regardless of the local proxy's operator credential. `/api/health` remains a minimal public liveness response; the reader-protected `/api/capabilities` supplies the goal list and memory count used by the Kernel workspace.
+Missing, malformed, symlinked, or non-private credential files fail closed for private API calls. Operator write tokens must be 32-512 visible ASCII characters (`0x21`-`0x7e`) with no whitespace; symbols such as `+`, `/`, and `=` are accepted. The gateway requires verifiable POSIX owner-only file/directory modes; platforms where those permissions cannot be verified fail closed (this is not native Windows validation). The Live Agent still enforces `AI2027_READ_ONLY=1`, regardless of the local proxy's operator credential. `/api/health` remains a minimal public liveness response; the reader-protected `/api/capabilities` supplies the goal list and memory count used by the Kernel workspace.
 
 This is a **trusted single-user local development bridge**, not multi-user authentication. Do not expose Vite, Live Agent, or Command HUD through an Arena/public preview, tunnel, public reverse proxy, or production deployment. The static production build does not include this proxy or credentials; internet access requires a separately approved identity gateway, not this local token bridge. Keep `CONNECTORS_HUB_URL` and `CONNECTORS_HUB_API_TOKEN` in the Agent Studio server environment, never in the static bundle.
 

@@ -51,7 +51,7 @@ python3 live-agent/test_llm_planner.py
 
 ```bash
 python3 server.py            # http://localhost:8090; preserves existing runtime data
-python3 test_server.py       # 17 wrapper tests (authorization, privacy, safety, restart restore, local bind)
+python3 test_server.py       # 23 tests (authorization, privacy, safety, credential checks, local bind)
 python3 server.py --fresh    # explicitly DELETE this service's runs, sandboxes, and memory
 ```
 
@@ -79,8 +79,16 @@ write token configured means private routes are unavailable, not public.
 
 Reader clients send `Authorization: Bearer <token-id>.<secret>`; the service stores
 only SHA-256 hashes of high-entropy reader secrets in `AI2027_READ_TOKEN_HASHES`.
-Writes use `Authorization: Bearer <AI2027_WRITE_TOKEN>`. Repository HTTP clients
-attach bearer credentials only to HTTPS URLs, except loopback HTTP for a local
+Writes use `Authorization: Bearer <AI2027_WRITE_TOKEN>`. Operator tokens must be
+32-512 visible ASCII characters (`0x21`-`0x7e`) without whitespace; `+`, `/`, and
+`=` are valid symbols. This same contract is enforced by the Live Agent, deployment
+launcher, local auth client, Ember boot helper, and Workspace Vite gateway.
+`GET /api/local/credentials-check` is a loopback-only, non-mutating internal probe:
+it requires the reader bearer and `X-AI2027-Operator-Authorization: Bearer <token>`
+and confirms both credentials without reading records or executing a goal. Ember
+uses it before reusing a healthy Live Agent; an unavailable or incompatible service
+is left running and reported for manual reconfiguration or shutdown. Repository HTTP
+clients attach bearer credentials only to HTTPS URLs, except loopback HTTP for a local
 service (which bypasses configured HTTP proxies); authenticated redirects are
 refused instead of forwarding tokens. Read and write throttles
 are process-local, keyed by the peer IP seen by Python, and are not distributed

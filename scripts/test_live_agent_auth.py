@@ -144,6 +144,32 @@ class LiveAgentCredentialRoutingTests(unittest.TestCase):
                 "Bearer test-reader." + "synthetic-read-secret-" + "r" * 40,
             )
 
+    def test_operator_tokens_accept_symbols_and_only_the_shared_boundaries(self):
+        valid = ("+/=" + "A" * 29, "+/=" + "A" * 509)
+        self.assertEqual(tuple(map(len, valid)), (32, 512))
+        invalid = (
+            "A" * 31,
+            "A" * 513,
+            "A" * 16 + " " + "A" * 16,
+            "A" * 16 + "\t" + "A" * 16,
+            "A" * 32 + "\n",
+            "A" * 31 + "é",
+        )
+        with patch.dict(os.environ, {}, clear=True):
+            for token in valid:
+                with self.subTest(valid_length=len(token)):
+                    with patch.dict(os.environ, {"AI2027_WRITE_TOKEN": token}):
+                        self.assertEqual(
+                            auth.authorization_header(
+                                "https://api.example.invalid", "/api/run", "POST"),
+                            f"Bearer {token}",
+                        )
+            for token in invalid:
+                with self.subTest(invalid_length=len(token)):
+                    with patch.dict(os.environ, {"AI2027_WRITE_TOKEN": token}):
+                        self.assertIsNone(auth.authorization_header(
+                            "https://api.example.invalid", "/api/run", "POST"))
+
     def test_saved_credentials_are_ignored_on_non_posix_platforms(self):
         with patch.object(auth.os, "name", "nt"), \
                 patch.dict(os.environ, {}, clear=True), \
@@ -163,7 +189,7 @@ class LiveAgentCredentialRoutingTests(unittest.TestCase):
             credential_path = state / "api-credentials.json"
             reader_id = "local-test-reader"
             reader_secret = "synthetic-local-read-secret-" + "r" * 40
-            writer = "synthetic-local-write-secret-" + "w" * 40
+            writer = "+/=" + "w" * 29
             fixture = {
                 "read_id": reader_id,
                 "read_secret": reader_secret,
@@ -188,6 +214,11 @@ class LiveAgentCredentialRoutingTests(unittest.TestCase):
                 self.assertEqual(auth.authorization_header(
                     "http://127.0.0.1:8090", "/api/file", "GET"),
                     f"Bearer {reader_id}.{reader_secret}")
+                with patch.object(auth.json, "load", return_value={
+                    **fixture, "write_token": "W" * 31,
+                }):
+                    self.assertIsNone(auth.authorization_header(
+                        "http://127.0.0.1:8090", "/api/run", "POST"))
                 credential_path.chmod(0o644)
                 self.assertIsNone(auth.authorization_header(
                     "http://127.0.0.1:8090", "/api/runs", "GET"))

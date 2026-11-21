@@ -33,6 +33,7 @@ import argparse
 import contextvars
 import hashlib
 import hmac
+import ipaddress
 import json
 import logging
 import math
@@ -82,10 +83,13 @@ _memory_lock = threading.Lock()
 _READ_TOKEN_ID_RE = re.compile(r"[A-Za-z0-9_-]{1,64}\Z")
 _READ_TOKEN_SECRET_RE = re.compile(r"[A-Za-z0-9_-]{32,256}\Z")
 _READ_TOKEN_HASH_RE = re.compile(r"[0-9a-fA-F]{64}\Z")
+# Shared operator-token contract: visible ASCII 0x21-0x7e, 32-512 chars.
+_WRITE_TOKEN_RE = re.compile(r"[!-~]{32,512}\Z")
 _READ_TOKEN_HASHES: dict[str, str] = {}
 _PRIVATE_DIR_MODE = 0o700
 _PRIVATE_FILE_MODE = 0o600
 _SQLITE_SUFFIXES = ("", "-wal", "-shm", "-journal")
+LOCAL_CREDENTIALS_CHECK_PATH = "/api/local/credentials-check"
 _WRITE_TOKEN = ""
 _READ_ONLY = False
 _REQUEST_ID_CONTEXT: contextvars.ContextVar[str | None] = contextvars.ContextVar(
@@ -138,6 +142,16 @@ class RequestRateLimiter:
 
 _API_READ_RATE_LIMITER = RequestRateLimiter(120, 60)
 _API_WRITE_RATE_LIMITER = RequestRateLimiter(10, 60)
+# The local-only compatibility probe has its own small limit so checking a
+# service never consumes the operator's actual run quota.
+_LOCAL_AUTH_PROBE_RATE_LIMITER = RequestRateLimiter(20, 60)
+
+
+def _is_loopback_peer(address: object) -> bool:
+    try:
+        return ipaddress.ip_address(str(address)).is_loopback
+    except (TypeError, ValueError):
+        return False
 
 
 def configure_api_access_from_env() -> None:
@@ -170,12 +184,10 @@ def configure_api_access_from_env() -> None:
         hashes = {}
 
     write_token = os.environ.get("AI2027_WRITE_TOKEN", "")
-    if write_token and (
-        not 32 <= len(write_token) <= 512
-        or write_token.strip() != write_token
-        or any(char.isspace() for char in write_token)
-    ):
-        raise ValueError("AI2027_WRITE_TOKEN must be 32-512 characters with no whitespace")
+    if write_token and not _WRITE_TOKEN_RE.fullmatch(write_token):
+        raise ValueError(
+            "AI2027_WRITE_TOKEN must be 32-512 visible ASCII characters with no whitespace"
+        )
 
     try:
         read_limit = int(os.environ.get("AI2027_READ_RATE_LIMIT", "120"))
@@ -251,6 +263,7 @@ def _canonical_route(path: str) -> str:
     if path in {
         "/api/health", "/api/capabilities", "/api/agent-card", "/api/metrics",
         "/api/memory", "/api/memory/search", "/api/runs", "/api/file", "/api/run",
+        "/api/local/credentials-check",
     }:
         return path
     if path.startswith("/api/run/"):
@@ -965,6 +978,19 @@ class Handler(BaseHTTPRequestHandler):
         )
         return False
 
+    def _check_local_auth_probe_rate_limit(self) -> bool:
+        allowed, retry_after = _LOCAL_AUTH_PROBE_RATE_LIMITER.allow(
+            str(self.client_address[0])
+        )
+        if allowed:
+            return True
+        self._json(
+            {"error": "local auth probe rate limit exceeded"},
+            429,
+            {"Retry-After": str(retry_after)},
+        )
+        return False
+
     def _require_write_access(self) -> bool:
         if _READ_ONLY:
             self._json({"error": "writes are disabled"}, 403)
@@ -992,6 +1018,27 @@ class Handler(BaseHTTPRequestHandler):
 
     def _do_GET(self) -> None:
         u = urlparse(self.path)
+        if u.path == LOCAL_CREDENTIALS_CHECK_PATH:
+            # A loopback-only, non-mutating compatibility probe for ember_up.sh.
+            # It verifies both credentials, without reading user data or using
+            # the normal API read/write quotas. Never disclose this oracle remotely.
+            if not _is_loopback_peer(self.client_address[0]):
+                return self._json({"error": "not found"}, 404)
+            if not self._check_local_auth_probe_rate_limit():
+                return
+            if not _READ_TOKEN_HASHES or not _WRITE_TOKEN:
+                return self._json({"error": "local credential check unavailable"}, 503)
+            read_ok = _read_principal(self.headers.get("Authorization")) is not None
+            write_ok = _write_token_matches(
+                self.headers.get("X-AI2027-Operator-Authorization")
+            )
+            if not (read_ok and write_ok):
+                return self._json(
+                    {"error": "authentication required"},
+                    401,
+                    {"WWW-Authenticate": 'Bearer realm="ai-2027-live-agent"'},
+                )
+            return self._json({"ok": True, "service": "ai-2027-live-agent"})
         if u.path in ("/", "/index.html"):
             return self._static(STATIC_DIR / "index.html", "text/html; charset=utf-8")
         if u.path == "/cleanup-status.js":

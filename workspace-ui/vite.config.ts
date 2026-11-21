@@ -17,7 +17,9 @@ const REPO_ROOT = resolve(CONFIG_DIR, '..');
 const DEFAULT_CREDENTIALS_FILE = resolve(REPO_ROOT, '.ember-up', 'api-credentials.json');
 const READ_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 const READ_SECRET_RE = /^[A-Za-z0-9_-]{32,256}$/;
-const WRITE_SECRET_RE = /^\S{32,512}$/;
+// Shared operator-token contract: visible ASCII 0x21-0x7e, 32-512 chars.
+// The final assertion avoids JavaScript's `$` accepting before a trailing newline.
+const WRITE_SECRET_RE = /^[!-~]{32,512}(?![\s\S])/;
 const SHA256_RE = /^[0-9a-f]{64}$/i;
 
 interface GatewayCredentials {

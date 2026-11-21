@@ -7,6 +7,7 @@ credentials, then exercises the same-origin browser-facing URLs over HTTP.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import shutil
@@ -15,10 +16,12 @@ import socket
 import stat
 import subprocess
 import tempfile
+import threading
 import time
 import unittest
 import urllib.error
 import urllib.request
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -57,9 +60,9 @@ def json_body(response: tuple[int, dict[str, str], bytes]) -> dict:
     return value
 
 
-def stop_process_group(proc: subprocess.Popen[str] | None) -> None:
+def stop_process_group(proc: subprocess.Popen[str] | None) -> str:
     if proc is None:
-        return
+        return ""
     try:
         if proc.poll() is None:
             try:
@@ -75,8 +78,10 @@ def stop_process_group(proc: subprocess.Popen[str] | None) -> None:
                 except subprocess.TimeoutExpired:
                     pass
     finally:
+        output = proc.stdout.read() if proc.stdout is not None else ""
         if proc.stdout is not None:
             proc.stdout.close()
+    return output
 
 
 class LocalWorkspaceGatewayTests(unittest.TestCase):
@@ -345,6 +350,99 @@ class LocalWorkspaceGatewayTests(unittest.TestCase):
             headers={"Origin": "http://evil.example"},
         )
         self.assertEqual(rejected[0], 403)
+
+    def test_vite_write_credentials_follow_shared_ascii_contract_and_stay_out_of_logs(self):
+        if os.name != "posix":
+            self.skipTest("the gateway credential fixture requires verifiable POSIX modes")
+        credential_dir = self.tmp_root / "vite-token-policy"
+        credential_dir.mkdir(mode=0o700)
+        credential_dir.chmod(0o700)
+        credential_path = credential_dir / "api-credentials.json"
+        read_id = "vite-policy-reader"
+        read_secret = "vite-policy-read-secret-" + "r" * 40
+        credentials = {
+            "read_id": read_id,
+            "read_secret": read_secret,
+            "read_hashes": {read_id: hashlib.sha256(read_secret.encode()).hexdigest()},
+        }
+
+        def write_credentials(token: str) -> None:
+            credential_path.write_text(
+                json.dumps({**credentials, "write_token": token}), encoding="utf-8",
+            )
+            credential_path.chmod(0o600)
+
+        forwarded: list[str | None] = []
+
+        class OperatorCaptureHandler(BaseHTTPRequestHandler):
+            def do_POST(self):
+                length = int(self.headers.get("Content-Length", "0"))
+                self.rfile.read(length)
+                forwarded.append(self.headers.get("Authorization"))
+                body = b'{"ok":true,"service":"credential-policy-stub"}'
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, *_args):
+                return None
+
+        upstream = HTTPServer(("127.0.0.1", 0), OperatorCaptureHandler)
+        upstream_thread = threading.Thread(target=upstream.serve_forever, daemon=True)
+        upstream_thread.start()
+        vite_port = free_port()
+        base = f"http://127.0.0.1:{vite_port}"
+        vite_env = self.vite_env.copy()
+        vite_env.update({
+            "AI2027_LOCAL_API_CREDENTIALS_FILE": str(credential_path),
+            "AI2027_LIVE_AGENT_URL": f"http://127.0.0.1:{upstream.server_port}",
+        })
+        vite_proc: subprocess.Popen[str] | None = None
+        vite_log = ""
+        valid = ("+/=" + "w" * 29, "+/=" + "w" * 509)
+        invalid = (
+            "+/=" + "w" * 28,
+            "+/=" + "w" * 510,
+            "w" * 16 + " " + "w" * 16,
+            "w" * 32 + "\n",
+            "w" * 31 + "é",
+        )
+        try:
+            write_credentials(valid[0])
+            vite_proc = self._start_vite(vite_env, vite_port)
+            self._wait_for_vite(base, vite_proc)
+            payload = {"goal_type": "create_file", "params": {"path": "policy.txt"}}
+            for token in valid:
+                write_credentials(token)
+                response = request(
+                    base, "/api/run", method="POST", payload=payload,
+                    headers={"Origin": base},
+                )
+                self.assertEqual(response[0], 200, json_body(response))
+                self.assertEqual(forwarded[-1], f"Bearer {token}")
+            self.assertEqual(len(forwarded), len(valid))
+
+            for token in invalid:
+                write_credentials(token)
+                response = request(
+                    base, "/api/run", method="POST", payload=payload,
+                    headers={"Origin": base},
+                )
+                self.assertEqual(response[0], 503, json_body(response))
+                self.assertEqual(json_body(response).get("error"),
+                                 "local operator credentials unavailable")
+                self.assertNotIn(token.encode(), response[2])
+            self.assertEqual(len(forwarded), len(valid),
+                             "invalid local operator tokens must not reach the upstream")
+        finally:
+            vite_log = stop_process_group(vite_proc)
+            upstream.shutdown()
+            upstream.server_close()
+            upstream_thread.join(timeout=5)
+        for token in valid + invalid:
+            self.assertNotIn(token, vite_log)
 
     def test_public_bind_is_rejected_instead_of_creating_a_preview_gateway(self):
         port = free_port()
