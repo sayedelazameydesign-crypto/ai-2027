@@ -114,6 +114,8 @@ it misses synonyms. That number is published, not hidden: [`memory/README.md`](m
 | Control | Where | Proof |
 |---|---|---|
 | A version exists only with a Release + SBOM + checksums | `.github/workflows/release.yml` | tags `v1.0.0`, `v1.0.1` assets |
+| One command says whether this checkout is ready | `scripts/doctor.py` | `python3 scripts/doctor.py` → exit `0`/`1`/`2`/`3`; `python3 scripts/test_doctor.py` (40) |
+| Every environment variable is named, never valued | `.env.example` + `docs/SECRETS.md` | `python3 scripts/workflow_secret_audit.py --assert` |
 | Actions pinned to full SHAs (36 components) | every workflow | `python3 scripts/sbom.py --assert-pinned` |
 | A beat is judged against its own history, not against itself | `scripts/health_gate.py` | `python3 scripts/test_health_gate.py` (24) |
 | Recovery is one command, timed | `scripts/ember_up.sh` | Isolated local boot + 17/17 real HTTP checks in CI |
@@ -258,6 +260,16 @@ A standalone kit for selecting Chrome extensions, testing them against public or
 [Verified Browser Integration](docs/VERIFIED-BROWSER-INTEGRATION.md) is a separate Stage 1 handoff: Arena prepares one bounded lab request; you approve and run it in isolated local Chrome and return only a reviewed receipt. No remote access. Live owner-side verification is still pending.
 
 ## ⚡ Quick start (zero dependencies)
+
+```bash
+# Is this checkout ready to run? One command, one answer.
+# Offline by default; prints no secret value, only secret NAMES.
+python3 scripts/doctor.py
+
+# What environment variables exist, and what each one does?
+# Names only — never a value. Copy it, fill in what you have.
+cp .env.example .env.local        # .env.local is gitignored
+```
 
 ```bash
 # The whole running system, one command (boots both services + 15 real HTTP checks)

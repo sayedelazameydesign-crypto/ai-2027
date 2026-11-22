@@ -49,7 +49,7 @@
       "category": "agents",
       "category_ar": "أنظمة الوكلاء الذكية",
       "source": "https://github.com/sayedelazameydesign-crypto/agi-system",
-      "files": 27,
+      "files": 30,
       "description_ar": "نواة AGI بـ Python صرفة بدون اعتمادات، حلقة إدراكية كاملة مع تحقق مستقل، 86 اختبارًا",
       "operational_status": "PROVEN",
       "operational_evidence": "رُun فعليًا في 2026-11-17: 86 اختبار نواة + AST gate ناجحة",

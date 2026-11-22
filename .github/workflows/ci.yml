@@ -132,6 +132,40 @@ jobs:
           fi
           echo "every scripts/ suite passed from the repository root"
 
+      # The doctor is the one command that answers "is this checkout ready?".
+      # Running it in CI keeps it honest: a check that nobody ever executes
+      # is a check that silently rots.
+      #
+      # Exit code 3 means "skips only, no failures" and is acceptable here:
+      # on a CI runner the protocol package is not installed at this point,
+      # so the import check legitimately reports a skip.
+      #
+      # The exit code is captured through `||` rather than through `$?`,
+      # because GitHub Actions runs this block with `bash -eo pipefail`, and
+      # `-e` would abort the step on ANY non-zero exit before the status
+      # could be inspected. `--lenient` additionally downgrades the
+      # environment-dependent checks (interpreter version, package install
+      # state) to warnings, because this matrix deliberately runs an
+      # interpreter older than the package's own floor.
+      - name: Doctor — is this checkout ready to run?
+        run: |
+          code=0
+          python scripts/doctor.py --json --lenient > /tmp/doctor.json || code=$?
+          if [ ! -s /tmp/doctor.json ]; then
+            echo "::error::the doctor produced no report"
+            exit 1
+          fi
+          cat /tmp/doctor.json
+          if [ "$code" -eq 1 ]; then
+            echo "::error::the doctor reported a failed check"
+            exit 1
+          fi
+          if [ "$code" -gt 3 ]; then
+            echo "::error::the doctor could not run (exit $code)"
+            exit 1
+          fi
+          echo "doctor exit $code (0 = all passed, 3 = skips only)"
+
       - name: Secret gate tests — catch keys, spare fixtures (17)
         run: python scripts/test_secret_scan.py -v
 
