@@ -1,0 +1,196 @@
+{
+  "generated_at": "2026-11-22T16:39:14Z",
+  "root": "/home/user/ai-2027",
+  "checks": [
+    {
+      "name": "inventory.projects_on_disk",
+      "verdict": "PROVEN",
+      "evidence": "48 project dirs on disk; catalog declares total_projects=48 total_files=3982; files on disk (excl __pycache__)=3982"
+    },
+    {
+      "name": "inventory.operational_status",
+      "verdict": "DECLARED",
+      "evidence": {
+        "SIMULATED": 6,
+        "PROVEN": 1,
+        "DECLARED": 40,
+        "FAILED": 1
+      }
+    },
+    {
+      "name": "parse.render.yaml",
+      "verdict": "PROVEN",
+      "evidence": "exists=True bytes=4566"
+    },
+    {
+      "name": "parse..github/workflows/ci.yml",
+      "verdict": "PROVEN",
+      "evidence": "exists=True bytes=58646"
+    },
+    {
+      "name": "parse..github/workflows/pages.yml",
+      "verdict": "PROVEN",
+      "evidence": "exists=True bytes=3067"
+    },
+    {
+      "name": "parse..github/workflows/deploy.yml",
+      "verdict": "PROVEN",
+      "evidence": "exists=True bytes=8447"
+    },
+    {
+      "name": "parse.catalog.json",
+      "verdict": "PROVEN",
+      "evidence": "valid JSON"
+    },
+    {
+      "name": "parse.docs/public-urls.json",
+      "verdict": "PROVEN",
+      "evidence": "valid JSON"
+    },
+    {
+      "name": "parse.docs/deviations.json",
+      "verdict": "PROVEN",
+      "evidence": "valid JSON"
+    },
+    {
+      "name": "parse.agent-card.json",
+      "verdict": "PROVEN",
+      "evidence": "valid JSON"
+    },
+    {
+      "name": "github.repo",
+      "verdict": "PROVEN",
+      "evidence": "{\"defaultBranchRef\":{\"name\":\"main\"},\"forkCount\":0,\"isPrivate\":false,\"latestRelease\":{\"name\":\"v1.0.1\",\"tagName\":\"v1.0.1\",\"url\":\"https://github.com/sayedelazameydesign-crypto/ai-2027/releases/tag/v1.0.1\",\"publishedAt\":\"2026-11-17T19:07:45Z\"},\"nameWithOwner\":\"sayedelazameydesign-crypto/ai-2027\",\"pushedAt\":\"2026-11-22T14:55:10Z\",\"stargazerCount\":0,\"url\":\"https://github.com/sayedelazameydesign-crypto/ai-2027\"}"
+    },
+    {
+      "name": "github.pages",
+      "verdict": "PROVEN",
+      "evidence": "{\"url\":\"https://api.github.com/repos/sayedelazameydesign-crypto/ai-2027/pages\",\"status\":\"built\",\"cname\":null,\"custom_404\":false,\"html_url\":\"https://sayedelazameydesign-crypto.github.io/ai-2027/\",\"build_type\":\"workflow\",\"source\":{\"branch\":\"main\",\"path\":\"/\"},\"public\":true,\"protected_domain_state\":null,\"pending_domain_unverified_at\":null,\"https_enforced\":true}"
+    },
+    {
+      "name": "github.releases",
+      "verdict": "PROVEN",
+      "evidence": "v1.0.1\tLatest\tv1.0.1\t2026-11-17T19:07:45Z\nv1.0.0\t\tv1.0.0\t2026-11-17T17:54:22Z"
+    },
+    {
+      "name": "github.actions_recent",
+      "verdict": "PROVEN",
+      "evidence": "23s\t5h\ncompleted\tsuccess\tdocs: AI-2027 inventory, promotion series, and execution guardrails\tEvidence-First CI\tarena/1e6efcb1-ai-2027\tpull_request\t45017361946\t1m20s\t5h\ncompleted\tsuccess\tdocs: AI-2027 inventory, promotion series, and execution guardrails\tCodeQL\tarena/1e6efcb1-ai-2027\tpull_request\t45017361920\t2m28s\t5h\ncompleted\tsuccess\tdocs: AI-2027 inventory, promotion series, and execution guardrails\tEvidence-First CI\tarena/1e6efcb1-ai-2027\tpull_request\t45016865370\t1m17s\t5h\ncompleted\tsuccess\tdoc"
+    },
+    {
+      "name": "tests.agi-system",
+      "verdict": "PROVEN",
+      "evidence": ": test\n........................run run_e606ca79099a crashed\nTraceback (most recent call last):\n  File \"/home/user/ai-2027/projects/agi-system/core/kernel.py\", line 173, in run\n    return self._cycle(record, deadline)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/user/ai-2027/projects/agi-system/core/kernel.py\", line 278, in _cycle\n    return self._execute_and_verify(record, chosen, deadline)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/user/ai-2027/projects/agi-system/core/kernel.py\", line 305, in _execute_and_verify\n    observation, attempts = self._exe"
+    },
+    {
+      "name": "tests.live-agent",
+      "verdict": "PROVEN",
+      "evidence": "vel\":\"INFO\",\"event\":\"run started\"}\n{\"source\":\"agi.kernel\",\"level\":\"INFO\",\"event\":\"kernel event\"}\nok\ntest_traversal_is_denied_by_kernel_policy (__main__.TestRunGoal.test_traversal_is_denied_by_kernel_policy) ... {\"source\":\"agi.kernel\",\"level\":\"INFO\",\"event\":\"run started\"}\n{\"source\":\"agi.kernel\",\"level\":\"INFO\",\"event\":\"kernel event\"}\nok\ntest_unknown_goal_fails_loudly (__main__.TestRunGoal.test_unknown_goal_fails_loudly) ... ok\ntest_wrapped_execution_keeps_missing_cleanup_unknown_until_pruning_finishes (__main__.TestRunGoal.test_wrapped_execution_keeps_missing_cleanup_unknown_until_pruning_finish"
+    },
+    {
+      "name": "tests.memory",
+      "verdict": "PROVEN",
+      "evidence": "\"INFO\",\"event\":\"kernel event\"}\n{\"source\":\"agi.kernel\",\"level\":\"INFO\",\"event\":\"run started\"}\n{\"source\":\"agi.kernel\",\"level\":\"INFO\",\"event\":\"kernel event\"}\n{\"source\":\"agi.kernel\",\"level\":\"INFO\",\"event\":\"run started\"}\n{\"source\":\"agi.kernel\",\"level\":\"INFO\",\"event\":\"kernel event\"}\n{\"source\":\"agi.kernel\",\"level\":\"INFO\",\"event\":\"run started\"}\n{\"source\":\"agi.kernel\",\"level\":\"INFO\",\"event\":\"kernel event\"}\n{\"source\":\"agi.kernel\",\"level\":\"INFO\",\"event\":\"run started\"}\n{\"source\":\"agi.kernel\",\"level\":\"INFO\",\"event\":\"kernel event\"}\nok\ntest_16_stats_report_backend_and_absence_of_sqlite_vec (__main__.MemoryTes"
+    },
+    {
+      "name": "tests.hud",
+      "verdict": "PROVEN",
+      "evidence": "200 -\nok\ntest_17_http_evidence_and_history_survive_runtime_reload (__main__.HudTests.test_17_http_evidence_and_history_survive_runtime_reload)\nA real HUD HTTP run remains readable after reloading the runtime bridge. ... {\"source\":\"agi.kernel\",\"level\":\"INFO\",\"event\":\"run started\"}\n{\"source\":\"agi.kernel\",\"level\":\"INFO\",\"event\":\"kernel event\"}\n  \"POST /api/run HTTP/1.1\" 200 -\n{\"source\":\"agi.kernel\",\"level\":\"INFO\",\"event\":\"run started\"}\n{\"source\":\"agi.kernel\",\"level\":\"INFO\",\"event\":\"kernel event\"}\n  \"GET /api/state HTTP/1.1\" 200 -\n  \"GET /api/record/run_1795365571_72bc2d78 HTTP/1.1\" 200 -\n  \"GET /"
+    },
+    {
+      "name": "tests.demo-node",
+      "verdict": "PROVEN",
+      "evidence": "ok   SHA-256 known-answer vectors (FIPS 180-4)\nok   create_file reaches VERIFIED with independent sha256 evidence\nok   path traversal is DENIED before the executor runs\nok   absolute path and writing the sandbox root are DENIED\nok   unknown capability is denied by the allowlist (fail closed)\nok   payload guard rail denies oversized content\nok   missing read is FAILED — never dressed up as success\nok   append / read / list / mkdir / delete all verify independently\nok   an executor report that lies about the hash cannot reach VERIFIED\nok   unknown goal_type throws (same contract as live-agent/se"
+    },
+    {
+      "name": "gate.zero-dep-ast",
+      "verdict": "PROVEN",
+      "evidence": "AST-scanned 18 Python files for third-party imports (Python 3.11.2).\nConditional stdlib allowed across the 3.10+ matrix: tomllib\nPASS: stdlib only (zero third-party imports)."
+    },
+    {
+      "name": "audit.command-hud",
+      "verdict": "PROVEN",
+      "evidence": "oject\": \"new-new\",\n      \"severity\": \"LOW\",\n      \"issue\": \"no LICENSE file\"\n    },\n    {\n      \"project\": \"new-new\",\n      \"severity\": \"LOW\",\n      \"issue\": \"no README\"\n    },\n    {\n      \"project\": \"new-project\",\n      \"severity\": \"LOW\",\n      \"issue\": \"no LICENSE file\"\n    },\n    {\n      \"project\": \"new-project\",\n      \"severity\": \"LOW\",\n      \"issue\": \"no CI workflows\"\n    },\n    {\n      \"project\": \"platform\",\n      \"severity\": \"LOW\",\n      \"issue\": \"no LICENSE file\"\n    },\n    {\n      \"project\": \"platform\",\n      \"severity\": \"LOW\",\n      \"issue\": \"no CI workflows\"\n    },\n    {\n      \"proj"
+    },
+    {
+      "name": "redteam.100",
+      "verdict": "PROVEN",
+      "evidence": "\":\"INFO\",\"event\":\"run started\"}\n{\"source\":\"agi.kernel\",\"level\":\"INFO\",\"event\":\"kernel event\"}\n{\"source\":\"agi.kernel\",\"level\":\"INFO\",\"event\":\"run started\"}\n{\"source\":\"agi.kernel\",\"level\":\"INFO\",\"event\":\"kernel event\"}\n{\"source\":\"agi.kernel\",\"level\":\"INFO\",\"event\":\"run started\"}\n{\"source\":\"agi.kernel\",\"level\":\"INFO\",\"event\":\"kernel event\"}\n{\"source\":\"agi.kernel\",\"level\":\"INFO\",\"event\":\"run started\"}\n{\"source\":\"agi.kernel\",\"level\":\"INFO\",\"event\":\"kernel event\"}\n{\"source\":\"agi.kernel\",\"level\":\"INFO\",\"event\":\"run started\"}\n{\"source\":\"agi.kernel\",\"level\":\"INFO\",\"event\":\"kernel event\"}\n{\"source\":\"agi"
+    },
+    {
+      "name": "bench.live-agent",
+      "verdict": "PROVEN",
+      "evidence": ":\"agi.kernel\",\"level\":\"INFO\",\"event\":\"run started\"}\n{\"source\":\"agi.kernel\",\"level\":\"INFO\",\"event\":\"kernel event\"}\n{\"request_id\":\"94a81635e4774049812a78df8b6262fc\",\"method\":\"POST\",\"route\":\"/api/run\",\"status\":200,\"duration_ms\":17.827}\n{\"source\":\"agi.kernel\",\"level\":\"INFO\",\"event\":\"run started\"}\n{\"source\":\"agi.kernel\",\"level\":\"INFO\",\"event\":\"kernel event\"}\n{\"request_id\":\"d4fb4d302de541c59a9c4b3cba7caa06\",\"method\":\"POST\",\"route\":\"/api/run\",\"status\":200,\"duration_ms\":21.386}\n{\"source\":\"agi.kernel\",\"level\":\"INFO\",\"event\":\"run started\"}\n{\"source\":\"agi.kernel\",\"level\":\"INFO\",\"event\":\"kernel event\"}\n{\""
+    },
+    {
+      "name": "doctor.offline",
+      "verdict": "DECLARED",
+      "evidence": "is visible\",\n      \"name\": \"write posture\",\n      \"remedy\": \"Set AI2027_READ_ONLY=1.\",\n      \"status\": \"warn\"\n    },\n    {\n      \"detail\": \"no provider credentials are set; the $0 offline fallback still works\",\n      \"name\": \"provider credentials\",\n      \"status\": \"pass\"\n    },\n    {\n      \"detail\": \"16 secret name(s) unset; each one only disables the feature that consumes it\",\n      \"name\": \"credentials not required\",\n      \"status\": \"skip\"\n    },\n    {\n      \"detail\": \"no non-secret settings are exported; the defaults are used\",\n      \"name\": \"operator settings\",\n      \"status\": \"skip\"\n    }"
+    },
+    {
+      "name": "url.https://sayedelazameydesign-crypto.github.io/ai-2027/demo.html",
+      "verdict": "BLOCKED",
+      "evidence": "expected=live last_status=200 probe={'url': 'https://sayedelazameydesign-crypto.github.io/ai-2027/demo.html', 'verdict': 'BLOCKED', 'status': None, 'error': 'URLError: <urlopen error TLS/SSL connection has been closed (EOF) (_ssl.c:992)>'}"
+    },
+    {
+      "name": "url.https://sayedelazameydesign-crypto.github.io/ai-2027/",
+      "verdict": "BLOCKED",
+      "evidence": "expected=live last_status=200 probe={'url': 'https://sayedelazameydesign-crypto.github.io/ai-2027/', 'verdict': 'BLOCKED', 'status': None, 'error': 'URLError: <urlopen error TLS/SSL connection has been closed (EOF) (_ssl.c:992)>'}"
+    },
+    {
+      "name": "url.https://cela-umber.vercel.app/",
+      "verdict": "BLOCKED",
+      "evidence": "expected=live last_status=200 probe={'url': 'https://cela-umber.vercel.app/', 'verdict': 'BLOCKED', 'status': None, 'error': 'URLError: <urlopen error TLS/SSL connection has been closed (EOF) (_ssl.c:992)>'}"
+    },
+    {
+      "name": "url.https://new-pro-kohl.vercel.app/",
+      "verdict": "BLOCKED",
+      "evidence": "expected=live last_status=200 probe={'url': 'https://new-pro-kohl.vercel.app/', 'verdict': 'BLOCKED', 'status': None, 'error': 'URLError: <urlopen error TLS/SSL connection has been closed (EOF) (_ssl.c:992)>'}"
+    },
+    {
+      "name": "url.https://cerulean-boba-48f59a.netlify.app/",
+      "verdict": "BLOCKED",
+      "evidence": "expected=live last_status=200 probe={'url': 'https://cerulean-boba-48f59a.netlify.app/', 'verdict': 'BLOCKED', 'status': None, 'error': 'URLError: <urlopen error TLS/SSL connection has been closed (EOF) (_ssl.c:992)>'}"
+    },
+    {
+      "name": "url.https://elazamet1.vercel.app/",
+      "verdict": "BLOCKED",
+      "evidence": "expected=dead last_status=404 probe={'url': 'https://elazamet1.vercel.app/', 'verdict': 'BLOCKED', 'status': None, 'error': 'URLError: <urlopen error TLS/SSL connection has been closed (EOF) (_ssl.c:992)>'}"
+    },
+    {
+      "name": "url.https://celia-pro.onrender.com/",
+      "verdict": "BLOCKED",
+      "evidence": "expected=dead last_status=404 probe={'url': 'https://celia-pro.onrender.com/', 'verdict': 'BLOCKED', 'status': None, 'error': 'URLError: <urlopen error TLS/SSL connection has been closed (EOF) (_ssl.c:992)>'}"
+    },
+    {
+      "name": "url.https://nawah-agent.onrender.com/",
+      "verdict": "BLOCKED",
+      "evidence": "expected=dead last_status=404 probe={'url': 'https://nawah-agent.onrender.com/', 'verdict': 'BLOCKED', 'status': None, 'error': 'URLError: <urlopen error TLS/SSL connection has been closed (EOF) (_ssl.c:992)>'}"
+    },
+    {
+      "name": "url.https://ai-2027-live-agent.onrender.com/api/health",
+      "verdict": "BLOCKED",
+      "evidence": "declared in render.yaml; sandbox probe only (see report notes)"
+    },
+    {
+      "name": "url.https://ai-2027-studio.onrender.com/v1/studio/status",
+      "verdict": "BLOCKED",
+      "evidence": "declared in render.yaml; sandbox probe only (see report notes)"
+    },
+    {
+      "name": "secret_scan.official",
+      "verdict": "PROVEN",
+      "evidence": "SECRET SCAN — tracked (code) · 0 blocking · 0 warning(s)\n  … 11 more inside projects/ (byte-mirror; fix upstream, not here)\n    · projects/ai-store2/env.local:0  forbidden_file  env.local (never belongs in a commit)\n    · projects/cela.nimna/tests/conftest.py:15  assigned_secret  test-k…(41 chars)\n    · projects/celia.sh/tests/metrics.test.ts:9  assigned_secret  gsk_te…(34 chars)\n    · projects/easy-ai/tests/test_redact.py:37  jwt  eyJhbG…(49 chars)\n    · projects/easy-ai/tests/test_redact.py:64"
+    },
+    {
+      "name": "secret_scan.ai-store2_redacted_here",
+      "verdict": "PROVEN",
+      "evidence": "env.local REDACTED in this repo (D-2); upstream revocation is an owner action tracked in AUDIT.md"
+    }
+  ],
+  "summary": {
+    "PROVEN": 24,
+    "DECLARED": 2,
+    "BLOCKED": 10
+  }
+}

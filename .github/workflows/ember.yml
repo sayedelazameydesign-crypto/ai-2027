@@ -25,7 +25,10 @@ name: Ember beat
 
 on:
   schedule:
-    - cron: "15 */6 * * *"      # 04 beats/day, offset from the hour to dodge load
+    - cron: "15 */3 * * *"      # 08 beats/day (was */6 until 2026-11-22: GitHub dropped ~half the
+                                # */6 runs — measured gaps 11.5-12.2h, issue #155 — while every beat
+                                # that ran was 17/17. The health gate's 8h silence alarm is unchanged:
+                                # CADENCE_H 3 + TOLERANCE_H 5 in scripts/health_gate.py.)
   workflow_dispatch:
     inputs:
       force_degraded:

@@ -183,7 +183,7 @@ A2A-style card (`agent-card.json`) that declares skills **and** `honest_limits`,
 uptime). Both are private reads and require a reader credential. The smoke test refuses
 an agent card whose endpoints are not real `/api/` paths or that hides its limits.
 
-**It also runs without you:** `.github/workflows/ember.yml` beats every 6 hours —
+**It also runs without you:** `.github/workflows/ember.yml` beats every 3 hours —
 boots both servers, runs the 17 checks, recomputes a measured **Heat Index**, publishes
 `ember/status.json` + `STATUS.md` to the `heartbeat` branch, opens one issue when
 degraded and closes it on recovery.
