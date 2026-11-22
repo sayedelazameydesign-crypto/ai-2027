@@ -81,7 +81,12 @@ jobs:
           python3 scripts/test_pap_gap_audit.py -v
 
   unit:
-    name: Tests · Python ${{ matrix.python-version }}
+    # Named distinctly from ci.yml's "Tests · Python ..." on purpose. Both
+    # workflows previously used the identical job name for different suites,
+    # so when both were scheduled their checks were indistinguishable by name
+    # - and a required status check is matched by name. This job runs the
+    # fleet-2027 and kernel-2027 suites; ci.yml's runs the ai-2027 suite.
+    name: Fleet & kernel tests · Python ${{ matrix.python-version }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:

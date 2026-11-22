@@ -265,6 +265,37 @@ jobs:
         working-directory: projects/open_source-
         run: python -m pytest -q tests/test_docs_claims.py
 
+  open-source-full-suite:
+    name: Open Source full suite · NON-BLOCKING baseline
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # Deliberately NOT required, and deliberately not allowed to fail the
+    # build. The whole projects/open_source- suite (1587 tests) has never
+    # run in CI, so this job exists to establish a baseline and to surface
+    # any latent failure BEFORE the suite is made required.
+    #
+    # continue-on-error means the job reports its real conclusion (so the
+    # history is honest) while the overall workflow stays green. Once the
+    # baseline is known to be clean, a separate change can drop
+    # continue-on-error and add this job to the required checks.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
+        with:
+          python-version: "3.11"
+      - name: Install test dependencies (no live credentials, no network)
+        working-directory: projects/open_source-
+        run: python -m pip install --editable ".[dev,server]"
+      # The default marker expression excludes live-channel tests, and the
+      # suite is hermetic: no network, no credential, no external service.
+      # It took ~57s locally on the same Python version.
+      - name: Full projects/open_source- suite (baseline)
+        working-directory: projects/open_source-
+        run: python -m pytest -q -p no:cacheprovider
+
   browser-handoff-windows:
     name: BrowserSkill local handoff · Windows ACL and process lock (simulated browser)
     runs-on: windows-latest
