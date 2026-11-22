@@ -217,6 +217,32 @@ cannot create one.
 
 ##### Runbook: activating the Studio on Render
 
+0. **Preflight the checkout.** Before touching the dashboard, confirm the
+   local checkout is coherent:
+
+   ```bash
+   python3 scripts/doctor.py
+   ```
+
+   This is offline by default, prints no secret value (only secret *names*),
+   and exits `0` when everything passed, `1` when a check failed, `2` when it
+   could not run at all, and `3` when some optional checks were skipped.
+   It checks the interpreter version, the checkout layout, the protocol
+   import, the fail-closed budget posture, the read-only posture, the
+   provider credentials by presence only, and the `render.yaml` Studio
+   service posture (`AI2027_READ_ONLY=1`, `AI2027_MAX_SPEND_USD=0`, every
+   secret `sync: false`).
+
+   To verify an instance that is already up, add its URL:
+
+   ```bash
+   python3 scripts/doctor.py --studio "$STUDIO_URL"
+   ```
+
+   The environment variables the project reads are listed by name in
+   `.env.example`; `docs/SECRETS.md` is the registry of record for who
+   consumes each one and how to rotate it.
+
 1. **Create the Blueprint.** In the Render dashboard choose **New + → Blueprint**,
    then select `sayedelazameydesign-crypto/ai-2027` on branch `main`. Render reads
    `render.yaml` and proposes both services, `ai-2027-live-agent` and
