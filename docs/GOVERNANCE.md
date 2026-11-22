@@ -87,7 +87,7 @@ JSON
 
 | Not enforced | Why it matters | Where to fix |
 |---|---|---|
-| Branch protection on `main` | nothing currently stops a direct red push | command above |
+| The 20 required status checks on `main` | a branch can be pushed with a red check | Branch protection on `main` → *Require status checks to pass* → add the 20 names from the command above. **A required review IS already enforced** (both open PRs report `mergeable_state: blocked` with every check green); the status-check list is not. |
 | Secret scanning + push protection | a leaked key reaches history before anyone sees it | Settings → Code security → Secret scanning → Push protection |
 | Private vulnerability reporting | `SECURITY.md` gives an address, not an encrypted channel | Settings → Code security → Private reporting |
 | Environments for releases | anyone with write access can cut a release | Settings → Environments → `release` with required reviewers |
