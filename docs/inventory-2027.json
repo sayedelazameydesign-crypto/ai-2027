@@ -549,7 +549,23 @@
       "duration": "3-5 minutes",
       "tool": "OBS Studio (free, open-source)",
       "shots": 6,
-      "state": "shot-by-shot script ready to record"
+      "state": "shot-by-shot script ready to record; actual video NOT recorded"
+    },
+    "episode_02": {
+      "document": "docs/EPISODE-02-ZERO-COST-FIRST.md",
+      "title": "Why we adopted Zero-Cost First and blocked untested claims",
+      "series_position": "2 of 3",
+      "state": "publish-ready text (Arabic + English)",
+      "governing_source": "Master prompt v1.2 — §10 (four clauses)",
+      "focus": [
+        "free gate applied in practice",
+        "state labels preserved",
+        "limits stated: 40 DECLARED, video not recorded"
+      ],
+      "evidence_links": [
+        "docs/ZERO-COST-PLAYBOOK-2027.md",
+        "docs/ENGINEERING-INVENTORY-2027.md"
+      ]
     }
   }
 }
