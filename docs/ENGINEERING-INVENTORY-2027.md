@@ -509,11 +509,12 @@
 ## 9. البرومبت الرئيسي — CeliaOS Master System Prompt (2027 · Evidence-First)
 
 > **الغرض:** نواة تشغيل موحّدة تُلصق في بداية أي وكيل أو نظام يعمل على هذا المستودع. صُمّمت لتكون **صادقة بنيوياً**: تمنع النموذج من ادعاء نظام غير موجود، وتُجبره على تصنيف كل ناتج.
-> **الإصدار 1.1 (مدمج):** مبادئ `Evidence-First` كمعيار عام قابل للنقل، مدمجة مع الخريطة التشغيلية والعقود والفحص الذاتي الخاصة بهذا المستودع. النسخة 1.0 كانت تشغيلية فقط؛ النسخة 1.1 تجمع الاثنتين.
+> **الإصدار 1.2 (مدمج):** مبادئ `Evidence-First` كمعيار عام قابل للنقل، مدمجة مع الخريطة التشغيلية والعقود والفحص الذاتي الخاصة بهذا المستودع، **وقاعدة `Zero-Cost First & Legend-2027 Unification` الملزمة (§10)** التي تفرض المجانية الكاملة في مرحلة التأسيس وتوحيد الأصول بصدق بنيوي. النسخة 1.0 كانت تشغيلية فقط؛ 1.1 جمعت المعيار العام؛ 1.2 أضافت قاعدة المجانية والتوحيد.
 
 ```markdown
 # CELIA-OS MASTER SYSTEM PROMPT (2027 — EVIDENCE-FIRST EDITION)
-Version 1.1 · 2026-11-22 · Maintainer: Sayed El-Azamey Design
+Version 1.2 · 2026-11-22 · Maintainer: Sayed El-Azamey Design
+Edition: Evidence-First + Zero-Cost First (Legend-2027 Unification)
 Applies to: every agent, engine, automation, and interface operating on AI-2027.
 Operate under strict Structural Honesty and Verifiable Execution. Never claim
 capabilities, files, tests, or metrics unless directly observed and verified.
@@ -544,7 +545,8 @@ You never declare success. You produce evidence and let the verifier decide.
 6. LOCAL-FIRST, $0 BY DEFAULT — prefer stdlib/SQLite/local models. Cloud and
    paid providers are opt-in, budget-capped, and never silently substituted.
    Never route local sensitive data to an external API without explicit
-   authorization in the active capability policy.
+   authorization in the active capability policy. This principle is enforced
+   by the Zero-Cost First & Legend-2027 Unification Rule (§10).
 7. SCOPE, PORTABILITY & NO SECRETS — respect workspace boundaries; avoid
    unrequested edits to production or project trees (projects/). Relative
    paths only. Never print, log, commit, or transmit credentials; redact
@@ -639,6 +641,24 @@ E. MEDIA & PRE-PRESS — this domain is NOT implemented in AI-2027
 □ Are all paths relative and portable?
 □ Did I redact every secret?
 □ Can the verifier reproduce this from my evidence alone?
+
+## 10. ZERO-COST FIRST & LEGEND-2027 UNIFICATION RULE (MANDATORY)
+- **Free-by-Default Mandate:** Every build, test, deployment, model run, and
+  workflow in the foundational phase MUST be 100% free (local execution,
+  open-source tooling, or free-tier resources) with zero paid subscriptions
+  or billing commitments required to start.
+- **Unify Existing Assets Honestly:** Leverage existing repositories,
+  engines, and projects toward the 2027 system vision while strictly
+  preserving verified state labels (PROVEN, DECLARED, SIMULATED, FAILED,
+  BLOCKED) and never fabricating capabilities or metrics.
+- **Execution Alignment:** Treat this rule as binding across both the active
+  execution flow ("السير على هذا") and the global system protocol;
+  explicitly flag any component that cannot run free/locally before
+  proceeding.
+- **Free-Gate Before Adoption:** Before any new tool, service, or API is
+  admitted to the system, verify it runs free or locally and record its
+  state (PROVEN / DECLARED / SIMULATED / FAILED / BLOCKED). A component
+  that requires payment to start is BLOCKED until a free path exists.
 ```
 
 ---
@@ -726,6 +746,49 @@ python3 command-hud/redteam.py --markdown
 # 10) العرض العام
 node website/kernel-demo.test.js
 ```
+
+---
+
+## 13. رؤية «أسطورة 2027» — التوحيد تحت قاعدة Zero-Cost First
+
+> **الفكرة:** بناء منظومة موحدة لعام 2027 تستثمر كل المستودعات والمشاريع والمحركات الموجودة، بدلاً من الجزر المنعزلة — بشرط حاكم واحد: **المجانية الكاملة في مرحلة التأسيس**. هذه القاعدة ملزمة في «السير على هذا» وفي البروتوكول العمومي (§9 · §10 من البرومبت).
+
+### 13.1 الأساس المُثبت (يُبنى عليه أولاً — PROVEN/PRESENT)
+
+هذه الوحدات تعمل الآن محلياً وبصفر تكلفة، وهي نواة التوحيد:
+
+| الوحدة | لماذا هي الأساس | التكلفة |
+|---|---|---|
+| `kernel-2027` | 10 بدائيات مشتركة · 152 اختباراً · صفر اعتماديات | $0 |
+| `projects/agi-system` + `live-agent` | النواة الحتمية · 139 اختباراً · صفر اعتماديات | $0 |
+| `python-2027` | مُوجِّه نماذج بميزانية $0 (`BudgetGuard`) · 832 اختباراً | $0 |
+| `fleet-2027` | أسطول دائم · 285 اختباراً · SQLite محلي | $0 |
+| `memory` · `monitoring` · `command-hud` | ذاكرة مشروطة · تنبيه حتمي · red-team | $0 |
+| `connectors-hub` · `deployment` · `scripts` | متصلات محلية · نشر آمن · بوابات CI | $0 |
+
+### 13.2 مسار الترقية (DECLARED → PROVEN خطوة بخطوة)
+
+| الفئة | العدد | القاعدة |
+|---|---:|---|
+| مشاريع `DECLARED` في الأرشيف | 40 | تُرقَّى فقط بعد تشغيل اختباراتها هنا ونجاحها |
+| محركات `partial` | 8 | تُكمل فجواتها المعلنة واحدة واحدة |
+| مشاريع `SIMULATED` | 6 | تُبنى قدرتها الحقيقية أو تُستبعد من الادعاء |
+
+### 13.3 المستبعد من التوحيد حتى يُبنى
+
+| البند | السبب |
+|---|---|
+| المسار الرابع (الوسائط/الطباعة) | غير مُنفَّذ — مستودعات فارغة 0 KB |
+| `new-agent` | `FAILED` — ملف ترخيص تالف |
+| أي مكوّن يتطلب دفعاً للبدء | `BLOCKED` حتى يوجد مسار مجاني (§9 · §10 من البرومبت) |
+
+### 13.4 بوابة المجانية قبل أي اعتماد
+
+قبل ضم أي أداة أو خدمة أو واجهة إلى المنظومة:
+1. التحقق أنها تعمل مجاناً أو محلياً (تنفيذ محلي · مفتوح المصدر · حد مجاني كافٍ).
+2. توثيق قيودها المجانية (حدود الاستخدام · متطلبات العتاد المحلي).
+3. تسجيل حالتها: `PROVEN` / `DECLARED` / `SIMULATED` / `FAILED` / `BLOCKED`.
+4. أي مكوّن لا يعمل مجاناً يُعلَّم `BLOCKED` ولا يُعتمد.
 
 ---
 

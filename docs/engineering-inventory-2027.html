@@ -173,6 +173,7 @@ footer .fin{color:var(--accent);font-weight:700;letter-spacing:.4px}
       <a href="#archive">الأرشيف</a>
       <a href="#audit">التصحيح</a>
       <a href="#prompt">البرومبت</a>
+      <a href="#legend">أسطورة 2027</a>
     </nav>
   </div>
 </header>
@@ -534,13 +535,14 @@ footer .fin{color:var(--accent);font-weight:700;letter-spacing:.4px}
   <!-- PROMPT -->
   <section id="prompt">
     <h2><span class="num">08</span> البرومبت الرئيسي — CeliaOS 2027</h2>
-    <p class="lead">نواة تشغيل موحّدة تُلصق في بداية أي وكيل أو نظام. الإصدار 1.1 (مدمج): مبادئ Evidence-First كمعيار عام + الخريطة التشغيلية والعقود والفحص الذاتي الخاصة بهذا المستودع. صُمّمت لتكون صادقة بنيوياً: تمنع ادعاء نظام غير موجود، وتُجبر على تصنيف كل ناتج.</p>
+    <p class="lead">نواة تشغيل موحّدة تُلصق في بداية أي وكيل أو نظام. الإصدار 1.2 (مدمج): مبادئ Evidence-First كمعيار عام + الخريطة التشغيلية والعقود والفحص الذاتي + قاعدة Zero-Cost First &amp; Legend-2027 Unification الملزمة (§10). صُمّمت لتكون صادقة بنيوياً: تمنع ادعاء نظام غير موجود، وتُجبر على تصنيف كل ناتج.</p>
     <div class="prompt-head">
-      <span class="chip">الإصدار <b>1.1</b> (مدمج) · 2026-11-22 · Sayed El-Azamey Design</span>
+      <span class="chip">الإصدار <b>1.2</b> (مدمج + Zero-Cost) · 2026-11-22 · Sayed El-Azamey Design</span>
       <button class="copy" onclick="copyPrompt()">نسخ البرومبت</button>
     </div>
 <pre id="promptText"><code># CELIA-OS MASTER SYSTEM PROMPT (2027 — EVIDENCE-FIRST EDITION)
-Version 1.1 · 2026-11-22 · Maintainer: Sayed El-Azamey Design
+Version 1.2 · 2026-11-22 · Maintainer: Sayed El-Azamey Design
+Edition: Evidence-First + Zero-Cost First (Legend-2027 Unification)
 Applies to: every agent, engine, automation, and interface operating on AI-2027.
 Operate under strict Structural Honesty and Verifiable Execution. Never claim
 capabilities, files, tests, or metrics unless directly observed and verified.
@@ -571,7 +573,8 @@ You never declare success. You produce evidence and let the verifier decide.
 6. LOCAL-FIRST, $0 BY DEFAULT — prefer stdlib/SQLite/local models. Cloud and
    paid providers are opt-in, budget-capped, and never silently substituted.
    Never route local sensitive data to an external API without explicit
-   authorization in the active capability policy.
+   authorization in the active capability policy. This principle is enforced
+   by the Zero-Cost First &amp; Legend-2027 Unification Rule (§10).
 7. SCOPE, PORTABILITY &amp; NO SECRETS — respect workspace boundaries; avoid
    unrequested edits to production or project trees (projects/). Relative
    paths only. Never print, log, commit, or transmit credentials; redact
@@ -665,7 +668,25 @@ E. MEDIA &amp; PRE-PRESS — this domain is NOT implemented in AI-2027
 □ Did I state the limitation next to the result?
 □ Are all paths relative and portable?
 □ Did I redact every secret?
-□ Can the verifier reproduce this from my evidence alone?</code></pre>
+□ Can the verifier reproduce this from my evidence alone?
+
+## 10. ZERO-COST FIRST &amp; LEGEND-2027 UNIFICATION RULE (MANDATORY)
+- **Free-by-Default Mandate:** Every build, test, deployment, model run, and
+  workflow in the foundational phase MUST be 100% free (local execution,
+  open-source tooling, or free-tier resources) with zero paid subscriptions
+  or billing commitments required to start.
+- **Unify Existing Assets Honestly:** Leverage existing repositories,
+  engines, and projects toward the 2027 system vision while strictly
+  preserving verified state labels (PROVEN, DECLARED, SIMULATED, FAILED,
+  BLOCKED) and never fabricating capabilities or metrics.
+- **Execution Alignment:** Treat this rule as binding across both the active
+  execution flow ("السير على هذا") and the global system protocol;
+  explicitly flag any component that cannot run free/locally before
+  proceeding.
+- **Free-Gate Before Adoption:** Before any new tool, service, or API is
+  admitted to the system, verify it runs free or locally and record its
+  state (PROVEN / DECLARED / SIMULATED / FAILED / BLOCKED). A component
+  that requires payment to start is BLOCKED until a free path exists.</code></pre>
   </section>
 
   <!-- SELF AUDIT -->
@@ -737,6 +758,50 @@ python3 command-hud/redteam.py --markdown
 
 # 10) العرض العام
 node website/kernel-demo.test.js</code></pre>
+  </section>
+
+  <!-- LEGEND 2027 -->
+  <section id="legend">
+    <h2><span class="num">13</span> رؤية «أسطورة 2027» — التوحيد تحت قاعدة Zero-Cost First</h2>
+    <p class="lead">بناء منظومة موحدة لعام 2027 تستثمر كل المستودعات والمشاريع والمحركات الموجودة، بدلاً من الجزر المنعزلة — بشرط حاكم واحد: <b>المجانية الكاملة في مرحلة التأسيس</b>. هذه القاعدة ملزمة في «السير على هذا» وفي البروتوكول العمومي (قسم 08 · §10 من البرومبت).</p>
+    <div class="grid">
+      <div class="card">
+        <h4 style="margin-top:0">الأساس المُثبت (يُبنى عليه أولاً)</h4>
+        <ul class="clean">
+          <li><code>kernel-2027</code> — 10 بدائيات · 152 اختباراً · صفر اعتماديات · $0</li>
+          <li><code>agi-system</code> + <code>live-agent</code> — النواة الحتمية · 139 اختباراً · $0</li>
+          <li><code>python-2027</code> — مُوجِّه نماذج بميزانية $0 · 832 اختباراً</li>
+          <li><code>fleet-2027</code> — أسطول دائم · 285 اختباراً · SQLite محلي</li>
+          <li><code>memory</code> · <code>monitoring</code> · <code>command-hud</code> — ذاكرة وتنبيه وred-team · $0</li>
+          <li><code>connectors-hub</code> · <code>deployment</code> · <code>scripts</code> — متصلات ونشر وبوابات CI · $0</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h4 style="margin-top:0">مسار الترقية (DECLARED → PROVEN)</h4>
+        <ul class="clean">
+          <li>مشاريع <code>DECLARED</code> في الأرشيف: <b>40</b> — تُرقَّى فقط بعد تشغيل اختباراتها هنا ونجاحها</li>
+          <li>محرّكات <code>partial</code>: <b>8</b> — تُكمل فجواتها المعلنة واحدة واحدة</li>
+          <li>مشاريع <code>SIMULATED</code>: <b>6</b> — تُبنى قدرتها الحقيقية أو تُستبعد من الادعاء</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h4 style="margin-top:0">المستبعد من التوحيد حتى يُبنى</h4>
+        <ul class="clean">
+          <li>المسار الرابع (الوسائط/الطباعة) — غير مُنفَّذ، مستودعات فارغة 0 KB</li>
+          <li><code>new-agent</code> — <code>FAILED</code> (ملف ترخيص تالف)</li>
+          <li>أي مكوّن يتطلب دفعاً للبدء — <code>BLOCKED</code> حتى يوجد مسار مجاني</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h4 style="margin-top:0">بوابة المجانية قبل أي اعتماد</h4>
+        <ol class="clean">
+          <li>التحقق أنها تعمل مجاناً أو محلياً (تنفيذ محلي · مفتوح المصدر · حد مجاني كافٍ)</li>
+          <li>توثيق قيودها المجانية (حدود الاستخدام · متطلبات العتاد المحلي)</li>
+          <li>تسجيل حالتها: <code>PROVEN</code> / <code>DECLARED</code> / <code>SIMULATED</code> / <code>FAILED</code> / <code>BLOCKED</code></li>
+          <li>أي مكوّن لا يعمل مجاناً يُعلَّم <code>BLOCKED</code> ولا يُعتمد</li>
+        </ol>
+      </div>
+    </div>
   </section>
 
   <!-- TEST MATRIX -->
