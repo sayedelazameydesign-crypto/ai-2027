@@ -26,6 +26,7 @@
 | `SUBSTRATE_API_TOKEN` | `.github/workflows/agent-substrate-deploy.yml` (تشغيل يدوي على `main`) | يضع رمز Bearer للـGateway في Secret باسم `agent-substrate-api`؛ الحد الأدنى 32 حرفاً | يفشل النشر إذا غاب أو كان أقصر من 32 حرفاً | حدّث القيمة في Actions Secret وأعد تشغيل Workflow؛ يعاد تشغيل Controller ليقرأها |
 | `SUBSTRATE_ACTOR_MASTER_KEY` | `.github/workflows/agent-substrate-deploy.yml` (تشغيل يدوي على `main`) | مفتاح اشتقاق HMAC لعناوين Agent؛ الحد الأدنى 32 حرفاً ويجب أن يبقى ثابتاً | يفشل النشر إذا غاب أو كان أقصر من 32 حرفاً | لا تدوّره تلقائياً: تغييره يتطلب ترحيل أسرار Actor immutable وإعادة إنشاء Pods؛ احتفظ به ثابتاً |
 | `EMBER_ALERT_WEBHOOK` | `.github/workflows/ember.yml` | إشعار المرحلة الثالثة عند تكرار التدهور | يُسجَّل `not-configured` — معلن، لا صامت | أي endpoint جديد |
+| `CONNECTORS_HUB_API_TOKEN` | `ai2027_protocol/studio.py` — مسار `/v1/studio/connectors/catalog` فقط. **غير مستعمل في أي Workflow ولا في CI تلقائي**؛ يُقرأ في `render.yaml` بـ`sync: false` أي يُدخل في لوحة Render ولا يُحفظ في Git | رمز Bearer لواجهة Connectors Hub. **الاستعمال اختياري تماماً**: غيابه لا يمنع تشغيل Studio ولا يوقف `/v1/studio/status` — يُبلَّغ عنه فقط كـ`token_missing` في مسار الكتالوج | مسار الكتالوج يعيد `token_missing` صراحةً بدل أن يتصرّف وكأن الكتالوج فارغ. بقية المسارات لا تتأثر | Connectors Hub → Dashboard → Tokens |
 
 ### متغيّرات (ليست أسرارًا، ولا تحتاج تشفيرًا)
 
@@ -41,6 +42,15 @@
 | `AI2027_FREE_MODELS` | قائمة مفصولة بفواصل تعلن نماذج إضافية مجانية على خطة المزوّد المعدّلة. لا تتجاوز تقاعد معرّف، ولا تُثبت `$0` | فارغة |
 | `OLLAMA_MODEL` | نموذج Ollama المحلي لبيئة `4gb-laptop` (يعمل بلا مفتاح سحابي) | `qwen3.5:0.8b` |
 | `OLLAMA_CLOUD_MODEL` | نموذج Ollama Cloud عند الإذن المدفوع الصريح فقط | `qwen3.5:0.8b` |
+| `CONNECTORS_HUB_URL` | عنوان Connectors Hub الذي يقرأه مسار `/v1/studio/connectors/catalog`. ليس سرّاً — عنوان فقط | `http://127.0.0.1:8765` |
+| `AI2027_READ_ONLY` | يفعّل الوضع القرائي: يرفض كل كتابة على مستوى التطبيق كله | `1` في المخطّط العام (Blueprint) |
+| `AI2027_MAX_SPEND_USD` | سقف الإنفاق.Fail-closed: الافتراضي `0` يعني رفض كل نداء مدفوع أو غير معروف التكلفة | `0` |
+| `AI2027_ALLOW_UNKNOWN_COST` | يسمح بالنداءات التي لا يمكن إثبات تكلفتها. **هذا تفويض وليس سقفاً مالياً**: النداء ينفق مالاً حقيقياً، لكنه يُمتنع عن الرفض. **يُتجاهل بالكامل إذا كان `AI2027_MAX_SPEND_USD=0`** — لأن `BudgetPolicy.from_env()` يُجبره على `False` عند سقف صفري، فلا يمكنه تجاوز الحراسة Fail-closed | `0` |
+| `AI2027_CELIA_MEMORY_DB` | مسار قاعدة بيانات ذاكرة CELIA. مسار محلي، ليس سرّاً | فارغ ⇒ الذاكرة في الوضع غير الدائم |
+| `AI2027_TELEMETRY_DIR` | مجلد كتابة أحداث التتبّع (Telemetry). مسار محلي، ليس سرّاً | فارغ ⇒ التتبّع معطّل |
+| `AI2027_SESSION_LEASE` | وضع leases الجلسات. `off` يمنعها صراحةً؛ أي قيمة أخرى تُشغّلها | `off` |
+| `AI2027_OBSERVABILITY_MODE` | نمط الملاحظة (`off` / `local` / …). ليس سرّاً | فارغ ⇒ الوضع الافتراضي |
+| `AI2027_OLLAMA_PROFILE` | ملف تعريف Ollama المحلي (`4gb-laptop` …). ليس سرّاً | `4gb-laptop` |
 
 ### أسرار Cloudflare / R2 المعرَّفة وغير المستعملة بعد
 

@@ -132,6 +132,32 @@ jobs:
           fi
           echo "every scripts/ suite passed from the repository root"
 
+      # The doctor is the one command that answers "is this checkout ready?".
+      # Running it in CI keeps it honest: a check that nobody ever executes
+      # is a check that silently rots. Exit code 3 (skips only, no failures)
+      # is acceptable here — on a CI runner the protocol package is installed
+      # by a later job, so the import check legitimately reports a skip.
+      - name: Doctor — is this checkout ready to run?
+        run: |
+          set -uo pipefail
+          python scripts/doctor.py --json > /tmp/doctor.json
+          code=$?
+          if [ -s /tmp/doctor.json ]; then
+            cat /tmp/doctor.json
+          else
+            echo "::error::the doctor produced no report"
+            exit 1
+          fi
+          if [ "$code" -eq 1 ]; then
+            echo "::error::the doctor reported a failed check"
+            exit 1
+          fi
+          if [ "$code" -gt 3 ]; then
+            echo "::error::the doctor could not run (exit $code)"
+            exit 1
+          fi
+          echo "doctor exit $code (0 = all passed, 3 = skips only)"
+
       - name: Secret gate tests — catch keys, spare fixtures (17)
         run: python scripts/test_secret_scan.py -v
 
