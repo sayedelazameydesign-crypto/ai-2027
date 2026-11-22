@@ -532,5 +532,24 @@
         "state": "optional — dashboard also runs from file locally"
       }
     ]
+  },
+  "promotion_assets": {
+    "episode_01": {
+      "document": "docs/EPISODE-01-HONEST-INVENTORY.md",
+      "title": "How we built an honest inventory of 48 projects and 13 engines and ran 2,054 tests",
+      "state": "publish-ready text (Arabic + English)",
+      "evidence_links": [
+        "docs/ENGINEERING-INVENTORY-2027.md",
+        "docs/engineering-inventory-2027.html",
+        "docs/inventory-2027.json"
+      ]
+    },
+    "visual_tour": {
+      "document": "docs/VISUAL-TOUR-SCRIPT-2027.md",
+      "duration": "3-5 minutes",
+      "tool": "OBS Studio (free, open-source)",
+      "shots": 6,
+      "state": "shot-by-shot script ready to record"
+    }
   }
 }
