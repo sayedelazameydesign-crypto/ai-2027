@@ -415,5 +415,122 @@
       }
     ],
     "master_prompt_version": "1.2"
+  },
+  "zero_cost_playbook": {
+    "document": "docs/ZERO-COST-PLAYBOOK-2027.md",
+    "overview": "docs/OVERVIEW-2027.md",
+    "version": "1.0",
+    "governing_rule": "ZERO-COST FIRST & LEGEND-2027 UNIFICATION RULE (master prompt v1.2, section 10)",
+    "tracks": [
+      {
+        "id": 1,
+        "name": "Public deployment & interface",
+        "free_tools": [
+          "public GitHub repo",
+          "self-contained dashboard",
+          "documented local run"
+        ],
+        "progress_metric": "any reviewer reaches an accurate, unambiguous description"
+      },
+      {
+        "id": 2,
+        "name": "Promotion & trust building",
+        "free_tools": [
+          "short technical posts",
+          "local screen recording (OBS Studio)",
+          "organized READMEs"
+        ],
+        "progress_metric": "targeted engagement, technical inquiries, real trial requests"
+      },
+      {
+        "id": 3,
+        "name": "Gradual monetization",
+        "free_tools": [
+          "custom service offers",
+          "free core versions",
+          "direct channels"
+        ],
+        "progress_metric": "specific requests or working collaborations at zero initial cost"
+      },
+      {
+        "id": 4,
+        "name": "Quality governance & upgrading",
+        "free_tools": [
+          "local tests",
+          "checklists",
+          "five-state labels"
+        ],
+        "progress_metric": "DECLARED -> PROVEN upgrades with evidence, no inflated readiness claims"
+      }
+    ],
+    "phases": [
+      {
+        "id": "A",
+        "name": "Engineering credibility as first competitive advantage"
+      },
+      {
+        "id": "B",
+        "name": "Free intro/operational package step by step (1-page overview, 3-5 min visual tour, safe trial path)"
+      },
+      {
+        "id": "C",
+        "name": "Free promotion channels (3-episode series, content recycling, direct doc links)"
+      },
+      {
+        "id": "D",
+        "name": "Gradual monetization models (custom services, upgrades/modules, voluntary support/partnerships)"
+      }
+    ],
+    "safe_trial_path": [
+      "git clone https://github.com/sayedelazameydesign-crypto/ai-2027.git",
+      "open docs/engineering-inventory-2027.html in a browser (no server)",
+      "python3 command-hud/audit.py",
+      "python3 command-hud/redteam.py --markdown",
+      "read the master prompt in docs/ENGINEERING-INVENTORY-2027.md section 9"
+    ],
+    "blog_series": [
+      {
+        "episode": 1,
+        "title": "How we built an honest inventory of 48 projects and 13 engines (2,054 tests)",
+        "evidence": "report sections 0 and 7"
+      },
+      {
+        "episode": 2,
+        "title": "Why we adopted Zero-Cost First and banned unverified claims",
+        "evidence": "master prompt v1.2 sections 9 and 10"
+      },
+      {
+        "episode": 3,
+        "title": "How we promote a component from DECLARED to PROVEN",
+        "evidence": "report section 12 (re-verification commands)"
+      }
+    ],
+    "verified_free_tools": [
+      {
+        "tool": "GitHub (public repo)",
+        "cost": "$0",
+        "state": "PROVEN"
+      },
+      {
+        "tool": "self-contained dashboard (docs/engineering-inventory-2027.html)",
+        "cost": "$0",
+        "state": "PROVEN"
+      },
+      {
+        "tool": "OBS Studio (screen recording)",
+        "cost": "$0",
+        "state": "open-source, local install"
+      },
+      {
+        "tool": "Python + SQLite + pytest/unittest",
+        "cost": "$0",
+        "state": "PROVEN"
+      },
+      {
+        "tool": "free static hosting (e.g. GitHub Pages)",
+        "cost": "$0",
+        "state": "optional — dashboard also runs from file locally"
+      }
+    ]
   }
 }
