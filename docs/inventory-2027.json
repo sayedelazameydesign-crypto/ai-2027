@@ -566,6 +566,40 @@
         "docs/ZERO-COST-PLAYBOOK-2027.md",
         "docs/ENGINEERING-INVENTORY-2027.md"
       ]
+    },
+    "episode_03": {
+      "document": "docs/EPISODE-03-PROMOTION-PATH.md",
+      "title": "How we promote a component from DECLARED to PROVEN",
+      "series_position": "3 of 3",
+      "state": "publish-ready text (Arabic + English)",
+      "self_correction": {
+        "claim_in_draft": "memory/ was an unlabelled promotion candidate",
+        "verified_reality": "memory/ is explicitly labelled PRESENT in the inventory (correct label)",
+        "consequence": "promoting it would have destroyed information; the correction is published in the episode"
+      },
+      "executed_in_this_session": {
+        "commands": [
+          "python3 memory/test_memory.py",
+          "python3 memory/evaluate.py --markdown"
+        ],
+        "result": "19 tests OK in 0.998s",
+        "measurements": {
+          "corpus": "20 admitted / 0 refused",
+          "noise_floor_p95": 0.2,
+          "recall_at_3_easy": "16/16 = 1.0",
+          "recall_at_3_hard": "11/16 = 0.688",
+          "false_positive_unrelated": "0/5 = 0.0",
+          "false_positive_near_miss": "0/7 = 0.0"
+        }
+      },
+      "blocked_candidates": [
+        "projects/12pro",
+        "projects/leader2027"
+      ],
+      "blocked_reason": "require npm ci + network; this environment reaches only github.com, pypi.org, registry.npmjs.org",
+      "evidence_links": [
+        "docs/ENGINEERING-INVENTORY-2027.md"
+      ]
     }
   }
 }
