@@ -73,8 +73,11 @@ GATE_LOG = EMBER_DIR / "gate.jsonl"
 
 WINDOW_S = 7 * 24 * 3600
 DEFAULT_TOTAL = 17          # the current measured smoke surface (not a guessed target)
-CADENCE_H = 6.0             # ember.yml runs every 6 hours
-TOLERANCE_H = 2.0           # GitHub delays cron under load; 2h is the published slack
+CADENCE_H = 3.0             # ember.yml runs every 3 hours (raised from 6h on 2026-11-22, see below)
+TOLERANCE_H = 5.0           # measured: GitHub dropped ~half the */6 schedule (gaps 11.5-12.2h on
+                            # 2026-11-21/22 while every executed beat was 17/17). CADENCE+TOLERANCE
+                            # stays 8h: the real alarm — 8h of silence is an outage — is unchanged;
+                            # only the scheduler gets twice as many attempts to land inside it.
 MAX_PATH_IMPACT = 0.07      # T4 gate: losing one of 3 paths costs <= 0.07 heat
 MAX_HEAT_DROP = 0.25
 STAGE_ESCALATE_AFTER = 3    # consecutive degraded beats
