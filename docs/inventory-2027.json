@@ -1,0 +1,605 @@
+{
+  "document": "Engineering Inventory 2027 — Legend-2027 Unification (Zero-Cost First)",
+  "version": "1.2",
+  "generated_at": "2026-11-22",
+  "branch": "arena/1e6efcb1-ai-2027",
+  "base_commit": "7a8108397242db88b25ece642852a1419922940f",
+  "method": "read-only filesystem audit + executed test suites + source inspection",
+  "metrics": {
+    "files_total": 4065,
+    "lines_total": 762871,
+    "tests_passed": 2054,
+    "tests_skipped": 5,
+    "tests_failed": 0,
+    "engines_total": 13,
+    "engines_present": 5,
+    "engines_partial": 8,
+    "engines_absent": 0,
+    "archive_projects": 48,
+    "archive_files": 3982,
+    "archive_proven": 1,
+    "archive_declared": 40,
+    "archive_simulated": 6,
+    "archive_failed": 1,
+    "projects_with_tests": 22,
+    "projects_with_ci": 19,
+    "projects_without_license": 23,
+    "high_findings": 5,
+    "ci_workflows": 18,
+    "redteam_attacks": 100,
+    "redteam_breaches": 0,
+    "redteam_controls": "10/10"
+  },
+  "test_matrix": [
+    {
+      "module": "projects/agi-system",
+      "passed": 104,
+      "skipped": 0,
+      "failed": 0,
+      "status": "PROVEN"
+    },
+    {
+      "module": "live-agent (server + planner)",
+      "passed": 35,
+      "skipped": 0,
+      "failed": 0,
+      "status": "PROVEN"
+    },
+    {
+      "module": "kernel-2027",
+      "passed": 152,
+      "skipped": 0,
+      "failed": 0,
+      "status": "PRESENT"
+    },
+    {
+      "module": "fleet-2027",
+      "passed": 285,
+      "skipped": 0,
+      "failed": 0,
+      "status": "PARTIAL"
+    },
+    {
+      "module": "python-2027",
+      "passed": 832,
+      "skipped": 0,
+      "failed": 0,
+      "status": "PRESENT"
+    },
+    {
+      "module": "connectors-hub",
+      "passed": 27,
+      "skipped": 0,
+      "failed": 0,
+      "status": "PARTIAL"
+    },
+    {
+      "module": "agent-substrate",
+      "passed": 48,
+      "skipped": 0,
+      "failed": 0,
+      "status": "PARTIAL"
+    },
+    {
+      "module": "browser_skill_adapter",
+      "passed": 74,
+      "skipped": 3,
+      "failed": 0,
+      "status": "PARTIAL"
+    },
+    {
+      "module": "monitoring",
+      "passed": 53,
+      "skipped": 0,
+      "failed": 0,
+      "status": "PARTIAL"
+    },
+    {
+      "module": "memory",
+      "passed": 19,
+      "skipped": 0,
+      "failed": 0,
+      "status": "PRESENT"
+    },
+    {
+      "module": "command-hud",
+      "passed": 19,
+      "skipped": 0,
+      "failed": 0,
+      "status": "PRESENT"
+    },
+    {
+      "module": "deployment",
+      "passed": 56,
+      "skipped": 1,
+      "failed": 0,
+      "status": "PARTIAL"
+    },
+    {
+      "module": "scripts (24 files)",
+      "passed": 328,
+      "skipped": 1,
+      "failed": 0,
+      "status": "PRESENT"
+    },
+    {
+      "module": "launch",
+      "passed": 10,
+      "skipped": 0,
+      "failed": 0,
+      "status": "EVIDENCE"
+    },
+    {
+      "module": "website",
+      "passed": 12,
+      "skipped": 0,
+      "failed": 0,
+      "status": "PRESENT"
+    }
+  ],
+  "engines": [
+    {
+      "id": "intelligence-core",
+      "status": "partial"
+    },
+    {
+      "id": "python-alchemy",
+      "status": "partial"
+    },
+    {
+      "id": "model-router",
+      "status": "present"
+    },
+    {
+      "id": "agent-fleet",
+      "status": "partial"
+    },
+    {
+      "id": "browser-engine",
+      "status": "partial"
+    },
+    {
+      "id": "computer-engine",
+      "status": "partial"
+    },
+    {
+      "id": "skill-engine",
+      "status": "partial"
+    },
+    {
+      "id": "memory-engine",
+      "status": "present"
+    },
+    {
+      "id": "automation-engine",
+      "status": "partial"
+    },
+    {
+      "id": "cloud-runtime",
+      "status": "partial"
+    },
+    {
+      "id": "security-engine",
+      "status": "present"
+    },
+    {
+      "id": "evidence-engine",
+      "status": "present"
+    },
+    {
+      "id": "shared-kernel",
+      "status": "present"
+    }
+  ],
+  "archive_categories": [
+    {
+      "category": "agents",
+      "count": 16
+    },
+    {
+      "category": "web-platforms",
+      "count": 9
+    },
+    {
+      "category": "fashion-ecommerce",
+      "count": 8
+    },
+    {
+      "category": "specialized-apps",
+      "count": 8
+    },
+    {
+      "category": "seeds",
+      "count": 7
+    }
+  ],
+  "high_findings": [
+    {
+      "project": "12pro/certification",
+      "issue": "invalid/empty JSON artifact: v1.0.0-raw/health-raw.json"
+    },
+    {
+      "project": "WEB",
+      "issue": "proprietary — exclude from open-source claims"
+    },
+    {
+      "project": "ccelia2027",
+      "issue": "license undecided"
+    },
+    {
+      "project": "celia-pro-deployment",
+      "issue": "proprietary — exclude from open-source claims"
+    },
+    {
+      "project": "new-agent",
+      "issue": "LICENSE file corrupt"
+    }
+  ],
+  "empty_reserved_repos": [
+    "cela.mcp",
+    "ELAZAMEY",
+    "celia-pro-ai",
+    "celia_tv-pro",
+    "caeli_elazamey",
+    "Strong_Agent_AI",
+    "Strong.agent",
+    "CELIA-2026",
+    "Celia.2027",
+    "ai.2028a",
+    "29-8-pro",
+    "new-repo2026",
+    "aborofyda",
+    "celia.pro",
+    "cela",
+    "cloab",
+    "STORE3",
+    "cautious-garbanzo"
+  ],
+  "corrections": [
+    {
+      "claim": "CeliaOS 9-page SPA, Next.js 15 + React 19",
+      "verdict": "not found",
+      "fact": "12pro has 20 Next.js pages; celia.sh is Vite + React 19.3.1 with 8 pages"
+    },
+    {
+      "claim": "NEXA v0.1.0 with packages/cells/celia",
+      "verdict": "not found",
+      "fact": "NEXA is an authorization policy inside leader2027 v0.1.0; cells exist as 8 domains in lib/cells"
+    },
+    {
+      "claim": "NEXA Ed25519 envelopes",
+      "verdict": "not found",
+      "fact": "0 matches for Ed25519 in NEXA/leader2027"
+    },
+    {
+      "claim": "Digital Twin MVP 0.2",
+      "verdict": "not found",
+      "fact": "0 matches in repository"
+    },
+    {
+      "claim": "monitoring/phase2b.py RTSP + planRetention",
+      "verdict": "not found",
+      "fact": "phase2b is log gap/error analysis + rule-based alerting; 0 matches for RTSP/planRetention"
+    },
+    {
+      "claim": "os_know sqlite-vec + FTS5",
+      "verdict": "not found",
+      "fact": "os_know is deterministic chunking + sha256 citations"
+    },
+    {
+      "claim": "search_num.py",
+      "verdict": "not found",
+      "fact": "no such file"
+    },
+    {
+      "claim": "248 tests in ai-2027",
+      "verdict": "incorrect",
+      "fact": "ground truth 2026-11-18 = 216; this session = 2054"
+    },
+    {
+      "claim": "314 tests in NEXA",
+      "verdict": "incorrect",
+      "fact": "leader2027 README = 298 unit/integration + 49 smoke"
+    },
+    {
+      "claim": "platform 33 E2E",
+      "verdict": "conflicting",
+      "fact": "README says 12/12; docs/ARCHITECTURE.md says 33/33; not executed here"
+    },
+    {
+      "claim": "Abu Rofaida POS",
+      "verdict": "not found",
+      "fact": "aborofyda is an empty 0 KB repository"
+    },
+    {
+      "claim": "Celia TV Pro Max",
+      "verdict": "not found",
+      "fact": "celia_tv-pro is an empty 0 KB repository"
+    },
+    {
+      "claim": "Elazamey AI Video Factory",
+      "verdict": "not found",
+      "fact": "ELAZAMEY is an empty 0 KB repository"
+    },
+    {
+      "claim": "Wav2Lip pipeline",
+      "verdict": "not found",
+      "fact": "0 matches"
+    },
+    {
+      "claim": "Illustrator ExtendScript CMYK 3mm",
+      "verdict": "not found",
+      "fact": "0 matches for ExtendScript/Illustrator"
+    },
+    {
+      "claim": "Celia_Daily_Operations.ipynb",
+      "verdict": "not found",
+      "fact": "no such file"
+    },
+    {
+      "claim": "4 completed engineering tracks",
+      "verdict": "partially correct",
+      "fact": "tracks 1-3 have real components with verified status; track 4 is not implemented"
+    }
+  ],
+  "legend_2027": {
+    "vision": "Unify all existing repositories, projects, and engines into one verifiable 2027 system instead of isolated islands, under a single governing constraint: 100% free in the foundational phase.",
+    "rule": "ZERO-COST FIRST & LEGEND-2027 UNIFICATION RULE (MANDATORY)",
+    "rule_bullets": [
+      "Free-by-Default Mandate: every build, test, deployment, model run, and workflow in the foundational phase MUST be 100% free (local execution, open-source tooling, or free-tier resources) with zero paid subscriptions or billing commitments required to start.",
+      "Unify Existing Assets Honestly: leverage existing repositories, engines, and projects toward the 2027 system vision while strictly preserving verified state labels (PROVEN, DECLARED, SIMULATED, FAILED, BLOCKED) and never fabricating capabilities or metrics.",
+      "Execution Alignment: binding across both the active execution flow (\"السير على هذا\") and the global system protocol; explicitly flag any component that cannot run free/locally before proceeding.",
+      "Free-Gate Before Adoption: before any new tool, service, or API is admitted, verify it runs free or locally and record its state; a component that requires payment to start is BLOCKED until a free path exists."
+    ],
+    "foundation_proven": [
+      {
+        "module": "kernel-2027",
+        "evidence": "152 tests, zero dependencies",
+        "cost": "$0"
+      },
+      {
+        "module": "projects/agi-system + live-agent",
+        "evidence": "139 tests, zero dependencies",
+        "cost": "$0"
+      },
+      {
+        "module": "python-2027",
+        "evidence": "832 tests, $0 model router (BudgetGuard)",
+        "cost": "$0"
+      },
+      {
+        "module": "fleet-2027",
+        "evidence": "285 tests, local SQLite",
+        "cost": "$0"
+      },
+      {
+        "module": "memory + monitoring + command-hud",
+        "evidence": "evidence-gated memory, deterministic alerting, red-team",
+        "cost": "$0"
+      },
+      {
+        "module": "connectors-hub + deployment + scripts",
+        "evidence": "local connectors, safe deployment, CI gates",
+        "cost": "$0"
+      }
+    ],
+    "upgrade_path": [
+      {
+        "category": "DECLARED archived projects",
+        "count": 40,
+        "rule": "promoted only after their tests run here and pass"
+      },
+      {
+        "category": "partial engines",
+        "count": 8,
+        "rule": "close declared gaps one by one"
+      },
+      {
+        "category": "SIMULATED projects",
+        "count": 6,
+        "rule": "build real capability or remove from claims"
+      }
+    ],
+    "excluded_until_built": [
+      {
+        "item": "media/pre-press track",
+        "reason": "not implemented — empty 0 KB repositories"
+      },
+      {
+        "item": "new-agent",
+        "reason": "FAILED — corrupt LICENSE file"
+      },
+      {
+        "item": "any component requiring payment to start",
+        "reason": "BLOCKED until a free path exists"
+      }
+    ],
+    "master_prompt_version": "1.2"
+  },
+  "zero_cost_playbook": {
+    "document": "docs/ZERO-COST-PLAYBOOK-2027.md",
+    "overview": "docs/OVERVIEW-2027.md",
+    "version": "1.0",
+    "governing_rule": "ZERO-COST FIRST & LEGEND-2027 UNIFICATION RULE (master prompt v1.2, section 10)",
+    "tracks": [
+      {
+        "id": 1,
+        "name": "Public deployment & interface",
+        "free_tools": [
+          "public GitHub repo",
+          "self-contained dashboard",
+          "documented local run"
+        ],
+        "progress_metric": "any reviewer reaches an accurate, unambiguous description"
+      },
+      {
+        "id": 2,
+        "name": "Promotion & trust building",
+        "free_tools": [
+          "short technical posts",
+          "local screen recording (OBS Studio)",
+          "organized READMEs"
+        ],
+        "progress_metric": "targeted engagement, technical inquiries, real trial requests"
+      },
+      {
+        "id": 3,
+        "name": "Gradual monetization",
+        "free_tools": [
+          "custom service offers",
+          "free core versions",
+          "direct channels"
+        ],
+        "progress_metric": "specific requests or working collaborations at zero initial cost"
+      },
+      {
+        "id": 4,
+        "name": "Quality governance & upgrading",
+        "free_tools": [
+          "local tests",
+          "checklists",
+          "five-state labels"
+        ],
+        "progress_metric": "DECLARED -> PROVEN upgrades with evidence, no inflated readiness claims"
+      }
+    ],
+    "phases": [
+      {
+        "id": "A",
+        "name": "Engineering credibility as first competitive advantage"
+      },
+      {
+        "id": "B",
+        "name": "Free intro/operational package step by step (1-page overview, 3-5 min visual tour, safe trial path)"
+      },
+      {
+        "id": "C",
+        "name": "Free promotion channels (3-episode series, content recycling, direct doc links)"
+      },
+      {
+        "id": "D",
+        "name": "Gradual monetization models (custom services, upgrades/modules, voluntary support/partnerships)"
+      }
+    ],
+    "safe_trial_path": [
+      "git clone https://github.com/sayedelazameydesign-crypto/ai-2027.git",
+      "open docs/engineering-inventory-2027.html in a browser (no server)",
+      "python3 command-hud/audit.py",
+      "python3 command-hud/redteam.py --markdown",
+      "read the master prompt in docs/ENGINEERING-INVENTORY-2027.md section 9"
+    ],
+    "blog_series": [
+      {
+        "episode": 1,
+        "title": "How we built an honest inventory of 48 projects and 13 engines (2,054 tests)",
+        "evidence": "report sections 0 and 7"
+      },
+      {
+        "episode": 2,
+        "title": "Why we adopted Zero-Cost First and banned unverified claims",
+        "evidence": "master prompt v1.2 sections 9 and 10"
+      },
+      {
+        "episode": 3,
+        "title": "How we promote a component from DECLARED to PROVEN",
+        "evidence": "report section 12 (re-verification commands)"
+      }
+    ],
+    "verified_free_tools": [
+      {
+        "tool": "GitHub (public repo)",
+        "cost": "$0",
+        "state": "PROVEN"
+      },
+      {
+        "tool": "self-contained dashboard (docs/engineering-inventory-2027.html)",
+        "cost": "$0",
+        "state": "PROVEN"
+      },
+      {
+        "tool": "OBS Studio (screen recording)",
+        "cost": "$0",
+        "state": "open-source, local install"
+      },
+      {
+        "tool": "Python + SQLite + pytest/unittest",
+        "cost": "$0",
+        "state": "PROVEN"
+      },
+      {
+        "tool": "free static hosting (e.g. GitHub Pages)",
+        "cost": "$0",
+        "state": "optional — dashboard also runs from file locally"
+      }
+    ]
+  },
+  "promotion_assets": {
+    "episode_01": {
+      "document": "docs/EPISODE-01-HONEST-INVENTORY.md",
+      "title": "How we built an honest inventory of 48 projects and 13 engines and ran 2,054 tests",
+      "state": "publish-ready text (Arabic + English)",
+      "evidence_links": [
+        "docs/ENGINEERING-INVENTORY-2027.md",
+        "docs/engineering-inventory-2027.html",
+        "docs/inventory-2027.json"
+      ]
+    },
+    "visual_tour": {
+      "document": "docs/VISUAL-TOUR-SCRIPT-2027.md",
+      "duration": "3-5 minutes",
+      "tool": "OBS Studio (free, open-source)",
+      "shots": 6,
+      "state": "shot-by-shot script ready to record; actual video NOT recorded"
+    },
+    "episode_02": {
+      "document": "docs/EPISODE-02-ZERO-COST-FIRST.md",
+      "title": "Why we adopted Zero-Cost First and blocked untested claims",
+      "series_position": "2 of 3",
+      "state": "publish-ready text (Arabic + English)",
+      "governing_source": "Master prompt v1.2 — §10 (four clauses)",
+      "focus": [
+        "free gate applied in practice",
+        "state labels preserved",
+        "limits stated: 40 DECLARED, video not recorded"
+      ],
+      "evidence_links": [
+        "docs/ZERO-COST-PLAYBOOK-2027.md",
+        "docs/ENGINEERING-INVENTORY-2027.md"
+      ]
+    },
+    "episode_03": {
+      "document": "docs/EPISODE-03-PROMOTION-PATH.md",
+      "title": "How we promote a component from DECLARED to PROVEN",
+      "series_position": "3 of 3",
+      "state": "publish-ready text (Arabic + English)",
+      "self_correction": {
+        "claim_in_draft": "memory/ was an unlabelled promotion candidate",
+        "verified_reality": "memory/ is explicitly labelled PRESENT in the inventory (correct label)",
+        "consequence": "promoting it would have destroyed information; the correction is published in the episode"
+      },
+      "executed_in_this_session": {
+        "commands": [
+          "python3 memory/test_memory.py",
+          "python3 memory/evaluate.py --markdown"
+        ],
+        "result": "19 tests OK in 0.998s",
+        "measurements": {
+          "corpus": "20 admitted / 0 refused",
+          "noise_floor_p95": 0.2,
+          "recall_at_3_easy": "16/16 = 1.0",
+          "recall_at_3_hard": "11/16 = 0.688",
+          "false_positive_unrelated": "0/5 = 0.0",
+          "false_positive_near_miss": "0/7 = 0.0"
+        }
+      },
+      "blocked_candidates": [
+        "projects/12pro",
+        "projects/leader2027"
+      ],
+      "blocked_reason": "require npm ci + network; this environment reaches only github.com, pypi.org, registry.npmjs.org",
+      "evidence_links": [
+        "docs/ENGINEERING-INVENTORY-2027.md"
+      ]
+    }
+  }
+}
