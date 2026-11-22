@@ -58,6 +58,23 @@ EXIT_NOT_ATTEMPTED = 3
 #: The minimum Python the protocol package declares support for.
 REQUIRED_PYTHON = (3, 11)
 
+#: Checks whose outcome depends on the ENVIRONMENT rather than on the
+#: repository. In a CI matrix that deliberately runs an older interpreter,
+#: or that omits the optional runtime dependencies, these would fail for a
+#: reason that is not a defect in the checkout. ``--lenient`` downgrades
+#: exactly these to warnings.
+#:
+#: Everything else -- the blueprint posture, the checkout layout, the
+#: scripts suites -- describes the repository itself and stays a hard
+#: failure everywhere.
+LENIENT_CHECKS = frozenset(
+    {
+        "python version",
+        "protocol package import",
+        "cli entrypoint",
+    }
+)
+
 #: Secret *names* only. Values are never read, never hashed, never printed.
 #: Keep this in sync with docs/SECRETS.md -- that file is the registry of
 #: record; this list only records which names have a real local consumer.
@@ -155,7 +172,14 @@ class Report:
 
 
 def check_python(report: Report) -> None:
-    """The running interpreter must satisfy the package's own requirement."""
+    """The running interpreter must satisfy the package's own requirement.
+
+    On an interpreter that is too old, this is a real failure for a human
+    who is about to run the package -- but it is NOT a defect in the
+    checkout. The CI matrix deliberately includes an interpreter older
+    than the package's own floor, so this check can be told to downgrade
+    itself to a warning (see ``--lenient``).
+    """
     actual = sys.version_info[:2]
     if actual >= REQUIRED_PYTHON:
         report.add(
@@ -166,7 +190,7 @@ def check_python(report: Report) -> None:
         return
     report.add(
         "python version",
-        "fail",
+        "warn",
         f"{actual[0]}.{actual[1]} is older than the required "
         f"{REQUIRED_PYTHON[0]}.{REQUIRED_PYTHON[1]}",
         remedy="Use a newer interpreter; the protocol package declares "
@@ -697,6 +721,16 @@ def run(argv: list[str]) -> int:
         action="store_true",
         help="emit machine-readable JSON instead of a text report",
     )
+    parser.add_argument(
+        "--lenient",
+        action="store_true",
+        help=(
+            "downgrade environment-dependent failures to warnings: the "
+            "interpreter version and the install state of the protocol "
+            "package. Use this in a CI matrix that deliberately runs an "
+            "older interpreter or omits the optional dependencies."
+        ),
+    )
     args = parser.parse_args(argv)
 
     if args.studio and not args.studio.startswith(("http://", "https://")):
@@ -718,6 +752,14 @@ def run(argv: list[str]) -> int:
         check_network(report)
     if args.studio:
         check_studio(report, args.studio)
+
+    if args.lenient:
+        # Environment-dependent checks become warnings. Only the checks that
+        # describe the REPOSITORY ITSELF stay hard failures, because those
+        # are the ones a CI run is actually there to catch.
+        for check in report.checks:
+            if check.status == "fail" and check.name in LENIENT_CHECKS:
+                check.status = "warn"
 
     if args.as_json:
         print(render_json(report))

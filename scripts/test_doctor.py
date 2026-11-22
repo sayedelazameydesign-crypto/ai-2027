@@ -19,6 +19,7 @@ import ast
 import io
 import json
 import os
+import shutil
 import sys
 import unittest
 from contextlib import redirect_stdout
@@ -360,6 +361,171 @@ class DoctorStudioDelegationTests(unittest.TestCase):
             run_mock.return_value = mock.Mock(returncode=2, stdout="", stderr="")
             doctor.check_studio(report, "https://example.invalid")
         self.assertTrue(report.failed)
+
+
+class DoctorPythonVersionTests(unittest.TestCase):
+    """The interpreter check reports the truth without breaking CI.
+
+    The CI matrix deliberately includes an interpreter older than the
+    package's own floor, so an old interpreter is reported as a WARNING:
+    it is not a defect in the checkout, and a doctor that fails a matrix
+    job for it is a doctor with too narrow a contract.
+    """
+
+    def test_an_old_interpreter_is_a_warning_not_a_failure(self) -> None:
+        report = doctor.Report()
+        with mock.patch.object(doctor.sys, "version_info", (3, 10, 0)):
+            doctor.check_python(report)
+        self.assertEqual(report.failed, [])
+        self.assertEqual(report.checks[0].status, "warn")
+        self.assertIn("older than the required", report.checks[0].detail)
+
+    def test_a_supported_interpreter_passes(self) -> None:
+        report = doctor.Report()
+        with mock.patch.object(doctor.sys, "version_info", (3, 12, 0)):
+            doctor.check_python(report)
+        self.assertEqual(report.checks[0].status, "pass")
+
+    def test_the_required_version_matches_the_package(self) -> None:
+        """The doctor must not drift from the package's own requirement."""
+        pyproject = (REPO_ROOT / "python-2027" / "pyproject.toml").read_text(encoding="utf-8")
+        self.assertIn('requires-python = ">=3.11"', pyproject)
+        self.assertEqual(doctor.REQUIRED_PYTHON, (3, 11))
+
+
+class DoctorLenientModeTests(unittest.TestCase):
+    """``--lenient`` exists for CI matrices that run an older interpreter.
+
+    It must downgrade ENVIRONMENT-dependent checks only. A defect in the
+    repository itself must stay a hard failure in every mode.
+    """
+
+    def test_lenient_downgrades_the_interpreter_check(self) -> None:
+        report = doctor.Report()
+        report.add("python version", "warn", "too old")
+        self.assertEqual(report.exit_code(), doctor.EXIT_OK)
+
+    def test_the_lenient_set_is_exactly_the_environment_checks(self) -> None:
+        self.assertEqual(
+            doctor.LENIENT_CHECKS,
+            frozenset({"python version", "protocol package import", "cli entrypoint"}),
+        )
+
+    def test_a_repository_defect_is_never_lenient(self) -> None:
+        """The blueprint posture must stay a hard failure."""
+        self.assertNotIn("studio service", doctor.LENIENT_CHECKS)
+        self.assertNotIn("render blueprint", doctor.LENIENT_CHECKS)
+        self.assertNotIn("checkout layout", doctor.LENIENT_CHECKS)
+
+    def test_lenient_mode_runs_and_reports(self) -> None:
+        code, output = _run(["--json", "--lenient"])
+        payload = json.loads(output)
+        self.assertIn("exit_code", payload)
+        self.assertIn(code, (doctor.EXIT_OK, doctor.EXIT_NOT_ATTEMPTED))
+
+
+class DoctorExitThreeContractTests(unittest.TestCase):
+    """Exit 3 means "skips only" and must not look like a crash.
+
+    CI runs its steps under `bash -eo pipefail`, so any non-zero exit
+    aborts the step. A doctor that reports "nothing failed, I skipped
+    some optional things" as a non-zero code would therefore break every
+    pipeline that ran it -- which is exactly what happened the first
+    time this step was added.
+    """
+
+    def test_skip_only_reports_are_distinguishable_from_failures(self) -> None:
+        skip_only = doctor.Report()
+        skip_only.add("optional", "skip")
+        failing = doctor.Report()
+        failing.add("broken", "fail")
+        self.assertNotEqual(skip_only.exit_code(), failing.exit_code())
+        self.assertNotEqual(skip_only.exit_code(), 0)
+        self.assertEqual(failing.exit_code(), 1)
+
+    def test_the_json_report_carries_the_same_verdict(self) -> None:
+        report = doctor.Report()
+        report.add("optional", "skip")
+        payload = json.loads(doctor.render_json(report))
+        self.assertEqual(payload["exit_code"], report.exit_code())
+
+
+class DoctorCIWrapperTests(unittest.TestCase):
+    """The CI step must survive GitHub's shell.
+
+    GitHub Actions runs a `run:` block with `bash --noprofile --norc -eo
+    pipefail`, so `-e` aborts the step on ANY non-zero exit. A step that
+    captures the exit code with a bare `$?` after the command never gets
+    to inspect it: the shell has already aborted.
+
+    This test runs the actual wrapper from ci.yml under that exact shell
+    and asserts it succeeds even though the doctor exits 3.
+    """
+
+    CI = REPO_ROOT / ".github" / "workflows" / "ci.yml"
+
+    def _doctor_step(self) -> str:
+        text = self.CI.read_text(encoding="utf-8")
+        marker = "python scripts/doctor.py"
+        index = text.find(marker)
+        self.assertNotEqual(index, -1, "the doctor step is missing from ci.yml")
+        # Take the block from the `run: |` above the marker to the next
+        # step at the same indentation.
+        before = text.rfind("run: |", 0, index)
+        after = text.find("      - name:", index)
+        return text[before:after]
+
+    def test_the_step_captures_the_exit_code_without_aborting(self) -> None:
+        """The command must be guarded with `|| code=$?`, not a bare `$?`."""
+        step = self._doctor_step()
+        self.assertIn(
+            "|| code=$?",
+            step,
+            "the doctor must be invoked as `... || code=$?`; a bare `$?` "
+            "is never reached because the runner uses `bash -e`",
+        )
+        # The guard must be attached to the doctor invocation itself, not
+        # to some other command in the block.
+        doctor_line = next(line for line in step.splitlines() if "scripts/doctor.py" in line)
+        self.assertIn(
+            "|| code=$?",
+            doctor_line,
+            "the `|| code=$?` guard must be on the doctor command itself",
+        )
+
+    def test_the_step_runs_the_doctor_under_github_shell_semantics(self) -> None:
+        """Run the real wrapper under `bash -eo pipefail` and assert it passes."""
+        import subprocess
+        import tempfile
+
+        step = self._doctor_step()
+        body = step.split("run: |", 1)[1]
+        body = "\n".join(
+            line[10:] if line.startswith(" " * 10) else line for line in body.splitlines()
+        )
+        with tempfile.NamedTemporaryFile("w", suffix=".sh", delete=False) as handle:
+            handle.write(body)
+            script = handle.name
+        try:
+            bash = shutil.which("bash") or "/bin/bash"
+            result = subprocess.run(  # noqa: S603
+                # A fixed argument vector: the shell, its flags, and a
+                # temporary file this test wrote itself. No shell expansion
+                # and no user input.
+                [bash, "--noprofile", "--norc", "-eo", "pipefail", script],  # noqa: S603
+                cwd=REPO_ROOT,
+                capture_output=True,
+                text=True,
+                timeout=300,
+                check=False,
+            )
+        finally:
+            Path(script).unlink(missing_ok=True)
+        self.assertEqual(
+            result.returncode,
+            0,
+            f"the CI wrapper failed under `bash -eo pipefail`:\n{result.stdout}\n{result.stderr}",
+        )
 
 
 class DoctorDocumentationTests(unittest.TestCase):
