@@ -1,0 +1,645 @@
+{
+  "schema": 1,
+  "phase": "2.1 — Operational Evidence Verification",
+  "generated_at": "2026-11-24T09:45:07Z",
+  "verdict": "PARTIAL",
+  "verdict_rule": "GO only when every acceptance item is PASS; otherwise PARTIAL or BLOCKED with evidence.",
+  "environment": {
+    "python": "3.11.2",
+    "platform": "Linux-6.1.158+-x86_64-with-glibc2.36",
+    "branch": "arena/0c4ea391-ai-2027",
+    "head": "f0fa3c88de33924dfd256c42d03c8c5f9e3a3e62",
+    "worktree": "/home/user/ai-2027"
+  },
+  "baseline": {
+    "status": "PASS",
+    "head": "f0fa3c88de33924dfd256c42d03c8c5f9e3a3e62",
+    "baseline_commit": "f0fa3c88de33924dfd256c42d03c8c5f9e3a3e62",
+    "baseline_created_at": "2026-11-24 09:38 UTC",
+    "sha256": "71e5401a1d1f8e765892c7ac6b508e483e7c70f3829bf2e1c93eaad6baec03f5",
+    "previous_sha256": "71e5401a1d1f8e765892c7ac6b508e483e7c70f3829bf2e1c93eaad6baec03f5",
+    "chain_ok": true,
+    "tracked_files_in_head": 4560,
+    "added_vs_head": [],
+    "removed_vs_head": [],
+    "modified_vs_head": [],
+    "issues": [],
+    "source": "git ls-tree -r HEAD (authoritative object store) + docs/atlas-baseline.json",
+    "note": "The validator never refreshes the baseline. A changed baseline hash needs explicit approval."
+  },
+  "working_tree": {
+    "status": "PASS",
+    "tracked_changes": [
+      {
+        "status": "M",
+        "path": "README.md"
+      }
+    ],
+    "untracked_files": [
+      "docs/ATLAS-AUDIT.md",
+      "docs/OPERATIONAL-EVIDENCE.md",
+      "docs/achievements-atlas.html",
+      "docs/atlas-audit.json",
+      "docs/atlas-baseline.json",
+      "docs/atlas-control-center.html",
+      "docs/atlas-control-report.json",
+      "docs/operational-evidence.json",
+      "scripts/achievements_atlas.py",
+      "scripts/atlas_control.py",
+      "scripts/audit_achievements_atlas.py",
+      "scripts/operational_evidence.py",
+      "scripts/test_achievements_atlas.py",
+      "scripts/test_atlas_control.py",
+      "tests/test_operational_evidence.py"
+    ],
+    "untracked_count": 15,
+    "core_kernel_changes": [],
+    "deletions": [],
+    "other_modifications": [],
+    "outside_additive": [],
+    "note": "README.md carries a documented content-only addition from the previous phase; no core/kernel path is touched."
+  },
+  "modules": {
+    "runtime": {
+      "status": "PARTIAL",
+      "rows": [
+        {
+          "status": "PASS",
+          "suite": "kernel-2027 unit tests",
+          "tests": 152,
+          "missing_module": "",
+          "command": "/usr/bin/python3 -m unittest discover -s kernel-2027/tests -p 'test_*.py'",
+          "exit_code": 0,
+          "duration_ms": 2558,
+          "evidence_sha256": "dc7248a163114e13ebec97e7c1cb6805c414562abfcf737f80f016deed6984fc"
+        },
+        {
+          "status": "PASS",
+          "suite": "agi-system kernel unit tests",
+          "tests": 104,
+          "missing_module": "",
+          "command": "/usr/bin/python3 -m unittest discover -s projects/agi-system/tests -p 'test_*.py'",
+          "exit_code": 0,
+          "duration_ms": 2111,
+          "evidence_sha256": "92817707f48a1971ba7ff44113142efa2f17c30cfa37252c8b9abefdfb9828fa"
+        },
+        {
+          "status": "BLOCKED",
+          "suite": "python-2027 protocol unit tests",
+          "tests": 48,
+          "missing_module": "pydantic",
+          "command": "/usr/bin/python3 -m unittest discover -s python-2027/tests -p 'test_*.py'",
+          "exit_code": 1,
+          "duration_ms": 131,
+          "evidence_sha256": "ebff2474aa7d76daa88f670e4d3985a64c0d2d0b2a50a767a8f68937ef736f11"
+        },
+        {
+          "status": "PASS",
+          "suite": "memory unit tests",
+          "tests": 19,
+          "missing_module": "",
+          "command": "/usr/bin/python3 -m unittest discover -s memory -p 'test_*.py'",
+          "exit_code": 0,
+          "duration_ms": 630,
+          "evidence_sha256": "1cd40bbc8fda98637f83b7b5bcc627e84e957820b5142be0967062512a67985a"
+        },
+        {
+          "status": "PASS",
+          "suite": "repository script unit tests",
+          "tests": 340,
+          "missing_module": "",
+          "command": "/usr/bin/python3 -m unittest discover -s scripts -p 'test_*.py'",
+          "exit_code": 0,
+          "duration_ms": 21287,
+          "evidence_sha256": "a0386a9c5d65c4d485384bf7c89306b58c08e5078dfbb96aa7158afd042e466c"
+        }
+      ],
+      "total_tests": 615,
+      "blocked_tests": 48,
+      "note": "Only real unittest commands are counted; no simulation/demo harness is accepted as runtime proof."
+    },
+    "ci": {
+      "status": "PARTIAL",
+      "rows": [
+        {
+          "status": "PASS",
+          "workflow": "Live egress audit",
+          "conclusion": "success",
+          "branch": "main",
+          "created_at": "2026-11-24T00:08:58Z",
+          "url": "https://github.com/sayedelazameydesign-crypto/ai-2027/actions/runs/45294755444"
+        },
+        {
+          "status": "PARTIAL",
+          "workflow": "Ember beat",
+          "conclusion": "failure",
+          "branch": "main",
+          "created_at": "2026-11-23T21:25:06Z",
+          "url": "https://github.com/sayedelazameydesign-crypto/ai-2027/actions/runs/45269446494"
+        },
+        {
+          "status": "PASS",
+          "workflow": "Dependabot Updates",
+          "conclusion": "success",
+          "branch": "main",
+          "created_at": "2026-11-23T20:10:30Z",
+          "url": "https://github.com/sayedelazameydesign-crypto/ai-2027/actions/runs/45256592725"
+        },
+        {
+          "status": "PASS",
+          "workflow": "CodeQL",
+          "conclusion": "success",
+          "branch": "main",
+          "created_at": "2026-11-23T13:38:49Z",
+          "url": "https://github.com/sayedelazameydesign-crypto/ai-2027/actions/runs/45185982980"
+        },
+        {
+          "status": "PASS",
+          "workflow": "Live egress audit",
+          "conclusion": "success",
+          "branch": "main",
+          "created_at": "2026-11-23T07:56:38Z",
+          "url": "https://github.com/sayedelazameydesign-crypto/ai-2027/actions/runs/45134764724"
+        },
+        {
+          "status": "PARTIAL",
+          "workflow": "Ember beat",
+          "conclusion": "failure",
+          "branch": "main",
+          "created_at": "2026-11-23T07:38:38Z",
+          "url": "https://github.com/sayedelazameydesign-crypto/ai-2027/actions/runs/45132595680"
+        },
+        {
+          "status": "PASS",
+          "workflow": "Ember beat",
+          "conclusion": "success",
+          "branch": "main",
+          "created_at": "2026-11-22T23:37:16Z",
+          "url": "https://github.com/sayedelazameydesign-crypto/ai-2027/actions/runs/45084236397"
+        },
+        {
+          "status": "PASS",
+          "workflow": "Live egress audit",
+          "conclusion": "success",
+          "branch": "main",
+          "created_at": "2026-11-22T19:53:09Z",
+          "url": "https://github.com/sayedelazameydesign-crypto/ai-2027/actions/runs/45063267646"
+        },
+        {
+          "status": "PASS",
+          "workflow": "Evidence-First CI",
+          "conclusion": "success",
+          "branch": "arena/ae4c0ce1-ai-2027",
+          "created_at": "2026-11-22T17:00:05Z",
+          "url": "https://github.com/sayedelazameydesign-crypto/ai-2027/actions/runs/45046920945"
+        },
+        {
+          "status": "PASS",
+          "workflow": "CodeQL",
+          "conclusion": "success",
+          "branch": "arena/ae4c0ce1-ai-2027",
+          "created_at": "2026-11-22T17:00:05Z",
+          "url": "https://github.com/sayedelazameydesign-crypto/ai-2027/actions/runs/45046920828"
+        }
+      ],
+      "failed_log": {
+        "status": "BLOCKED",
+        "run_id": "45269446494",
+        "detail": "log endpoint unavailable from sandbox"
+      },
+      "note": "LIVE_EXTERNAL: conclusions were read from GitHub CLI, not from a local report. A scheduled main-branch failure is reported as PARTIAL, not hidden."
+    },
+    "workflow_pins": {
+      "status": "PASS",
+      "rows": [
+        {
+          "status": "PASS",
+          "workflow": "agent-substrate-deploy",
+          "external_actions": 0,
+          "unpinned": 0
+        },
+        {
+          "status": "PASS",
+          "workflow": "agent-substrate-images",
+          "external_actions": 0,
+          "unpinned": 0
+        },
+        {
+          "status": "PASS",
+          "workflow": "browser-handoff-windows-review",
+          "external_actions": 0,
+          "unpinned": 0
+        },
+        {
+          "status": "PASS",
+          "workflow": "ci",
+          "external_actions": 4,
+          "unpinned": 0
+        },
+        {
+          "status": "PASS",
+          "workflow": "codeql",
+          "external_actions": 0,
+          "unpinned": 0
+        },
+        {
+          "status": "PASS",
+          "workflow": "deploy",
+          "external_actions": 1,
+          "unpinned": 0
+        },
+        {
+          "status": "PASS",
+          "workflow": "e2b-live-check",
+          "external_actions": 0,
+          "unpinned": 0
+        },
+        {
+          "status": "PASS",
+          "workflow": "ember",
+          "external_actions": 1,
+          "unpinned": 0
+        },
+        {
+          "status": "PASS",
+          "workflow": "fleet-2027",
+          "external_actions": 1,
+          "unpinned": 0
+        },
+        {
+          "status": "PASS",
+          "workflow": "gemini-live-check",
+          "external_actions": 0,
+          "unpinned": 0
+        },
+        {
+          "status": "PASS",
+          "workflow": "live-egress-audit",
+          "external_actions": 0,
+          "unpinned": 0
+        },
+        {
+          "status": "PASS",
+          "workflow": "nvidia-live-check",
+          "external_actions": 0,
+          "unpinned": 0
+        },
+        {
+          "status": "PASS",
+          "workflow": "pages",
+          "external_actions": 2,
+          "unpinned": 0
+        },
+        {
+          "status": "PASS",
+          "workflow": "pr-lens",
+          "external_actions": 1,
+          "unpinned": 0
+        },
+        {
+          "status": "PASS",
+          "workflow": "project-lifecycle",
+          "external_actions": 0,
+          "unpinned": 0
+        },
+        {
+          "status": "PASS",
+          "workflow": "python-2027",
+          "external_actions": 4,
+          "unpinned": 0
+        },
+        {
+          "status": "PASS",
+          "workflow": "real-model",
+          "external_actions": 1,
+          "unpinned": 0
+        },
+        {
+          "status": "PASS",
+          "workflow": "release",
+          "external_actions": 0,
+          "unpinned": 0
+        }
+      ],
+      "source": ".github/workflows/*.yml (recomputed locally)"
+    },
+    "regression": {
+      "status": "PASS",
+      "rows": [
+        {
+          "status": "PASS",
+          "probe": "ابني لي موقعاً بسيطاً لمشروعي",
+          "before_sha256": "a8e1523c3aedadf1abbaed6a39a4ee5894a503aaf3a5a28c5387873f3db3b61c",
+          "after_sha256": "a8e1523c3aedadf1abbaed6a39a4ee5894a503aaf3a5a28c5387873f3db3b61c",
+          "before_exit": 0,
+          "after_exit": 0
+        },
+        {
+          "status": "PASS",
+          "probe": "build me a static website",
+          "before_sha256": "8e6049b593b56cd13564840efafce79e910426e8d1d906920e3b0f0dce24d58d",
+          "after_sha256": "8e6049b593b56cd13564840efafce79e910426e8d1d906920e3b0f0dce24d58d",
+          "before_exit": 0,
+          "after_exit": 0
+        },
+        {
+          "status": "PASS",
+          "probe": "اعمل تقرير أسبوعي للمبيعات",
+          "before_sha256": "8520ae6445b036842014e5d1cdce1d536004d151d649055157c4171a0dc4a440",
+          "after_sha256": "8520ae6445b036842014e5d1cdce1d536004d151d649055157c4171a0dc4a440",
+          "before_exit": 0,
+          "after_exit": 0
+        }
+      ],
+      "note": "Before = temporary git archive of HEAD; after = working tree. Deterministic intent-resolution outputs are compared byte-for-byte. This covers the probed behaviour only, not the whole system."
+    },
+    "secrets": {
+      "status": "PARTIAL",
+      "blocking": 0,
+      "archive_warnings": 11,
+      "suspicious_permissions": [],
+      "scanner_exit": 0,
+      "scanner_evidence_sha256": "dc86ccb4eeb24c4efa6435aaf2f5e1d425c0c425bde623e524e13155ec999636",
+      "note": "Archive warnings live in documented byte-mirrors under projects/; they are disclosed, not treated as new leaks."
+    },
+    "dependencies": {
+      "status": "PARTIAL",
+      "rows": [
+        {
+          "status": "PASS",
+          "check": "kernel stdlib-only import gate",
+          "detail": "PASS: stdlib only (zero third-party imports)."
+        },
+        {
+          "status": "BLOCKED",
+          "check": "live CVE / advisory lookup",
+          "detail": "offline policy — no external package-audit service used"
+        }
+      ],
+      "note": "Zero-cost/offline first: dependency boundaries are enforced locally; CVE feeds are explicitly out of scope here."
+    },
+    "independent_audit": {
+      "status": "PASS",
+      "command": "/usr/bin/python3 scripts/audit_achievements_atlas.py --no-write --run-tests",
+      "evidence_sha256": "c57cb4ba617ee9f6b84481aa3fc4d31ccda17d574827ccb3a08a88e2113c9b5b",
+      "stdout_tail": "✅ PASS — 13/13 checks\n  PASS card counts recomputed from source files\n  PASS achievement ids are unique\n  PASS every card has title/summary/source/status/category\n  PASS every card source file exists\n  PASS every card link resolves from docs/\n  PASS every card declares a verifiable evidence level\n  PASS evidence levels use the controlled vocabulary\n  PASS headline statistics match recomputation\n  PASS honesty panel matches source files\n  PASS milestones match CHANGELOG releases\n  PASS page has no external runtime assets\n  PASS HTML template fully rendered\n  PASS unittest suite executed independently\n  reports: not written (--no-write)\n"
+    }
+  },
+  "acceptance": [
+    {
+      "id": "core_kernel_untouched",
+      "status": "PASS",
+      "evidence": "git diff/ls-files against HEAD"
+    },
+    {
+      "id": "baseline_integrity",
+      "status": "PASS",
+      "evidence": "git ls-tree -r HEAD vs baseline blobs + SHA-256 chain"
+    },
+    {
+      "id": "real_test_execution",
+      "status": "PARTIAL",
+      "evidence": "615 tests across 5 real suites"
+    },
+    {
+      "id": "python2027_suite",
+      "status": "BLOCKED",
+      "evidence": "real command attempted; pydantic is absent offline"
+    },
+    {
+      "id": "ci_evidence",
+      "status": "PARTIAL",
+      "evidence": "GitHub CLI live conclusions"
+    },
+    {
+      "id": "functional_regression",
+      "status": "PASS",
+      "evidence": "3 deterministic before/after probes"
+    },
+    {
+      "id": "secret_scan",
+      "status": "PARTIAL",
+      "evidence": "scripts/secret_scan.py --all + permission scan"
+    },
+    {
+      "id": "dependency_boundary",
+      "status": "PARTIAL",
+      "evidence": "ci_guard.py imports + offline CVE limitation"
+    },
+    {
+      "id": "workflow_pin_policy",
+      "status": "PASS",
+      "evidence": "local workflow uses: pin recheck"
+    },
+    {
+      "id": "independent_audit_reproduced",
+      "status": "PASS",
+      "evidence": "/usr/bin/python3 scripts/audit_achievements_atlas.py --no-write --run-tests"
+    }
+  ],
+  "evidence": [
+    {
+      "id": "kernel-2027 unit tests",
+      "category": "RUNTIME",
+      "command": "/usr/bin/python3 -m unittest discover -s kernel-2027/tests -p 'test_*.py'",
+      "cwd": ".",
+      "timestamp_utc": "2026-11-24T09:44:31Z",
+      "duration_ms": 2558,
+      "exit_code": 0,
+      "stdout_sha256": "dc7248a163114e13ebec97e7c1cb6805c414562abfcf737f80f016deed6984fc",
+      "stdout_tail": "........................................................................................................................................................\n----------------------------------------------------------------------\nRan 152 tests in 2.480s\n\nOK\n",
+      "unittest": {
+        "tests": 152,
+        "seconds": 2.48,
+        "ok": true,
+        "failed_summary": "",
+        "missing_module": ""
+      }
+    },
+    {
+      "id": "agi-system kernel unit tests",
+      "category": "RUNTIME",
+      "command": "/usr/bin/python3 -m unittest discover -s projects/agi-system/tests -p 'test_*.py'",
+      "cwd": ".",
+      "timestamp_utc": "2026-11-24T09:44:33Z",
+      "duration_ms": 2111,
+      "exit_code": 0,
+      "stdout_sha256": "92817707f48a1971ba7ff44113142efa2f17c30cfa37252c8b9abefdfb9828fa",
+      "stdout_tail": "....................................retry 1/3 for filesystem.write: transient failure\nretry 2/3 for filesystem.write: transient failure\n.stop requested: test\n.......run run_85738895e54e crashed\nTraceback (most recent call last):\n  File \"/home/user/ai-2027/projects/agi-system/core/kernel.py\", line 173, in run\n    return self._cycle(record, deadline)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/user/ai-2027/projects/agi-system/core/kernel.py\", line 278, in _cycle\n    return self._execute_and_verify(record, chosen, deadline)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/user/ai-2027/projects/agi-system/core/kernel.py\", line 336, in _execute_and_verify\n    self._check_deadline(deadline)\n  File \"/home/user/ai-2027/projects/agi-system/core/kernel.py\", line 549, in _check_deadline\n    raise RunTimeoutError(\"run exceeded its time budget\")\ncore.errors.RunTimeoutError: run exceeded its time budget\n.stop requested: test\n........................run run_86fca089420e crashed\nTraceback (most recent call last):\n  File \"/home/user/ai-2027/projects/agi-system/core/kernel.py\", line 173, in run\n    return self._cycle(record, deadline)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/user/ai-2027/projects/agi-system/core/kernel.py\", line 278, in _cycle\n    return self._execute_and_verify(record, chosen, deadline)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/user/ai-2027/projects/agi-system/core/kernel.py\", line 305, in _execute_and_verify\n    observation, attempts = self._execute_with_retries(action)\n                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/user/ai-2027/projects/agi-system/core/kernel.py\", line 392, in _execute_with_retries\n    observation = self.executor.execute(action, timeout=timeout)\n                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/user/ai-2027/projects/agi-system/tests/test_vertical_slice.py\", line 70, in execute\n    raise RuntimeError(\"boom\")\nRuntimeError: boom\n...................................\n----------------------------------------------------------------------\nRan 104 tests in 2.029s\n\nOK\n",
+      "unittest": {
+        "tests": 104,
+        "seconds": 2.029,
+        "ok": true,
+        "failed_summary": "",
+        "missing_module": ""
+      }
+    },
+    {
+      "id": "python-2027 protocol unit tests",
+      "category": "RUNTIME",
+      "command": "/usr/bin/python3 -m unittest discover -s python-2027/tests -p 'test_*.py'",
+      "cwd": ".",
+      "timestamp_utc": "2026-11-24T09:44:35Z",
+      "duration_ms": 131,
+      "exit_code": 1,
+      "stdout_sha256": "ebff2474aa7d76daa88f670e4d3985a64c0d2d0b2a50a767a8f68937ef736f11",
+      "stdout_tail": "====================================\nERROR: test_studio_deploy (unittest.loader._FailedTest.test_studio_deploy)\n----------------------------------------------------------------------\nImportError: Failed to import test module: test_studio_deploy\nTraceback (most recent call last):\n  File \"/usr/lib/python3.11/unittest/loader.py\", line 407, in _find_test_path\n    module = self._get_module_from_name(name)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/usr/lib/python3.11/unittest/loader.py\", line 350, in _get_module_from_name\n    __import__(name)\n  File \"/home/user/ai-2027/python-2027/tests/test_studio_deploy.py\", line 27, in <module>\n    import httpx\nModuleNotFoundError: No module named 'httpx'\n\n\n======================================================================\nERROR: test_telemetry (unittest.loader._FailedTest.test_telemetry)\n----------------------------------------------------------------------\nImportError: Failed to import test module: test_telemetry\nTraceback (most recent call last):\n  File \"/usr/lib/python3.11/unittest/loader.py\", line 407, in _find_test_path\n    module = self._get_module_from_name(name)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/usr/lib/python3.11/unittest/loader.py\", line 350, in _get_module_from_name\n    __import__(name)\n  File \"/home/user/ai-2027/python-2027/tests/test_telemetry.py\", line 5, in <module>\n    import pytest\nModuleNotFoundError: No module named 'pytest'\n\n\n======================================================================\nERROR: test_tools (unittest.loader._FailedTest.test_tools)\n----------------------------------------------------------------------\nImportError: Failed to import test module: test_tools\nTraceback (most recent call last):\n  File \"/usr/lib/python3.11/unittest/loader.py\", line 407, in _find_test_path\n    module = self._get_module_from_name(name)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/usr/lib/python3.11/unittest/loader.py\", line 350, in _get_module_from_name\n    __import__(name)\n  File \"/home/user/ai-2027/python-2027/tests/test_tools.py\", line 5, in <module>\n    import pytest\nModuleNotFoundError: No module named 'pytest'\n\n\n======================================================================\nERROR: test_tools_advanced (unittest.loader._FailedTest.test_tools_advanced)\n----------------------------------------------------------------------\nImportError: Failed to import test module: test_tools_advanced\nTraceback (most recent call last):\n  File \"/usr/lib/python3.11/unittest/loader.py\", line 407, in _find_test_path\n    module = self._get_module_from_name(name)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/usr/lib/python3.11/unittest/loader.py\", line 350, in _get_module_from_name\n    __import__(name)\n  File \"/home/user/ai-2027/python-2027/tests/test_tools_advanced.py\", line 6, in <module>\n    import httpx\nModuleNotFoundError: No module named 'httpx'\n\n\n======================================================================\nERROR: test_verify (unittest.loader._FailedTest.test_verify)\n----------------------------------------------------------------------\nImportError: Failed to import test module: test_verify\nTraceback (most recent call last):\n  File \"/usr/lib/python3.11/unittest/loader.py\", line 407, in _find_test_path\n    module = self._get_module_from_name(name)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/usr/lib/python3.11/unittest/loader.py\", line 350, in _get_module_from_name\n    __import__(name)\n  File \"/home/user/ai-2027/python-2027/tests/test_verify.py\", line 20, in <module>\n    from ai2027_protocol.tools import ToolOutcome\n  File \"/home/user/ai-2027/python-2027/src/ai2027_protocol/__init__.py\", line 8, in <module>\n    from .agent import (\n  File \"/home/user/ai-2027/python-2027/src/ai2027_protocol/agent.py\", line 11, in <module>\n    from pydantic import Field\nModuleNotFoundError: No module named 'pydantic'\n\n\n----------------------------------------------------------------------\nRan 48 tests in 0.003s\n\nFAILED (errors=48)\n",
+      "unittest": {
+        "tests": 48,
+        "seconds": 0.003,
+        "ok": false,
+        "failed_summary": "errors=48",
+        "missing_module": "pydantic"
+      }
+    },
+    {
+      "id": "memory unit tests",
+      "category": "RUNTIME",
+      "command": "/usr/bin/python3 -m unittest discover -s memory -p 'test_*.py'",
+      "cwd": ".",
+      "timestamp_utc": "2026-11-24T09:44:35Z",
+      "duration_ms": 630,
+      "exit_code": 0,
+      "stdout_sha256": "1cd40bbc8fda98637f83b7b5bcc627e84e957820b5142be0967062512a67985a",
+      "stdout_tail": "{\"source\":\"agi.kernel\",\"level\":\"INFO\",\"event\":\"run started\"}\n{\"source\":\"agi.kernel\",\"level\":\"INFO\",\"event\":\"kernel event\"}\n.{\"source\":\"agi.kernel\",\"level\":\"INFO\",\"event\":\"run started\"}\n{\"source\":\"agi.kernel\",\"level\":\"INFO\",\"event\":\"kernel event\"}\n.{\"source\":\"agi.kernel\",\"level\":\"INFO\",\"event\":\"run started\"}\n{\"source\":\"agi.kernel\",\"level\":\"INFO\",\"event\":\"kernel event\"}\n.{\"source\":\"agi.kernel\",\"level\":\"INFO\",\"event\":\"run started\"}\n{\"source\":\"agi.kernel\",\"level\":\"INFO\",\"event\":\"kernel event\"}\n.{\"source\":\"agi.kernel\",\"level\":\"INFO\",\"event\":\"run started\"}\n{\"source\":\"agi.kernel\",\"level\":\"INFO\",\"event\":\"kernel event\"}\n.{\"source\":\"agi.kernel\",\"level\":\"INFO\",\"event\":\"run started\"}\n{\"source\":\"agi.kernel\",\"level\":\"INFO\",\"event\":\"kernel event\"}\n.{\"source\":\"agi.kernel\",\"level\":\"INFO\",\"event\":\"run started\"}\n{\"source\":\"agi.kernel\",\"level\":\"INFO\",\"event\":\"kernel event\"}\n.{\"source\":\"agi.kernel\",\"level\":\"INFO\",\"event\":\"run started\"}\n{\"source\":\"agi.kernel\",\"level\":\"INFO\",\"event\":\"kernel event\"}\n.{\"source\":\"agi.kernel\",\"level\":\"INFO\",\"event\":\"run started\"}\n{\"source\":\"agi.kernel\",\"level\":\"INFO\",\"event\":\"kernel event\"}\n{\"source\":\"agi.kernel\",\"level\":\"INFO\",\"event\":\"run started\"}\n{\"source\":\"agi.kernel\",\"level\":\"INFO\",\"event\":\"kernel event\"}\n.{\"source\":\"agi.kernel\",\"level\":\"INFO\",\"event\":\"run started\"}\n{\"source\":\"agi.kernel\",\"level\":\"INFO\",\"event\":\"kernel event\"}\n{\"source\":\"agi.kernel\",\"level\":\"INFO\",\"event\":\"run started\"}\n{\"source\":\"agi.kernel\",\"level\":\"INFO\",\"event\":\"kernel event\"}\n{\"source\":\"agi.kernel\",\"level\":\"INFO\",\"event\":\"run started\"}\n{\"source\":\"agi.kernel\",\"level\":\"INFO\",\"event\":\"kernel event\"}\n{\"source\":\"agi.kernel\",\"level\":\"INFO\",\"event\":\"run started\"}\n{\"source\":\"agi.kernel\",\"level\":\"INFO\",\"event\":\"kernel event\"}\n.{\"source\":\"agi.kernel\",\"level\":\"INFO\",\"event\":\"run started\"}\n{\"source\":\"agi.kernel\",\"level\":\"INFO\",\"event\":\"kernel event\"}\n.{\"source\":\"agi.kernel\",\"level\":\"INFO\",\"event\":\"run started\"}\n{\"source\":\"agi.kernel\",\"level\":\"INFO\",\"event\":\"kernel event\"}\n.{\"source\":\"agi.kernel\",\"level\":\"INFO\",\"event\":\"run started\"}\n{\"source\":\"agi.kernel\",\"level\":\"INFO\",\"event\":\"kernel event\"}\n.{\"source\":\"agi.kernel\",\"level\":\"INFO\",\"event\":\"run started\"}\n{\"source\":\"agi.kernel\",\"level\":\"INFO\",\"event\":\"kernel event\"}\n..{\"source\":\"agi.kernel\",\"level\":\"INFO\",\"event\":\"run started\"}\n{\"source\":\"agi.kernel\",\"level\":\"INFO\",\"event\":\"kernel event\"}\n{\"source\":\"agi.kernel\",\"level\":\"INFO\",\"event\":\"run started\"}\n{\"source\":\"agi.kernel\",\"level\":\"INFO\",\"event\":\"kernel event\"}\n{\"source\":\"agi.kernel\",\"level\":\"INFO\",\"event\":\"run started\"}\n{\"source\":\"agi.kernel\",\"level\":\"INFO\",\"event\":\"kernel event\"}\n.{\"source\":\"agi.kernel\",\"level\":\"INFO\",\"event\":\"run started\"}\n{\"source\":\"agi.kernel\",\"level\":\"INFO\",\"event\":\"kernel event\"}\n{\"source\":\"agi.kernel\",\"level\":\"INFO\",\"event\":\"run started\"}\n{\"source\":\"agi.kernel\",\"level\":\"INFO\",\"event\":\"kernel event\"}\n{\"source\":\"agi.kernel\",\"level\":\"INFO\",\"event\":\"run started\"}\n{\"source\":\"agi.kernel\",\"level\":\"INFO\",\"event\":\"kernel event\"}\n{\"source\":\"agi.kernel\",\"level\":\"INFO\",\"event\":\"run started\"}\n{\"source\":\"agi.kernel\",\"level\":\"INFO\",\"event\":\"kernel event\"}\n{\"source\":\"agi.kernel\",\"level\":\"INFO\",\"event\":\"run started\"}\n{\"source\":\"agi.kernel\",\"level\":\"INFO\",\"event\":\"kernel event\"}\n{\"source\":\"agi.kernel\",\"level\":\"INFO\",\"event\":\"run started\"}\n{\"source\":\"agi.kernel\",\"level\":\"INFO\",\"event\":\"kernel event\"}\n.{\"source\":\"agi.kernel\",\"level\":\"INFO\",\"event\":\"run started\"}\n{\"source\":\"agi.kernel\",\"level\":\"INFO\",\"event\":\"kernel event\"}\n.{\"source\":\"agi.kernel\",\"level\":\"INFO\",\"event\":\"run started\"}\n{\"source\":\"agi.kernel\",\"level\":\"INFO\",\"event\":\"kernel event\"}\n.\n----------------------------------------------------------------------\nRan 19 tests in 0.555s\n\nOK\n",
+      "unittest": {
+        "tests": 19,
+        "seconds": 0.555,
+        "ok": true,
+        "failed_summary": "",
+        "missing_module": ""
+      }
+    },
+    {
+      "id": "repository script unit tests",
+      "category": "RUNTIME",
+      "command": "/usr/bin/python3 -m unittest discover -s scripts -p 'test_*.py'",
+      "cwd": ".",
+      "timestamp_utc": "2026-11-24T09:44:36Z",
+      "duration_ms": 21287,
+      "exit_code": 0,
+      "stdout_sha256": "a0386a9c5d65c4d485384bf7c89306b58c08e5078dfbb96aa7158afd042e466c",
+      "stdout_tail": "{\n  \"ok\": false,\n  \"staged\": true,\n  \"blocking\": 1,\n  \"warnings\": 0,\n  \"findings\": [\n    {\n      \"path\": \"config.js\",\n      \"line\": 1,\n      \"rule\": \"google_api_key\",\n      \"masked\": \"AIzaSy…(39 chars)\",\n      \"severity\": \"high\"\n    }\n  ],\n  \"archive_findings\": [],\n  \"known_fake_allowed\": [\n    \"AKIAIOSFODNN7EXAMPLE\",\n    \"ghp_thisIsAFakeToken1234\",\n    \"AIzaSyExampleNotARealKey0000000000000000\",\n    \"sk-test-not-a-real-key-000000000000\"\n  ]\n}\n{\n  \"ok\": true,\n  \"staged\": true,\n  \"blocking\": 0,\n  \"warnings\": 0,\n  \"findings\": [],\n  \"archive_findings\": [],\n  \"known_fake_allowed\": [\n    \"AKIAIOSFODNN7EXAMPLE\",\n    \"ghp_thisIsAFakeToken1234\",\n    \"AIzaSyExampleNotARealKey0000000000000000\",\n    \"sk-test-not-a-real-key-000000000000\"\n  ]\n}\n{\n  \"ok\": false,\n  \"staged\": true,\n  \"blocking\": 1,\n  \"warnings\": 0,\n  \"findings\": [\n    {\n      \"path\": \".env\",\n      \"line\": 0,\n      \"rule\": \"forbidden_file\",\n      \"masked\": \".env (never belongs in a commit)\",\n      \"severity\": \"high\"\n    }\n  ],\n  \"archive_findings\": [],\n  \"known_fake_allowed\": [\n    \"AKIAIOSFODNN7EXAMPLE\",\n    \"ghp_thisIsAFakeToken1234\",\n    \"AIzaSyExampleNotARealKey0000000000000000\",\n    \"sk-test-not-a-real-key-000000000000\"\n  ]\n}\nSECRET SCAN — staged · 0 blocking · 0 warning(s)\n  ✓ clean\n{\n  \"ok\": false,\n  \"staged\": true,\n  \"blocking\": 1,\n  \"warnings\": 0,\n  \"findings\": [\n    {\n      \"path\": \"a/b.py\",\n      \"line\": 1,\n      \"rule\": \"github_token\",\n      \"masked\": \"ghp_zz…(40 chars)\",\n      \"severity\": \"high\"\n    }\n  ],\n  \"archive_findings\": [],\n  \"known_fake_allowed\": [\n    \"AKIAIOSFODNN7EXAMPLE\",\n    \"ghp_thisIsAFakeToken1234\",\n    \"AIzaSyExampleNotARealKey0000000000000000\",\n    \"sk-test-not-a-real-key-000000000000\"\n  ]\n}\n........................refusing to run: OPENROUTER_API_KEY is not set. Run this where the repository secret is available (GitHub Actions), not in a bare shell.\n..refusing to run: model 'openai/gpt-4o-mini' is not provably free. Use openrouter/free or a model ending in ':free', or pass --spend-ok if you have decided to pay.\n.refusing to run: model 'openai/gpt-4o-mini' is not provably free. Use openrouter/free or a model ending in ':free', or pass --spend-ok if you have decided to pay.\n...refusing to report: no step recorded a model call, so this run measured the scaffold, not the model.\n.refusing to report: no step recorded a model call, so this run measured the scaffold, not the model.\n.refusing to report: no step recorded a model call, so this run measured the scaffold, not the model.\n....................................................................................................................................................................................................................................................................................................................s\n----------------------------------------------------------------------\nRan 340 tests in 21.086s\n\nOK (skipped=1)\n",
+      "unittest": {
+        "tests": 340,
+        "seconds": 21.086,
+        "ok": true,
+        "failed_summary": "",
+        "missing_module": ""
+      }
+    },
+    {
+      "id": "independent atlas audit (reproduced)",
+      "category": "STATIC",
+      "command": "/usr/bin/python3 scripts/audit_achievements_atlas.py --no-write --run-tests",
+      "cwd": ".",
+      "timestamp_utc": "2026-11-24T09:44:57Z",
+      "duration_ms": 421,
+      "exit_code": 0,
+      "stdout_sha256": "c57cb4ba617ee9f6b84481aa3fc4d31ccda17d574827ccb3a08a88e2113c9b5b",
+      "stdout_tail": "✅ PASS — 13/13 checks\n  PASS card counts recomputed from source files\n  PASS achievement ids are unique\n  PASS every card has title/summary/source/status/category\n  PASS every card source file exists\n  PASS every card link resolves from docs/\n  PASS every card declares a verifiable evidence level\n  PASS evidence levels use the controlled vocabulary\n  PASS headline statistics match recomputation\n  PASS honesty panel matches source files\n  PASS milestones match CHANGELOG releases\n  PASS page has no external runtime assets\n  PASS HTML template fully rendered\n  PASS unittest suite executed independently\n  reports: not written (--no-write)\n",
+      "unittest": {
+        "tests": null,
+        "seconds": null,
+        "ok": false,
+        "failed_summary": "",
+        "missing_module": ""
+      }
+    },
+    {
+      "id": "zero-dependency kernel import gate",
+      "category": "STATIC",
+      "command": "/usr/bin/python3 scripts/ci_guard.py imports",
+      "cwd": ".",
+      "timestamp_utc": "2026-11-24T09:44:58Z",
+      "duration_ms": 106,
+      "exit_code": 0,
+      "stdout_sha256": "87631d56fc0cc371a4988ea5314ab171519ddd5b106dc05dcdad2ac77536f946",
+      "stdout_tail": "AST-scanned 18 Python files for third-party imports (Python 3.11.2).\nConditional stdlib allowed across the 3.10+ matrix: tomllib\nPASS: stdlib only (zero third-party imports).\n",
+      "unittest": {
+        "tests": null,
+        "seconds": null,
+        "ok": false,
+        "failed_summary": "",
+        "missing_module": ""
+      }
+    },
+    {
+      "id": "secret scan (all tracked code)",
+      "category": "STATIC",
+      "command": "/usr/bin/python3 scripts/secret_scan.py --all",
+      "cwd": ".",
+      "timestamp_utc": "2026-11-24T09:44:58Z",
+      "duration_ms": 5057,
+      "exit_code": 0,
+      "stdout_sha256": "dc86ccb4eeb24c4efa6435aaf2f5e1d425c0c425bde623e524e13155ec999636",
+      "stdout_tail": "SECRET SCAN — tracked (code) · 0 blocking · 0 warning(s)\n  … 11 more inside projects/ (byte-mirror; fix upstream, not here)\n    · projects/ai-store2/env.local:0  forbidden_file  env.local (never belongs in a commit)\n    · projects/cela.nimna/tests/conftest.py:15  assigned_secret  test-k…(41 chars)\n    · projects/celia.sh/tests/metrics.test.ts:9  assigned_secret  gsk_te…(34 chars)\n    · projects/easy-ai/tests/test_redact.py:37  jwt  eyJhbG…(49 chars)\n    · projects/easy-ai/tests/test_redact.py:64  private_key_block  -----B…(27 chars)\n  ✓ clean\n",
+      "unittest": {
+        "tests": null,
+        "seconds": null,
+        "ok": false,
+        "failed_summary": "",
+        "missing_module": ""
+      }
+    },
+    {
+      "id": "live CI conclusions (GitHub CLI)",
+      "category": "LIVE_EXTERNAL",
+      "command": "gh run list --limit 10 --json databaseId,workflowName,status,conclusion,createdAt,url,headBranch,event",
+      "cwd": ".",
+      "timestamp_utc": "2026-11-24T09:45:03Z",
+      "duration_ms": 846,
+      "exit_code": 0,
+      "stdout_sha256": "1c282c0b212446229c6791b9a41f11e21ea932d6441371c4ffec01d20e67be02",
+      "stdout_tail": "[{\"conclusion\":\"success\",\"createdAt\":\"2026-11-24T00:08:58Z\",\"databaseId\":45294755444,\"event\":\"schedule\",\"headBranch\":\"main\",\"status\":\"completed\",\"url\":\"https://github.com/sayedelazameydesign-crypto/ai-2027/actions/runs/45294755444\",\"workflowName\":\"Live egress audit\"},{\"conclusion\":\"failure\",\"createdAt\":\"2026-11-23T21:25:06Z\",\"databaseId\":45269446494,\"event\":\"schedule\",\"headBranch\":\"main\",\"status\":\"completed\",\"url\":\"https://github.com/sayedelazameydesign-crypto/ai-2027/actions/runs/45269446494\",\"workflowName\":\"Ember beat\"},{\"conclusion\":\"success\",\"createdAt\":\"2026-11-23T20:10:30Z\",\"databaseId\":45256592725,\"event\":\"dynamic\",\"headBranch\":\"main\",\"status\":\"completed\",\"url\":\"https://github.com/sayedelazameydesign-crypto/ai-2027/actions/runs/45256592725\",\"workflowName\":\"Dependabot Updates\"},{\"conclusion\":\"success\",\"createdAt\":\"2026-11-23T13:38:49Z\",\"databaseId\":45185982980,\"event\":\"schedule\",\"headBranch\":\"main\",\"status\":\"completed\",\"url\":\"https://github.com/sayedelazameydesign-crypto/ai-2027/actions/runs/45185982980\",\"workflowName\":\"CodeQL\"},{\"conclusion\":\"success\",\"createdAt\":\"2026-11-23T07:56:38Z\",\"databaseId\":45134764724,\"event\":\"schedule\",\"headBranch\":\"main\",\"status\":\"completed\",\"url\":\"https://github.com/sayedelazameydesign-crypto/ai-2027/actions/runs/45134764724\",\"workflowName\":\"Live egress audit\"},{\"conclusion\":\"failure\",\"createdAt\":\"2026-11-23T07:38:38Z\",\"databaseId\":45132595680,\"event\":\"schedule\",\"headBranch\":\"main\",\"status\":\"completed\",\"url\":\"https://github.com/sayedelazameydesign-crypto/ai-2027/actions/runs/45132595680\",\"workflowName\":\"Ember beat\"},{\"conclusion\":\"success\",\"createdAt\":\"2026-11-22T23:37:16Z\",\"databaseId\":45084236397,\"event\":\"schedule\",\"headBranch\":\"main\",\"status\":\"completed\",\"url\":\"https://github.com/sayedelazameydesign-crypto/ai-2027/actions/runs/45084236397\",\"workflowName\":\"Ember beat\"},{\"conclusion\":\"success\",\"createdAt\":\"2026-11-22T19:53:09Z\",\"databaseId\":45063267646,\"event\":\"schedule\",\"headBranch\":\"main\",\"status\":\"completed\",\"url\":\"https://github.com/sayedelazameydesign-crypto/ai-2027/actions/runs/45063267646\",\"workflowName\":\"Live egress audit\"},{\"conclusion\":\"success\",\"createdAt\":\"2026-11-22T17:00:05Z\",\"databaseId\":45046920945,\"event\":\"pull_request\",\"headBranch\":\"arena/ae4c0ce1-ai-2027\",\"status\":\"completed\",\"url\":\"https://github.com/sayedelazameydesign-crypto/ai-2027/actions/runs/45046920945\",\"workflowName\":\"Evidence-First CI\"},{\"conclusion\":\"success\",\"createdAt\":\"2026-11-22T17:00:05Z\",\"databaseId\":45046920828,\"event\":\"pull_request\",\"headBranch\":\"arena/ae4c0ce1-ai-2027\",\"status\":\"completed\",\"url\":\"https://github.com/sayedelazameydesign-crypto/ai-2027/actions/runs/45046920828\",\"workflowName\":\"CodeQL\"}]\n",
+      "unittest": {
+        "tests": null,
+        "seconds": null,
+        "ok": false,
+        "failed_summary": "",
+        "missing_module": ""
+      }
+    },
+    {
+      "id": "functional before/after probes",
+      "category": "RUNTIME",
+      "command": "git archive HEAD -> temp tree; kernel-2027/ask.py x3 in both trees",
+      "timestamp_utc": "2026-11-24T09:45:07Z",
+      "duration_ms": 0,
+      "exit_code": 0,
+      "stdout_sha256": "a8e1523c3aedadf1abbaed6a39a4ee5894a503aaf3a5a28c5387873f3db3b61c|8e6049b593b56cd13564840efafce79e910426e8d1d906920e3b0f0dce24d58d|8520ae6445b036842014e5d1cdce1d536004d151d649055157c4171a0dc4a440",
+      "stdout_tail": "",
+      "unittest": {}
+    },
+    {
+      "id": "baseline provenance",
+      "category": "STATIC",
+      "command": "git ls-tree -r HEAD (authoritative object store) + docs/atlas-baseline.json",
+      "timestamp_utc": "2026-11-24T09:45:07Z",
+      "duration_ms": 0,
+      "exit_code": 0,
+      "stdout_sha256": "71e5401a1d1f8e765892c7ac6b508e483e7c70f3829bf2e1c93eaad6baec03f5",
+      "stdout_tail": "",
+      "unittest": {}
+    },
+    {
+      "id": "historical inventory numbers",
+      "category": "HISTORICAL",
+      "command": "docs/inventory-2027.json (2026-11-22) — NOT re-executed",
+      "timestamp_utc": "2026-11-24T09:45:07Z",
+      "duration_ms": 0,
+      "exit_code": 0,
+      "stdout_sha256": "",
+      "stdout_tail": "",
+      "unittest": {}
+    }
+  ],
+  "limits": [
+    "الأرقام التاريخية (2,054 اختباراً، 100 هجوم، الواجهات الحية) موسومة HISTORICAL ولم تُعَد هنا.",
+    "التحقق التشغيلي يغطي مجموعات unittest المذكورة فقط؛ python-2027 يحتاج pydantic غير المثبّت، ولذلك سُجّل BLOCKED لا محاكاة.",
+    "التراجع الوظيفي يقارن ثلاثة probes حتمية ولا يثبت ثبات كل سلوك في النظام.",
+    "فحص CVE حي BLOCKED بسياسة offline؛ فحص الأسرار يستخدم بوابة المستودع نفسها مع فحص صلاحيات محلي.",
+    "لم يُدمج أي PR، ولم يُنشر أي إصدار، ولم تتغير إعدادات النشر، ولم تُستخدم عملية Git مدمرة.",
+    "كتابة ملفات التقرير: مفعّلة."
+  ]
+}

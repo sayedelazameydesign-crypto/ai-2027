@@ -1,0 +1,3629 @@
+{
+  "generated_at": "2026-11-24 09:41 UTC",
+  "method": "read-only Python stdlib; no kernel import, no network, no simulated test treated as proof",
+  "baseline_created": false,
+  "baseline_path": "docs/atlas-baseline.json",
+  "report_path": "docs/atlas-control-report.json",
+  "modules": {
+    "scan": {
+      "status": "CLEAN",
+      "summary": [
+        {
+          "label": "ملفات متتبّعة",
+          "value": 4560,
+          "note": "git ls-files -s · مقاس الآن"
+        },
+        {
+          "label": "ملفات جديدة",
+          "value": 0,
+          "note": "مقارنة بالخط الأساس"
+        },
+        {
+          "label": "ملفات محذوفة",
+          "value": 0,
+          "note": "مقارنة بالخط الأساس"
+        },
+        {
+          "label": "ملفات معدّلة",
+          "value": 0,
+          "note": "تغيّر blob SHA-1"
+        }
+      ],
+      "rows": [],
+      "deltas": {
+        "files": 0,
+        "python": 0,
+        "tests": 0,
+        "docs": 0,
+        "workflows": 0,
+        "scripts": 0,
+        "projects": 0
+      },
+      "notes": [
+        "الخط الأساس هو docs/atlas-baseline.json؛ أُنشئ من حالة المستودع المُدقَّقة.",
+        "هذا فحص بنيوي على مستوى الملفات، ولا يثبت أن الوحدات تعمل."
+      ]
+    },
+    "validator": {
+      "status": "PASS",
+      "summary": [
+        {
+          "label": "بطاقات مُحَقَّقة",
+          "value": 274,
+          "note": "كل بطاقة في الأطلس"
+        },
+        {
+          "label": "ادعاءات قوية",
+          "value": 15,
+          "note": "PROVEN / MEASURED / LIVE"
+        },
+        {
+          "label": "مشاكل الأدلة",
+          "value": 0,
+          "note": "صفر يعني لا مبالغة في الحالة"
+        }
+      ],
+      "rows": [],
+      "notes": [
+        "القاعدة: لا يُقبل PROVEN أو MEASURED أو LIVE مع دليل «الملف موجود» فقط.",
+        "الحالات التاريخية موافَق عليها بشرط ذكر تاريخ المصدر صراحةً في السند.",
+        "هذا التحقق يفحص الاتساق والتسمية؛ لا يُعيد تشغيل الاختبارات التاريخية."
+      ]
+    },
+    "architecture": {
+      "status": "MAP",
+      "summary": [
+        {
+          "label": "محركات",
+          "value": 13,
+          "note": "من inventory-2027.json"
+        },
+        {
+          "label": "مشاريع",
+          "value": 48,
+          "note": "من catalog.json"
+        },
+        {
+          "label": "علاقات موثّقة",
+          "value": 533,
+          "note": "تشارك في مستند واحد على الأقل"
+        },
+        {
+          "label": "محركات بلا علاقة",
+          "value": 0,
+          "note": "فجوة توثيق محتملة"
+        }
+      ],
+      "rows": [
+        {
+          "engine": "agent-fleet",
+          "project": "agi-system",
+          "category": "أنظمة الوكلاء الذكية",
+          "engine_status": "partial",
+          "project_status": "PROVEN",
+          "weight": 5,
+          "sources": "ENGINEERING-INVENTORY-2027.md, PAP-2027-GAP-AUDIT.md, PAP-2027-RESILIENCE-AUDIT.md"
+        },
+        {
+          "engine": "agent-fleet",
+          "project": "ui",
+          "category": "منصات المحادثة والويب",
+          "engine_status": "partial",
+          "project_status": "SIMULATED",
+          "weight": 5,
+          "sources": "AI-2027-COMPETITIVE-ARCHITECTURE.md, ENGINEERING-INVENTORY-2027.md, PAP-2027-GAP-AUDIT.md, PAP-2027-RESILIENCE-AUDIT.md"
+        },
+        {
+          "engine": "model-router",
+          "project": "agi-system",
+          "category": "أنظمة الوكلاء الذكية",
+          "engine_status": "present",
+          "project_status": "PROVEN",
+          "weight": 3,
+          "sources": "ENGINEERING-INVENTORY-2027.md, PAP-2027-GAP-AUDIT.md"
+        },
+        {
+          "engine": "model-router",
+          "project": "ui",
+          "category": "منصات المحادثة والويب",
+          "engine_status": "present",
+          "project_status": "SIMULATED",
+          "weight": 3,
+          "sources": "ENGINEERING-INVENTORY-2027.md, PAP-2027-GAP-AUDIT.md"
+        },
+        {
+          "engine": "agent-fleet",
+          "project": "12pro",
+          "category": "أنظمة الوكلاء الذكية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 2,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "agent-fleet",
+          "project": "1pro",
+          "category": "منصات المحادثة والويب",
+          "engine_status": "partial",
+          "project_status": "SIMULATED",
+          "weight": 2,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "agent-fleet",
+          "project": "ELAZAMET1",
+          "category": "الأزياء والتجارة الإلكترونية",
+          "engine_status": "partial",
+          "project_status": "SIMULATED",
+          "weight": 2,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "agent-fleet",
+          "project": "WEB",
+          "category": "منصات المحادثة والويب",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 2,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "agent-fleet",
+          "project": "ai-store",
+          "category": "الأزياء والتجارة الإلكترونية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 2,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "agent-fleet",
+          "project": "ai-store2",
+          "category": "الأزياء والتجارة الإلكترونية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 2,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "agent-fleet",
+          "project": "cela2027",
+          "category": "أنظمة الوكلاء الذكية",
+          "engine_status": "partial",
+          "project_status": "SIMULATED",
+          "weight": 2,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "agent-fleet",
+          "project": "celia-fashion-design",
+          "category": "الأزياء والتجارة الإلكترونية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 2,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "agent-fleet",
+          "project": "celia-pro-deployment",
+          "category": "أنظمة الوكلاء الذكية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 2,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "agent-fleet",
+          "project": "celia.sh",
+          "category": "منصات المحادثة والويب",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 2,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "agent-fleet",
+          "project": "celiaos-agent-framework",
+          "category": "أنظمة الوكلاء الذكية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 2,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "agent-fleet",
+          "project": "dr.mukhtar",
+          "category": "تطبيقات متخصصة",
+          "engine_status": "partial",
+          "project_status": "SIMULATED",
+          "weight": 2,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "agent-fleet",
+          "project": "leader2027",
+          "category": "منصات المحادثة والويب",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 2,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "agent-fleet",
+          "project": "new-agent",
+          "category": "أنظمة الوكلاء الذكية",
+          "engine_status": "partial",
+          "project_status": "FAILED",
+          "weight": 2,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "agent-fleet",
+          "project": "new.pro",
+          "category": "منصات المحادثة والويب",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 2,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "agent-fleet",
+          "project": "open_source-",
+          "category": "أنظمة الوكلاء الذكية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 2,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "agent-fleet",
+          "project": "platform",
+          "category": "أنظمة الوكلاء الذكية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 2,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "automation-engine",
+          "project": "agi-system",
+          "category": "أنظمة الوكلاء الذكية",
+          "engine_status": "partial",
+          "project_status": "PROVEN",
+          "weight": 2,
+          "sources": "ENGINEERING-INVENTORY-2027.md, PAP-2027-GAP-AUDIT.md"
+        },
+        {
+          "engine": "automation-engine",
+          "project": "ui",
+          "category": "منصات المحادثة والويب",
+          "engine_status": "partial",
+          "project_status": "SIMULATED",
+          "weight": 2,
+          "sources": "ENGINEERING-INVENTORY-2027.md, PAP-2027-GAP-AUDIT.md"
+        },
+        {
+          "engine": "browser-engine",
+          "project": "agi-system",
+          "category": "أنظمة الوكلاء الذكية",
+          "engine_status": "partial",
+          "project_status": "PROVEN",
+          "weight": 2,
+          "sources": "ENGINEERING-INVENTORY-2027.md, PAP-2027-GAP-AUDIT.md"
+        },
+        {
+          "engine": "browser-engine",
+          "project": "ui",
+          "category": "منصات المحادثة والويب",
+          "engine_status": "partial",
+          "project_status": "SIMULATED",
+          "weight": 2,
+          "sources": "ENGINEERING-INVENTORY-2027.md, PAP-2027-GAP-AUDIT.md"
+        },
+        {
+          "engine": "cloud-runtime",
+          "project": "agi-system",
+          "category": "أنظمة الوكلاء الذكية",
+          "engine_status": "partial",
+          "project_status": "PROVEN",
+          "weight": 2,
+          "sources": "ENGINEERING-INVENTORY-2027.md, PAP-2027-GAP-AUDIT.md"
+        },
+        {
+          "engine": "cloud-runtime",
+          "project": "ui",
+          "category": "منصات المحادثة والويب",
+          "engine_status": "partial",
+          "project_status": "SIMULATED",
+          "weight": 2,
+          "sources": "ENGINEERING-INVENTORY-2027.md, PAP-2027-GAP-AUDIT.md"
+        },
+        {
+          "engine": "computer-engine",
+          "project": "agi-system",
+          "category": "أنظمة الوكلاء الذكية",
+          "engine_status": "partial",
+          "project_status": "PROVEN",
+          "weight": 2,
+          "sources": "ENGINEERING-INVENTORY-2027.md, PAP-2027-GAP-AUDIT.md"
+        },
+        {
+          "engine": "computer-engine",
+          "project": "ui",
+          "category": "منصات المحادثة والويب",
+          "engine_status": "partial",
+          "project_status": "SIMULATED",
+          "weight": 2,
+          "sources": "ENGINEERING-INVENTORY-2027.md, PAP-2027-GAP-AUDIT.md"
+        },
+        {
+          "engine": "evidence-engine",
+          "project": "agi-system",
+          "category": "أنظمة الوكلاء الذكية",
+          "engine_status": "present",
+          "project_status": "PROVEN",
+          "weight": 2,
+          "sources": "ENGINEERING-INVENTORY-2027.md, PAP-2027-GAP-AUDIT.md"
+        },
+        {
+          "engine": "evidence-engine",
+          "project": "ui",
+          "category": "منصات المحادثة والويب",
+          "engine_status": "present",
+          "project_status": "SIMULATED",
+          "weight": 2,
+          "sources": "ENGINEERING-INVENTORY-2027.md, PAP-2027-GAP-AUDIT.md"
+        },
+        {
+          "engine": "intelligence-core",
+          "project": "agi-system",
+          "category": "أنظمة الوكلاء الذكية",
+          "engine_status": "partial",
+          "project_status": "PROVEN",
+          "weight": 2,
+          "sources": "ENGINEERING-INVENTORY-2027.md, PAP-2027-GAP-AUDIT.md"
+        },
+        {
+          "engine": "intelligence-core",
+          "project": "ui",
+          "category": "منصات المحادثة والويب",
+          "engine_status": "partial",
+          "project_status": "SIMULATED",
+          "weight": 2,
+          "sources": "ENGINEERING-INVENTORY-2027.md, PAP-2027-GAP-AUDIT.md"
+        },
+        {
+          "engine": "memory-engine",
+          "project": "agi-system",
+          "category": "أنظمة الوكلاء الذكية",
+          "engine_status": "present",
+          "project_status": "PROVEN",
+          "weight": 2,
+          "sources": "ENGINEERING-INVENTORY-2027.md, PAP-2027-GAP-AUDIT.md"
+        },
+        {
+          "engine": "memory-engine",
+          "project": "ui",
+          "category": "منصات المحادثة والويب",
+          "engine_status": "present",
+          "project_status": "SIMULATED",
+          "weight": 2,
+          "sources": "ENGINEERING-INVENTORY-2027.md, PAP-2027-GAP-AUDIT.md"
+        },
+        {
+          "engine": "model-router",
+          "project": "12pro",
+          "category": "أنظمة الوكلاء الذكية",
+          "engine_status": "present",
+          "project_status": "DECLARED",
+          "weight": 2,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "model-router",
+          "project": "1pro",
+          "category": "منصات المحادثة والويب",
+          "engine_status": "present",
+          "project_status": "SIMULATED",
+          "weight": 2,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "model-router",
+          "project": "ELAZAMET1",
+          "category": "الأزياء والتجارة الإلكترونية",
+          "engine_status": "present",
+          "project_status": "SIMULATED",
+          "weight": 2,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "model-router",
+          "project": "WEB",
+          "category": "منصات المحادثة والويب",
+          "engine_status": "present",
+          "project_status": "DECLARED",
+          "weight": 2,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "model-router",
+          "project": "ai-store",
+          "category": "الأزياء والتجارة الإلكترونية",
+          "engine_status": "present",
+          "project_status": "DECLARED",
+          "weight": 2,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "model-router",
+          "project": "ai-store2",
+          "category": "الأزياء والتجارة الإلكترونية",
+          "engine_status": "present",
+          "project_status": "DECLARED",
+          "weight": 2,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "model-router",
+          "project": "cela2027",
+          "category": "أنظمة الوكلاء الذكية",
+          "engine_status": "present",
+          "project_status": "SIMULATED",
+          "weight": 2,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "model-router",
+          "project": "celia-fashion-design",
+          "category": "الأزياء والتجارة الإلكترونية",
+          "engine_status": "present",
+          "project_status": "DECLARED",
+          "weight": 2,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "model-router",
+          "project": "celia-pro-deployment",
+          "category": "أنظمة الوكلاء الذكية",
+          "engine_status": "present",
+          "project_status": "DECLARED",
+          "weight": 2,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "model-router",
+          "project": "celia.sh",
+          "category": "منصات المحادثة والويب",
+          "engine_status": "present",
+          "project_status": "DECLARED",
+          "weight": 2,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "model-router",
+          "project": "celiaos-agent-framework",
+          "category": "أنظمة الوكلاء الذكية",
+          "engine_status": "present",
+          "project_status": "DECLARED",
+          "weight": 2,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "model-router",
+          "project": "dr.mukhtar",
+          "category": "تطبيقات متخصصة",
+          "engine_status": "present",
+          "project_status": "SIMULATED",
+          "weight": 2,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "model-router",
+          "project": "leader2027",
+          "category": "منصات المحادثة والويب",
+          "engine_status": "present",
+          "project_status": "DECLARED",
+          "weight": 2,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "model-router",
+          "project": "new-agent",
+          "category": "أنظمة الوكلاء الذكية",
+          "engine_status": "present",
+          "project_status": "FAILED",
+          "weight": 2,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "model-router",
+          "project": "new.pro",
+          "category": "منصات المحادثة والويب",
+          "engine_status": "present",
+          "project_status": "DECLARED",
+          "weight": 2,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "model-router",
+          "project": "open_source-",
+          "category": "أنظمة الوكلاء الذكية",
+          "engine_status": "present",
+          "project_status": "DECLARED",
+          "weight": 2,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "model-router",
+          "project": "platform",
+          "category": "أنظمة الوكلاء الذكية",
+          "engine_status": "present",
+          "project_status": "DECLARED",
+          "weight": 2,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "python-alchemy",
+          "project": "agi-system",
+          "category": "أنظمة الوكلاء الذكية",
+          "engine_status": "partial",
+          "project_status": "PROVEN",
+          "weight": 2,
+          "sources": "ENGINEERING-INVENTORY-2027.md, PAP-2027-GAP-AUDIT.md"
+        },
+        {
+          "engine": "python-alchemy",
+          "project": "ui",
+          "category": "منصات المحادثة والويب",
+          "engine_status": "partial",
+          "project_status": "SIMULATED",
+          "weight": 2,
+          "sources": "ENGINEERING-INVENTORY-2027.md, PAP-2027-GAP-AUDIT.md"
+        },
+        {
+          "engine": "security-engine",
+          "project": "agi-system",
+          "category": "أنظمة الوكلاء الذكية",
+          "engine_status": "present",
+          "project_status": "PROVEN",
+          "weight": 2,
+          "sources": "ENGINEERING-INVENTORY-2027.md, PAP-2027-GAP-AUDIT.md"
+        },
+        {
+          "engine": "security-engine",
+          "project": "ui",
+          "category": "منصات المحادثة والويب",
+          "engine_status": "present",
+          "project_status": "SIMULATED",
+          "weight": 2,
+          "sources": "ENGINEERING-INVENTORY-2027.md, PAP-2027-GAP-AUDIT.md"
+        },
+        {
+          "engine": "skill-engine",
+          "project": "agi-system",
+          "category": "أنظمة الوكلاء الذكية",
+          "engine_status": "partial",
+          "project_status": "PROVEN",
+          "weight": 2,
+          "sources": "ENGINEERING-INVENTORY-2027.md, PAP-2027-GAP-AUDIT.md"
+        },
+        {
+          "engine": "skill-engine",
+          "project": "ui",
+          "category": "منصات المحادثة والويب",
+          "engine_status": "partial",
+          "project_status": "SIMULATED",
+          "weight": 2,
+          "sources": "ENGINEERING-INVENTORY-2027.md, PAP-2027-GAP-AUDIT.md"
+        },
+        {
+          "engine": "agent-fleet",
+          "project": "CELIA22",
+          "category": "الأزياء والتجارة الإلكترونية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "agent-fleet",
+          "project": "CELIA_SERVICES",
+          "category": "أنظمة الوكلاء الذكية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "agent-fleet",
+          "project": "Celia-2027",
+          "category": "أسس وبذور أولية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "agent-fleet",
+          "project": "CeliaFashionDesign",
+          "category": "الأزياء والتجارة الإلكترونية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "agent-fleet",
+          "project": "My-Independent-Virtual-World",
+          "category": "تطبيقات متخصصة",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "agent-fleet",
+          "project": "New33",
+          "category": "أسس وبذور أولية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "agent-fleet",
+          "project": "ai-task",
+          "category": "أنظمة الوكلاء الذكية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "agent-fleet",
+          "project": "ai.2027",
+          "category": "أسس وبذور أولية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "agent-fleet",
+          "project": "arbic",
+          "category": "تطبيقات متخصصة",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "agent-fleet",
+          "project": "blank-app",
+          "category": "تطبيقات متخصصة",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "agent-fleet",
+          "project": "ccelia2027",
+          "category": "تطبيقات متخصصة",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "agent-fleet",
+          "project": "cela.ai",
+          "category": "أسس وبذور أولية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "agent-fleet",
+          "project": "cela.h",
+          "category": "أسس وبذور أولية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "agent-fleet",
+          "project": "cela.nimna",
+          "category": "أنظمة الوكلاء الذكية",
+          "engine_status": "partial",
+          "project_status": "SIMULATED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "agent-fleet",
+          "project": "celia-fashion-2026.",
+          "category": "الأزياء والتجارة الإلكترونية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "agent-fleet",
+          "project": "celia_elazamey-pro",
+          "category": "أسس وبذور أولية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "agent-fleet",
+          "project": "easy-ai",
+          "category": "منصات المحادثة والويب",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "agent-fleet",
+          "project": "if-you-can",
+          "category": "أسس وبذور أولية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "agent-fleet",
+          "project": "new-new",
+          "category": "منصات المحادثة والويب",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "agent-fleet",
+          "project": "new-project",
+          "category": "تطبيقات متخصصة",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "agent-fleet",
+          "project": "support-tickets",
+          "category": "تطبيقات متخصصة",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "agent-fleet",
+          "project": "system-",
+          "category": "منصات المحادثة والويب",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "automation-engine",
+          "project": "12pro",
+          "category": "أنظمة الوكلاء الذكية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "automation-engine",
+          "project": "1pro",
+          "category": "منصات المحادثة والويب",
+          "engine_status": "partial",
+          "project_status": "SIMULATED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "automation-engine",
+          "project": "CELIA22",
+          "category": "الأزياء والتجارة الإلكترونية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "automation-engine",
+          "project": "CELIA_SERVICES",
+          "category": "أنظمة الوكلاء الذكية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "automation-engine",
+          "project": "Celia-2027",
+          "category": "أسس وبذور أولية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "automation-engine",
+          "project": "CeliaFashionDesign",
+          "category": "الأزياء والتجارة الإلكترونية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "automation-engine",
+          "project": "ELAZAMET1",
+          "category": "الأزياء والتجارة الإلكترونية",
+          "engine_status": "partial",
+          "project_status": "SIMULATED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "automation-engine",
+          "project": "My-Independent-Virtual-World",
+          "category": "تطبيقات متخصصة",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "automation-engine",
+          "project": "New33",
+          "category": "أسس وبذور أولية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "automation-engine",
+          "project": "WEB",
+          "category": "منصات المحادثة والويب",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "automation-engine",
+          "project": "ai-store",
+          "category": "الأزياء والتجارة الإلكترونية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "automation-engine",
+          "project": "ai-store2",
+          "category": "الأزياء والتجارة الإلكترونية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "automation-engine",
+          "project": "ai-task",
+          "category": "أنظمة الوكلاء الذكية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "automation-engine",
+          "project": "ai.2027",
+          "category": "أسس وبذور أولية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "automation-engine",
+          "project": "arbic",
+          "category": "تطبيقات متخصصة",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "automation-engine",
+          "project": "blank-app",
+          "category": "تطبيقات متخصصة",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "automation-engine",
+          "project": "ccelia2027",
+          "category": "تطبيقات متخصصة",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "automation-engine",
+          "project": "cela.ai",
+          "category": "أسس وبذور أولية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "automation-engine",
+          "project": "cela.h",
+          "category": "أسس وبذور أولية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "automation-engine",
+          "project": "cela.nimna",
+          "category": "أنظمة الوكلاء الذكية",
+          "engine_status": "partial",
+          "project_status": "SIMULATED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "automation-engine",
+          "project": "cela2027",
+          "category": "أنظمة الوكلاء الذكية",
+          "engine_status": "partial",
+          "project_status": "SIMULATED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "automation-engine",
+          "project": "celia-fashion-2026.",
+          "category": "الأزياء والتجارة الإلكترونية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "automation-engine",
+          "project": "celia-fashion-design",
+          "category": "الأزياء والتجارة الإلكترونية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "automation-engine",
+          "project": "celia-pro-deployment",
+          "category": "أنظمة الوكلاء الذكية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "automation-engine",
+          "project": "celia.sh",
+          "category": "منصات المحادثة والويب",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "automation-engine",
+          "project": "celia_elazamey-pro",
+          "category": "أسس وبذور أولية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "automation-engine",
+          "project": "celiaos-agent-framework",
+          "category": "أنظمة الوكلاء الذكية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "automation-engine",
+          "project": "dr.mukhtar",
+          "category": "تطبيقات متخصصة",
+          "engine_status": "partial",
+          "project_status": "SIMULATED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "automation-engine",
+          "project": "easy-ai",
+          "category": "منصات المحادثة والويب",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "automation-engine",
+          "project": "if-you-can",
+          "category": "أسس وبذور أولية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "automation-engine",
+          "project": "leader2027",
+          "category": "منصات المحادثة والويب",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "automation-engine",
+          "project": "new-agent",
+          "category": "أنظمة الوكلاء الذكية",
+          "engine_status": "partial",
+          "project_status": "FAILED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "automation-engine",
+          "project": "new-new",
+          "category": "منصات المحادثة والويب",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "automation-engine",
+          "project": "new-project",
+          "category": "تطبيقات متخصصة",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "automation-engine",
+          "project": "new.pro",
+          "category": "منصات المحادثة والويب",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "automation-engine",
+          "project": "open_source-",
+          "category": "أنظمة الوكلاء الذكية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "automation-engine",
+          "project": "platform",
+          "category": "أنظمة الوكلاء الذكية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "automation-engine",
+          "project": "support-tickets",
+          "category": "تطبيقات متخصصة",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "automation-engine",
+          "project": "system-",
+          "category": "منصات المحادثة والويب",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "browser-engine",
+          "project": "12pro",
+          "category": "أنظمة الوكلاء الذكية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "browser-engine",
+          "project": "1pro",
+          "category": "منصات المحادثة والويب",
+          "engine_status": "partial",
+          "project_status": "SIMULATED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "browser-engine",
+          "project": "CELIA22",
+          "category": "الأزياء والتجارة الإلكترونية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "browser-engine",
+          "project": "CELIA_SERVICES",
+          "category": "أنظمة الوكلاء الذكية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "browser-engine",
+          "project": "Celia-2027",
+          "category": "أسس وبذور أولية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "browser-engine",
+          "project": "CeliaFashionDesign",
+          "category": "الأزياء والتجارة الإلكترونية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "browser-engine",
+          "project": "ELAZAMET1",
+          "category": "الأزياء والتجارة الإلكترونية",
+          "engine_status": "partial",
+          "project_status": "SIMULATED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "browser-engine",
+          "project": "My-Independent-Virtual-World",
+          "category": "تطبيقات متخصصة",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "browser-engine",
+          "project": "New33",
+          "category": "أسس وبذور أولية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "browser-engine",
+          "project": "WEB",
+          "category": "منصات المحادثة والويب",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "browser-engine",
+          "project": "ai-store",
+          "category": "الأزياء والتجارة الإلكترونية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "browser-engine",
+          "project": "ai-store2",
+          "category": "الأزياء والتجارة الإلكترونية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "browser-engine",
+          "project": "ai-task",
+          "category": "أنظمة الوكلاء الذكية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "browser-engine",
+          "project": "ai.2027",
+          "category": "أسس وبذور أولية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "browser-engine",
+          "project": "arbic",
+          "category": "تطبيقات متخصصة",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "browser-engine",
+          "project": "blank-app",
+          "category": "تطبيقات متخصصة",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "browser-engine",
+          "project": "ccelia2027",
+          "category": "تطبيقات متخصصة",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "browser-engine",
+          "project": "cela.ai",
+          "category": "أسس وبذور أولية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "browser-engine",
+          "project": "cela.h",
+          "category": "أسس وبذور أولية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "browser-engine",
+          "project": "cela.nimna",
+          "category": "أنظمة الوكلاء الذكية",
+          "engine_status": "partial",
+          "project_status": "SIMULATED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "browser-engine",
+          "project": "cela2027",
+          "category": "أنظمة الوكلاء الذكية",
+          "engine_status": "partial",
+          "project_status": "SIMULATED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "browser-engine",
+          "project": "celia-fashion-2026.",
+          "category": "الأزياء والتجارة الإلكترونية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "browser-engine",
+          "project": "celia-fashion-design",
+          "category": "الأزياء والتجارة الإلكترونية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "browser-engine",
+          "project": "celia-pro-deployment",
+          "category": "أنظمة الوكلاء الذكية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "browser-engine",
+          "project": "celia.sh",
+          "category": "منصات المحادثة والويب",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "browser-engine",
+          "project": "celia_elazamey-pro",
+          "category": "أسس وبذور أولية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "browser-engine",
+          "project": "celiaos-agent-framework",
+          "category": "أنظمة الوكلاء الذكية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "browser-engine",
+          "project": "dr.mukhtar",
+          "category": "تطبيقات متخصصة",
+          "engine_status": "partial",
+          "project_status": "SIMULATED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "browser-engine",
+          "project": "easy-ai",
+          "category": "منصات المحادثة والويب",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "browser-engine",
+          "project": "if-you-can",
+          "category": "أسس وبذور أولية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "browser-engine",
+          "project": "leader2027",
+          "category": "منصات المحادثة والويب",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "browser-engine",
+          "project": "new-agent",
+          "category": "أنظمة الوكلاء الذكية",
+          "engine_status": "partial",
+          "project_status": "FAILED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "browser-engine",
+          "project": "new-new",
+          "category": "منصات المحادثة والويب",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "browser-engine",
+          "project": "new-project",
+          "category": "تطبيقات متخصصة",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "browser-engine",
+          "project": "new.pro",
+          "category": "منصات المحادثة والويب",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "browser-engine",
+          "project": "open_source-",
+          "category": "أنظمة الوكلاء الذكية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "browser-engine",
+          "project": "platform",
+          "category": "أنظمة الوكلاء الذكية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "browser-engine",
+          "project": "support-tickets",
+          "category": "تطبيقات متخصصة",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "browser-engine",
+          "project": "system-",
+          "category": "منصات المحادثة والويب",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "cloud-runtime",
+          "project": "12pro",
+          "category": "أنظمة الوكلاء الذكية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "cloud-runtime",
+          "project": "1pro",
+          "category": "منصات المحادثة والويب",
+          "engine_status": "partial",
+          "project_status": "SIMULATED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "cloud-runtime",
+          "project": "CELIA22",
+          "category": "الأزياء والتجارة الإلكترونية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "cloud-runtime",
+          "project": "CELIA_SERVICES",
+          "category": "أنظمة الوكلاء الذكية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "cloud-runtime",
+          "project": "Celia-2027",
+          "category": "أسس وبذور أولية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "cloud-runtime",
+          "project": "CeliaFashionDesign",
+          "category": "الأزياء والتجارة الإلكترونية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "cloud-runtime",
+          "project": "ELAZAMET1",
+          "category": "الأزياء والتجارة الإلكترونية",
+          "engine_status": "partial",
+          "project_status": "SIMULATED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "cloud-runtime",
+          "project": "My-Independent-Virtual-World",
+          "category": "تطبيقات متخصصة",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "cloud-runtime",
+          "project": "New33",
+          "category": "أسس وبذور أولية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "cloud-runtime",
+          "project": "WEB",
+          "category": "منصات المحادثة والويب",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "cloud-runtime",
+          "project": "ai-store",
+          "category": "الأزياء والتجارة الإلكترونية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "cloud-runtime",
+          "project": "ai-store2",
+          "category": "الأزياء والتجارة الإلكترونية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "cloud-runtime",
+          "project": "ai-task",
+          "category": "أنظمة الوكلاء الذكية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "cloud-runtime",
+          "project": "ai.2027",
+          "category": "أسس وبذور أولية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "cloud-runtime",
+          "project": "arbic",
+          "category": "تطبيقات متخصصة",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "cloud-runtime",
+          "project": "blank-app",
+          "category": "تطبيقات متخصصة",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "cloud-runtime",
+          "project": "ccelia2027",
+          "category": "تطبيقات متخصصة",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "cloud-runtime",
+          "project": "cela.ai",
+          "category": "أسس وبذور أولية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "cloud-runtime",
+          "project": "cela.h",
+          "category": "أسس وبذور أولية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "cloud-runtime",
+          "project": "cela.nimna",
+          "category": "أنظمة الوكلاء الذكية",
+          "engine_status": "partial",
+          "project_status": "SIMULATED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "cloud-runtime",
+          "project": "cela2027",
+          "category": "أنظمة الوكلاء الذكية",
+          "engine_status": "partial",
+          "project_status": "SIMULATED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "cloud-runtime",
+          "project": "celia-fashion-2026.",
+          "category": "الأزياء والتجارة الإلكترونية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "cloud-runtime",
+          "project": "celia-fashion-design",
+          "category": "الأزياء والتجارة الإلكترونية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "cloud-runtime",
+          "project": "celia-pro-deployment",
+          "category": "أنظمة الوكلاء الذكية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "cloud-runtime",
+          "project": "celia.sh",
+          "category": "منصات المحادثة والويب",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "cloud-runtime",
+          "project": "celia_elazamey-pro",
+          "category": "أسس وبذور أولية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "cloud-runtime",
+          "project": "celiaos-agent-framework",
+          "category": "أنظمة الوكلاء الذكية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "cloud-runtime",
+          "project": "dr.mukhtar",
+          "category": "تطبيقات متخصصة",
+          "engine_status": "partial",
+          "project_status": "SIMULATED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "cloud-runtime",
+          "project": "easy-ai",
+          "category": "منصات المحادثة والويب",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "cloud-runtime",
+          "project": "if-you-can",
+          "category": "أسس وبذور أولية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "cloud-runtime",
+          "project": "leader2027",
+          "category": "منصات المحادثة والويب",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "cloud-runtime",
+          "project": "new-agent",
+          "category": "أنظمة الوكلاء الذكية",
+          "engine_status": "partial",
+          "project_status": "FAILED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "cloud-runtime",
+          "project": "new-new",
+          "category": "منصات المحادثة والويب",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "cloud-runtime",
+          "project": "new-project",
+          "category": "تطبيقات متخصصة",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "cloud-runtime",
+          "project": "new.pro",
+          "category": "منصات المحادثة والويب",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "cloud-runtime",
+          "project": "open_source-",
+          "category": "أنظمة الوكلاء الذكية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "cloud-runtime",
+          "project": "platform",
+          "category": "أنظمة الوكلاء الذكية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "cloud-runtime",
+          "project": "support-tickets",
+          "category": "تطبيقات متخصصة",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "cloud-runtime",
+          "project": "system-",
+          "category": "منصات المحادثة والويب",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "computer-engine",
+          "project": "12pro",
+          "category": "أنظمة الوكلاء الذكية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "computer-engine",
+          "project": "1pro",
+          "category": "منصات المحادثة والويب",
+          "engine_status": "partial",
+          "project_status": "SIMULATED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "computer-engine",
+          "project": "CELIA22",
+          "category": "الأزياء والتجارة الإلكترونية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "computer-engine",
+          "project": "CELIA_SERVICES",
+          "category": "أنظمة الوكلاء الذكية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "computer-engine",
+          "project": "Celia-2027",
+          "category": "أسس وبذور أولية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "computer-engine",
+          "project": "CeliaFashionDesign",
+          "category": "الأزياء والتجارة الإلكترونية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "computer-engine",
+          "project": "ELAZAMET1",
+          "category": "الأزياء والتجارة الإلكترونية",
+          "engine_status": "partial",
+          "project_status": "SIMULATED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "computer-engine",
+          "project": "My-Independent-Virtual-World",
+          "category": "تطبيقات متخصصة",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "computer-engine",
+          "project": "New33",
+          "category": "أسس وبذور أولية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "computer-engine",
+          "project": "WEB",
+          "category": "منصات المحادثة والويب",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "computer-engine",
+          "project": "ai-store",
+          "category": "الأزياء والتجارة الإلكترونية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "computer-engine",
+          "project": "ai-store2",
+          "category": "الأزياء والتجارة الإلكترونية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "computer-engine",
+          "project": "ai-task",
+          "category": "أنظمة الوكلاء الذكية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "computer-engine",
+          "project": "ai.2027",
+          "category": "أسس وبذور أولية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "computer-engine",
+          "project": "arbic",
+          "category": "تطبيقات متخصصة",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "computer-engine",
+          "project": "blank-app",
+          "category": "تطبيقات متخصصة",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "computer-engine",
+          "project": "ccelia2027",
+          "category": "تطبيقات متخصصة",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "computer-engine",
+          "project": "cela.ai",
+          "category": "أسس وبذور أولية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "computer-engine",
+          "project": "cela.h",
+          "category": "أسس وبذور أولية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "computer-engine",
+          "project": "cela.nimna",
+          "category": "أنظمة الوكلاء الذكية",
+          "engine_status": "partial",
+          "project_status": "SIMULATED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "computer-engine",
+          "project": "cela2027",
+          "category": "أنظمة الوكلاء الذكية",
+          "engine_status": "partial",
+          "project_status": "SIMULATED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "computer-engine",
+          "project": "celia-fashion-2026.",
+          "category": "الأزياء والتجارة الإلكترونية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "computer-engine",
+          "project": "celia-fashion-design",
+          "category": "الأزياء والتجارة الإلكترونية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "computer-engine",
+          "project": "celia-pro-deployment",
+          "category": "أنظمة الوكلاء الذكية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "computer-engine",
+          "project": "celia.sh",
+          "category": "منصات المحادثة والويب",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "computer-engine",
+          "project": "celia_elazamey-pro",
+          "category": "أسس وبذور أولية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "computer-engine",
+          "project": "celiaos-agent-framework",
+          "category": "أنظمة الوكلاء الذكية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "computer-engine",
+          "project": "dr.mukhtar",
+          "category": "تطبيقات متخصصة",
+          "engine_status": "partial",
+          "project_status": "SIMULATED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "computer-engine",
+          "project": "easy-ai",
+          "category": "منصات المحادثة والويب",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "computer-engine",
+          "project": "if-you-can",
+          "category": "أسس وبذور أولية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "computer-engine",
+          "project": "leader2027",
+          "category": "منصات المحادثة والويب",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "computer-engine",
+          "project": "new-agent",
+          "category": "أنظمة الوكلاء الذكية",
+          "engine_status": "partial",
+          "project_status": "FAILED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "computer-engine",
+          "project": "new-new",
+          "category": "منصات المحادثة والويب",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "computer-engine",
+          "project": "new-project",
+          "category": "تطبيقات متخصصة",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "computer-engine",
+          "project": "new.pro",
+          "category": "منصات المحادثة والويب",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "computer-engine",
+          "project": "open_source-",
+          "category": "أنظمة الوكلاء الذكية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "computer-engine",
+          "project": "platform",
+          "category": "أنظمة الوكلاء الذكية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "computer-engine",
+          "project": "support-tickets",
+          "category": "تطبيقات متخصصة",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "computer-engine",
+          "project": "system-",
+          "category": "منصات المحادثة والويب",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "evidence-engine",
+          "project": "12pro",
+          "category": "أنظمة الوكلاء الذكية",
+          "engine_status": "present",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "evidence-engine",
+          "project": "1pro",
+          "category": "منصات المحادثة والويب",
+          "engine_status": "present",
+          "project_status": "SIMULATED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "evidence-engine",
+          "project": "CELIA22",
+          "category": "الأزياء والتجارة الإلكترونية",
+          "engine_status": "present",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "evidence-engine",
+          "project": "CELIA_SERVICES",
+          "category": "أنظمة الوكلاء الذكية",
+          "engine_status": "present",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "evidence-engine",
+          "project": "Celia-2027",
+          "category": "أسس وبذور أولية",
+          "engine_status": "present",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "evidence-engine",
+          "project": "CeliaFashionDesign",
+          "category": "الأزياء والتجارة الإلكترونية",
+          "engine_status": "present",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "evidence-engine",
+          "project": "ELAZAMET1",
+          "category": "الأزياء والتجارة الإلكترونية",
+          "engine_status": "present",
+          "project_status": "SIMULATED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "evidence-engine",
+          "project": "My-Independent-Virtual-World",
+          "category": "تطبيقات متخصصة",
+          "engine_status": "present",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "evidence-engine",
+          "project": "New33",
+          "category": "أسس وبذور أولية",
+          "engine_status": "present",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "evidence-engine",
+          "project": "WEB",
+          "category": "منصات المحادثة والويب",
+          "engine_status": "present",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "evidence-engine",
+          "project": "ai-store",
+          "category": "الأزياء والتجارة الإلكترونية",
+          "engine_status": "present",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "evidence-engine",
+          "project": "ai-store2",
+          "category": "الأزياء والتجارة الإلكترونية",
+          "engine_status": "present",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "evidence-engine",
+          "project": "ai-task",
+          "category": "أنظمة الوكلاء الذكية",
+          "engine_status": "present",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "evidence-engine",
+          "project": "ai.2027",
+          "category": "أسس وبذور أولية",
+          "engine_status": "present",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "evidence-engine",
+          "project": "arbic",
+          "category": "تطبيقات متخصصة",
+          "engine_status": "present",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "evidence-engine",
+          "project": "blank-app",
+          "category": "تطبيقات متخصصة",
+          "engine_status": "present",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "evidence-engine",
+          "project": "ccelia2027",
+          "category": "تطبيقات متخصصة",
+          "engine_status": "present",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "evidence-engine",
+          "project": "cela.ai",
+          "category": "أسس وبذور أولية",
+          "engine_status": "present",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "evidence-engine",
+          "project": "cela.h",
+          "category": "أسس وبذور أولية",
+          "engine_status": "present",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "evidence-engine",
+          "project": "cela.nimna",
+          "category": "أنظمة الوكلاء الذكية",
+          "engine_status": "present",
+          "project_status": "SIMULATED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "evidence-engine",
+          "project": "cela2027",
+          "category": "أنظمة الوكلاء الذكية",
+          "engine_status": "present",
+          "project_status": "SIMULATED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "evidence-engine",
+          "project": "celia-fashion-2026.",
+          "category": "الأزياء والتجارة الإلكترونية",
+          "engine_status": "present",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "evidence-engine",
+          "project": "celia-fashion-design",
+          "category": "الأزياء والتجارة الإلكترونية",
+          "engine_status": "present",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "evidence-engine",
+          "project": "celia-pro-deployment",
+          "category": "أنظمة الوكلاء الذكية",
+          "engine_status": "present",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "evidence-engine",
+          "project": "celia.sh",
+          "category": "منصات المحادثة والويب",
+          "engine_status": "present",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "evidence-engine",
+          "project": "celia_elazamey-pro",
+          "category": "أسس وبذور أولية",
+          "engine_status": "present",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "evidence-engine",
+          "project": "celiaos-agent-framework",
+          "category": "أنظمة الوكلاء الذكية",
+          "engine_status": "present",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "evidence-engine",
+          "project": "dr.mukhtar",
+          "category": "تطبيقات متخصصة",
+          "engine_status": "present",
+          "project_status": "SIMULATED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "evidence-engine",
+          "project": "easy-ai",
+          "category": "منصات المحادثة والويب",
+          "engine_status": "present",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "evidence-engine",
+          "project": "if-you-can",
+          "category": "أسس وبذور أولية",
+          "engine_status": "present",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "evidence-engine",
+          "project": "leader2027",
+          "category": "منصات المحادثة والويب",
+          "engine_status": "present",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "evidence-engine",
+          "project": "new-agent",
+          "category": "أنظمة الوكلاء الذكية",
+          "engine_status": "present",
+          "project_status": "FAILED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "evidence-engine",
+          "project": "new-new",
+          "category": "منصات المحادثة والويب",
+          "engine_status": "present",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "evidence-engine",
+          "project": "new-project",
+          "category": "تطبيقات متخصصة",
+          "engine_status": "present",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "evidence-engine",
+          "project": "new.pro",
+          "category": "منصات المحادثة والويب",
+          "engine_status": "present",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "evidence-engine",
+          "project": "open_source-",
+          "category": "أنظمة الوكلاء الذكية",
+          "engine_status": "present",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "evidence-engine",
+          "project": "platform",
+          "category": "أنظمة الوكلاء الذكية",
+          "engine_status": "present",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "evidence-engine",
+          "project": "support-tickets",
+          "category": "تطبيقات متخصصة",
+          "engine_status": "present",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "evidence-engine",
+          "project": "system-",
+          "category": "منصات المحادثة والويب",
+          "engine_status": "present",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "intelligence-core",
+          "project": "12pro",
+          "category": "أنظمة الوكلاء الذكية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "intelligence-core",
+          "project": "1pro",
+          "category": "منصات المحادثة والويب",
+          "engine_status": "partial",
+          "project_status": "SIMULATED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "intelligence-core",
+          "project": "CELIA22",
+          "category": "الأزياء والتجارة الإلكترونية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "intelligence-core",
+          "project": "CELIA_SERVICES",
+          "category": "أنظمة الوكلاء الذكية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "intelligence-core",
+          "project": "Celia-2027",
+          "category": "أسس وبذور أولية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "intelligence-core",
+          "project": "CeliaFashionDesign",
+          "category": "الأزياء والتجارة الإلكترونية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "intelligence-core",
+          "project": "ELAZAMET1",
+          "category": "الأزياء والتجارة الإلكترونية",
+          "engine_status": "partial",
+          "project_status": "SIMULATED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "intelligence-core",
+          "project": "My-Independent-Virtual-World",
+          "category": "تطبيقات متخصصة",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "intelligence-core",
+          "project": "New33",
+          "category": "أسس وبذور أولية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "intelligence-core",
+          "project": "WEB",
+          "category": "منصات المحادثة والويب",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "intelligence-core",
+          "project": "ai-store",
+          "category": "الأزياء والتجارة الإلكترونية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "intelligence-core",
+          "project": "ai-store2",
+          "category": "الأزياء والتجارة الإلكترونية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "intelligence-core",
+          "project": "ai-task",
+          "category": "أنظمة الوكلاء الذكية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "intelligence-core",
+          "project": "ai.2027",
+          "category": "أسس وبذور أولية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "intelligence-core",
+          "project": "arbic",
+          "category": "تطبيقات متخصصة",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "intelligence-core",
+          "project": "blank-app",
+          "category": "تطبيقات متخصصة",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "intelligence-core",
+          "project": "ccelia2027",
+          "category": "تطبيقات متخصصة",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "intelligence-core",
+          "project": "cela.ai",
+          "category": "أسس وبذور أولية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "intelligence-core",
+          "project": "cela.h",
+          "category": "أسس وبذور أولية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "intelligence-core",
+          "project": "cela.nimna",
+          "category": "أنظمة الوكلاء الذكية",
+          "engine_status": "partial",
+          "project_status": "SIMULATED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "intelligence-core",
+          "project": "cela2027",
+          "category": "أنظمة الوكلاء الذكية",
+          "engine_status": "partial",
+          "project_status": "SIMULATED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "intelligence-core",
+          "project": "celia-fashion-2026.",
+          "category": "الأزياء والتجارة الإلكترونية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "intelligence-core",
+          "project": "celia-fashion-design",
+          "category": "الأزياء والتجارة الإلكترونية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "intelligence-core",
+          "project": "celia-pro-deployment",
+          "category": "أنظمة الوكلاء الذكية",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        },
+        {
+          "engine": "intelligence-core",
+          "project": "celia.sh",
+          "category": "منصات المحادثة والويب",
+          "engine_status": "partial",
+          "project_status": "DECLARED",
+          "weight": 1,
+          "sources": "ENGINEERING-INVENTORY-2027.md"
+        }
+      ],
+      "nodes": [
+        {
+          "id": "engine:intelligence-core",
+          "kind": "engine",
+          "label": "intelligence-core",
+          "status": "partial"
+        },
+        {
+          "id": "engine:python-alchemy",
+          "kind": "engine",
+          "label": "python-alchemy",
+          "status": "partial"
+        },
+        {
+          "id": "engine:model-router",
+          "kind": "engine",
+          "label": "model-router",
+          "status": "present"
+        },
+        {
+          "id": "engine:agent-fleet",
+          "kind": "engine",
+          "label": "agent-fleet",
+          "status": "partial"
+        },
+        {
+          "id": "engine:browser-engine",
+          "kind": "engine",
+          "label": "browser-engine",
+          "status": "partial"
+        },
+        {
+          "id": "engine:computer-engine",
+          "kind": "engine",
+          "label": "computer-engine",
+          "status": "partial"
+        },
+        {
+          "id": "engine:skill-engine",
+          "kind": "engine",
+          "label": "skill-engine",
+          "status": "partial"
+        },
+        {
+          "id": "engine:memory-engine",
+          "kind": "engine",
+          "label": "memory-engine",
+          "status": "present"
+        },
+        {
+          "id": "engine:automation-engine",
+          "kind": "engine",
+          "label": "automation-engine",
+          "status": "partial"
+        },
+        {
+          "id": "engine:cloud-runtime",
+          "kind": "engine",
+          "label": "cloud-runtime",
+          "status": "partial"
+        },
+        {
+          "id": "engine:security-engine",
+          "kind": "engine",
+          "label": "security-engine",
+          "status": "present"
+        },
+        {
+          "id": "engine:evidence-engine",
+          "kind": "engine",
+          "label": "evidence-engine",
+          "status": "present"
+        },
+        {
+          "id": "engine:shared-kernel",
+          "kind": "engine",
+          "label": "shared-kernel",
+          "status": "present"
+        },
+        {
+          "id": "project:cela2027",
+          "kind": "project",
+          "label": "cela2027",
+          "status": "SIMULATED"
+        },
+        {
+          "id": "project:agi-system",
+          "kind": "project",
+          "label": "agi-system",
+          "status": "PROVEN"
+        },
+        {
+          "id": "project:12pro",
+          "kind": "project",
+          "label": "12pro",
+          "status": "DECLARED"
+        },
+        {
+          "id": "project:open_source-",
+          "kind": "project",
+          "label": "open_source-",
+          "status": "DECLARED"
+        },
+        {
+          "id": "project:cela.nimna",
+          "kind": "project",
+          "label": "cela.nimna",
+          "status": "SIMULATED"
+        },
+        {
+          "id": "project:celia-pro-deployment",
+          "kind": "project",
+          "label": "celia-pro-deployment",
+          "status": "DECLARED"
+        },
+        {
+          "id": "project:CELIA_SERVICES",
+          "kind": "project",
+          "label": "CELIA_SERVICES",
+          "status": "DECLARED"
+        },
+        {
+          "id": "project:ai-task",
+          "kind": "project",
+          "label": "ai-task",
+          "status": "DECLARED"
+        },
+        {
+          "id": "project:platform",
+          "kind": "project",
+          "label": "platform",
+          "status": "DECLARED"
+        },
+        {
+          "id": "project:new-agent",
+          "kind": "project",
+          "label": "new-agent",
+          "status": "FAILED"
+        },
+        {
+          "id": "project:gethip_agen",
+          "kind": "project",
+          "label": "gethip_agen",
+          "status": "DECLARED"
+        },
+        {
+          "id": "project:celiaos-agent-framework",
+          "kind": "project",
+          "label": "celiaos-agent-framework",
+          "status": "DECLARED"
+        },
+        {
+          "id": "project:agentic-ai-system-2026",
+          "kind": "project",
+          "label": "agentic-ai-system-2026",
+          "status": "DECLARED"
+        },
+        {
+          "id": "project:Cela2",
+          "kind": "project",
+          "label": "Cela2",
+          "status": "DECLARED"
+        },
+        {
+          "id": "project:SICA-Self-Improving-Coding-Agent-",
+          "kind": "project",
+          "label": "SICA-Self-Improving-Coding-Agent-",
+          "status": "DECLARED"
+        },
+        {
+          "id": "project:Software-Agent-Architect",
+          "kind": "project",
+          "label": "Software-Agent-Architect",
+          "status": "DECLARED"
+        },
+        {
+          "id": "project:ui",
+          "kind": "project",
+          "label": "ui",
+          "status": "SIMULATED"
+        },
+        {
+          "id": "project:new.pro",
+          "kind": "project",
+          "label": "new.pro",
+          "status": "DECLARED"
+        },
+        {
+          "id": "project:new-new",
+          "kind": "project",
+          "label": "new-new",
+          "status": "DECLARED"
+        },
+        {
+          "id": "project:system-",
+          "kind": "project",
+          "label": "system-",
+          "status": "DECLARED"
+        },
+        {
+          "id": "project:WEB",
+          "kind": "project",
+          "label": "WEB",
+          "status": "DECLARED"
+        },
+        {
+          "id": "project:leader2027",
+          "kind": "project",
+          "label": "leader2027",
+          "status": "DECLARED"
+        },
+        {
+          "id": "project:easy-ai",
+          "kind": "project",
+          "label": "easy-ai",
+          "status": "DECLARED"
+        },
+        {
+          "id": "project:1pro",
+          "kind": "project",
+          "label": "1pro",
+          "status": "SIMULATED"
+        },
+        {
+          "id": "project:celia.sh",
+          "kind": "project",
+          "label": "celia.sh",
+          "status": "DECLARED"
+        },
+        {
+          "id": "project:ELAZAMET1",
+          "kind": "project",
+          "label": "ELAZAMET1",
+          "status": "SIMULATED"
+        },
+        {
+          "id": "project:celia-fashion-2026.",
+          "kind": "project",
+          "label": "celia-fashion-2026.",
+          "status": "DECLARED"
+        },
+        {
+          "id": "project:celia-fashion-design",
+          "kind": "project",
+          "label": "celia-fashion-design",
+          "status": "DECLARED"
+        },
+        {
+          "id": "project:celia-fashion-live-master",
+          "kind": "project",
+          "label": "celia-fashion-live-master",
+          "status": "DECLARED"
+        },
+        {
+          "id": "project:CeliaFashionDesign",
+          "kind": "project",
+          "label": "CeliaFashionDesign",
+          "status": "DECLARED"
+        },
+        {
+          "id": "project:CELIA22",
+          "kind": "project",
+          "label": "CELIA22",
+          "status": "DECLARED"
+        },
+        {
+          "id": "project:ai-store2",
+          "kind": "project",
+          "label": "ai-store2",
+          "status": "DECLARED"
+        },
+        {
+          "id": "project:ai-store",
+          "kind": "project",
+          "label": "ai-store",
+          "status": "DECLARED"
+        },
+        {
+          "id": "project:dr.mukhtar",
+          "kind": "project",
+          "label": "dr.mukhtar",
+          "status": "SIMULATED"
+        },
+        {
+          "id": "project:arbic",
+          "kind": "project",
+          "label": "arbic",
+          "status": "DECLARED"
+        },
+        {
+          "id": "project:My-Independent-Virtual-World",
+          "kind": "project",
+          "label": "My-Independent-Virtual-World",
+          "status": "DECLARED"
+        },
+        {
+          "id": "project:new-project",
+          "kind": "project",
+          "label": "new-project",
+          "status": "DECLARED"
+        },
+        {
+          "id": "project:ccelia2027",
+          "kind": "project",
+          "label": "ccelia2027",
+          "status": "DECLARED"
+        },
+        {
+          "id": "project:support-tickets",
+          "kind": "project",
+          "label": "support-tickets",
+          "status": "DECLARED"
+        },
+        {
+          "id": "project:blank-app",
+          "kind": "project",
+          "label": "blank-app",
+          "status": "DECLARED"
+        },
+        {
+          "id": "project:firebase-ai-app",
+          "kind": "project",
+          "label": "firebase-ai-app",
+          "status": "DECLARED"
+        },
+        {
+          "id": "project:ai.2027",
+          "kind": "project",
+          "label": "ai.2027",
+          "status": "DECLARED"
+        },
+        {
+          "id": "project:Celia-2027",
+          "kind": "project",
+          "label": "Celia-2027",
+          "status": "DECLARED"
+        },
+        {
+          "id": "project:cela.ai",
+          "kind": "project",
+          "label": "cela.ai",
+          "status": "DECLARED"
+        },
+        {
+          "id": "project:cela.h",
+          "kind": "project",
+          "label": "cela.h",
+          "status": "DECLARED"
+        },
+        {
+          "id": "project:New33",
+          "kind": "project",
+          "label": "New33",
+          "status": "DECLARED"
+        },
+        {
+          "id": "project:if-you-can",
+          "kind": "project",
+          "label": "if-you-can",
+          "status": "DECLARED"
+        },
+        {
+          "id": "project:celia_elazamey-pro",
+          "kind": "project",
+          "label": "celia_elazamey-pro",
+          "status": "DECLARED"
+        }
+      ],
+      "notes": [
+        "العلاقة مبنية على ورود اسم المحرك واسم المشروع في نفس الوثيقة — علاقة توثيقية، لا تبعية تشغيلية.",
+        "الوزن = عدد مرات التشارك في الوثائق (سقف لكل وثيقة لتجنّب تضخيم الملفات الطويلة)."
+      ]
+    },
+    "security": {
+      "status": "MONITOR",
+      "summary": [
+        {
+          "label": "ملاحظات عالية",
+          "value": 5,
+          "note": "من الجرد التاريخي"
+        },
+        {
+          "label": "حواجز محلية",
+          "value": 12,
+          "note": "ملفات/سير عمل موجودة"
+        },
+        {
+          "label": "سجلات",
+          "value": 1,
+          "note": "وثائق"
+        }
+      ],
+      "rows": [
+        {
+          "severity": "HIGH",
+          "signal": "12pro/certification",
+          "detail": "invalid/empty JSON artifact: v1.0.0-raw/health-raw.json",
+          "source": "docs/inventory-2027.json"
+        },
+        {
+          "severity": "HIGH",
+          "signal": "WEB",
+          "detail": "proprietary — exclude from open-source claims",
+          "source": "docs/inventory-2027.json"
+        },
+        {
+          "severity": "HIGH",
+          "signal": "ccelia2027",
+          "detail": "license undecided",
+          "source": "docs/inventory-2027.json"
+        },
+        {
+          "severity": "HIGH",
+          "signal": "celia-pro-deployment",
+          "detail": "proprietary — exclude from open-source claims",
+          "source": "docs/inventory-2027.json"
+        },
+        {
+          "severity": "HIGH",
+          "signal": "new-agent",
+          "detail": "LICENSE file corrupt",
+          "source": "docs/inventory-2027.json"
+        },
+        {
+          "severity": "CONTROL",
+          "signal": "live_egress_audit",
+          "detail": "حاجز أمان محلي موجود في المستودع (وجود الملف لا يعني أنه نُفّذ الآن).",
+          "source": "scripts/live_egress_audit.py"
+        },
+        {
+          "severity": "CONTROL",
+          "signal": "network_preflight",
+          "detail": "حاجز أمان محلي موجود في المستودع (وجود الملف لا يعني أنه نُفّذ الآن).",
+          "source": "scripts/network_preflight.py"
+        },
+        {
+          "severity": "CONTROL",
+          "signal": "secret_scan",
+          "detail": "حاجز أمان محلي موجود في المستودع (وجود الملف لا يعني أنه نُفّذ الآن).",
+          "source": "scripts/secret_scan.py"
+        },
+        {
+          "severity": "CONTROL",
+          "signal": "test_live_egress",
+          "detail": "حاجز أمان محلي موجود في المستودع (وجود الملف لا يعني أنه نُفّذ الآن).",
+          "source": "scripts/test_live_egress.py"
+        },
+        {
+          "severity": "CONTROL",
+          "signal": "test_network_preflight",
+          "detail": "حاجز أمان محلي موجود في المستودع (وجود الملف لا يعني أنه نُفّذ الآن).",
+          "source": "scripts/test_network_preflight.py"
+        },
+        {
+          "severity": "CONTROL",
+          "signal": "test_policy_hardening",
+          "detail": "حاجز أمان محلي موجود في المستودع (وجود الملف لا يعني أنه نُفّذ الآن).",
+          "source": "scripts/test_policy_hardening.py"
+        },
+        {
+          "severity": "CONTROL",
+          "signal": "test_secret_scan",
+          "detail": "حاجز أمان محلي موجود في المستودع (وجود الملف لا يعني أنه نُفّذ الآن).",
+          "source": "scripts/test_secret_scan.py"
+        },
+        {
+          "severity": "CONTROL",
+          "signal": "test_workflow_secret_audit",
+          "detail": "حاجز أمان محلي موجود في المستودع (وجود الملف لا يعني أنه نُفّذ الآن).",
+          "source": "scripts/test_workflow_secret_audit.py"
+        },
+        {
+          "severity": "CONTROL",
+          "signal": "workflow_secret_audit",
+          "detail": "حاجز أمان محلي موجود في المستودع (وجود الملف لا يعني أنه نُفّذ الآن).",
+          "source": "scripts/workflow_secret_audit.py"
+        },
+        {
+          "severity": "CONTROL",
+          "signal": "codeql",
+          "detail": "سير عمل مرتبط بالأمان مُعرَّف محلياً.",
+          "source": ".github/workflows/codeql.yml"
+        },
+        {
+          "severity": "CONTROL",
+          "signal": "live-egress-audit",
+          "detail": "سير عمل مرتبط بالأمان مُعرَّف محلياً.",
+          "source": ".github/workflows/live-egress-audit.yml"
+        },
+        {
+          "severity": "CONTROL",
+          "signal": "pr-lens",
+          "detail": "سير عمل مرتبط بالأمان مُعرَّف محلياً.",
+          "source": ".github/workflows/pr-lens.yml"
+        },
+        {
+          "severity": "DOC",
+          "signal": "DEFECT-LEDGER.md",
+          "detail": "سجل السياسات/العيوب متاح للمراجعة اليدوية.",
+          "source": "docs/DEFECT-LEDGER.md"
+        }
+      ],
+      "notes": [
+        "لا يوجد فحص CVE أو اتصال شبكي هنا: المراقبة محلية بالكامل وتعتمد على الملفات المُسجَّلة.",
+        "CONTROL يعني أن الحاجز موجود كملف؛ تشغيله ونتائجه يحتاجان إلى فحص مستقل."
+      ]
+    },
+    "ci": {
+      "status": "PASS",
+      "summary": [
+        {
+          "label": "سير عمل",
+          "value": 18,
+          "note": "مقاس الآن"
+        },
+        {
+          "label": "إجراءات مثبّتة SHA",
+          "value": 15,
+          "note": "full-length SHA"
+        },
+        {
+          "label": "إجراءات بلا تثبيت",
+          "value": 0,
+          "note": "مراجعة مطلوبة إن وُجدت"
+        },
+        {
+          "label": "اختبارات مسجّلة",
+          "value": 2054,
+          "note": "تاريخية · لم تُعَد هنا"
+        }
+      ],
+      "rows": [
+        {
+          "workflow": "agent-substrate-deploy",
+          "name": "Agent Substrate manual deploy",
+          "jobs": 1,
+          "triggers": "workflow_dispatch",
+          "pinned": 0,
+          "unpinned": 0,
+          "status": "OK",
+          "source": ".github/workflows/agent-substrate-deploy.yml"
+        },
+        {
+          "workflow": "agent-substrate-images",
+          "name": "Agent Substrate images",
+          "jobs": 1,
+          "triggers": "push",
+          "pinned": 0,
+          "unpinned": 0,
+          "status": "OK",
+          "source": ".github/workflows/agent-substrate-images.yml"
+        },
+        {
+          "workflow": "browser-handoff-windows-review",
+          "name": "Browser Handoff · Windows Review",
+          "jobs": 1,
+          "triggers": "push",
+          "pinned": 0,
+          "unpinned": 0,
+          "status": "OK",
+          "source": ".github/workflows/browser-handoff-windows-review.yml"
+        },
+        {
+          "workflow": "ci",
+          "name": "Evidence-First CI",
+          "jobs": 17,
+          "triggers": "push, pull_request, workflow_dispatch",
+          "pinned": 4,
+          "unpinned": 0,
+          "status": "OK",
+          "source": ".github/workflows/ci.yml"
+        },
+        {
+          "workflow": "codeql",
+          "name": "CodeQL",
+          "jobs": 1,
+          "triggers": "push, pull_request, schedule",
+          "pinned": 0,
+          "unpinned": 0,
+          "status": "OK",
+          "source": ".github/workflows/codeql.yml"
+        },
+        {
+          "workflow": "deploy",
+          "name": "Deploy to Render",
+          "jobs": 1,
+          "triggers": "workflow_dispatch",
+          "pinned": 1,
+          "unpinned": 0,
+          "status": "OK",
+          "source": ".github/workflows/deploy.yml"
+        },
+        {
+          "workflow": "e2b-live-check",
+          "name": "E2B sandbox live smoke check",
+          "jobs": 1,
+          "triggers": "workflow_dispatch",
+          "pinned": 0,
+          "unpinned": 0,
+          "status": "OK",
+          "source": ".github/workflows/e2b-live-check.yml"
+        },
+        {
+          "workflow": "ember",
+          "name": "Ember beat",
+          "jobs": 1,
+          "triggers": "schedule, workflow_dispatch",
+          "pinned": 1,
+          "unpinned": 0,
+          "status": "OK",
+          "source": ".github/workflows/ember.yml"
+        },
+        {
+          "workflow": "fleet-2027",
+          "name": "Fleet 2027 · durable agents",
+          "jobs": 3,
+          "triggers": "push, pull_request, workflow_dispatch",
+          "pinned": 1,
+          "unpinned": 0,
+          "status": "OK",
+          "source": ".github/workflows/fleet-2027.yml"
+        },
+        {
+          "workflow": "gemini-live-check",
+          "name": "Gemini live smoke check",
+          "jobs": 1,
+          "triggers": "workflow_dispatch",
+          "pinned": 0,
+          "unpinned": 0,
+          "status": "OK",
+          "source": ".github/workflows/gemini-live-check.yml"
+        },
+        {
+          "workflow": "live-egress-audit",
+          "name": "Live egress audit",
+          "jobs": 1,
+          "triggers": "schedule, workflow_dispatch",
+          "pinned": 0,
+          "unpinned": 0,
+          "status": "OK",
+          "source": ".github/workflows/live-egress-audit.yml"
+        },
+        {
+          "workflow": "nvidia-live-check",
+          "name": "NVIDIA NIM live smoke check",
+          "jobs": 1,
+          "triggers": "workflow_dispatch",
+          "pinned": 0,
+          "unpinned": 0,
+          "status": "OK",
+          "source": ".github/workflows/nvidia-live-check.yml"
+        },
+        {
+          "workflow": "pages",
+          "name": "Deploy static site to GitHub Pages",
+          "jobs": 2,
+          "triggers": "push, workflow_dispatch",
+          "pinned": 2,
+          "unpinned": 0,
+          "status": "OK",
+          "source": ".github/workflows/pages.yml"
+        },
+        {
+          "workflow": "pr-lens",
+          "name": "PR Lens Architecture Map",
+          "jobs": 1,
+          "triggers": "workflow_dispatch",
+          "pinned": 1,
+          "unpinned": 0,
+          "status": "OK",
+          "source": ".github/workflows/pr-lens.yml"
+        },
+        {
+          "workflow": "project-lifecycle",
+          "name": "AI-2027 Project Lifecycle",
+          "jobs": 7,
+          "triggers": "workflow_dispatch",
+          "pinned": 0,
+          "unpinned": 0,
+          "status": "OK",
+          "source": ".github/workflows/project-lifecycle.yml"
+        },
+        {
+          "workflow": "python-2027",
+          "name": "Python 2027 Protocol CI",
+          "jobs": 3,
+          "triggers": "push, pull_request, workflow_dispatch",
+          "pinned": 4,
+          "unpinned": 0,
+          "status": "OK",
+          "source": ".github/workflows/python-2027.yml"
+        },
+        {
+          "workflow": "real-model",
+          "name": "Real model benchmark · free provider, main only",
+          "jobs": 1,
+          "triggers": "workflow_dispatch",
+          "pinned": 1,
+          "unpinned": 0,
+          "status": "OK",
+          "source": ".github/workflows/real-model.yml"
+        },
+        {
+          "workflow": "release",
+          "name": "Release",
+          "jobs": 1,
+          "triggers": "push",
+          "pinned": 0,
+          "unpinned": 0,
+          "status": "OK",
+          "source": ".github/workflows/release.yml"
+        },
+        {
+          "workflow": "historical test matrix",
+          "name": "docs/inventory-2027.json (2026-11-22)",
+          "jobs": 15,
+          "triggers": "recorded",
+          "pinned": 0,
+          "unpinned": 0,
+          "status": "HISTORICAL",
+          "source": "docs/inventory-2027.json"
+        }
+      ],
+      "notes": [
+        "مجموع الاختبارات من الجرد التاريخي؛ لا يُحتسب كتشغيل حالي.",
+        "فحص التثبيت يستحقّ النص فقط ولا يضمن أن الإجراء مُحدَّث أو آمن.",
+        "المسارات المحلية ./.github/workflows/ هي reusable workflows وليست إجراءات خارجية، فلا تُحتسب ضمن التثبيت."
+      ]
+    },
+    "progress": {
+      "status": "MEASURED",
+      "summary": [
+        {
+          "label": "نسبة PROVEN في الأرشيف",
+          "value": "2.1%",
+          "note": "1 من 48 · من catalog.json"
+        },
+        {
+          "label": "محركات حاضرة",
+          "value": "38.5%",
+          "note": "5 من 13"
+        },
+        {
+          "label": "اختبارات ناجحة (تاريخي)",
+          "value": 2054,
+          "note": "2026-11-22 · لم تُعَد هنا"
+        },
+        {
+          "label": "بطاقات الأطلس",
+          "value": 274,
+          "note": "كل بطاقة مرتبطة بمصدر"
+        }
+      ],
+      "rows": [
+        {
+          "area": "مشاريع DECLARED",
+          "count": 40,
+          "action": "تشغيل اختباراتها محلياً قبل ترقيتها",
+          "source": "catalog.json"
+        },
+        {
+          "area": "مشاريع بلا رخصة",
+          "count": 23,
+          "action": "تحديد حالة الترخيص قبل إعادة الاستخدام",
+          "source": "docs/inventory-2027.json"
+        },
+        {
+          "area": "تصحيحات مسجّلة",
+          "count": 17,
+          "action": "منع عودة الادعاءات المصحَّحة",
+          "source": "docs/inventory-2027.json"
+        },
+        {
+          "area": "محركات PARTIAL",
+          "count": 8,
+          "action": "إغلاق الفجوات المعلنة واحدة واحدة",
+          "source": "docs/inventory-2027.json"
+        },
+        {
+          "area": "مشاريع SIMULATED",
+          "count": 6,
+          "action": "بناء قدرة حقيقية أو إزالة الادعاء",
+          "source": "catalog.json"
+        },
+        {
+          "area": "ملاحظات أمان عالية",
+          "count": 5,
+          "action": "إعادة فحصها قبل الاعتماد",
+          "source": "docs/inventory-2027.json"
+        },
+        {
+          "area": "واجهات متوقفة",
+          "count": 3,
+          "action": "تحديث الحالة أو إصلاح النشر",
+          "source": "catalog.json"
+        }
+      ],
+      "notes": [
+        "النسب محسوبة من ملفات المصدر ولا تُساوي «نسبة اكتمال المنتج».",
+        "الاختناقات مرتّبة بعدد العناصر، لا بخطورتها؛ الترتيب للعمل لا للتقييم."
+      ]
+    },
+    "regression": {
+      "status": "CLEAN",
+      "summary": [
+        {
+          "label": "ملفات حرجة محذوفة",
+          "value": 0,
+          "note": "scripts/workflows/kernel/memory"
+        },
+        {
+          "label": "مصادر أطلس مكسورة",
+          "value": 0,
+          "note": "من بطاقات الأطلس"
+        },
+        {
+          "label": "تغيّرات غير حرجة",
+          "value": 0,
+          "note": "إضافة/تعديل اعتيادي"
+        }
+      ],
+      "rows": [],
+      "notes": [
+        "هذا وكيل regression على مستوى الملفات: يكتشف اختفاء الملفات أو كسر المصادر.",
+        "لا يستطيع اكتشاف تراجع سلوكي إلا إذا سُجِّلت نتائج تشغيل سابقة وقورنت."
+      ]
+    }
+  },
+  "verdict": "PASS",
+  "watch_modules": []
+}
