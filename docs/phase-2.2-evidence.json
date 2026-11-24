@@ -1,0 +1,573 @@
+{
+  "schema": 1,
+  "phase": "2.2 — Close Operational Evidence Gaps",
+  "generated_at": "2026-11-24T10:06:32Z",
+  "verdict": "PARTIAL",
+  "verdict_rule": "No BLOCKED becomes PASS without new reproducible execution. GO requires every transition PASS.",
+  "environment": {
+    "python": "3.11.2",
+    "platform": "Linux-6.1.158+-x86_64-with-glibc2.36",
+    "head": "f0fa3c88de33924dfd256c42d03c8c5f9e3a3e62",
+    "branch": "arena/0c4ea391-ai-2027"
+  },
+  "read_only_audit": {
+    "status": "PASS",
+    "head": "f0fa3c88de33924dfd256c42d03c8c5f9e3a3e62",
+    "previous_verdict": "PARTIAL",
+    "previous_acceptance": {
+      "core_kernel_untouched": "PASS",
+      "baseline_integrity": "PASS",
+      "real_test_execution": "PARTIAL",
+      "python2027_suite": "BLOCKED",
+      "ci_evidence": "PARTIAL",
+      "functional_regression": "PASS",
+      "secret_scan": "PARTIAL",
+      "dependency_boundary": "PARTIAL",
+      "workflow_pin_policy": "PASS",
+      "independent_audit_reproduced": "PASS"
+    },
+    "previous_baseline_sha256": "71e5401a1d1f8e765892c7ac6b508e483e7c70f3829bf2e1c93eaad6baec03f5",
+    "current_baseline_sha256": "71e5401a1d1f8e765892c7ac6b508e483e7c70f3829bf2e1c93eaad6baec03f5",
+    "baseline_chain_ok": true,
+    "baseline_matches_head": true,
+    "core_kernel_changes": [],
+    "deletions": [],
+    "tracked_changes": [
+      "M\tREADME.md"
+    ],
+    "note": "Baseline was NOT refreshed. Only additive untracked files and the documented README addition exist."
+  },
+  "tasks": {
+    "python2027": {
+      "status": "PASS",
+      "tests": 491,
+      "evidence": {
+        "command": "/tmp/ai2027-py22-venv/bin/python -m unittest discover -s python-2027/tests -p 'test_*.py'",
+        "cwd": ".",
+        "timestamp_utc": "2026-11-24T10:05:37Z",
+        "duration_ms": 1551,
+        "exit_code": 0,
+        "stdout_sha256": "e98eb662a4573d9ff4fcd469761d33f6410d5c26fa749ad2223d921312e3a4dd",
+        "stdout": "/tmp/ai2027-py22-venv/lib/python3.11/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.\n  from starlette.testclient import TestClient as TestClient  # noqa\n...........................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................\n----------------------------------------------------------------------\nRan 491 tests in 0.694s\n\nOK\n",
+        "stdout_tail": "/tmp/ai2027-py22-venv/lib/python3.11/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.\n  from starlette.testclient import TestClient as TestClient  # noqa\n...........................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................\n----------------------------------------------------------------------\nRan 491 tests in 0.694s\n\nOK\n"
+      },
+      "notes": [
+        "Real unittest execution with declared runtime + dev dependencies in a disposable venv.",
+        "No project contract, test file or source file was modified.",
+        "7 of 50 test modules use standard mock helpers for isolated units; 0 skips were observed. The PASS is from executing all tests, not from a mock harness."
+      ]
+    },
+    "ember": {
+      "status": "PARTIAL",
+      "runs": [
+        {
+          "run_id": "45269446494",
+          "url": "https://github.com/sayedelazameydesign-crypto/ai-2027/actions/runs/45269446494",
+          "conclusion": "failure",
+          "failing_check": "One measured beat (real servers, real HTTP, gated)",
+          "annotations": [
+            "Process completed with exit code 1.",
+            "ember degraded (stage 2)",
+            "transient signal — retrying the beat once (stage 1)"
+          ]
+        },
+        {
+          "run_id": "45132595680",
+          "url": "https://github.com/sayedelazameydesign-crypto/ai-2027/actions/runs/45132595680",
+          "conclusion": "failure",
+          "failing_check": "One measured beat (real servers, real HTTP, gated)",
+          "annotations": [
+            "Process completed with exit code 1.",
+            "ember degraded (stage 2)",
+            "transient signal — retrying the beat once (stage 1)"
+          ]
+        }
+      ],
+      "issue": {
+        "number": 168,
+        "state": "open",
+        "title": "🔥 Ember degraded — the health gate refused a beat"
+      },
+      "gate_details": [
+        {
+          "failures": "beat_freshness",
+          "previous_beat_age_h": "8.03",
+          "cadence_h": "3.0",
+          "tolerance_h": "5.0",
+          "smoke": "17/17",
+          "run_url": "actions/runs/45132595680"
+        },
+        {
+          "failures": "beat_freshness",
+          "previous_beat_age_h": "13.77",
+          "cadence_h": "3.0",
+          "tolerance_h": "5.0",
+          "smoke": "17/17",
+          "run_url": "actions/runs/45269446494"
+        },
+        {
+          "failures": "beat_freshness",
+          "previous_beat_age_h": "12.49",
+          "cadence_h": "3.0",
+          "tolerance_h": "5.0",
+          "smoke": "17/17",
+          "run_url": "actions/runs/45369598666"
+        },
+        {
+          "failures": "beat_freshness",
+          "previous_beat_age_h": "unknown",
+          "cadence_h": "unknown",
+          "tolerance_h": "unknown",
+          "smoke": "unknown",
+          "run_url": ""
+        }
+      ],
+      "root_cause": "GitHub scheduled-beat gaps (8.03, 13.77, 12.49h) exceeded the gate's 3.0h cadence + 5.0h tolerance. Functional smoke checks passed 17/17; only beat_freshness failed. Issue #168 reached stage 3 escalation. This is a scheduler cadence issue, not a code regression.",
+      "fix_applied": false,
+      "fix_note": "No workflow/deploy configuration was changed: that requires explicit approval.",
+      "source": "GitHub check-run annotations + issue #168 and its bot comments (api.github.com)"
+    },
+    "secrets": {
+      "status": "PARTIAL",
+      "total_warnings": 11,
+      "blocking_in_code": 0,
+      "rows": [
+        {
+          "path": "projects/ai-store2/env.local",
+          "line": "0",
+          "rule": "forbidden_file",
+          "classification": "HISTORICAL_REAL_REDACTED",
+          "rationale": "documented upstream mirror; value redacted locally; rotation tracked in issue #21 (not verified here)"
+        },
+        {
+          "path": "projects/cela.nimna/tests/conftest.py",
+          "line": "15",
+          "rule": "assigned_secret",
+          "classification": "TEST_FIXTURE",
+          "rationale": "test-only literal in archived project; no production path"
+        },
+        {
+          "path": "projects/celia.sh/tests/metrics.test.ts",
+          "line": "9",
+          "rule": "assigned_secret",
+          "classification": "TEST_FIXTURE",
+          "rationale": "test-only literal in archived project; no production path"
+        },
+        {
+          "path": "projects/easy-ai/tests/test_redact.py",
+          "line": "37",
+          "rule": "jwt",
+          "classification": "TEST_FIXTURE",
+          "rationale": "test-only literal in archived project; no production path"
+        },
+        {
+          "path": "projects/easy-ai/tests/test_redact.py",
+          "line": "64",
+          "rule": "private_key_block",
+          "classification": "TEST_FIXTURE",
+          "rationale": "test-only literal in archived project; no production path"
+        },
+        {
+          "path": "projects/leader2027/.github/workflows/ci.yml",
+          "line": "47",
+          "rule": "assigned_secret",
+          "classification": "TEST_FIXTURE",
+          "rationale": "test-only literal in archived project; no production path"
+        },
+        {
+          "path": "projects/leader2027/tests/integration/kernel-lifecycle.test.ts",
+          "line": "25",
+          "rule": "assigned_secret",
+          "classification": "TEST_FIXTURE",
+          "rationale": "test-only literal in archived project; no production path"
+        },
+        {
+          "path": "projects/leader2027/tests/integration/kernel-lifecycle.test.ts",
+          "line": "613",
+          "rule": "assigned_secret",
+          "classification": "TEST_FIXTURE",
+          "rationale": "test-only literal in archived project; no production path"
+        },
+        {
+          "path": "projects/new.pro/tests/api.test.mjs",
+          "line": "254",
+          "rule": "assigned_secret",
+          "classification": "TEST_FIXTURE",
+          "rationale": "test-only literal in archived project; no production path"
+        },
+        {
+          "path": "projects/new.pro/tests/export.test.ts",
+          "line": "92",
+          "rule": "assigned_secret",
+          "classification": "TEST_FIXTURE",
+          "rationale": "test-only literal in archived project; no production path"
+        },
+        {
+          "path": "projects/open_source-/docs/CUSTOM_AI_API_GUIDE_AR.md",
+          "line": "47",
+          "rule": "assigned_secret",
+          "classification": "DOC_EXAMPLE",
+          "rationale": "documentation placeholder in user guide"
+        }
+      ],
+      "note": "No secret value, token or masked fragment is copied into this report. One historical real key remains redacted in a byte-mirror; revocation is outside this sandbox.",
+      "evidence": {
+        "command": "/usr/bin/python3 scripts/secret_scan.py --all --json",
+        "cwd": ".",
+        "timestamp_utc": "2026-11-24T10:05:42Z",
+        "duration_ms": 5438,
+        "exit_code": 0,
+        "stdout_sha256": "ced355e5d56dab1aba7db84e9a6c26dc84d4df065faece231c7567fed1bc673a",
+        "stdout": "{\n  \"ok\": true,\n  \"staged\": false,\n  \"blocking\": 0,\n  \"warnings\": 0,\n  \"findings\": [],\n  \"archive_findings\": [\n    {\n      \"path\": \"projects/ai-store2/env.local\",\n      \"line\": 0,\n      \"rule\": \"forbidden_file\",\n      \"masked\": \"env.local (never belongs in a commit)\",\n      \"severity\": \"high\"\n    },\n    {\n      \"path\": \"projects/cela.nimna/tests/conftest.py\",\n      \"line\": 15,\n      \"rule\": \"assigned_secret\",\n      \"masked\": \"test-k…(41 chars)\",\n      \"severity\": \"warn\"\n    },\n    {\n      \"path\": \"projects/celia.sh/tests/metrics.test.ts\",\n      \"line\": 9,\n      \"rule\": \"assigned_secret\",\n      \"masked\": \"gsk_te…(34 chars)\",\n      \"severity\": \"warn\"\n    },\n    {\n      \"path\": \"projects/easy-ai/tests/test_redact.py\",\n      \"line\": 37,\n      \"rule\": \"jwt\",\n      \"masked\": \"eyJhbG…(49 chars)\",\n      \"severity\": \"high\"\n    },\n    {\n      \"path\": \"projects/easy-ai/tests/test_redact.py\",\n      \"line\": 64,\n      \"rule\": \"private_key_block\",\n      \"masked\": \"-----B…(27 chars)\",\n      \"severity\": \"high\"\n    },\n    {\n      \"path\": \"projects/leader2027/.github/workflows/ci.yml\",\n      \"line\": 47,\n      \"rule\": \"assigned_secret\",\n      \"masked\": \"ci-onl…(35 chars)\",\n      \"severity\": \"warn\"\n    },\n    {\n      \"path\": \"projects/leader2027/tests/integration/kernel-lifecycle.test.ts\",\n      \"line\": 25,\n      \"rule\": \"assigned_secret\",\n      \"masked\": \"fixtur…(29 chars)\",\n      \"severity\": \"warn\"\n    },\n    {\n      \"path\": \"projects/leader2027/tests/integration/kernel-lifecycle.test.ts\",\n      \"line\": 613,\n      \"rule\": \"assigned_secret\",\n      \"masked\": \"fixtur…(29 chars)\",\n      \"severity\": \"warn\"\n    },\n    {\n      \"path\": \"projects/new.pro/tests/api.test.mjs\",\n      \"line\": 254,\n      \"rule\": \"assigned_secret\",\n      \"masked\": \"gsk_cl…(30 chars)\",\n      \"severity\": \"warn\"\n    },\n    {\n      \"path\": \"projects/new.pro/tests/export.test.ts\",\n      \"line\": 92,\n      \"rule\": \"assigned_secret\",\n      \"masked\": \"sk-SEC…(25 chars)\",\n      \"severity\": \"warn\"\n    },\n    {\n      \"path\": \"projects/open_source-/docs/CUSTOM_AI_API_GUIDE_AR.md\",\n      \"line\": 47,\n      \"rule\": \"assigned_secret\",\n      \"masked\": \"my_sec…(29 chars)\",\n      \"severity\": \"warn\"\n    }\n  ],\n  \"known_fake_allowed\": [\n    \"AKIAIOSFODNN7EXAMPLE\",\n    \"ghp_thisIsAFakeToken1234\",\n    \"AIzaSyExampleNotARealKey0000000000000000\",\n    \"sk-test-not-a-real-key-000000000000\"\n  ]\n}\n",
+        "stdout_tail": "{\n  \"ok\": true,\n  \"staged\": false,\n  \"blocking\": 0,\n  \"warnings\": 0,\n  \"findings\": [],\n  \"archive_findings\": [\n    {\n      \"path\": \"projects/ai-store2/env.local\",\n      \"line\": 0,\n      \"rule\": \"forbidden_file\",\n      \"masked\": \"env.local (never belongs in a commit)\",\n      \"severity\": \"high\"\n    },\n    {\n      \"path\": \"projects/cela.nimna/tests/conftest.py\",\n      \"line\": 15,\n      \"rule\": \"assigned_secret\",\n      \"masked\": \"test-k…(41 chars)\",\n      \"severity\": \"warn\"\n    },\n    {\n      \"path\": \"projects/celia.sh/tests/metrics.test.ts\",\n      \"line\": 9,\n      \"rule\": \"assigned_secret\",\n      \"masked\": \"gsk_te…(34 chars)\",\n      \"severity\": \"warn\"\n    },\n    {\n      \"path\": \"projects/easy-ai/tests/test_redact.py\",\n      \"line\": 37,\n      \"rule\": \"jwt\",\n      \"masked\": \"eyJhbG…(49 chars)\",\n      \"severity\": \"high\"\n    },\n    {\n      \"path\": \"projects/easy-ai/tests/test_redact.py\",\n      \"line\": 64,\n      \"rule\": \"private_key_block\",\n      \"masked\": \"-----B…(27 chars)\",\n      \"severity\": \"high\"\n    },\n    {\n      \"path\": \"projects/leader2027/.github/workflows/ci.yml\",\n      \"line\": 47,\n      \"rule\": \"assigned_secret\",\n      \"masked\": \"ci-onl…(35 chars)\",\n      \"severity\": \"warn\"\n    },\n    {\n      \"path\": \"projects/leader2027/tests/integration/kernel-lifecycle.test.ts\",\n      \"line\": 25,\n      \"rule\": \"assigned_secret\",\n      \"masked\": \"fixtur…(29 chars)\",\n      \"severity\": \"warn\"\n    },\n    {\n      \"path\": \"projects/leader2027/tests/integration/kernel-lifecycle.test.ts\",\n      \"line\": 613,\n      \"rule\": \"assigned_secret\",\n      \"masked\": \"fixtur…(29 chars)\",\n      \"severity\": \"warn\"\n    },\n    {\n      \"path\": \"projects/new.pro/tests/api.test.mjs\",\n      \"line\": 254,\n      \"rule\": \"assigned_secret\",\n      \"masked\": \"gsk_cl…(30 chars)\",\n      \"severity\": \"warn\"\n    },\n    {\n      \"path\": \"projects/new.pro/tests/export.test.ts\",\n      \"line\": 92,\n      \"rule\": \"assigned_secret\",\n      \"masked\": \"sk-SEC…(25 chars)\",\n      \"severity\": \"warn\"\n    },\n    {\n      \"path\": \"projects/open_source-/docs/CUSTOM_AI_API_GUIDE_AR.md\",\n      \"line\": 47,\n      \"rule\": \"assigned_secret\",\n      \"masked\": \"my_sec…(29 chars)\",\n      \"severity\": \"warn\"\n    }\n  ],\n  \"known_fake_allowed\": [\n    \"AKIAIOSFODNN7EXAMPLE\",\n    \"ghp_thisIsAFakeToken1234\",\n    \"AIzaSyExampleNotARealKey0000000000000000\",\n    \"sk-test-not-a-real-key-000000000000\"\n  ]\n}\n"
+      }
+    },
+    "dependencies": {
+      "status": "PASS",
+      "source": "GitHub Advisory Database via api.github.com (/advisories?ecosystem=pip&affects=...)",
+      "packages_scanned": 36,
+      "advisories_seen": 38,
+      "affected_packages": [],
+      "api_errors": [],
+      "rows": [
+        {
+          "name": "annotated-doc",
+          "version": "0.0.7",
+          "advisories_total": 0,
+          "applicable": []
+        },
+        {
+          "name": "annotated-types",
+          "version": "0.8.0",
+          "advisories_total": 0,
+          "applicable": []
+        },
+        {
+          "name": "anyio",
+          "version": "4.16.0",
+          "advisories_total": 3,
+          "applicable": []
+        },
+        {
+          "name": "ast_serialize",
+          "version": "0.13.1",
+          "advisories_total": 0,
+          "applicable": []
+        },
+        {
+          "name": "certifi",
+          "version": "2026.11.20",
+          "advisories_total": 4,
+          "applicable": []
+        },
+        {
+          "name": "click",
+          "version": "8.5.1",
+          "advisories_total": 0,
+          "applicable": []
+        },
+        {
+          "name": "coverage",
+          "version": "7.17.5",
+          "advisories_total": 0,
+          "applicable": []
+        },
+        {
+          "name": "fastapi",
+          "version": "0.165.0",
+          "advisories_total": 2,
+          "applicable": []
+        },
+        {
+          "name": "h11",
+          "version": "0.16.0",
+          "advisories_total": 1,
+          "applicable": []
+        },
+        {
+          "name": "httpcore",
+          "version": "1.0.9",
+          "advisories_total": 0,
+          "applicable": []
+        },
+        {
+          "name": "httpx",
+          "version": "0.28.1",
+          "advisories_total": 1,
+          "applicable": []
+        },
+        {
+          "name": "hypothesis",
+          "version": "6.170.17",
+          "advisories_total": 0,
+          "applicable": []
+        },
+        {
+          "name": "idna",
+          "version": "3.20",
+          "advisories_total": 2,
+          "applicable": []
+        },
+        {
+          "name": "iniconfig",
+          "version": "2.3.1",
+          "advisories_total": 0,
+          "applicable": []
+        },
+        {
+          "name": "librt",
+          "version": "0.17.0",
+          "advisories_total": 0,
+          "applicable": []
+        },
+        {
+          "name": "mypy",
+          "version": "2.4.1",
+          "advisories_total": 0,
+          "applicable": []
+        },
+        {
+          "name": "mypy_extensions",
+          "version": "1.2.0",
+          "advisories_total": 0,
+          "applicable": []
+        },
+        {
+          "name": "opentelemetry-api",
+          "version": "1.45.2",
+          "advisories_total": 2,
+          "applicable": []
+        },
+        {
+          "name": "opentelemetry-sdk",
+          "version": "1.45.2",
+          "advisories_total": 0,
+          "applicable": []
+        },
+        {
+          "name": "opentelemetry-semantic-conventions",
+          "version": "0.66b2",
+          "advisories_total": 0,
+          "applicable": []
+        },
+        {
+          "name": "packaging",
+          "version": "26.4",
+          "advisories_total": 0,
+          "applicable": []
+        },
+        {
+          "name": "pathspec",
+          "version": "1.1.1",
+          "advisories_total": 0,
+          "applicable": []
+        },
+        {
+          "name": "pluggy",
+          "version": "1.7.0",
+          "advisories_total": 0,
+          "applicable": []
+        },
+        {
+          "name": "pydantic",
+          "version": "2.14.4",
+          "advisories_total": 2,
+          "applicable": []
+        },
+        {
+          "name": "pydantic_core",
+          "version": "2.50.5",
+          "advisories_total": 0,
+          "applicable": []
+        },
+        {
+          "name": "Pygments",
+          "version": "2.21.0",
+          "advisories_total": 5,
+          "applicable": []
+        },
+        {
+          "name": "pytest",
+          "version": "9.2.0",
+          "advisories_total": 1,
+          "applicable": []
+        },
+        {
+          "name": "pytest-asyncio",
+          "version": "1.5.0",
+          "advisories_total": 0,
+          "applicable": []
+        },
+        {
+          "name": "pytest-cov",
+          "version": "7.1.0",
+          "advisories_total": 0,
+          "applicable": []
+        },
+        {
+          "name": "ruff",
+          "version": "0.17.6",
+          "advisories_total": 0,
+          "applicable": []
+        },
+        {
+          "name": "sortedcontainers",
+          "version": "2.4.0",
+          "advisories_total": 0,
+          "applicable": []
+        },
+        {
+          "name": "starlette",
+          "version": "1.10.0",
+          "advisories_total": 13,
+          "applicable": []
+        },
+        {
+          "name": "structlog",
+          "version": "26.1.0",
+          "advisories_total": 0,
+          "applicable": []
+        },
+        {
+          "name": "typing_extensions",
+          "version": "4.16.0",
+          "advisories_total": 0,
+          "applicable": []
+        },
+        {
+          "name": "typing-inspection",
+          "version": "0.4.5",
+          "advisories_total": 0,
+          "applicable": []
+        },
+        {
+          "name": "uvicorn",
+          "version": "0.54.0",
+          "advisories_total": 2,
+          "applicable": []
+        }
+      ],
+      "note": "Dependabot alerts are disabled for this repository; the public global advisory API was used instead. Advisory presence alone is not a hit — installed versions are matched against each vulnerable range."
+    },
+    "final_verification": {
+      "status": "PASS",
+      "rows": [
+        {
+          "status": "PASS",
+          "suite": "kernel-2027 unit tests",
+          "tests": 152,
+          "command": "/usr/bin/python3 -m unittest discover -s kernel-2027/tests -p 'test_*.py'",
+          "exit_code": 0,
+          "duration_ms": 2964,
+          "evidence_sha256": "3d8b932097d99a2c570a511ac21da0a2cd97b2ecf353b8b5b265bed4764812b0"
+        },
+        {
+          "status": "PASS",
+          "suite": "agi-system kernel unit tests",
+          "tests": 104,
+          "command": "/usr/bin/python3 -m unittest discover -s projects/agi-system/tests -p 'test_*.py'",
+          "exit_code": 0,
+          "duration_ms": 2614,
+          "evidence_sha256": "d1071902398c2f18634c9547502f81627f81d650e7200f2f778b04264aecfc13"
+        },
+        {
+          "status": "PASS",
+          "suite": "python-2027 protocol unit tests",
+          "tests": 491,
+          "command": "/tmp/ai2027-py22-venv/bin/python -m unittest discover -s python-2027/tests -p 'test_*.py'",
+          "exit_code": 0,
+          "duration_ms": 1454,
+          "evidence_sha256": "4b3f509311b3f59c597246df94930701efa0a23e4ad04d8a8e08b52614402150"
+        },
+        {
+          "status": "PASS",
+          "suite": "memory unit tests",
+          "tests": 19,
+          "command": "/usr/bin/python3 -m unittest discover -s memory -p 'test_*.py'",
+          "exit_code": 0,
+          "duration_ms": 676,
+          "evidence_sha256": "1fdbf5e5f72b99cc29865dc6963c64047b517568d84dc2044d5ebfa48d5ec529"
+        },
+        {
+          "status": "PASS",
+          "suite": "repository script unit tests",
+          "tests": 340,
+          "command": "/usr/bin/python3 -m unittest discover -s scripts -p 'test_*.py'",
+          "exit_code": 0,
+          "duration_ms": 22659,
+          "evidence_sha256": "bc5440afd795531acb2751caf2db1789a6471b3713b1b4c195e805c48683547d"
+        },
+        {
+          "status": "PASS",
+          "suite": "independent atlas audit (no-write)",
+          "tests": null,
+          "command": "/usr/bin/python3 scripts/audit_achievements_atlas.py --no-write --http --run-tests",
+          "exit_code": 0,
+          "duration_ms": 477,
+          "evidence_sha256": "0560836392161950e61b8f8ff8889b8f263ac855fbf012acdfd32f5650c3027d"
+        }
+      ],
+      "total_tests": 1106,
+      "note": "Baseline not refreshed; core/kernel not touched; every command re-executed rather than read from an older report."
+    }
+  },
+  "transitions": [
+    {
+      "item": "read_only_audit",
+      "from": "PASS",
+      "to": "PASS",
+      "evidence": "git HEAD / baseline SHA-256 / core-kernel diff"
+    },
+    {
+      "item": "python2027_suite",
+      "from": "BLOCKED",
+      "to": "PASS",
+      "evidence": "disposable venv install + 491 real tests"
+    },
+    {
+      "item": "real_test_execution",
+      "from": "PARTIAL",
+      "to": "PASS",
+      "evidence": "1106 tests re-executed"
+    },
+    {
+      "item": "ci_evidence",
+      "from": "PARTIAL",
+      "to": "PARTIAL",
+      "evidence": "check-run annotations + issue #168 comments"
+    },
+    {
+      "item": "secret_scan",
+      "from": "PARTIAL",
+      "to": "PARTIAL",
+      "evidence": "11 archive warnings classified; no values printed"
+    },
+    {
+      "item": "dependency_boundary",
+      "from": "PARTIAL",
+      "to": "PASS",
+      "evidence": "GitHub Advisory Database via api.github.com (/advisories?ecosystem=pip&affects=...)"
+    },
+    {
+      "item": "functional_regression",
+      "from": "PASS",
+      "to": "PASS",
+      "evidence": "Phase 2.1 probes unchanged; no core/kernel edits"
+    },
+    {
+      "item": "baseline_integrity",
+      "from": "PASS",
+      "to": "PASS",
+      "evidence": "baseline SHA-256 chain, no auto-refresh"
+    }
+  ],
+  "limits": [
+    "Ember root cause is proven from GitHub API evidence, but no workflow/deploy fix was applied: that needs explicit approval.",
+    "One historical real key remains redacted in an upstream byte-mirror; revocation is tracked externally (issue #21) and not verified here.",
+    "Secret values and masked fragments are deliberately absent from this report.",
+    "CVE check used GitHub's public advisory database; Dependabot alerts are disabled on this repository.",
+    "Three SHA-256 probes prove only those probe outputs, not full functional equivalence.",
+    "No PR merged, no release published, no core/kernel or deploy-config change, no destructive git operation.",
+    "Report writing: enabled."
+  ]
+}
