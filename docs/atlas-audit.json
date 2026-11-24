@@ -1,0 +1,114 @@
+{
+  "audit_at": "2026-11-24 09:21 UTC",
+  "method": "independent re-derivation from source files; atlas generator NOT imported",
+  "source_files": [
+    "catalog.json",
+    "docs/inventory-2027.json",
+    "CHANGELOG.md",
+    "git ls-files",
+    "docs/achievements-atlas.html"
+  ],
+  "published_card_count": 274,
+  "recomputed_kind_counts": {
+    "project": 48,
+    "surface": 7,
+    "test": 15,
+    "engine": 13,
+    "correction": 17,
+    "finding": 5,
+    "governance": 13,
+    "changelog": 24,
+    "doc": 58,
+    "workflow": 18,
+    "script": 56
+  },
+  "actual_kind_counts": {
+    "changelog": 24,
+    "test": 15,
+    "engine": 13,
+    "correction": 17,
+    "finding": 5,
+    "governance": 13,
+    "project": 48,
+    "surface": 7,
+    "doc": 58,
+    "workflow": 18,
+    "script": 56
+  },
+  "checks": [
+    {
+      "label": "card counts recomputed from source files",
+      "status": "PASS",
+      "detail": "274 cards across 11 kinds"
+    },
+    {
+      "label": "achievement ids are unique",
+      "status": "PASS",
+      "detail": "274 unique ids"
+    },
+    {
+      "label": "every card has title/summary/source/status/category",
+      "status": "PASS",
+      "detail": "well formed"
+    },
+    {
+      "label": "every card source file exists",
+      "status": "PASS",
+      "detail": "274 sources exist"
+    },
+    {
+      "label": "every card link resolves from docs/",
+      "status": "PASS",
+      "detail": "all resolve"
+    },
+    {
+      "label": "every card declares a verifiable evidence level",
+      "status": "PASS",
+      "detail": "all labeled"
+    },
+    {
+      "label": "evidence levels use the controlled vocabulary",
+      "status": "PASS",
+      "detail": "valid"
+    },
+    {
+      "label": "headline statistics match recomputation",
+      "status": "PASS",
+      "detail": "all 5 stats match"
+    },
+    {
+      "label": "honesty panel matches source files",
+      "status": "PASS",
+      "detail": "matches catalog + inventory"
+    },
+    {
+      "label": "milestones match CHANGELOG releases",
+      "status": "PASS",
+      "detail": "3 vs 3"
+    },
+    {
+      "label": "page has no external runtime assets",
+      "status": "PASS",
+      "detail": "fonts + data embedded"
+    },
+    {
+      "label": "HTML template fully rendered",
+      "status": "PASS",
+      "detail": "placeholders/font check"
+    },
+    {
+      "label": "independent HTTP GET of published page",
+      "status": "PASS",
+      "detail": "HTTP 200, 343,626 bytes"
+    },
+    {
+      "label": "unittest suite executed independently",
+      "status": "PASS",
+      "detail": "OK"
+    }
+  ],
+  "findings": [],
+  "verdict": "PASS",
+  "passed": 14,
+  "total": 14
+}
