@@ -1,0 +1,92 @@
+# Deploy an AI frontend (e.g. projects/Software-Agent-Architect) to GitHub Pages.
+#
+# $0 / no-credit-card deployment: GitHub Pages is free forever and needs no card,
+# and GitHub Actions is free on public repos (unlimited minutes) / 2000 min·mo on
+# private. This workflow builds a Vite/React frontend and publishes the static
+# bundle to the repo's GitHub Pages site.
+#
+# SECURITY: the Gemini key reaches the build ONLY through `env:` from Repository
+# Secrets — never interpolated into the script text, never committed. Baking a key
+# into a static SPA is insecure; for production, proxy model calls through a
+# serverless function (Cloudflare Workers / Vercel Functions) or use a key
+# restricted by HTTP-referrer. This passes it as a build-time env for demos only.
+#
+# NOTE: the repo already has `pages.yml` (deploys website/) and `deploy.yml`
+# (deploys to Render). This workflow OWNS the GitHub Pages site for the chosen
+# frontend; running it will replace the current Pages content (website/). Either
+# point `pages.yml` at this frontend, or host the app on a separate Cloudflare
+# Pages project to keep both. See docs/DEPLOY-PLAN-2026-11-24.md.
+name: Deploy AI frontend to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "projects/Software-Agent-Architect/**"
+      - ".github/workflows/deploy-frontend.yml"
+  workflow_dispatch:
+    inputs:
+      frontend-path:
+        description: "Path to the frontend project (must contain package.json with a build script)."
+        required: false
+        default: "projects/Software-Agent-Architect"
+      build-output:
+        description: "Build output directory (Vite => dist, CRA => build)."
+        required: false
+        default: "dist"
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages-frontend
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      FRONTEND_PATH: ${{ github.event.inputs.frontend-path || 'projects/Software-Agent-Architect' }}
+      BUILD_OUTPUT: ${{ github.event.inputs.build-output || 'dist' }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5 (SHA-pinned per repo policy)
+      - name: Show toolchain
+        run: node --version && npm --version
+      - name: Install dependencies
+        working-directory: ${{ env.FRONTEND_PATH }}
+        run: npm ci || npm install
+      - name: Build
+        working-directory: ${{ env.FRONTEND_PATH }}
+        env:
+          # Build-time only; prefer a serverless proxy in production.
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: npm run build
+      - name: Package the build as artifact.tar
+        run: |
+          set -euo pipefail
+          if [ ! -d "$FRONTEND_PATH/$BUILD_OUTPUT" ]; then
+            echo "::error::build output $FRONTEND_PATH/$BUILD_OUTPUT not found" >&2
+            exit 1
+          fi
+          tar --dereference --hard-dereference -cvf artifact.tar -C "$FRONTEND_PATH/$BUILD_OUTPUT" .
+          echo "artifact.tar: $(stat -c%s artifact.tar) bytes"
+          tar -tf artifact.tar | head -20
+      - name: Upload Pages artifact
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f  # v6 (SHA-pinned)
+        with:
+          name: github-pages
+          path: artifact.tar
+          retention-days: 1
+
+  deploy:
+    needs: build
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346  # v5 (SHA-pinned)
