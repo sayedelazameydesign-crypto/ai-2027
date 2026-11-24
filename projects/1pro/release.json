@@ -1,0 +1,9 @@
+{
+  "stage": "mvp",
+  "usage": "external",
+  "users": 120,
+  "version": "0.1.0",
+  "kind": "product",
+  "note": "Waha MVP + Vercel + 452 tests",
+  "_inferred": false
+}
