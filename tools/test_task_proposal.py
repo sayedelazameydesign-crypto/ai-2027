@@ -5,6 +5,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 spec = importlib.util.spec_from_file_location('task_proposal', Path(__file__).with_name('task_proposal.py'))
 tool = importlib.util.module_from_spec(spec)
@@ -74,6 +75,69 @@ class ProposalTests(unittest.TestCase):
             (Path(other) / 'source.py').write_text('value = 1\n')
             with self.assertRaises(tool.ProposalError):
                 tool.approve(Path(other), request, preview['proposal_id'])
+
+    def test_apply_requires_matching_approval_and_preserves_mode(self):
+        path = self.root / 'source.py'
+        path.chmod(0o640)
+        request = {'path': 'source.py', 'old': '1', 'new': '2'}
+        proposal = tool.propose(self.root, request)
+        with self.assertRaises(tool.ProposalError):
+            tool.apply(self.root, request, '0' * 64)
+        self.assertEqual(path.read_text(), 'value = 1\n')
+        result = tool.apply(self.root, request, proposal['proposal_id'])
+        self.assertEqual(result['status'], 'applied')
+        self.assertTrue(result['file_modified'])
+        self.assertFalse(result['tests_run'])
+        self.assertEqual(path.read_text(), 'value = 2\n')
+        self.assertEqual(path.stat().st_mode & 0o777, 0o640)
+        self.assertEqual(list(self.root.glob('.task-proposal-*')), [])
+
+    def test_apply_rejects_stale_hardlink_and_symlink(self):
+        request = {'path': 'source.py', 'old': '1', 'new': '2'}
+        preview = tool.propose(self.root, request)
+        (self.root / 'source.py').write_text('other = 1\n')
+        with self.assertRaises(tool.ProposalError):
+            tool.apply(self.root, request, preview['proposal_id'])
+        (self.root / 'source.py').write_text('value = 1\n')
+        (self.root / 'hardlink').hardlink_to(self.root / 'source.py')
+        with self.assertRaises(tool.ProposalError):
+            tool.apply(self.root, request, preview['proposal_id'])
+        (self.root / 'source.py').unlink()
+        (self.root / 'source.py').symlink_to(self.root / 'hardlink')
+        with self.assertRaises(tool.ProposalError):
+            tool.apply(self.root, request, preview['proposal_id'])
+        self.assertEqual((self.root / 'hardlink').read_text(), 'value = 1\n')
+
+    def test_replace_failure_preserves_original_and_cleans_temporary(self):
+        request = {'path': 'source.py', 'old': '1', 'new': '2'}
+        preview = tool.propose(self.root, request)
+        with patch.object(tool.os, 'replace', side_effect=OSError('disk error')):
+            with self.assertRaises(tool.ProposalError):
+                tool.apply(self.root, request, preview['proposal_id'])
+        self.assertEqual((self.root / 'source.py').read_text(), 'value = 1\n')
+        self.assertEqual(list(self.root.glob('.task-proposal-*')), [])
+
+    def test_external_edit_during_preparation_is_not_overwritten(self):
+        request = {'path': 'source.py', 'old': '1', 'new': '2'}
+        preview = tool.propose(self.root, request)
+        original_fsync = tool.os.fsync
+        def changed(fd):
+            original_fsync(fd)
+            (self.root / 'source.py').write_text('external = 1\n')
+        with patch.object(tool.os, 'fsync', side_effect=changed):
+            with self.assertRaises(tool.ProposalError):
+                tool.apply(self.root, request, preview['proposal_id'])
+        self.assertEqual((self.root / 'source.py').read_text(), 'external = 1\n')
+        self.assertEqual(list(self.root.glob('.task-proposal-*')), [])
+
+    def test_cli_preview_then_explicit_apply(self):
+        command = [sys.executable, str(Path(__file__).with_name('task_proposal.py')), '--root', str(self.root)]
+        request = json.dumps({'path': 'source.py', 'old': '1', 'new': '2'})
+        preview = subprocess.run(command, input=request, text=True, capture_output=True, check=True)
+        proposal_id = json.loads(preview.stdout)['proposal_id']
+        applied = subprocess.run(command + ['--apply', proposal_id], input=request, text=True, capture_output=True, check=True)
+        self.assertEqual(json.loads(applied.stdout)['status'], 'applied')
+        self.assertEqual((self.root / 'source.py').read_text(), 'value = 2\n')
 
     def test_cli_rejects_invalid_request(self):
         proc = subprocess.run([sys.executable, str(Path(__file__).with_name('task_proposal.py')),
