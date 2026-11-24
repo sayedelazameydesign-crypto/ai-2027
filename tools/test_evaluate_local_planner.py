@@ -18,6 +18,9 @@ class EvaluationTests(unittest.TestCase):
         self.assertEqual(result['status'], 'complete')
         self.assertEqual(result['passed'], 3)
         self.assertEqual(result['total'], 3)
+        self.assertIsNone(result['metadata']['model_version'])
+        self.assertEqual(result['metadata']['memory_or_gpu'], 'not measured')
+        self.assertTrue(all(c['elapsed_ms'] >= 0 for c in result['cases']))
 
     def test_structural_match_ignores_formatting_without_executing_code(self):
         self.assertEqual(evaluation.compare_candidate('value=\'أهلاً\'\n', 'value = "أهلاً"\n'), 'structural')
@@ -53,6 +56,9 @@ class EvaluationTests(unittest.TestCase):
         self.assertEqual(result['status'], 'BLOCKED')
         self.assertEqual(result['cases'], [])
         self.assertNotIn('passed', result)
+        self.assertEqual(result['blocked_case'], 'add')
+        self.assertIsNone(result['metadata']['model_version'])
+        self.assertGreaterEqual(result['blocked_elapsed_ms'], 0)
 
 
 if __name__ == '__main__':

@@ -6,8 +6,12 @@ import argparse
 import ast
 import hashlib
 import json
+import os
+import platform
 from pathlib import Path
 import tempfile
+import time
+from datetime import datetime, timezone
 
 import local_task_planner as planner
 import task_proposal
@@ -40,11 +44,19 @@ def compare_candidate(candidate: str, expected: str) -> str:
 def evaluate(model: str, port: int, consent: bool, query=None) -> dict:
     if not consent:
         return {'status': 'BLOCKED', 'reason': 'يلزم إذن صريح لاستخدام النموذج المحلي', 'cases': []}
+    metadata = {'model_requested': model, 'model_version': None,
+                'model_version_note': 'Not independently retrieved or verified.',
+                'started_at_utc': datetime.now(timezone.utc).isoformat(),
+                'python': platform.python_version(), 'platform': platform.system(),
+                'architecture': platform.machine(), 'logical_cpus': os.cpu_count(),
+                'memory_or_gpu': 'not measured',
+                'timing_note': 'Wall time includes model request, local validation and preview; not model-only inference.'}
     results = []
     for case in CASES:
         with tempfile.TemporaryDirectory(prefix='ai2027-eval-') as tmp:
             root = Path(tmp)
             (root / 'case.py').write_text(case['source'], encoding='utf-8')
+            start = time.perf_counter()
             try:
                 kwargs = {} if query is None else {'query': query}
                 output = planner.plan(root, case['task'], 'case.py', model, port, True, **kwargs)
@@ -55,14 +67,17 @@ def evaluate(model: str, port: int, consent: bool, query=None) -> dict:
                     raise task_proposal.ProposalError('inconsistent candidate')
                 match = compare_candidate(candidate, case['expected'])
                 results.append({'id': case['id'], 'result': 'pass' if match in ('exact', 'structural') else 'fail',
-                                'match': match, 'criterion': 'exact bytes or same Python AST'})
+                                'match': match, 'elapsed_ms': round((time.perf_counter() - start) * 1000, 2),
+                                'criterion': 'exact bytes or same Python AST'})
             except planner.Blocked:
                 return {'status': 'BLOCKED', 'reason': 'النموذج المحلي غير متاح؛ القياس غير مكتمل',
-                        'model': model, 'cases': results}
+                        'metadata': metadata, 'blocked_case': case['id'],
+                        'blocked_elapsed_ms': round((time.perf_counter() - start) * 1000, 2), 'cases': results}
             except task_proposal.ProposalError:
                 results.append({'id': case['id'], 'result': 'rejected',
+                                'elapsed_ms': round((time.perf_counter() - start) * 1000, 2),
                                 'criterion': 'invalid or unsafe proposal'})
-    return {'status': 'complete', 'model': model, 'cases': results,
+    return {'status': 'complete', 'model': model, 'metadata': metadata, 'cases': results,
             'passed': sum(item['result'] == 'pass' for item in results), 'total': len(CASES),
             'limitations': 'Three fixed fixtures and syntax-tree comparison only; code was not executed; no behavioral proof or competitor comparison.'}
 
