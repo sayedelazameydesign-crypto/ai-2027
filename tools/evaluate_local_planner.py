@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import ast
 import hashlib
 import json
 from pathlib import Path
@@ -11,7 +12,7 @@ import tempfile
 import local_task_planner as planner
 import task_proposal
 
-# Exact-answer fixtures: not a broad quality benchmark or evidence of parity.
+# Fixed fixtures: not a broad quality benchmark or evidence of parity.
 CASES = (
     {'id': 'add', 'task': 'أصلح دالة الجمع بحيث تعيد مجموع العددين.',
      'source': 'def add(a, b):\n    return 0\n', 'expected': 'def add(a, b):\n    return a + b\n'},
@@ -20,6 +21,20 @@ CASES = (
     {'id': 'greeting', 'task': 'غيّر الرسالة إلى أهلاً مع بقاء بنية الملف كما هي.',
      'source': 'message = "وداعاً"\n', 'expected': 'message = "أهلاً"\n'},
 )
+
+
+def compare_candidate(candidate: str, expected: str) -> str:
+    """Compare bytes and Python syntax trees, without executing generated code."""
+    if candidate == expected:
+        return 'exact'
+    try:
+        actual_tree = ast.dump(ast.parse(candidate), include_attributes=False)
+        expected_tree = ast.dump(ast.parse(expected), include_attributes=False)
+        if actual_tree == expected_tree:
+            return 'structural'
+        return 'different'
+    except (SyntaxError, ValueError, RecursionError, MemoryError):
+        return 'invalid_python'
 
 
 def evaluate(model: str, port: int, consent: bool, query=None) -> dict:
@@ -33,10 +48,14 @@ def evaluate(model: str, port: int, consent: bool, query=None) -> dict:
             try:
                 kwargs = {} if query is None else {'query': query}
                 output = planner.plan(root, case['task'], 'case.py', model, port, True, **kwargs)
-                expected_hash = hashlib.sha256(case['expected'].encode('utf-8')).hexdigest()
-                matches = output['preview']['proposed_sha256'] == expected_hash
-                results.append({'id': case['id'], 'result': 'pass' if matches else 'fail',
-                                'criterion': 'exact expected file bytes'})
+                replacement = output['request_for_review']
+                candidate = case['source'].replace(replacement['old'], replacement['new'], 1)
+                candidate_hash = hashlib.sha256(candidate.encode('utf-8')).hexdigest()
+                if candidate_hash != output['preview']['proposed_sha256']:
+                    raise task_proposal.ProposalError('inconsistent candidate')
+                match = compare_candidate(candidate, case['expected'])
+                results.append({'id': case['id'], 'result': 'pass' if match in ('exact', 'structural') else 'fail',
+                                'match': match, 'criterion': 'exact bytes or same Python AST'})
             except planner.Blocked:
                 return {'status': 'BLOCKED', 'reason': 'النموذج المحلي غير متاح؛ القياس غير مكتمل',
                         'model': model, 'cases': results}
@@ -45,7 +64,7 @@ def evaluate(model: str, port: int, consent: bool, query=None) -> dict:
                                 'criterion': 'invalid or unsafe proposal'})
     return {'status': 'complete', 'model': model, 'cases': results,
             'passed': sum(item['result'] == 'pass' for item in results), 'total': len(CASES),
-            'limitations': 'Three fixed exact-match fixtures only; generated code was not executed; no competitor comparison.'}
+            'limitations': 'Three fixed fixtures and syntax-tree comparison only; code was not executed; no behavioral proof or competitor comparison.'}
 
 
 def main() -> int:

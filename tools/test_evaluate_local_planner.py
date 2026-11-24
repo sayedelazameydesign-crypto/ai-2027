@@ -19,6 +19,21 @@ class EvaluationTests(unittest.TestCase):
         self.assertEqual(result['passed'], 3)
         self.assertEqual(result['total'], 3)
 
+    def test_structural_match_ignores_formatting_without_executing_code(self):
+        self.assertEqual(evaluation.compare_candidate('value=\'أهلاً\'\n', 'value = "أهلاً"\n'), 'structural')
+        self.assertEqual(evaluation.compare_candidate('x = 3\n', 'x = 2\n'), 'different')
+        self.assertEqual(evaluation.compare_candidate('def invalid(:\n', 'x = 1\n'), 'invalid_python')
+
+    def test_structural_equivalent_model_output_passes(self):
+        def fake(model, port, prompt):
+            data = json.loads(prompt.split('\n', 1)[1])
+            case = next(c for c in evaluation.CASES if c['task'] == data['task'])
+            formatted = case['expected'].replace(' = ', '=').replace('a + b', 'a+b').replace('a * b', 'a*b')
+            return json.dumps({'old': case['source'], 'new': formatted})
+        result = evaluation.evaluate('fake-model', 11434, True, fake)
+        self.assertEqual(result['passed'], 3)
+        self.assertTrue(all(c['match'] == 'structural' for c in result['cases']))
+
     def test_wrong_and_rejected_output_do_not_pass(self):
         def wrong(model, port, prompt):
             data = json.loads(prompt.split('\n', 1)[1])
