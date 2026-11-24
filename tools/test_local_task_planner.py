@@ -1,8 +1,10 @@
 import json
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import threading
 import unittest
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -65,6 +67,60 @@ class LocalPlannerTests(unittest.TestCase):
         with patch.object(planner.http.client, 'HTTPConnection', return_value=Broken()):
             with self.assertRaises(planner.Blocked):
                 planner.query_local('model', 11434, 'hi')
+
+    def test_real_loopback_http_produces_reviewable_preview_only(self):
+        requests = []
+        class FakeOllama(BaseHTTPRequestHandler):
+            def do_POST(self):
+                length = int(self.headers['Content-Length'])
+                requests.append((self.path, json.loads(self.rfile.read(length))))
+                output = json.dumps({'response': json.dumps({'old': 'return 0', 'new': 'return a + b'})}).encode()
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Content-Length', str(len(output)))
+                self.end_headers()
+                self.wfile.write(output)
+            def log_message(self, *_args):
+                pass
+        server = ThreadingHTTPServer(('127.0.0.1', 0), FakeOllama)
+        worker = threading.Thread(target=server.serve_forever, daemon=True)
+        worker.start()
+        try:
+            result = planner.plan(self.root, 'أصلح الجمع', 'demo.py', 'mock-model', server.server_port, True)
+        finally:
+            server.shutdown()
+            worker.join(timeout=3)
+            server.server_close()
+        self.assertEqual(result['status'], 'proposal_only')
+        self.assertEqual(result['model'], 'mock-model')
+        self.assertIn('return a + b', result['preview']['diff'])
+        self.assertIn('return 0', self.path.read_text())
+        self.assertEqual(requests[0][0], '/api/generate')
+        self.assertFalse(requests[0][1]['stream'])
+        self.assertIn('أصلح الجمع', requests[0][1]['prompt'])
+        # Separate, explicit approval on the disposable fixture; planner never applies.
+        applied = task_proposal.apply(self.root, result['request_for_review'], result['preview']['proposal_id'])
+        self.assertEqual(applied['status'], 'applied')
+        self.assertIn('return a + b', self.path.read_text())
+
+    def test_loopback_redirect_is_blocked(self):
+        class Redirect(BaseHTTPRequestHandler):
+            def do_POST(self):
+                self.send_response(302)
+                self.send_header('Location', 'https://example.com/')
+                self.end_headers()
+            def log_message(self, *_args):
+                pass
+        server = ThreadingHTTPServer(('127.0.0.1', 0), Redirect)
+        worker = threading.Thread(target=server.serve_forever, daemon=True)
+        worker.start()
+        try:
+            with self.assertRaises(planner.Blocked):
+                planner.query_local('mock-model', server.server_port, 'task')
+        finally:
+            server.shutdown()
+            worker.join(timeout=3)
+            server.server_close()
 
     def test_cli_without_consent(self):
         cmd = [sys.executable, str(Path(__file__).with_name('local_task_planner.py')),
