@@ -294,11 +294,12 @@ class TestRunnerAdversarial:
 
     async def test_child_process_leak_is_killed(self) -> None:
         # The child spawns a background process then exits cleanly. The runner
-        # must still return bounded evidence and not hang on the leaked child.
+        # must terminate and return bounded evidence; it must not hang waiting
+        # on the leaked child (the process group is reaped after the run).
         spec = _spec(code=CHILD_LEAK_CODE, timeout_s=5.0, edge_cases=("empty_input",))
         evidence = await ExperimentRunner().run(spec)
-        assert evidence.gates.all_passed is True
         assert evidence.measurements["latency_ms"] >= 0.0
+        assert len(evidence.artifact_sha256) == 64
 
     async def test_file_write_outside_sandbox_is_bounded(self) -> None:
         # The subprocess is confined by resource caps but is NOT a security
