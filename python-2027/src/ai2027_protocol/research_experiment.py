@@ -79,7 +79,12 @@ _MAX_OUTPUT_BYTES = 20_000
 #: Hard resource caps applied to the child process on POSIX hosts.
 _MAX_MEMORY_BYTES = 512 * 1024 * 1024
 _MAX_FILE_BYTES = 10 * 1024 * 1024
-_MAX_PROCESSES = 16
+#: Process-count cap. Must stay well above the host user's baseline process
+#: count (shared CI runners run dozens of processes for the same user); a
+#: value that is too tight makes a legitimate ``subprocess.Popen`` inside the
+#: experiment fail with EAGAIN before it can run. It still bounds a fork bomb,
+#: and the CPU/AS limits plus the timeout bound the damage from any spawn.
+_MAX_PROCESSES = 128
 #: Bounded identifier for measurement / edge-case names.
 _NAME = re.compile(r"^[a-z][a-z0-9_]{1,40}$")
 
