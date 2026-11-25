@@ -140,36 +140,41 @@ jobs:
         working-directory: python-2027
         env:
           JUNIT: ${{ runner.temp }}/junit-${{ matrix.python-version }}.xml
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           python - <<'PY'
+          import json
           import os
           import subprocess
           import xml.etree.ElementTree as ET
           from pathlib import Path
 
           path = Path(os.environ["JUNIT"])
+          run_url = os.environ["RUN_URL"]
           if not path.is_file():
-              print("No JUnit report; skipping issue report.")
-              raise SystemExit(0)
-          tree = ET.parse(path)
-          failures = []
-          for case in tree.iter("testcase"):
-              for tag in ("failure", "error"):
-                  node = case.find(tag)
-                  if node is not None:
-                      msg = (node.text or node.get("message") or "").strip()
-                      failures.append(f"{case.get('classname')}::{case.get('name')}\n{msg}")
-          if not failures:
-              print("JUnit shows no failing case (coverage/step-level failure); skipping.")
-              raise SystemExit(0)
-          body = "## Failing tests on this Python version\n\n" + "\n\n".join(
-              f"### {i+1}. {f}" for i, f in enumerate(failures[:20])
-          )
+              body = f"No JUnit report was written. Run: {run_url}\n\nThe suite did not complete (crash/timeout/OOM)."
+          else:
+              tree = ET.parse(path)
+              failures = []
+              for case in tree.iter("testcase"):
+                  for tag in ("failure", "error"):
+                      node = case.find(tag)
+                      if node is not None:
+                          msg = (node.text or node.get("message") or "").strip()
+                          failures.append(f"{case.get('classname')}::{case.get('name')}\n{msg}")
+              if not failures:
+                  body = f"JUnit shows no failing case (coverage/step-level failure). Run: {run_url}"
+              else:
+                  body = f"## Failing tests\n\nRun: {run_url}\n\n" + "\n\n".join(
+                      f"### {i+1}. {f}" for i, f in enumerate(failures[:20])
+                  )
+          payload = json.dumps({"title": "[ci-diag] Python test failures diagnostic", "body": body})
           subprocess.run(
-              ["gh", "issue", "create", "--title",
-               "[ci-diag] Python test failures diagnostic",
-               "--body", body],
-              check=False,
+              ["gh", "api", "-X", "POST",
+               f"repos/{os.environ['GITHUB_REPOSITORY']}/issues",
+               "--input", "-"],
+              input=payload,
+              check=True,
           )
           PY
 
