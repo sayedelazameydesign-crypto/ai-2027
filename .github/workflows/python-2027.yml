@@ -41,6 +41,7 @@ on:
 
 permissions:
   contents: read
+  annotations: write
 
 concurrency:
   group: python-2027-${{ github.ref }}
