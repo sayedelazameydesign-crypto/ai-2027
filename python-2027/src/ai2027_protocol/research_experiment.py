@@ -548,7 +548,7 @@ class ExperimentRunner:
             stdout_text = redact_secrets(stdout_b.decode("utf-8", errors="replace"))
             result = _parse_result(stdout_text)
             if result is None:
-                _stderr_snippet = stderr_b.decode("utf-8", errors="replace")[:500]
+                _stderr_snippet = stderr_b.decode("utf-8", errors="replace")[:2000]
                 _write_debug(
                     base_dir,
                     f"no result; stdout={stdout_text[:500]!r} stderr={_stderr_snippet!r}",
