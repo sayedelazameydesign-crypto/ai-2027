@@ -1,0 +1,222 @@
+# AI-2027 routing profiles — capability declarations for the Model Router.
+#
+# RULE: profiles declare CAPABILITIES, never concrete model names. A profile
+# names the provider kinds it may use and the capability tags it serves; the
+# router resolves actual model IDs at runtime through the provider catalogue,
+# so renaming or retiring a model never requires editing this file.
+#
+# RULE: every profile is free-first. `max_spend_usd` is 0.0 unless an operator
+# has explicitly authorised spend, and that authorisation is recorded in the
+# profile's own `notes`. A profile with a non-zero spend that has no recorded
+# authorisation is refused by the loader.
+#
+# RULE: `preferred_providers` is an ordered preference, not a guarantee. The
+# router still applies BudgetGuard, timeouts, circuit breaking and failover.
+#
+# This file is parsed by `python-2027/src/ai2027_protocol/routing_profiles.py`
+# with a strict, dependency-free YAML subset parser. Keep the structure to the
+# shapes that parser supports: block mappings, block sequences of scalars,
+# quoted or bare scalars, and `#` comments. No anchors, aliases, tags, flow
+# collections, or multi-line scalars.
+
+version: 1.0.0
+
+default_profile: classify
+
+profiles:
+
+  # ---------------------------------------------------------------- triage
+  classify:
+    description: Fast classification and routing of an incoming goal.
+    capabilities:
+      - classify
+      - summarize
+      - extract
+    preferred_providers:
+      - ollama
+      - gemini
+    allow_remote: true
+    max_tokens: 256
+    temperature: 0.2
+    budget:
+      max_spend_usd: 0.0
+      allow_unknown_cost: false
+    fallback_profile: reason
+    approvals:
+      required: []
+    notes: Pure routing and summarisation; no artifact is produced.
+
+  # ---------------------------------------------------------------- reasoning
+  reason:
+    description: Deep inference, diagnosis and multi-option analysis.
+    capabilities:
+      - reason
+      - diagnose
+      - compare
+    preferred_providers:
+      - gemini
+      - nvidia
+      - ollama
+    allow_remote: true
+    max_tokens: 2048
+    temperature: 0.4
+    budget:
+      max_spend_usd: 0.0
+      allow_unknown_cost: false
+    fallback_profile: ollama-local
+    approvals:
+      required: []
+    notes: Used when the step is genuinely uncertain. Depth is requested per step, not per run.
+
+  # ---------------------------------------------------------------- coding
+  coding:
+    description: Code authoring, repair, refactoring and test authoring.
+    capabilities:
+      - code
+      - repair
+      - refactor
+      - test-author
+    preferred_providers:
+      - ollama
+      - gemini
+      - groq
+    allow_remote: true
+    max_tokens: 4096
+    temperature: 0.2
+    budget:
+      max_spend_usd: 0.0
+      allow_unknown_cost: false
+    fallback_profile: ollama-local
+    approvals:
+      required:
+        - shell-execution
+        - file-write-outside-sandbox
+    notes: Shell execution and writes outside the sandbox require an approval decision.
+
+  # ---------------------------------------------------------------- planning
+  planning:
+    description: Multi-step orchestration: goal to DAG, replanning and resumption.
+    capabilities:
+      - plan
+      - orchestrate
+      - replan
+    preferred_providers:
+      - ollama
+      - gemini
+    allow_remote: true
+    max_tokens: 2048
+    temperature: 0.3
+    budget:
+      max_spend_usd: 0.0
+      allow_unknown_cost: false
+    fallback_profile: ollama-local
+    approvals:
+      required: []
+    notes: Planner output is structured and validated before execution.
+
+  # ---------------------------------------------------------------- verification
+  verification:
+    description: Independent verification of artifacts, runs and claims.
+    capabilities:
+      - verify
+      - inspect
+      - audit
+    preferred_providers:
+      - ollama
+      - deterministic
+    allow_remote: false
+    max_tokens: 1024
+    temperature: 0.1
+    budget:
+      max_spend_usd: 0.0
+      allow_unknown_cost: false
+    fallback_profile: deterministic
+    approvals:
+      required: []
+    notes: Deterministic and local paths are preferred; verification never spends remote budget.
+
+  # ---------------------------------------------------------------- memory
+  memory:
+    description: Retrieval, indexing and evidence-gated storage.
+    capabilities:
+      - embed
+      - retrieve
+      - store
+    preferred_providers:
+      - ollama
+      - deterministic
+    allow_remote: false
+    max_tokens: 512
+    temperature: 0.1
+    budget:
+      max_spend_usd: 0.0
+      allow_unknown_cost: false
+    fallback_profile: deterministic
+    approvals:
+      required:
+        - memory-write
+    notes: Memory writes are evidence-gated; only verified evidence is admitted.
+
+  # ---------------------------------------------------------------- vision
+  vision:
+    description: Images, PDFs and documents: extraction, OCR and captioning.
+    capabilities:
+      - vision
+      - extract-document
+      - caption
+    preferred_providers:
+      - gemini
+      - ollama
+    allow_remote: true
+    max_tokens: 2048
+    temperature: 0.2
+    budget:
+      max_spend_usd: 0.0
+      allow_unknown_cost: false
+    fallback_profile: ollama-local
+    approvals:
+      required: []
+    notes: Document contents are redacted before they enter a prompt or memory.
+
+  # ---------------------------------------------------------------- local fallback
+  ollama-local:
+    description: Local-only execution when no free remote capability is available.
+    capabilities:
+      - classify
+      - summarize
+      - reason
+      - code
+      - plan
+    preferred_providers:
+      - ollama
+    allow_remote: false
+    max_tokens: 2048
+    temperature: 0.3
+    budget:
+      max_spend_usd: 0.0
+      allow_unknown_cost: false
+    fallback_profile: deterministic
+    approvals:
+      required: []
+    notes: Proven zero-cost by construction; the only remote-free path for coding and planning.
+
+  # ---------------------------------------------------------------- offline
+  deterministic:
+    description: Offline deterministic engine; no model call at all.
+    capabilities:
+      - classify
+      - verify
+      - inspect
+      - plan
+    preferred_providers:
+      - deterministic
+    allow_remote: false
+    max_tokens: 1024
+    temperature: 0.0
+    budget:
+      max_spend_usd: 0.0
+      allow_unknown_cost: false
+    fallback_profile: deterministic
+    approvals:
+      required: []
+    notes: Used for structural work and as the final failover. Never labelled as a live model result.

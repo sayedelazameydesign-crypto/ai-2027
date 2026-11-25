@@ -13,6 +13,40 @@ fail or when any GitHub Action is not pinned to a full-length SHA.
 
 ## [Unreleased]
 
+### Architecture — P1 cognitive intelligence foundation
+- Added the **operating-mind** prompt layer under `prompts/agent/`: `SYSTEM`,
+  `UNDERSTANDING`, `REASONING`, `PLANNING`, `REFLECTION`, `VERIFICATION` and
+  `FINAL-REPORT`. Each file carries front matter (`name`, `version`, `role`,
+  `required`) and states the behaviour it decides, the boundaries it must not
+  cross, and the output it produces.
+- Added the **capability routing** layer: `config/routing_profiles.yaml`
+  declares task profiles by capability and provider *kind* — never by concrete
+  model id — and `python-2027/src/ai2027_protocol/routing_profiles.py` loads,
+  validates and selects them. Every profile is free-first by construction: a
+  paid or unknown-cost profile is refused at load time.
+- Added `python-2027/src/ai2027_protocol/prompts.py`, a stdlib-only loader that
+  validates the prompt files (front matter, required headings, forbidden
+  placeholders) and hash-addresses the bundle, so a prompt change is auditable.
+  Templates refuse unknown or blank placeholders.
+- Added `python-2027/src/ai2027_protocol/yaml_subset.py`, a dependency-free,
+  strict parser for the YAML subset the config uses. It refuses unsupported
+  shapes (anchors, flow collections, multi-line scalars) instead of misreading
+  them. PyYAML is deliberately not added: the config layer stays stdlib-only.
+- Added engineering guidance for coding agents: `AGENTS.md` (canonical),
+  `CLAUDE.md` (compatibility shim), and `docs/agent/ENGINEERING-STANDARDS.md`.
+- Added `docs/agent/COGNITIVE-ARCHITECTURE.md`, mapping the perceive → plan →
+  execute → observe → reflect → verify → memory loop to the components that
+  implement it, and stating the P1 boundary (no kernel, memory, provider or
+  deployment changes).
+- Tests: `tests/test_prompt_loader.py` and `tests/test_routing_profiles.py`
+  (dependency-free, stdlib-only) plus package-level suites
+  `python-2027/tests/test_prompt_loader.py` and
+  `python-2027/tests/test_routing_profiles.py`. The package suite asserts the
+  routing provider kinds stay in sync with `contracts.ProviderKind`.
+- Verified: `ruff check`/`ruff format --check`, `mypy --strict` (128 files), and
+  the full `python-2027` pytest suite pass with 91.7% coverage (floor 90%); the
+  protocol auditor scores `python-2027` at 100%.
+
 ### CI maintenance — GitHub Actions runtime support
 - Updated the full-SHA-pinned checkout, Python, Node, artifact upload, CodeQL, and
   Pages deployment actions to maintained Node 24-compatible major versions.
