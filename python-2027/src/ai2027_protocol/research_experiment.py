@@ -301,6 +301,27 @@ def _close_pipes(proc: asyncio.subprocess.Process) -> None:
             pass
 
 
+async def _reap(proc: asyncio.subprocess.Process) -> int | None:
+    """Reap a (usually killed) child without ever raising.
+
+    ``Process.wait()`` can raise on some Python versions once the pipe
+    transports have been closed, so this wraps it and falls back to the
+    underlying subprocess object when the asyncio wait is unavailable. The
+    runner must never propagate a reaping error as a raised exception.
+    """
+    try:
+        return await proc.wait()
+    except Exception:  # noqa: BLE001 - never let reaping break the run
+        try:
+            transport = getattr(proc, "_transport", None)
+            inner = getattr(transport, "_proc", None)
+            if inner is not None:
+                return int(inner.wait(timeout=2.0))
+        except Exception:  # noqa: BLE001, S110
+            pass
+        return proc.returncode
+
+
 def _kill_group(
     proc: asyncio.subprocess.Process, pgid: int | None = None, *, close_pipes: bool = True
 ) -> None:
@@ -493,7 +514,7 @@ class ExperimentRunner:
                     )
             except TimeoutError:
                 _kill_group(proc, pgid)
-                await proc.wait()
+                await _reap(proc)
                 elapsed = (time.perf_counter() - started) * 1000.0
                 return _failed_evidence(
                     spec, artifact_sha256, elapsed, _peak_memory_bytes(cgroup_path)
@@ -507,11 +528,11 @@ class ExperimentRunner:
             # first so we never SIGKILL it (which would corrupt returncode).
             rc = proc.returncode
             if rc is None:
-                rc = await proc.wait()
+                rc = await _reap(proc)
                 _kill_group(proc, pgid, close_pipes=False)
             else:
                 _kill_group(proc, pgid, close_pipes=False)
-                await proc.wait()
+                await _reap(proc)
             elapsed = (time.perf_counter() - started) * 1000.0
             if stdout_ovf or stderr_ovf or rc != 0:
                 return _failed_evidence(
