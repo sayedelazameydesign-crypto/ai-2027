@@ -86,6 +86,7 @@ def create_app(
     telemetry: TelemetrySink | None = None,
     read_only: bool | None = None,
     research_gateway: ResearchGateway | None = None,
+    research_decision_secret: str | None = None,
 ) -> FastAPI:
     """Build a configured FastAPI application with replaceable router and telemetry."""
     root = (workspace_root or _DEFAULT_ROOT).resolve()
@@ -144,6 +145,7 @@ def create_app(
         topics_path=topics_path,
         read_only=is_read_only,
         gateway=research_gateway,
+        decision_secret=research_decision_secret,
     )
     app.include_router(research_router)
     app.state.research_store = research_store

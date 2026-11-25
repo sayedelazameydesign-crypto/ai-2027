@@ -68,12 +68,18 @@ class ResearchEvaluationRequest(StrictModel):
 
 
 class ResearchDecisionRequest(StrictModel):
-    """Human decision payload; tested requires gates and a content-addressed artifact."""
+    """Human decision payload; tested requires gates and a content-addressed artifact.
+
+    ``proof`` is a required authenticated token for any decision: an
+    unauthenticated caller cannot mint a ``human`` decision into the audit
+    chain, so ``actor="human"`` is never granted automatically.
+    """
 
     identifier: str = Field(min_length=1, max_length=200)
     status: Literal["tested", "rejected"]
     reason: str | None = Field(default=None, max_length=1000)
     evidence: TestEvidence | None = None
+    proof: str = Field(min_length=1, max_length=2000)
 
 
 class ResearchPaperListResponse(StrictModel):
@@ -122,8 +128,14 @@ def build_research_router(
     topics_path: Path,
     read_only: bool,
     gateway: ResearchGateway | None = None,
+    decision_secret: str | None = None,
 ) -> tuple[APIRouter, ResearchStore]:
-    """Build the Research Radar API around fixed sources and a local SQLite audit store."""
+    """Build the Research Radar API around fixed sources and a local SQLite audit store.
+
+    When ``decision_secret`` is set, the ``/decision`` route verifies the caller's
+    ``proof`` against it before recording a ``human`` decision, so a forged or
+    proxied request cannot mint a human-approved state change.
+    """
     try:
         topics = load_research_topics(topics_path)
     except ResearchError as exc:
@@ -210,6 +222,8 @@ def build_research_router(
         """Record human rejection or mark a candidate tested after every sandbox gate passes."""
         if read_only:
             raise HTTPException(status_code=403, detail="Research registry is read-only.")
+        if decision_secret is not None and payload.proof != decision_secret:
+            raise HTTPException(status_code=401, detail="Human decision proof token is not valid.")
         try:
             return await asyncio.to_thread(
                 store.decide,
@@ -218,6 +232,7 @@ def build_research_router(
                 reason=payload.reason,
                 evidence=payload.evidence,
                 actor="human",
+                proof=payload.proof,
             )
         except (ResearchStoreError, ValueError) as exc:
             _raise_http(exc)

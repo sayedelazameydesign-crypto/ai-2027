@@ -18,7 +18,7 @@ rebuild.
 | Separate scientific evidence from engineering conclusions | ✅ present | `QuotedEvidence` (verbatim source quotes) vs `EngineeringAssessment` (inference); `save_evaluation` enforces each quote occurs in the fetched title/abstract |
 | Convert a paper into a hypothesis and a reproducible experiment | ⚠️ partial | `EngineeringAssessment.proposed_experiment` described the experiment, but there was no first-class `Hypothesis` and no executor |
 | Run the experiment in isolation; measure accuracy/perf/resources/edge cases | ⚠️ contracts only | `VerificationGates` and `TestEvidence` defined the schema, but **no component produced them** — `decide()` accepted evidence from a caller |
-| Persist results in a durable ledger; no adoption before human review | ✅ present | `ResearchStore` (SQLite, WAL) + `ResearchAuditLedger` (hash-chained, tamper-evident); `decide()` requires `actor="human"` |
+| Persist results in a durable ledger; no adoption before human review | ✅ present | `ResearchStore` (SQLite, WAL) + `ResearchAuditLedger` (hash-chained, tamper-evident); `decide()` requires an authenticated `actor="human"` proof |
 
 **The single real gap:** an isolated, reproducible **experiment runner** that
 produces `TestEvidence`.
@@ -43,18 +43,27 @@ A bounded, reproducible experiment: the `Hypothesis`, the experiment `code`
 ### `ExperimentRunner`
 Runs an `ExperimentSpec` in isolation and returns a measured `TestEvidence`:
 
-- **Isolated, bounded, local execution.** The experiment runs in a subprocess
-  (`python -I -B`) with a sanitized environment (no secrets), a hard timeout,
-  and bounded output. This aligns with the repo's existing sandbox pattern in
-  `tools_exec.py` rather than reinventing it.
-- **Real measurement.** The runner measures wall-time and reads the experiment's
-  reported `accuracy` and `peak_memory_bytes`, then evaluates the four gates:
-  `accuracy`, `latency`, `resource`, `edge_cases`.
-- **Reproducibility.** `artifact_sha256` is content-addressed over the
-  experiment code, so re-running the same spec reproduces the same evidence
-  hash.
+- **Bounded, local, resource-capped execution.** The experiment runs in a
+  subprocess (`python -I -B`) with a sanitized environment (no secrets), a hard
+  wall-clock timeout, hard `RLIMIT_*` caps (CPU, address space, file size,
+  process count), streamed output with a hard byte cap, and process-group
+  termination. This aligns with the repo's existing subprocess pattern in
+  `tools_exec.py` rather than reinventing it. **It is a confined subprocess,
+  not a security sandbox:** it does not block file, network, or syscall access;
+  the guarantee is resource bounding and reliable termination.
+- **Independent measurement.** Wall-time and peak RSS are measured on the
+  **host** (`perf_counter`, `getrusage(RUSAGE_CHILDREN)`). Accuracy is computed
+  on the host from the experiment's raw `correct`/`total` counts, not from a
+  self-declared success value — the experiment's own assertions are treated as
+  input, not as certificates. The four gates are `accuracy`, `latency`,
+  `resource`, `edge_cases`.
+- **Full-spec reproducibility.** `artifact_sha256` is content-addressed over the
+  **entire spec** (hypothesis, code, environment, timeout, thresholds,
+  edge-cases), so any change to conditions changes the fingerprint.
 - **Failure is data.** A crashing, timing-out, or malformed experiment yields a
   `TestEvidence` whose gates fail — it does not raise and does not get adopted.
+  Every result (including failures) can be persisted durably via
+  `ResearchStore.record_experiment_result`.
 
 ## 3. The rules P4 enforces
 
@@ -62,10 +71,19 @@ Runs an `ExperimentSpec` in isolation and returns a measured `TestEvidence`:
   candidate is `tested` stays a human call through `ResearchStore.decide`. A
   failing experiment cannot be used to adopt: `decide(status=TESTED)` rejects
   evidence whose gates did not all pass.
-- **Reproducibility.** The artifact hash is content-addressed; the same spec
-  reproduces the same hash.
-- **Bounded, local execution.** Subprocess isolation, timeout, and output caps.
-  No paid or remote call is involved (consistent with `MAX_SPEND=0`).
+- **Human decisions are authenticated.** `actor="human"` is never granted
+  automatically: `decide()` requires a non-empty `proof` token, and the
+  `/v1/research/decision` route verifies the proof against an optional
+  configured secret. An unauthenticated or proxied request cannot mint a human
+  decision into the audit chain.
+- **Failures are durable.** `ResearchStore.record_experiment_result` persists
+  every experiment result (including failures and timeouts) in a durable,
+  auditable ledger without changing the paper's status.
+- **Reproducibility.** The artifact hash is content-addressed over the full
+  spec; the same spec reproduces the same hash.
+- **Bounded, local execution.** Subprocess isolation, resource caps, timeout,
+  and streamed output bounds. No paid or remote call is involved (consistent
+  with `MAX_SPEND=0`).
 - **No public Python-execution endpoint.** The runner is a **library
   component**. There is deliberately no HTTP route that executes arbitrary
   Python: the Research API's write paths are not authenticated, and adding one
@@ -74,43 +92,51 @@ Runs an `ExperimentSpec` in isolation and returns a measured `TestEvidence`:
 ## 4. Wiring to the existing store and ledger
 
 The runner produces a `TestEvidence` compatible with the existing contract; the
-existing decision path does the rest — no store changes are required:
+existing decision path does the rest:
 
 ```
 ExperimentSpec ──ExperimentRunner.run──▶ TestEvidence
                                               │
+                                              ├──▶ ResearchStore.record_experiment_result(...)  [durable, incl. failures]
+                                              │
                                               ▼
-                      ResearchStore.decide(status=TESTED, evidence=..., actor="human")
+                      ResearchStore.decide(status=TESTED, evidence=..., actor="human", proof=...)
                                               │
                                               ▼
                         ResearchStore + ResearchAuditLedger (durable, tamper-evident)
 ```
 
 The integration test proves the full path: a candidate paper → an experiment →
-`TestEvidence` → a human decision → the evidence persists across a restart with
-the audit chain intact.
+`TestEvidence` → a human decision (with proof) → the evidence persists across a
+restart with the audit chain intact. A failing experiment is recorded
+durably but does not change the paper's status.
 
 ## 5. What P4 does not claim (limits)
 
-- **Isolation is local, not OS-level.** The guarantee is the subprocess
-  boundary plus time/output caps plus a sanitized environment. OS-level
-  sandboxing (containers) is a deployment concern, not part of this module.
+- **Subprocess, not a security sandbox.** The guarantee is a confined
+  subprocess with resource caps, streamed output, and process-group termination.
+  It does **not** block file, network, or syscall access; a host that must
+  prevent those requires OS-level isolation (containers/namespaces) at
+  deployment time.
 - **The experiment is bounded local code.** No model-weight training, no
   remote provider calls.
-- **Gate truth depends on the experiment.** The runner trusts the experiment's
-  reported accuracy/memory and its own edge-case assertions; independent
-  verification of a specific artifact remains a human-review responsibility.
+- **Edge-case truth is experiment-reported.** Accuracy, latency, and memory are
+  measured on the host, but the edge-case results are the experiment's own
+  assertions (scoped honestly); independent verification of a specific
+  artifact remains a human-review responsibility.
 
 ## 6. Acceptance standard
 
 P4 is complete when the platform can take a verified paper, turn it into a
-falsifiable hypothesis and a bounded experiment, run that experiment in
-isolation, measure the four gates, persist the resulting evidence durably
-across restarts, and refuse to adopt anything without a human decision — all
+falsifiable hypothesis and a bounded experiment, run that experiment in a
+resource-capped subprocess, measure the four gates independently on the host,
+persist the resulting evidence durably (including failures) across restarts,
+and refuse to adopt anything without an authenticated human decision — all
 without a public code-execution endpoint and without touching the kernel,
 providers, or `main`.
 
 A stage is **not** complete just because its files exist: it requires a real
-execution, durable persistence, and reproducible measurement. The test suite
-exercises a real bounded execution, gate evaluation, artifact reproducibility,
-timeout/crash handling, and the full persist-and-reopen path.
+execution, durable persistence, reproducible measurement, and authenticated
+human decisions. The test suite exercises a real bounded execution, gate
+evaluation, artifact reproducibility, timeout/crash/flood handling, failed-
+experiment durability, and the full persist-and-reopen path.

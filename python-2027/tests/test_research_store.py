@@ -210,17 +210,21 @@ def test_candidate_can_be_marked_tested_only_with_all_four_gates(tmp_path: Path)
             "2401.01234",
             status=ResearchStatus.TESTED,
             evidence=make_test_evidence(all_passed=False),
+            proof="test-proof",
         )
     tested = store.decide(
         "2401.01234",
         status=ResearchStatus.TESTED,
         evidence=make_test_evidence(),
+        proof="test-proof",
     )
     assert tested.status is ResearchStatus.TESTED
     assert tested.test_evidence is not None
     assert tested.test_evidence.artifact_sha256 == make_test_evidence().artifact_sha256
     with pytest.raises(ResearchTransitionError, match="Only candidate"):
-        store.decide("2401.01234", status=ResearchStatus.REJECTED, reason="Later changed")
+        store.decide(
+            "2401.01234", status=ResearchStatus.REJECTED, reason="Later changed", proof="test-proof"
+        )
 
 
 def test_rejection_requires_reason_and_decisions_cannot_be_reset(tmp_path: Path) -> None:
@@ -229,9 +233,12 @@ def test_rejection_requires_reason_and_decisions_cannot_be_reset(tmp_path: Path)
     paper = make_paper(arxiv_id="2401.09999v1", doi=None)
     store.add_candidate(paper, topic_id="systems-security")
     with pytest.raises(ResearchTransitionError, match="requires a reason"):
-        store.decide("2401.09999", status=ResearchStatus.REJECTED)
+        store.decide("2401.09999", status=ResearchStatus.REJECTED, proof="test-proof")
     rejected = store.decide(
-        "2401.09999", status=ResearchStatus.REJECTED, reason="No relevant system fit."
+        "2401.09999",
+        status=ResearchStatus.REJECTED,
+        reason="No relevant system fit.",
+        proof="test-proof",
     )
     assert rejected.status is ResearchStatus.REJECTED
     assert rejected.decision_reason == "No relevant system fit."
@@ -240,7 +247,38 @@ def test_rejection_requires_reason_and_decisions_cannot_be_reset(tmp_path: Path)
     with pytest.raises(ResearchTransitionError, match="Decision status"):
         store.decide("2401.09999", status="unknown")  # type: ignore[arg-type]
     with pytest.raises(ResearchTransitionError, match="not exceed"):
-        store.decide("2401.09999", status=ResearchStatus.REJECTED, reason="x" * 1001)
+        store.decide(
+            "2401.09999", status=ResearchStatus.REJECTED, reason="x" * 1001, proof="test-proof"
+        )
+
+
+def test_human_decision_requires_an_authenticated_proof(tmp_path: Path) -> None:
+    """actor="human" is never granted automatically; a proof token is mandatory."""
+    store = ResearchStore(tmp_path / "research.sqlite3")
+    store.add_candidate(make_paper(), topic_id="agent-evaluation")
+    # Missing proof is rejected even for a valid tested transition.
+    with pytest.raises(ResearchTransitionError, match="proof token"):
+        store.decide(
+            "2401.01234",
+            status=ResearchStatus.TESTED,
+            evidence=make_test_evidence(),
+        )
+    # Blank proof is rejected too.
+    with pytest.raises(ResearchTransitionError, match="proof token"):
+        store.decide(
+            "2401.01234",
+            status=ResearchStatus.REJECTED,
+            reason="No fit.",
+            proof="   ",
+        )
+    # With a valid proof, the human decision succeeds.
+    record = store.decide(
+        "2401.01234",
+        status=ResearchStatus.REJECTED,
+        reason="No fit.",
+        proof="valid-proof",
+    )
+    assert record.status is ResearchStatus.REJECTED
 
 
 def test_store_rejects_unknown_ids_topics_missing_records_and_invalid_limits(
