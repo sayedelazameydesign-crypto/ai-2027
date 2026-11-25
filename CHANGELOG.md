@@ -16,16 +16,21 @@ fail or when any GitHub Action is not pinned to a full-length SHA.
 ### Security — fail-closed static frontend workflow and SHA-256 bundle guard
 - Hardened `.github/workflows/deploy-frontend.yml`: removed `secrets.GEMINI_API_KEY`
   from static bundle builds, pinned `actions/setup-node` by full SHA, set
-  `persist-credentials: false`, enforced `npm ci --ignore-scripts`, scoped
-  `pages: write` and `id-token: write` strictly to the manual `main`-only
-  `deploy` job (`deploy_to_pages: false` default), dropped automatic `push`
-  overwrites of `website/`, and aligned concurrency on `main` with `pages.yml`.
+  `persist-credentials: false`, enforced both `npm ci --ignore-scripts` and
+  `npm --ignore-scripts run build` (blocking `prebuild`/`postbuild` hooks),
+  monitored all guard dependencies (`scripts/secret_scan.py`, `kernel-2027/**`,
+  and workflow audit scripts) in `on.pull_request.paths`, scoped `pages: write`
+  and `id-token: write` strictly to the manual `main`-only `deploy` job
+  (`deploy_to_pages: false` default), dropped automatic `push` overwrites of
+  `website/`, and aligned concurrency on `main` with `pages.yml`.
 - Added `scripts/frontend_bundle_guard.py` + `scripts/test_frontend_bundle_guard.py`
   (stdlib + `kernel-2027` SHA-256 primitives): confines `frontend_path` and
   `build_output` inside the repository root, refuses frozen `projects/` archives,
-  symlinks, hardlinks, forbidden files, and credential-shaped strings, writes a
-  byte-reproducible `artifact.tar`, and independently re-verifies every member
-  digest from disk.
+  forbidden `package.json` lifecycle hooks, symlinks, hardlinks, forbidden files,
+  oversized assets, duplicate tar entries, and credential-shaped strings across
+  overlapping byte windows (including files > 2 MiB with zero pragma bypass),
+  writes a byte-reproducible `artifact.tar`, and independently re-verifies every
+  member digest from disk.
 - Extended `scripts/workflow_secret_audit.py` + `scripts/test_workflow_secret_audit.py`
   with Rule 3 (`pages_public_bundle`): any workflow publishing to GitHub Pages is
   refused if it references `secrets.*`.

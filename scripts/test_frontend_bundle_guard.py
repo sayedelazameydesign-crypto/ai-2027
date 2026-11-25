@@ -6,9 +6,11 @@ Run from repository root:
 """
 from __future__ import annotations
 
+import ast
 import io
 import json
 import os
+import re
 import subprocess
 import sys
 import tarfile
@@ -122,6 +124,25 @@ class TargetValidationTests(unittest.TestCase):
             os.symlink(outside / "real-ui", repo / "linked-ui")
             with self.assertRaisesRegex(fbg.BundleGuardError, "symbolic link"):
                 fbg.validate_target(repo, "linked-ui", "dist", require_lockfile=True)
+
+    def test_07_package_json_with_lifecycle_hooks_is_refused(self) -> None:
+        for hook in ("prebuild", "postbuild", "preinstall", "install", "postinstall", "prepare"):
+            with self.subTest(hook=hook):
+                with tempfile.TemporaryDirectory() as tmp:
+                    repo = Path(tmp)
+                    fe = _init_frontend_fixture(repo, "app-ui", lockfile=True)
+                    (fe / "package.json").write_text(
+                        json.dumps(
+                            {
+                                "name": "app-ui",
+                                "private": True,
+                                "scripts": {"build": "vite build", hook: "echo hook"},
+                            }
+                        ),
+                        encoding="utf-8",
+                    )
+                    with self.assertRaisesRegex(fbg.BundleGuardError, "forbidden lifecycle hook"):
+                        fbg.validate_target(repo, "app-ui", "dist", require_lockfile=True)
 
 
 class BundlePackagingAndSecurityTests(unittest.TestCase):
@@ -289,6 +310,212 @@ class BundlePackagingAndSecurityTests(unittest.TestCase):
             self.assertEqual(verify_proc.returncode, 0, verify_proc.stderr)
             reverified = json.loads(verify_proc.stdout)
             self.assertEqual(reverified["artifact_sha256"], parsed["artifact_sha256"])
+
+    def test_17_large_asset_beyond_2mib_with_trailing_secret_is_refused(self) -> None:
+        """Regression for P1: files > secret_scan.MAX_BYTES (2 MiB) must NEVER skip scanning."""
+        beyond_limit = fbg.pattern_gate.MAX_BYTES + (512 * 1024)  # 2.5 MiB prefix before secret
+        self.assertGreater(beyond_limit, 2 * 1024 * 1024)
+        for ext, binary_mode in ((".js", False), (".wasm", True)):
+            with self.subTest(ext=ext):
+                with tempfile.TemporaryDirectory() as tmp:
+                    repo = Path(tmp)
+                    fe = _init_frontend_fixture(repo)
+                    target_asset = fe / "dist" / "assets" / f"huge{ext}"
+                    if binary_mode:
+                        payload = (b"\x00\x61\x73\x6d" * (beyond_limit // 4)) + SYNTHETIC_GOOGLE.encode("ascii") + b"\x00"
+                    else:
+                        filler = (b"// benign bundle padding\n" * ((beyond_limit // 25) + 1))[:beyond_limit]
+                        payload = filler + f"const leaked = '{SYNTHETIC_GOOGLE}';\n".encode("utf-8")
+                    target_asset.write_bytes(payload)
+
+                    with self.assertRaises(fbg.BundleGuardError) as ctx:
+                        fbg.package_bundle(repo, "app-ui", "dist", str(repo / "out.tar"))
+                    self.assertIn("credential-shaped pattern", str(ctx.exception))
+                    self.assertNotIn(SYNTHETIC_GOOGLE, str(ctx.exception))
+                    self.assertFalse((repo / "out.tar").exists())
+
+    def test_18_secret_split_across_sliding_window_boundaries_is_refused(self) -> None:
+        """Credentials straddling 1 MiB stride or 1 MiB + 16 KiB overlap boundaries must be caught."""
+        boundary_offsets = (
+            fbg.SCAN_WINDOW_BYTES - 12,
+            fbg.SCAN_WINDOW_BYTES + fbg.SCAN_OVERLAP_BYTES - 12,
+            (2 * fbg.SCAN_WINDOW_BYTES) - 7,
+        )
+        total_len = (2 * fbg.SCAN_WINDOW_BYTES) + 131_072  # ~2.125 MiB
+        token_bytes = SYNTHETIC_OPENAI.encode("ascii")
+        for offset in boundary_offsets:
+            with self.subTest(offset=offset):
+                buf = bytearray(b"a" * total_len)
+                buf[offset - 1 : offset] = b"'"
+                buf[offset : offset + len(token_bytes)] = token_bytes
+                buf[offset + len(token_bytes) : offset + len(token_bytes) + 1] = b"'"
+                hits = fbg._scan_asset_bytes(bytes(buf), "assets/chunk.js")
+                self.assertEqual(len(hits), 1)
+                self.assertEqual(hits[0]["rule"], "openai_key")
+
+    def test_19_inline_allowlist_pragma_does_not_bypass_public_bundle_scan(self) -> None:
+        """Minified single-line JS containing pragma comments must still block baked secrets."""
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            fe = _init_frontend_fixture(repo)
+            minified = (
+                "/* allowlist-secret */ /* pragma: allowlist secret */ "
+                f"window.__CFG={{key:'{SYNTHETIC_GH}'}};\n"
+            )
+            (fe / "dist" / "assets" / "app.js").write_text(minified, encoding="utf-8")
+            with self.assertRaisesRegex(fbg.BundleGuardError, "credential-shaped pattern"):
+                fbg.package_bundle(repo, "app-ui", "dist", str(repo / "out.tar"))
+
+    def test_20_oversized_asset_total_bundle_and_duplicate_tar_entries_are_refused(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            fe = _init_frontend_fixture(repo)
+            (fe / "dist" / "assets" / "big.bin").write_bytes(b"x" * 2048)
+
+            with self.assertRaisesRegex(fbg.BundleGuardError, "exceeds maximum allowed size"):
+                fbg.package_bundle(
+                    repo, "app-ui", "dist", str(repo / "out.tar"), max_asset_bytes=1024
+                )
+            with self.assertRaisesRegex(fbg.BundleGuardError, "exceeds maximum allowed total size"):
+                fbg.package_bundle(
+                    repo,
+                    "app-ui",
+                    "dist",
+                    str(repo / "out.tar"),
+                    max_asset_bytes=4096,
+                    max_bundle_bytes=1500,
+                )
+
+            dup_tar = repo / "dup.tar"
+            with tarfile.open(dup_tar, "w", format=tarfile.GNU_FORMAT) as tf:
+                for body in (b"<h1>first</h1>\n", b"<h1>second</h1>\n"):
+                    ti = tarfile.TarInfo("./index.html")
+                    ti.size = len(body)
+                    ti.mtime = 0
+                    tf.addfile(ti, io.BytesIO(body))
+            with self.assertRaisesRegex(fbg.BundleGuardError, "duplicate member path"):
+                fbg.verify_tar_archive(str(dup_tar))
+
+    def test_21_benign_large_asset_beyond_2mib_packages_and_verifies_cleanly(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            fe = _init_frontend_fixture(repo)
+            benign_size = fbg.pattern_gate.MAX_BYTES + (256 * 1024)  # 2.25 MiB clean asset
+            (fe / "dist" / "assets" / "vendor.js").write_bytes(b"var ok = 1;\n" * (benign_size // 12))
+            out_tar = repo / "clean-large.tar"
+            report = fbg.package_bundle(repo, "app-ui", "dist", str(out_tar))
+            self.assertTrue(report["ok"])
+            self.assertGreater(report["total_asset_bytes"], fbg.pattern_gate.MAX_BYTES)
+
+
+def _extract_pr_trigger_paths(workflow_text: str) -> list[str]:
+    lines = workflow_text.splitlines()
+    in_pr = False
+    in_paths = False
+    pr_indent = 0
+    paths_indent = 0
+    collected: list[str] = []
+
+    for raw_line in lines:
+        stripped = raw_line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        indent = len(raw_line) - len(raw_line.lstrip(" "))
+        if not in_pr:
+            if stripped == "pull_request:":
+                in_pr = True
+                pr_indent = indent
+            continue
+        if indent <= pr_indent:
+            break
+        if not in_paths:
+            if stripped == "paths:":
+                in_paths = True
+                paths_indent = indent
+            continue
+        if indent <= paths_indent:
+            break
+        if stripped.startswith("- "):
+            val = stripped[2:].strip().strip('"').strip("'")
+            collected.append(val)
+    return collected
+
+
+def _matches_gha_path_filter(repo_rel_posix: str, patterns: list[str]) -> bool:
+    for pat in patterns:
+        if pat.endswith("/**"):
+            prefix = pat[:-3].rstrip("/")
+            if repo_rel_posix == prefix or repo_rel_posix.startswith(prefix + "/"):
+                return True
+        else:
+            rx = "^" + re.escape(pat).replace(r"\*\*", ".*").replace(r"\*", "[^/]*") + "$"
+            if re.match(rx, repo_rel_posix):
+                return True
+    return False
+
+
+class WorkflowTriggerAndLifecycleTests(unittest.TestCase):
+    def test_30_workflow_disables_lifecycle_scripts_for_both_ci_and_build(self) -> None:
+        wf_text = (ROOT / ".github" / "workflows" / "deploy-frontend.yml").read_text(encoding="utf-8")
+        active = "\n".join(
+            line for line in wf_text.splitlines() if not line.lstrip().startswith("#")
+        )
+        self.assertIn('npm --prefix "$FRONTEND_PATH" ci --ignore-scripts', active)
+        self.assertIn('npm --prefix "$FRONTEND_PATH" --ignore-scripts run build', active)
+        self.assertNotIn('npm --prefix "$FRONTEND_PATH" run build', active)
+
+    def test_31_pull_request_paths_cover_all_ast_discovered_guard_dependencies(self) -> None:
+        wf_text = (ROOT / ".github" / "workflows" / "deploy-frontend.yml").read_text(encoding="utf-8")
+        patterns = _extract_pr_trigger_paths(wf_text)
+        self.assertTrue(patterns, "deploy-frontend.yml must declare on.pull_request.paths")
+
+        guard_src = (ROOT / "scripts" / "frontend_bundle_guard.py").read_text(encoding="utf-8")
+        tree = ast.parse(guard_src, filename="scripts/frontend_bundle_guard.py")
+        stdlib_names = set(sys.stdlib_module_names) | {"__future__"}
+        local_modules: set[str] = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    top = alias.name.split(".")[0]
+                    if top not in stdlib_names:
+                        local_modules.add(top)
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                top = node.module.split(".")[0]
+                if top not in stdlib_names:
+                    local_modules.add(top)
+
+        module_to_repo_paths: dict[str, tuple[str, ...]] = {
+            "kernel2027": ("kernel-2027/kernel2027/__init__.py", "kernel-2027/kernel2027/contracts.py"),
+            "secret_scan": ("scripts/secret_scan.py", "scripts/test_secret_scan.py"),
+        }
+        for mod in sorted(local_modules):
+            self.assertIn(
+                mod,
+                module_to_repo_paths,
+                f"unmapped non-stdlib import '{mod}' in frontend_bundle_guard.py; add to pull_request.paths and test map",
+            )
+            for dep_path in module_to_repo_paths[mod]:
+                self.assertTrue((ROOT / dep_path).is_file(), f"missing dependency file {dep_path}")
+                self.assertTrue(
+                    _matches_gha_path_filter(dep_path, patterns),
+                    f"dependency '{dep_path}' is NOT covered by deploy-frontend.yml pull_request.paths: {patterns}",
+                )
+
+        required_paths = (
+            "workspace-ui/package.json",
+            "workspace-ui/src/App.tsx",
+            ".github/workflows/deploy-frontend.yml",
+            "scripts/frontend_bundle_guard.py",
+            "scripts/test_frontend_bundle_guard.py",
+            "scripts/workflow_secret_audit.py",
+            "scripts/test_workflow_secret_audit.py",
+        )
+        for req in required_paths:
+            self.assertTrue(
+                _matches_gha_path_filter(req, patterns),
+                f"required path '{req}' is NOT covered by deploy-frontend.yml pull_request.paths",
+            )
+        self.assertFalse(_matches_gha_path_filter("README.md", patterns))
 
 
 if __name__ == "__main__":

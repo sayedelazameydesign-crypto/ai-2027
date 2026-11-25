@@ -8,12 +8,14 @@
 #      confined inside the repository root; symlinks, hardlinks, traversal
 #      segments, and frozen `projects/` archives are refused before `npm` runs.
 #   3. Supply-chain & toolchain pinning: every Action is pinned to a 40-char SHA,
-#      checkout disables persisted credentials, Node 22 is pinned, and
-#      `npm ci --ignore-scripts` enforces lockfile integrity without lifecycle hooks.
+#      checkout disables persisted credentials, Node 22 is pinned, and both
+#      `npm ci --ignore-scripts` and `npm --ignore-scripts run build` suppress
+#      install/prebuild/postbuild lifecycle hooks.
 #   4. Deterministic, link-free packaging: `frontend_bundle_guard.py package`
-#      scans every built asset for credential patterns, writes a reproducible
-#      GNU tar archive without symlink/hardlink dereferencing, and independently
-#      re-reads and verifies SHA-256 digests from disk.
+#      scans 100% of every built asset across overlapping windows (including
+#      files > 2 MiB up to the fail-closed size ceiling) for credential patterns,
+#      writes a reproducible GNU tar archive without symlink/hardlink
+#      dereferencing, and independently re-reads and verifies SHA-256 digests.
 #   5. No silent Pages overwrite: `pages.yml` owns the default `website/` site on
 #      `main`. Publishing from this workflow requires an explicit manual
 #      `workflow_dispatch` on `main` with `deploy_to_pages=true` and shares the
@@ -28,6 +30,11 @@ on:
       - ".github/workflows/deploy-frontend.yml"
       - "scripts/frontend_bundle_guard.py"
       - "scripts/test_frontend_bundle_guard.py"
+      - "scripts/secret_scan.py"
+      - "scripts/test_secret_scan.py"
+      - "scripts/workflow_secret_audit.py"
+      - "scripts/test_workflow_secret_audit.py"
+      - "kernel-2027/**"
   workflow_dispatch:
     inputs:
       frontend_path:
@@ -85,10 +92,10 @@ jobs:
           set -euo pipefail
           npm --prefix "$FRONTEND_PATH" ci --ignore-scripts
 
-      - name: Build static bundle (zero repository secrets)
+      - name: Build static bundle (zero repository secrets, pre/post hooks disabled)
         run: |
           set -euo pipefail
-          npm --prefix "$FRONTEND_PATH" run build
+          npm --prefix "$FRONTEND_PATH" --ignore-scripts run build
 
       - name: Verify assets, scan for credentials, and package deterministic artifact.tar
         run: |

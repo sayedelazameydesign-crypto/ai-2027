@@ -115,27 +115,36 @@ FORBIDDEN_BUNDLE_SUFFIXES: tuple[str, ...] = (
     ".kdbx",
 )
 
-BINARY_ASSET_SUFFIXES: frozenset[str] = frozenset({
-    ".woff2",
-    ".woff",
-    ".ttf",
-    ".otf",
-    ".eot",
-    ".png",
-    ".jpg",
-    ".jpeg",
-    ".gif",
-    ".webp",
-    ".ico",
-    ".avif",
-})
-
 PERCENT_ENCODED_SEP = re.compile(r"%(?:2e|2f|5c|00)", re.IGNORECASE)
 WINDOWS_DRIVE_PREFIX = re.compile(r"^[A-Za-z]:")
 KNOWN_SCAN_RULES: frozenset[str] = (
     frozenset(name for name, _ in pattern_gate.PATTERNS)
     | frozenset({"assigned_secret", "high_prefix_match"})
 )
+
+#: Sliding-window parameters so files larger than ``secret_scan.MAX_BYTES`` (2 MiB)
+#: are scanned completely without boundary blind spots or unbounded RAM spikes.
+SCAN_WINDOW_BYTES: int = 1 * 1024 * 1024   # 1 MiB stride per window
+SCAN_OVERLAP_BYTES: int = 16 * 1024        # 16 KiB overlap catches boundary-split tokens
+
+#: Hard fail-closed size ceilings for static Pages bundles. Oversized assets are
+#: refused explicitly rather than silently skipping inspection.
+MAX_SINGLE_ASSET_BYTES: int = 25 * 1024 * 1024    # 25 MiB per built asset
+MAX_TOTAL_BUNDLE_BYTES: int = 100 * 1024 * 1024   # 100 MiB across all built assets
+
+#: Lifecycle hooks refused in target package.json files (defense-in-depth alongside
+#: ``npm --ignore-scripts`` in CI).
+FORBIDDEN_NPM_LIFECYCLE_HOOKS: frozenset[str] = frozenset({
+    "preinstall",
+    "install",
+    "postinstall",
+    "prepublish",
+    "preprepare",
+    "prepare",
+    "postprepare",
+    "prebuild",
+    "postbuild",
+})
 
 
 class BundleGuardError(RuntimeError):
@@ -299,6 +308,14 @@ def validate_target(
     build_cmd = scripts_map.get("build") if isinstance(scripts_map, dict) else None
     if not isinstance(build_cmd, str) or not build_cmd.strip():
         raise BundleGuardError("frontend_path: package.json must declare a non-empty scripts.build")
+    present_hooks = sorted(
+        hook for hook in FORBIDDEN_NPM_LIFECYCLE_HOOKS
+        if isinstance(scripts_map.get(hook), str) and scripts_map.get(hook, "").strip()
+    )
+    if present_hooks:
+        raise BundleGuardError(
+            f"frontend_path: package.json declares forbidden lifecycle hook(s): {', '.join(present_hooks)}"
+        )
 
     lock_path = os.path.join(fe_abs, "package-lock.json")
     has_lockfile = False
@@ -334,30 +351,73 @@ def _check_bundle_filename(rel_posix: str, filename: str) -> None:
         raise BundleGuardError(f"forbidden file extension in bundle: {rel_posix}")
 
 
-def _scan_asset_bytes(raw: bytes, rel_posix: str) -> list[dict[str, Any]]:
-    """Scan a built file for credential-shaped strings without retaining matched text."""
-    if len(raw) > pattern_gate.MAX_BYTES:
+def _scan_asset_bytes(
+    raw: bytes,
+    rel_posix: str,
+    *,
+    window_bytes: int = SCAN_WINDOW_BYTES,
+    overlap_bytes: int = SCAN_OVERLAP_BYTES,
+    max_asset_bytes: int = MAX_SINGLE_ASSET_BYTES,
+) -> list[dict[str, Any]]:
+    """Scan every byte of a built asset using overlapping windows without skipping large files.
+
+    Unlike ``secret_scan.scan_bytes`` (which skips files > 2 MiB and honors inline
+    ``allowlist-secret`` source comments), public bundle verification must inspect
+    100% of every built file up to ``max_asset_bytes`` and fail closed if an asset
+    exceeds ``max_asset_bytes``. Matched credential substrings are never retained.
+    """
+    total_len = len(raw)
+    if total_len > max_asset_bytes:
+        raise BundleGuardError(
+            f"asset exceeds maximum allowed size ({total_len} > {max_asset_bytes} bytes): {rel_posix}"
+        )
+    if total_len == 0:
         return []
-    suffix = Path(rel_posix).suffix.lower()
+    if window_bytes <= 0 or overlap_bytes < 0:
+        raise BundleGuardError("invalid scanner window parameters")
+
+    seen_hits: set[tuple[int, str]] = set()
     violations: list[dict[str, Any]] = []
-    if suffix in BINARY_ASSET_SUFFIXES:
-        decoded = raw.decode("latin-1")
+    start = 0
+
+    while start < total_len:
+        end = min(total_len, start + window_bytes + overlap_bytes)
+        # Lossless 1-to-1 byte mapping covers UTF-8 text, minified single-line JS,
+        # sourcemaps, WASM, fonts, and images without dropping bytes or honoring
+        # inline pragma suppression comments inside built public artifacts.
+        decoded = raw[start:end].decode("latin-1")
         for rule_name, compiled_rx in pattern_gate.COMPILED:
             for match in compiled_rx.finditer(decoded):
-                if not pattern_gate.is_allowed_value(match.group(0)):
-                    safe_rule = rule_name if rule_name in KNOWN_SCAN_RULES else "high_prefix_match"
-                    violations.append({"path": rel_posix, "line": 1, "rule": safe_rule})
-        return violations
+                matched_text = match.group(0)
+                candidate = (
+                    matched_text.split("#", 1)[1]
+                    if rule_name == "bsk_pairing_url" and "#" in matched_text
+                    else matched_text
+                )
+                if pattern_gate.is_allowed_value(candidate):
+                    continue
+                abs_offset = start + match.start()
+                safe_rule = rule_name if rule_name in KNOWN_SCAN_RULES else "high_prefix_match"
+                dedup_key = (abs_offset, safe_rule)
+                if dedup_key in seen_hits:
+                    continue
+                seen_hits.add(dedup_key)
+                line_no = 1 + raw.count(b"\n", 0, abs_offset)
+                violations.append({"path": rel_posix, "line": line_no, "rule": safe_rule})
 
-    text = raw.decode("utf-8", errors="replace")
-    for item in pattern_gate.scan_text(text, path=rel_posix):
-        if item.severity == "high":
-            safe_rule = item.rule if item.rule in KNOWN_SCAN_RULES else "high_prefix_match"
-            violations.append({"path": rel_posix, "line": int(item.line), "rule": safe_rule})
+        if end == total_len:
+            break
+        start += window_bytes
+
     return violations
 
 
-def collect_verified_assets(target: ValidatedTarget) -> list[AssetRecord]:
+def collect_verified_assets(
+    target: ValidatedTarget,
+    *,
+    max_asset_bytes: int = MAX_SINGLE_ASSET_BYTES,
+    max_bundle_bytes: int = MAX_TOTAL_BUNDLE_BYTES,
+) -> list[AssetRecord]:
     """Inspect ``target.build_output_abs`` fail-closed and return sorted asset hashes."""
     out_parts = target.build_output_rel.split("/")
     build_abs = _assert_no_symlink_chain(
@@ -369,6 +429,7 @@ def collect_verified_assets(target: ValidatedTarget) -> list[AssetRecord]:
 
     records: list[AssetRecord] = []
     violations: list[dict[str, Any]] = []
+    running_total = 0
 
     for current_root, dirnames, filenames in os.walk(build_abs, topdown=True, followlinks=False):
         dirnames.sort()
@@ -400,14 +461,28 @@ def collect_verified_assets(target: ValidatedTarget) -> list[AssetRecord]:
                 raise BundleGuardError(f"non-regular file refused in bundle: {rel_posix}")
             if os.name != "nt" and fstat.st_nlink > 1:
                 raise BundleGuardError(f"hard-linked file refused in bundle (nlink={fstat.st_nlink}): {rel_posix}")
+            if fstat.st_size > max_asset_bytes:
+                raise BundleGuardError(
+                    f"asset exceeds maximum allowed size ({fstat.st_size} > {max_asset_bytes} bytes): {rel_posix}"
+                )
 
             real_file = os.path.realpath(fpath)
             if os.path.commonpath([build_abs, real_file]) != build_abs:
                 raise BundleGuardError(f"resolved file escapes build root: {rel_posix}")
 
             with open(real_file, "rb") as fh:
-                raw = fh.read()
-            violations.extend(_scan_asset_bytes(raw, rel_posix))
+                raw = fh.read(max_asset_bytes + 1)
+            if len(raw) > max_asset_bytes:
+                raise BundleGuardError(
+                    f"asset exceeds maximum allowed size ({len(raw)} > {max_asset_bytes} bytes): {rel_posix}"
+                )
+            running_total += len(raw)
+            if running_total > max_bundle_bytes:
+                raise BundleGuardError(
+                    f"bundle exceeds maximum allowed total size ({running_total} > {max_bundle_bytes} bytes)"
+                )
+
+            violations.extend(_scan_asset_bytes(raw, rel_posix, max_asset_bytes=max_asset_bytes))
             records.append(
                 AssetRecord(
                     path=rel_posix,
@@ -486,12 +561,18 @@ def write_deterministic_tar(build_abs: str, assets: list[AssetRecord], out_tar_a
 def verify_tar_archive(
     tar_path: str,
     expected_assets: list[AssetRecord] | None = None,
+    *,
+    max_asset_bytes: int = MAX_SINGLE_ASSET_BYTES,
+    max_bundle_bytes: int = MAX_TOTAL_BUNDLE_BYTES,
 ) -> dict[str, Any]:
     """Independently re-open ``tar_path`` from disk and verify every member and digest."""
     if os.path.islink(tar_path) or not os.path.isfile(tar_path):
         raise BundleGuardError("artifact_tar: archive must be an existing regular non-symlink file")
 
     observed: list[AssetRecord] = []
+    seen_members: set[str] = set()
+    running_total = 0
+
     with tarfile.open(tar_path, mode="r:") as tf:
         for member in tf.getmembers():
             if member.issym() or member.islnk():
@@ -508,19 +589,38 @@ def verify_tar_archive(
                     continue
                 raise BundleGuardError("artifact_tar: unnamed file member refused")
 
-            _validate_relative_syntax(
-                cleaned if cleaned != ".nojekyll" else "nojekyll_placeholder",
-                label="artifact_tar",
-            )
+            if cleaned in seen_members:
+                raise BundleGuardError(f"artifact_tar: duplicate member path refused ({cleaned})")
+            seen_members.add(cleaned)
+
+            base_name = os.path.basename(cleaned)
+            if base_name != ".nojekyll":
+                _validate_relative_syntax(cleaned, label="artifact_tar")
+            else:
+                parent_part = os.path.dirname(cleaned)
+                if parent_part:
+                    _validate_relative_syntax(parent_part, label="artifact_tar")
             if member.mtime != 0 or member.uid != 0 or member.gid != 0 or member.uname or member.gname:
                 raise BundleGuardError(f"artifact_tar: unnormalised tar metadata on '{cleaned}'")
 
             if member.isfile():
+                _check_bundle_filename(cleaned, base_name)
+                if member.size < 0 or member.size > max_asset_bytes:
+                    raise BundleGuardError(
+                        f"artifact_tar: member exceeds maximum allowed size ({member.size} > {max_asset_bytes} bytes): {cleaned}"
+                    )
+                running_total += member.size
+                if running_total > max_bundle_bytes:
+                    raise BundleGuardError(
+                        f"artifact_tar: archive exceeds maximum allowed total size ({running_total} > {max_bundle_bytes} bytes)"
+                    )
                 extracted = tf.extractfile(member)
                 if extracted is None:
                     raise BundleGuardError(f"artifact_tar: unreadable file member '{cleaned}'")
-                raw = extracted.read()
-                violations = _scan_asset_bytes(raw, cleaned)
+                raw = extracted.read(max_asset_bytes + 1)
+                if len(raw) != member.size or len(raw) > max_asset_bytes:
+                    raise BundleGuardError(f"artifact_tar: member size mismatch on '{cleaned}'")
+                violations = _scan_asset_bytes(raw, cleaned, max_asset_bytes=max_asset_bytes)
                 if violations:
                     raise BundleGuardError(f"artifact_tar: credential pattern detected inside '{cleaned}'")
                 observed.append(
@@ -563,6 +663,8 @@ def package_bundle(
     manifest_out: str | None = None,
     step_summary_out: str | None = None,
     require_lockfile: bool = True,
+    max_asset_bytes: int = MAX_SINGLE_ASSET_BYTES,
+    max_bundle_bytes: int = MAX_TOTAL_BUNDLE_BYTES,
 ) -> dict[str, Any]:
     """End-to-end gate: validate target, scan assets, write deterministic tar, re-verify."""
     target = validate_target(
@@ -571,9 +673,18 @@ def package_bundle(
     allowed_roots = _allowed_output_roots(target.repo_root)
     safe_tar = _confine_output_file(out_tar, allowed_roots, label="out_tar")
 
-    assets = collect_verified_assets(target)
+    assets = collect_verified_assets(
+        target,
+        max_asset_bytes=max_asset_bytes,
+        max_bundle_bytes=max_bundle_bytes,
+    )
     write_deterministic_tar(target.build_output_abs, assets, safe_tar)
-    verified = verify_tar_archive(safe_tar, expected_assets=assets)
+    verified = verify_tar_archive(
+        safe_tar,
+        expected_assets=assets,
+        max_asset_bytes=max_asset_bytes,
+        max_bundle_bytes=max_bundle_bytes,
+    )
 
     report: dict[str, Any] = {
         "ok": True,
