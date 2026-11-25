@@ -41,8 +41,6 @@ on:
 
 permissions:
   contents: read
-  annotations: write
-  issues: write
 
 concurrency:
   group: python-2027-${{ github.ref }}
@@ -89,14 +87,6 @@ jobs:
           .venv/bin/pytest --cov-fail-under=90 \
             --junitxml="$RUNNER_TEMP/junit-${{ matrix.python-version }}.xml"
 
-      - name: Upload JUnit report
-        if: always()
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f  # v6
-        with:
-          name: junit-${{ matrix.python-version }}
-          path: ${{ runner.temp }}/junit-${{ matrix.python-version }}.xml
-          if-no-files-found: ignore
-
       - name: Summarize test failures as annotations (readable without the log)
         if: failure()
         working-directory: python-2027
@@ -133,47 +123,6 @@ jobs:
               for item in failures[:20]:
                   print(f"::error title=pytest::{esc(item)}")
               print(f"::notice title=pytest::{len(failures)} failing case(s)")
-          PY
-
-      - name: Report test outcome as an issue (diagnostic)
-        if: always()
-        working-directory: python-2027
-        env:
-          JUNIT: ${{ runner.temp }}/junit-${{ matrix.python-version }}.xml
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -e
-          python - <<'PY'
-          import json, os, subprocess, xml.etree.ElementTree as ET
-          from pathlib import Path
-          path = Path(os.environ["JUNIT"])
-          run_url = os.environ["RUN_URL"]
-          if not path.is_file():
-              body = f"No JUnit report written (suite did not complete). Run: {run_url}"
-          else:
-              tree = ET.parse(path)
-              failures = []
-              for case in tree.iter("testcase"):
-                  for tag in ("failure", "error"):
-                      node = case.find(tag)
-                      if node is not None:
-                          msg = (node.text or node.get("message") or "").strip()
-                          failures.append(f"{case.get('classname')}::{case.get('name')}\n{msg}")
-              if not failures:
-                  body = f"All tests passed; no failing case. Run: {run_url}"
-              else:
-                  body = f"## Failing tests\n\nRun: {run_url}\n\n" + "\n\n".join(
-                      f"### {i+1}. {f}" for i, f in enumerate(failures[:20])
-                  )
-          payload = json.dumps({"title": "[ci-diag] Python 3.13/3.14 test diagnostic", "body": body})
-          repo = os.environ["GITHUB_REPOSITORY"]
-          subprocess.run(
-              ["gh", "api", "-X", "POST",
-               f"repos/{repo}/issues", "--input", "-"],
-              input=payload,
-              check=True,
-          )
           PY
 
       - name: PAP persistent-task gate · real SIGKILL, resume from checkpoint (evidence artifact)
