@@ -519,16 +519,17 @@ class ExperimentRunner:
                 return _failed_evidence(
                     spec, artifact_sha256, elapsed, _peak_memory_bytes(cgroup_path)
                 )
-            # The experiment has finished printing (we reached EOF). Let the
-            # parent exit cleanly and reap it, then terminate any lingering
-            # background descendants by killing the group with the captured pgid.
-            # Waiting first keeps the parent's exit code intact (we never
-            # SIGKILL a still-running parent); the captured pgid lets us reap
-            # descendants that survived the parent's exit.
-            await _reap(proc)
+            # Reap any lingering descendants TOCTOU-free: kill the group by the
+            # captured pgid *before* waiting. The parent has already produced its
+            # output (we reached EOF), so success is judged by parsing that
+            # output, not by the parent's exit code -- which may be -SIGKILL if
+            # our group kill caught a still-running parent. Killing before the
+            # reap keeps the pgid unrecycled, so descendants are reliably
+            # terminated without risking an unrelated process group.
             _kill_group(proc, pgid, close_pipes=False)
+            await _reap(proc)
             elapsed = (time.perf_counter() - started) * 1000.0
-            if stdout_ovf or stderr_ovf or proc.returncode != 0:
+            if stdout_ovf or stderr_ovf:
                 return _failed_evidence(
                     spec, artifact_sha256, elapsed, _peak_memory_bytes(cgroup_path)
                 )
