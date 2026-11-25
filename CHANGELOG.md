@@ -13,6 +13,111 @@ fail or when any GitHub Action is not pinned to a full-length SHA.
 
 ## [Unreleased]
 
+### Architecture — P1 cognitive intelligence foundation
+- Added the **operating-mind** prompt layer under `prompts/agent/`: `SYSTEM`,
+  `UNDERSTANDING`, `REASONING`, `PLANNING`, `REFLECTION`, `VERIFICATION` and
+  `FINAL-REPORT`. Each file carries front matter (`name`, `version`, `role`,
+  `required`) and states the behaviour it decides, the boundaries it must not
+  cross, and the output it produces.
+- Added the **capability routing** layer: `config/routing_profiles.yaml`
+  declares task profiles by capability and provider *kind* — never by concrete
+  model id — and `python-2027/src/ai2027_protocol/routing_profiles.py` loads,
+  validates and selects them. Every profile is free-first by construction: a
+  paid or unknown-cost profile is refused at load time.
+- Added `python-2027/src/ai2027_protocol/prompts.py`, a stdlib-only loader that
+  validates the prompt files (front matter, required headings, forbidden
+  placeholders) and hash-addresses the bundle, so a prompt change is auditable.
+  Templates refuse unknown or blank placeholders.
+- Added `python-2027/src/ai2027_protocol/yaml_subset.py`, a dependency-free,
+  strict parser for the YAML subset the config uses. It refuses unsupported
+  shapes (anchors, flow collections, multi-line scalars) instead of misreading
+  them. PyYAML is deliberately not added: the config layer stays stdlib-only.
+- Added engineering guidance for coding agents: `AGENTS.md` (canonical),
+  `CLAUDE.md` (compatibility shim), and `docs/agent/ENGINEERING-STANDARDS.md`.
+- Added `docs/agent/COGNITIVE-ARCHITECTURE.md`, mapping the perceive → plan →
+  execute → observe → reflect → verify → memory loop to the components that
+  implement it, and stating the P1 boundary (no kernel, memory, provider or
+  deployment changes).
+- Tests: `tests/test_prompt_loader.py` and `tests/test_routing_profiles.py`
+  (dependency-free, stdlib-only) plus package-level suites
+  `python-2027/tests/test_prompt_loader.py` and
+  `python-2027/tests/test_routing_profiles.py`. The package suite asserts the
+  routing provider kinds stay in sync with `contracts.ProviderKind`.
+- Verified: `ruff check`/`ruff format --check`, `mypy --strict` (128 files), and
+  the full `python-2027` pytest suite pass with 91.7% coverage (floor 90%); the
+  protocol auditor scores `python-2027` at 100%.
+
+### Architecture — P2 + P3: persistent learning & continuous evaluation
+- Added the **learning loop** around the free-first router, in five new modules
+  under `python-2027/src/ai2027_protocol/`:
+  - `intelligence/meta_router.py` — `MetaRouter` classifies a goal via the
+    existing `RoutingRegistry`, executes it through the existing
+    `FreeFirstRouter`, verifies the output, and emits an `ExperienceRecord`.
+    Enforces `MAX_SPEND=0` via `assert_free_first()` before any call, and is
+    local-only by default through `PrivacyPolicy`.
+  - `intelligence/provider_scoring.py` — `ProviderScorecard` / `ProviderScore`
+    score each model per capability from four weighted signals (verification,
+    success, preference, efficiency) and recommend the best free model. A
+    provider with no data scores `0.0` (never assumed good).
+  - `learning/experience_store.py` — `ExperienceStore`, a SQLite,
+    evidence-gated, restart-durable ledger. A record is admitted only when it
+    is verified, test `passed`, and carries a SHA-256 output fingerprint;
+    otherwise it is refused and logged to a `refusals` table.
+    `verify_durability()` reopens and re-validates every row.
+  - `learning/feedback_engine.py` — `FeedbackEngine` applies user accept/reject
+    and test verdicts to **verified** episodes only, raising `FeedbackError`
+    otherwise (NO VERIFIED RESULT = NO LEARNING).
+  - `evaluation/benchmark_suite.py` — `BenchmarkSuite` runs a fixed case set
+    across six categories, scores each as the fraction verified, and
+    `save_baseline` / `load_baseline` / `compare` detect regression against a
+    prior version.
+- Enforced the three non-negotiable rules in code, not documentation:
+  `MAX_SPEND=0`, `NO VERIFIED RESULT = NO LEARNING`, and
+  `NO PERSISTENCE = NO COMPLETION`.
+- Added `docs/agent/CONTINUOUS-LEARNING.md` mapping the learning loop to the
+  components that implement it and stating the privacy guard.
+- Reused, not rebuilt: `FreeFirstRouter`, `BudgetGuard`, `CircuitBreaker`,
+  `RoutingRegistry`, `AutonomousAgent`, `celia_memory` embeddings, and
+  `session_store`. No kernel, memory, provider, or deployment changes.
+- Learning is from usage-result feedback and routing-policy improvement only;
+  model-weight training (LoRA/QLoRA) is a later, separate step requiring clean
+  training data and a GPU.
+- Verified: `ruff check`/`ruff format --check`, `mypy --strict` (138 files),
+  the full `python-2027` pytest suite passes (963 tests) with 91.8% coverage
+  (floor 90%); the protocol auditor scores `python-2027` at 100%.
+
+### Architecture — P4: scientific intelligence (experiment execution)
+- Added `python-2027/src/ai2027_protocol/research_experiment.py`, the isolated,
+  reproducible experiment runner that closes the one gap left by the Research
+  Radar: it actually *runs* the experiment a candidate paper implies and turns
+  the result into durable, reviewable evidence.
+- Added three types: `Hypothesis` (a first-class falsifiable claim, separate
+  from engineering inference), `ExperimentSpec` (a bounded, reproducible
+  experiment with thresholds and edge cases), and `ExperimentRunner` (executes
+  the spec in an isolated subprocess and measures the four verification gates).
+- The runner executes experiments locally and bounded: a `python -I -B`
+  subprocess with a sanitized environment, a hard timeout, and bounded output,
+  aligning with the existing sandbox pattern in `tools_exec.py`.
+- Produces `TestEvidence` compatible with the existing contracts and persists
+  it through the existing `ResearchStore.decide` human-review path and the
+  tamper-evident `ResearchAuditLedger` — no store or ledger changes required.
+- Enforced the rules in code: no automatic adoption (a failing experiment
+  cannot be used to adopt), reproducibility (content-addressed artifact hash),
+  bounded local execution (MAX_SPEND=0), and **no public Python-execution
+  endpoint** (the runner is a library component; the Research API's write paths
+  are not authenticated, so an execution route would be a remote code-execution
+  risk).
+- Reused, not rebuilt: `TestEvidence`, `VerificationGates`, `ResearchStore`,
+  and the audit ledger. No kernel, provider, or deployment changes.
+- Added `docs/agent/SCIENTIFIC-INTELLIGENCE.md` documenting the read-only audit
+  of the existing Research Radar, the P4 design, and its limits.
+- Tests: real bounded execution, gate evaluation, artifact reproducibility,
+  timeout and crash handling, and a full persist-and-reopen integration test
+  through the human decision path.
+- Verified: `ruff check`/`ruff format --check`, `mypy --strict`, and the full
+  `python-2027` pytest suite pass (coverage floor 90%); the protocol auditor
+  scores `python-2027` at 100%.
+
 ### CI maintenance — GitHub Actions runtime support
 - Updated the full-SHA-pinned checkout, Python, Node, artifact upload, CodeQL, and
   Pages deployment actions to maintained Node 24-compatible major versions.

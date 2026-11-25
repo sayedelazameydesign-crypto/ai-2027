@@ -29,6 +29,11 @@ on:
                                 # */6 runs — measured gaps 11.5-12.2h, issue #155 — while every beat
                                 # that ran was 17/17. The health gate's 8h silence alarm is unchanged:
                                 # CADENCE_H 3 + TOLERANCE_H 5 in scripts/health_gate.py.)
+    - cron: "45 1-23/3 * * *"  # staggered companion (issue #168): offset 90 min from the primary
+                                # schedule so GitHub dropping/delaying one cron event leaves the other
+                                # to land inside the 8h freshness window. Risk mitigation, NOT a
+                                # guarantee — GitHub may still delay/drop scheduled events under load.
+                                # Health Gate logic, CADENCE_H and TOLERANCE_H are unchanged.
   workflow_dispatch:
     inputs:
       force_degraded:

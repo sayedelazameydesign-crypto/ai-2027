@@ -21,6 +21,9 @@ from ai2027_protocol.server import create_app
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 
+#: Shared decision-secret for the API tests (a test-only value, not a credential).
+_TEST_DECISION_SECRET = "test-decision-secret"  # noqa: S105, S106 - test-only value
+
 
 def make_paper() -> ResearchPaper:
     """Create a verified local fixture shared by the research API contract tests."""
@@ -115,6 +118,7 @@ async def test_research_api_search_ingest_evaluate_test_and_audit(tmp_path: Path
         workspace_root=_REPO_ROOT,
         studio_dir=tmp_path / "studio",
         research_gateway=gateway,
+        research_decision_secret=_TEST_DECISION_SECRET,
     )
     async with await _client(app) as client:
         topics = await client.get("/v1/research/topics")
@@ -155,6 +159,7 @@ async def test_research_api_search_ingest_evaluate_test_and_audit(tmp_path: Path
                 "identifier": "2401.01234",
                 "status": "tested",
                 "evidence": evidence_payload(),
+                "proof": "test-decision-secret",
             },
         )
         assert tested.status_code == 200
@@ -185,6 +190,7 @@ async def test_research_api_rejects_invalid_topic_identifier_and_unverified_exce
         workspace_root=_REPO_ROOT,
         studio_dir=tmp_path / "studio",
         research_gateway=FakeGateway(make_paper()),
+        research_decision_secret=_TEST_DECISION_SECRET,
     )
     async with await _client(app) as client:
         bad_topic = await client.post("/v1/research/search", json={"topic_id": "not-configured"})
@@ -228,6 +234,7 @@ async def test_research_api_fail_closed_source_errors_and_read_only_mutations(
         studio_dir=tmp_path / "ro",
         read_only=True,
         research_gateway=gateway,
+        research_decision_secret=_TEST_DECISION_SECRET,
     )
     async with await _client(ro_app) as client:
         down = await client.post("/v1/research/search", json={"topic_id": "agent-evaluation"})
@@ -247,9 +254,88 @@ async def test_research_api_fail_closed_source_errors_and_read_only_mutations(
         assert blocked_eval.status_code == 403
         blocked_decision = await client.post(
             "/v1/research/decision",
-            json={"identifier": "2401.01234", "status": "rejected", "reason": "No fit."},
+            json={
+                "identifier": "2401.01234",
+                "status": "rejected",
+                "reason": "No fit.",
+                "proof": "test-decision-secret",
+            },
         )
         assert blocked_decision.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_research_api_decision_requires_proof_and_rejects_forged_secret(
+    tmp_path: Path,
+) -> None:
+    """A human decision needs a valid proof; a forged proof is rejected."""
+    app = create_app(
+        workspace_root=_REPO_ROOT,
+        studio_dir=tmp_path / "studio",
+        research_gateway=FakeGateway(make_paper()),
+        research_decision_secret="s3cret-token",  # noqa: S106
+    )
+    async with await _client(app) as client:
+        await client.post(
+            "/v1/research/ingest",
+            json={"identifier": "2401.01234", "topic_id": "agent-evaluation"},
+        )
+        # Missing proof fails request validation (proof is required).
+        no_proof = await client.post(
+            "/v1/research/decision",
+            json={"identifier": "2401.01234", "status": "rejected", "reason": "No fit."},
+        )
+        assert no_proof.status_code == 422
+        # Wrong proof is rejected as unauthorized.
+        bad_proof = await client.post(
+            "/v1/research/decision",
+            json={
+                "identifier": "2401.01234",
+                "status": "rejected",
+                "reason": "No fit.",
+                "proof": "wrong-token",
+            },
+        )
+        assert bad_proof.status_code == 401
+        # Correct proof is accepted.
+        ok = await client.post(
+            "/v1/research/decision",
+            json={
+                "identifier": "2401.01234",
+                "status": "rejected",
+                "reason": "No fit.",
+                "proof": "s3cret-token",
+            },
+        )
+        assert ok.status_code == 200
+        assert ok.json()["status"] == "rejected"
+
+
+@pytest.mark.asyncio
+async def test_research_api_decision_fail_closed_without_secret(tmp_path: Path) -> None:
+    """Without a configured decision secret, every human decision is rejected (503)."""
+    app = create_app(
+        workspace_root=_REPO_ROOT,
+        studio_dir=tmp_path / "studio",
+        research_gateway=FakeGateway(make_paper()),
+        # No research_decision_secret configured.
+    )
+    async with await _client(app) as client:
+        await client.post(
+            "/v1/research/ingest",
+            json={"identifier": "2401.01234", "topic_id": "agent-evaluation"},
+        )
+        # Any proof is rejected because no secret is configured (fail-closed).
+        decision = await client.post(
+            "/v1/research/decision",
+            json={
+                "identifier": "2401.01234",
+                "status": "rejected",
+                "reason": "No fit.",
+                "proof": "any-proof-at-all",
+            },
+        )
+        assert decision.status_code == 503
 
 
 @pytest.mark.asyncio
@@ -259,6 +345,7 @@ async def test_research_api_requires_test_evidence_and_reports_tampering(tmp_pat
         workspace_root=_REPO_ROOT,
         studio_dir=tmp_path / "studio",
         research_gateway=FakeGateway(make_paper()),
+        research_decision_secret=_TEST_DECISION_SECRET,
     )
     async with await _client(app) as client:
         await client.post(
@@ -267,7 +354,7 @@ async def test_research_api_requires_test_evidence_and_reports_tampering(tmp_pat
         )
         missing_evidence = await client.post(
             "/v1/research/decision",
-            json={"identifier": "2401.01234", "status": "tested"},
+            json={"identifier": "2401.01234", "status": "tested", "proof": "test-decision-secret"},
         )
         assert missing_evidence.status_code == 409
         bad_gates = await client.post(
@@ -276,6 +363,7 @@ async def test_research_api_requires_test_evidence_and_reports_tampering(tmp_pat
                 "identifier": "2401.01234",
                 "status": "tested",
                 "evidence": evidence_payload(passed=False),
+                "proof": "test-decision-secret",
             },
         )
         assert bad_gates.status_code == 409
