@@ -21,6 +21,9 @@ from ai2027_protocol.server import create_app
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 
+#: Shared decision-secret for the API tests (a test-only value, not a credential).
+_TEST_DECISION_SECRET = "test-decision-secret"  # noqa: S105, S106 - test-only value
+
 
 def make_paper() -> ResearchPaper:
     """Create a verified local fixture shared by the research API contract tests."""
@@ -115,7 +118,7 @@ async def test_research_api_search_ingest_evaluate_test_and_audit(tmp_path: Path
         workspace_root=_REPO_ROOT,
         studio_dir=tmp_path / "studio",
         research_gateway=gateway,
-        research_decision_secret="test-decision-secret",
+        research_decision_secret=_TEST_DECISION_SECRET,
     )
     async with await _client(app) as client:
         topics = await client.get("/v1/research/topics")
@@ -187,7 +190,7 @@ async def test_research_api_rejects_invalid_topic_identifier_and_unverified_exce
         workspace_root=_REPO_ROOT,
         studio_dir=tmp_path / "studio",
         research_gateway=FakeGateway(make_paper()),
-        research_decision_secret="test-decision-secret",
+        research_decision_secret=_TEST_DECISION_SECRET,
     )
     async with await _client(app) as client:
         bad_topic = await client.post("/v1/research/search", json={"topic_id": "not-configured"})
@@ -231,7 +234,7 @@ async def test_research_api_fail_closed_source_errors_and_read_only_mutations(
         studio_dir=tmp_path / "ro",
         read_only=True,
         research_gateway=gateway,
-        research_decision_secret="test-decision-secret",
+        research_decision_secret=_TEST_DECISION_SECRET,
     )
     async with await _client(ro_app) as client:
         down = await client.post("/v1/research/search", json={"topic_id": "agent-evaluation"})
@@ -342,7 +345,7 @@ async def test_research_api_requires_test_evidence_and_reports_tampering(tmp_pat
         workspace_root=_REPO_ROOT,
         studio_dir=tmp_path / "studio",
         research_gateway=FakeGateway(make_paper()),
-        research_decision_secret="test-decision-secret",
+        research_decision_secret=_TEST_DECISION_SECRET,
     )
     async with await _client(app) as client:
         await client.post(
