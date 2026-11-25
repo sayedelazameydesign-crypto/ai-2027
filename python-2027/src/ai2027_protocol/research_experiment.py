@@ -277,12 +277,20 @@ def _peak_memory_bytes(cgroup_path: str | None = None) -> float:
 
 
 def _close_pipes(proc: asyncio.subprocess.Process) -> None:
-    """Close the child's stdout/stderr transports so ``wait()`` can return.
+    """Close the child's pipe transports so ``wait()`` can return.
 
     If a reader stopped draining early (output-cap overflow) or the child was
     killed while still blocked writing, ``proc.wait()`` would otherwise hang on
     a non-EOF pipe. Closing the transports unblocks the wait without raising.
+    The process transport is closed first (more stable across Python versions),
+    then each stream transport as a fallback.
     """
+    process_transport = getattr(proc, "_transport", None)
+    if process_transport is not None:
+        try:
+            process_transport.close()
+        except Exception:  # noqa: S110
+            pass
     for stream in (proc.stdout, proc.stderr):
         transport = getattr(stream, "_transport", None) if stream is not None else None
         if transport is None:
@@ -293,7 +301,9 @@ def _close_pipes(proc: asyncio.subprocess.Process) -> None:
             pass
 
 
-def _kill_group(proc: asyncio.subprocess.Process, pgid: int | None = None) -> None:
+def _kill_group(
+    proc: asyncio.subprocess.Process, pgid: int | None = None, *, close_pipes: bool = True
+) -> None:
     """Terminate the child and its whole process group, tolerating already-exit.
 
     ``pgid`` should be the process-group id captured at spawn (== ``proc.pid``
@@ -301,7 +311,9 @@ def _kill_group(proc: asyncio.subprocess.Process, pgid: int | None = None) -> No
     has been reaped still targets the original group rather than a recycled id.
     Passing the captured pgid lets us reap lingering background children after the
     parent exits without a TOCTOU on the reaped PID. A group that is already gone
-    raises ``ProcessLookupError``, which is swallowed.
+    raises ``ProcessLookupError``, which is swallowed. When ``close_pipes`` is
+    set, the pipe transports are closed so a later ``wait()`` cannot block on a
+    pipe a killed descendant still held open.
     """
     target = pgid if pgid is not None else proc.pid
     try:
@@ -314,7 +326,8 @@ def _kill_group(proc: asyncio.subprocess.Process, pgid: int | None = None) -> No
             proc.kill()
         except (ProcessLookupError, OSError):
             pass
-    _close_pipes(proc)
+    if close_pipes:
+        _close_pipes(proc)
 
 
 async def _read_bounded(
@@ -489,7 +502,9 @@ class ExperimentRunner:
             # waiting: the parent is still a zombie (or alive), so the captured
             # pgid has NOT been recycled. Killing after wait() would risk a
             # TOCTOU on an unrelated process group that reused the recycled id.
-            _kill_group(proc, pgid)
+            # The process has already exited (we reached EOF), so the pipes are
+            # already drained and need not be closed here.
+            _kill_group(proc, pgid, close_pipes=False)
             await proc.wait()
             elapsed = (time.perf_counter() - started) * 1000.0
             if stdout_ovf or stderr_ovf or proc.returncode != 0:

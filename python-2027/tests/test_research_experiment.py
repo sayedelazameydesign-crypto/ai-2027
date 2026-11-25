@@ -376,8 +376,9 @@ class TestRunnerAdversarial:
     @staticmethod
     async def _wait_pid_gone(pid: int, *, budget: float = 3.0) -> bool:
         """Return True once PID ``pid`` no longer exists (zombies count as gone)."""
-        deadline = asyncio.get_event_loop().time() + budget
-        while asyncio.get_event_loop().time() < deadline:
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + budget
+        while loop.time() < deadline:
             if not TestRunnerAdversarial._pid_running(pid):
                 return True
             await asyncio.sleep(0.1)
