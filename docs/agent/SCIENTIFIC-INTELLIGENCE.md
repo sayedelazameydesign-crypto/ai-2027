@@ -37,8 +37,17 @@ line inside an assessment.
 ### `ExperimentSpec`
 A bounded, reproducible experiment: the `Hypothesis`, the experiment `code`
 (a bounded Python snippet), the `environment`, a hard `timeout_s`, the
-`VerificationThresholds` (`min_accuracy`, `max_latency_ms`,
+`EvaluationSpec` (host-owned test `inputs` and ground-truth `reference_results`),
+the `VerificationThresholds` (`min_accuracy`, `max_latency_ms`,
 `max_peak_memory_bytes`), and the `edge_cases` it must exercise.
+
+### `EvaluationSpec`
+Host-owned test data: a tuple of `inputs` and a matching tuple of
+`reference_results`. The host writes only the `inputs` to the sandbox as
+`inputs.json`; the experiment reads them and prints **predictions**. The
+`reference_results` are never exposed to the experiment — the host alone
+performs the comparison, so the tested code cannot fabricate the accuracy
+metric.
 
 ### `ExperimentRunner`
 Runs an `ExperimentSpec` in isolation and returns a measured `TestEvidence`:
@@ -51,15 +60,25 @@ Runs an `ExperimentSpec` in isolation and returns a measured `TestEvidence`:
   `tools_exec.py` rather than reinventing it. **It is a confined subprocess,
   not a security sandbox:** it does not block file, network, or syscall access;
   the guarantee is resource bounding and reliable termination.
-- **Independent measurement.** Wall-time and peak RSS are measured on the
-  **host** (`perf_counter`, `getrusage(RUSAGE_CHILDREN)`). Accuracy is computed
-  on the host from the experiment's raw `correct`/`total` counts, not from a
-  self-declared success value — the experiment's own assertions are treated as
-  input, not as certificates. The four gates are `accuracy`, `latency`,
-  `resource`, `edge_cases`.
+- **Independent measurement.** Wall-time is measured on the **host**
+  (`perf_counter`). Peak memory is measured on the **host** from a per-experiment
+  **cgroup v2** subtree's `memory.peak` (the cumulative peak of the whole
+  process tree, including grandchildren); when the host denies cgroup-create
+  permission the runner falls back honestly to
+  `getrusage(RUSAGE_CHILDREN).ru_maxrss`, which reports only the largest single
+  child and may understate a multi-process tree. **Accuracy is computed on the
+  host** by comparing the experiment's **predictions** against the host-owned
+  `reference_results`; the experiment never sees the reference results and any
+  self-declared `accuracy`/`passed` value is ignored. The four gates are
+  `accuracy`, `latency`, `resource`, `edge_cases`.
+- **Descendant reap without TOCTOU.** The process-group id is captured at spawn
+  and the whole group is terminated *before* the parent is reaped, so lingering
+  background children are reaped while the captured pgid is still valid (not yet
+  recycled). This reaps descendants without the TOCTOU risk of killing by a
+  recycled id after `wait()`.
 - **Full-spec reproducibility.** `artifact_sha256` is content-addressed over the
-  **entire spec** (hypothesis, code, environment, timeout, thresholds,
-  edge-cases), so any change to conditions changes the fingerprint.
+  **entire spec** (hypothesis, code, environment, timeout, evaluation,
+  thresholds, edge-cases), so any change to conditions changes the fingerprint.
 - **Failure is data.** A crashing, timing-out, or malformed experiment yields a
   `TestEvidence` whose gates fail — it does not raise and does not get adopted.
   Every result (including failures) can be persisted durably via

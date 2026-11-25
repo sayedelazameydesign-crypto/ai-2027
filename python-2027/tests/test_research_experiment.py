@@ -9,6 +9,7 @@ child-process leaks are bounded and terminate.
 
 from __future__ import annotations
 
+import asyncio
 import time
 from datetime import UTC, date, datetime
 from pathlib import Path
@@ -21,6 +22,7 @@ from ai2027_protocol.research_contracts import (
     ResearchStatus,
 )
 from ai2027_protocol.research_experiment import (
+    EvaluationSpec,
     ExperimentRunner,
     ExperimentSpec,
     Hypothesis,
@@ -30,24 +32,29 @@ from ai2027_protocol.research_store import ResearchStore
 
 SUCCESS_CODE = (
     "import json\n"
-    "print(json.dumps({'raw_measurements': {'correct': 92, 'total': 100},\n"
+    "inputs = json.load(open('inputs.json'))\n"
+    "print(json.dumps({'predictions': inputs,\n"
     "                  'edge_cases': {'empty_input': {'passed': True},\n"
     "                               'large_input': {'passed': True}}}))\n"
 )
 LOW_ACCURACY_CODE = (
     "import json\n"
-    "print(json.dumps({'raw_measurements': {'correct': 10, 'total': 100},\n"
+    "inputs = json.load(open('inputs.json'))\n"
+    "preds = [inputs[0]] + [0] * (len(inputs) - 1)\n"
+    "print(json.dumps({'predictions': preds,\n"
     "                  'edge_cases': {'empty_input': {'passed': True},\n"
     "                               'large_input': {'passed': True}}}))\n"
 )
 EDGE_MISMATCH_CODE = (
     "import json\n"
-    "print(json.dumps({'raw_measurements': {'correct': 90, 'total': 100},\n"
+    "inputs = json.load(open('inputs.json'))\n"
+    "print(json.dumps({'predictions': inputs,\n"
     "                  'edge_cases': {'empty_input': {'passed': True}}}))\n"
 )
 EDGE_FAILED_CODE = (
     "import json\n"
-    "print(json.dumps({'raw_measurements': {'correct': 90, 'total': 100},\n"
+    "inputs = json.load(open('inputs.json'))\n"
+    "print(json.dumps({'predictions': inputs,\n"
     "                  'edge_cases': {'empty_input': {'passed': False},\n"
     "                               'large_input': {'passed': True}}}))\n"
 )
@@ -61,11 +68,13 @@ MEMORY_BLOWUP_CODE = "x = bytearray(1024 * 1024 * 1024)\nprint('done')\n"
 CPU_BOMB_CODE = "while True:\n    pass\n"
 # Child-process leak: spawns a background process that keeps running.
 CHILD_LEAK_CODE = (
-    "import subprocess\n"
-    "subprocess.Popen(['sleep', '30'],\n"
-    "                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)\n"
-    "import json\n"
-    "print(json.dumps({'raw_measurements': {'correct': 1, 'total': 1},\n"
+    "import subprocess, json\n"
+    "child = subprocess.Popen(['sleep', '30'],\n"
+    "                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)\n"
+    "with open('child_pid.txt', 'w') as fh:\n"
+    "    fh.write(str(child.pid))\n"
+    "inputs = json.load(open('inputs.json'))\n"
+    "print(json.dumps({'predictions': inputs,\n"
     "                  'edge_cases': {'empty_input': {'passed': True}}}))\n"
 )
 # File-access probe: writes outside the sandbox dir (allowed by subprocess, but
@@ -73,15 +82,21 @@ CHILD_LEAK_CODE = (
 FILE_WRITE_CODE = (
     "import json\n"
     "open('/tmp/research_experiment_probe.txt', 'w').write('x')\n"
-    "print(json.dumps({'raw_measurements': {'correct': 1, 'total': 1},\n"
+    "inputs = json.load(open('inputs.json'))\n"
+    "print(json.dumps({'predictions': inputs,\n"
     "                  'edge_cases': {'empty_input': {'passed': True}}}))\n"
 )
 # Malicious "measurements" object: self-declared accuracy must be ignored.
 FORGED_SELF_CERT_CODE = (
     "import json\n"
-    "print(json.dumps({'raw_measurements': {'correct': 1, 'total': 1},\n"
-    "                  'accuracy': 1.0, 'passed': True,\n"
+    "inputs = json.load(open('inputs.json'))\n"
+    "preds = [0] * len(inputs)\n"
+    "print(json.dumps({'predictions': preds, 'accuracy': 1.0, 'passed': True,\n"
     "                  'edge_cases': {'empty_input': {'passed': True}}}))\n"
+)
+# No predictions key: the host must fall back to zero accuracy (fail-closed).
+NO_PREDICTIONS_CODE = (
+    "import json\nprint(json.dumps({'edge_cases': {'empty_input': {'passed': True}}}))\n"
 )
 
 
@@ -105,6 +120,16 @@ def _thresholds(*, mem_cap: float = 256_000_000.0) -> VerificationThresholds:
     )
 
 
+#: Host-owned test inputs and reference results shared by the test specs.
+_EVAL_INPUTS = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10)
+_EVAL_REFERENCE = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10)
+
+
+def _evaluation() -> EvaluationSpec:
+    """Return host-owned inputs and matching reference results."""
+    return EvaluationSpec(inputs=_EVAL_INPUTS, reference_results=_EVAL_REFERENCE)
+
+
 def _spec(
     *,
     code: str = SUCCESS_CODE,
@@ -119,6 +144,7 @@ def _spec(
         environment="Python subprocess -I -B, sanitized env, resource-capped.",
         timeout_s=timeout_s,
         thresholds=thresholds or _thresholds(),
+        evaluation=_evaluation(),
         edge_cases=edge_cases,
     )
 
@@ -189,6 +215,7 @@ class TestExperimentSpec:
             environment="Python subprocess -I -B, sanitized env, resource-capped.",
             timeout_s=5.0,
             thresholds=_thresholds(),
+            evaluation=_evaluation(),
             edge_cases=("empty_input", "large_input"),
         )
         assert _artifact_hash(base) != _artifact_hash(changed_hypothesis)
@@ -199,30 +226,40 @@ class TestExperimentSpec:
             environment="Python subprocess -I -B, sanitized env, resource-capped.",
             timeout_s=5.0,
             thresholds=_thresholds(mem_cap=2_000_000.0),
+            evaluation=_evaluation(),
             edge_cases=("empty_input", "large_input"),
         )
         assert _artifact_hash(base) != _artifact_hash(changed_thresholds)
 
 
 class TestRunnerMeasurementIndependence:
-    async def test_accuracy_is_computed_from_raw_counts_on_host(self) -> None:
+    async def test_accuracy_is_computed_from_predictions_on_host(self) -> None:
+        # The experiment echoes the inputs as predictions, all matching the
+        # host-owned reference results, so the host computes full accuracy.
         evidence = await ExperimentRunner().run(_spec())
         assert evidence.gates.accuracy_passed is True
-        assert evidence.measurements["accuracy"] == pytest.approx(0.92)
+        assert evidence.measurements["accuracy"] == pytest.approx(1.0)
 
     async def test_self_declared_success_fields_are_ignored(self) -> None:
-        # The child claims accuracy 1.0 / passed True, but reports raw counts
-        # of 1/1; the host must recompute from the counts, not the claim.
+        # The child claims accuracy 1.0 / passed True, but its predictions are
+        # all wrong. The host must ignore the self-cert and compute 0.0 from the
+        # predictions vs the host-owned reference results.
         evidence = await ExperimentRunner().run(_spec(code=FORGED_SELF_CERT_CODE))
-        assert evidence.measurements["accuracy"] == pytest.approx(1.0)
+        assert evidence.measurements["accuracy"] == pytest.approx(0.0)
         # The gate reflects the host-computed value, not the child's self-cert.
-        assert evidence.gates.accuracy_passed is True
+        assert evidence.gates.accuracy_passed is False
 
     async def test_low_accuracy_fails_the_accuracy_gate(self) -> None:
         evidence = await ExperimentRunner().run(_spec(code=LOW_ACCURACY_CODE))
         assert evidence.gates.accuracy_passed is False
         assert evidence.measurements["accuracy"] == pytest.approx(0.10)
         assert evidence.gates.all_passed is False
+
+    async def test_missing_predictions_yield_zero_accuracy(self) -> None:
+        # A child that omits predictions cannot inflate accuracy; fail-closed.
+        evidence = await ExperimentRunner().run(_spec(code=NO_PREDICTIONS_CODE))
+        assert evidence.measurements["accuracy"] == pytest.approx(0.0)
+        assert evidence.gates.accuracy_passed is False
 
     async def test_latency_and_memory_are_measured_on_host(self) -> None:
         evidence = await ExperimentRunner().run(_spec())
@@ -279,6 +316,34 @@ class TestRunnerAdversarial:
         # A flood that exceeds the streaming cap must not pass.
         assert evidence.gates.all_passed is False
 
+    async def test_overflow_kill_does_not_hit_unrelated_group(self) -> None:
+        # When the experiment floods output past the cap, the runner kills the
+        # experiment's process group. An unrelated process living in a different
+        # process group must survive: this guards the captured-pgid kill against
+        # a TOCTOU that could otherwise hit an unrelated group.
+        import shutil
+
+        sleep_bin = shutil.which("sleep")
+        assert sleep_bin is not None
+        sentinel = await asyncio.create_subprocess_exec(
+            sleep_bin,
+            "30",
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.DEVNULL,
+            start_new_session=True,
+        )
+        sentinel_pid = sentinel.pid
+        try:
+            evidence = await ExperimentRunner().run(_spec(code=FLOOD_CODE, timeout_s=5.0))
+            assert evidence.gates.all_passed is False
+            await asyncio.sleep(0.2)
+            assert self._pid_exists(sentinel_pid), (
+                "unrelated process group was killed by the overflow kill"
+            )
+        finally:
+            sentinel.kill()
+            await sentinel.wait()
+
     async def test_memory_blowup_exceeding_limit_fails(self) -> None:
         evidence = await ExperimentRunner().run(
             _spec(
@@ -293,16 +358,34 @@ class TestRunnerAdversarial:
         evidence = await ExperimentRunner().run(_spec(code=CPU_BOMB_CODE, timeout_s=1.0))
         assert evidence.gates.all_passed is False
 
-    async def test_child_process_leak_does_not_hang(self) -> None:
+    async def test_child_process_leak_is_reaped(self, tmp_path: Path) -> None:
         # The child spawns a background process then exits cleanly. The runner
-        # must terminate and return bounded evidence without hanging on the
-        # leaked child. (On normal exit the runner deliberately does NOT reap
-        # the group by the reaped PID, to avoid a TOCTOU; the timeout/overflow
-        # paths are where the live group is authoritatively terminated.)
+        # must terminate and, before returning, reap every descendant: the
+        # spawned child's PID must be gone by the time run() resolves.
         spec = _spec(code=CHILD_LEAK_CODE, timeout_s=5.0, edge_cases=("empty_input",))
-        evidence = await ExperimentRunner().run(spec)
+        evidence = await ExperimentRunner(sandbox_dir=tmp_path).run(spec)
         assert evidence.measurements["latency_ms"] >= 0.0
         assert len(evidence.artifact_sha256) == 64
+        # The experiment recorded its spawned child's PID; verify it is gone.
+        child_pid = int((tmp_path / "child_pid.txt").read_text().strip())
+        # run() already reaped the group; allow a brief settling window.
+        await asyncio.sleep(0.2)
+        assert not self._pid_exists(child_pid), (
+            f"background child PID {child_pid} still alive after run()"
+        )
+
+    @staticmethod
+    def _pid_exists(pid: int) -> bool:
+        """Return True if a process with this PID currently exists."""
+        import os
+
+        try:
+            os.kill(pid, 0)
+            return True
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            return True
 
     async def test_timeout_kills_grandchild_holding_pipe(self) -> None:
         # A grandchild inheriting the runner's stdout pipe keeps it open, so the

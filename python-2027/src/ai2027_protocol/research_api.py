@@ -132,9 +132,11 @@ def build_research_router(
 ) -> tuple[APIRouter, ResearchStore]:
     """Build the Research Radar API around fixed sources and a local SQLite audit store.
 
-    When ``decision_secret`` is set, the ``/decision`` route verifies the caller's
-    ``proof`` against it before recording a ``human`` decision, so a forged or
-    proxied request cannot mint a human-approved state change.
+    The ``/decision`` route is **fail-closed**: it requires a configured
+    ``decision_secret`` and rejects every human decision (503) when the secret is
+    unset, so an unauthenticated or proxied request can never mint a human-approved
+    state change. When the secret is set, the caller's ``proof`` is verified against
+    it before recording a ``human`` decision.
     """
     try:
         topics = load_research_topics(topics_path)
@@ -222,7 +224,14 @@ def build_research_router(
         """Record human rejection or mark a candidate tested after every sandbox gate passes."""
         if read_only:
             raise HTTPException(status_code=403, detail="Research registry is read-only.")
-        if decision_secret is not None and payload.proof != decision_secret:
+        if decision_secret is None:
+            # Fail-closed: without a configured decision secret there is no way
+            # to authenticate a human decision, so every decision is rejected.
+            raise HTTPException(
+                status_code=503,
+                detail="Human decisions are unavailable: no decision secret is configured.",
+            )
+        if payload.proof != decision_secret:
             raise HTTPException(status_code=401, detail="Human decision proof token is not valid.")
         try:
             return await asyncio.to_thread(

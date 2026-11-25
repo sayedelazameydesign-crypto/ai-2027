@@ -25,8 +25,11 @@ Measurement independence
 ------------------------
 * ``latency_ms`` and ``peak_memory_bytes`` are measured **on the host** and
   cannot be faked by the experiment.
-* ``accuracy`` is **computed on the host** from raw counts (``correct`` /
-  ``total``) the experiment reports, not from a self-declared success value.
+* ``accuracy`` is **computed on the host** by comparing the experiment's
+  **predictions** against host-owned **reference results**. The experiment
+  receives only the test ``inputs``; it never sees the reference results, so it
+  cannot fabricate the metric. A self-declared ``accuracy``/``passed`` value is
+  ignored.
 * ``edge_cases`` remain **experiment-reported**; full independence for those
   requires a trusted external evaluator, which is out of scope here.
 
@@ -52,11 +55,12 @@ import signal
 import sys
 import tempfile
 import time
+import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 
 from .contracts import StrictModel
 from .research_contracts import TestEvidence, VerificationGates
@@ -104,6 +108,27 @@ class VerificationThresholds(StrictModel):
     max_peak_memory_bytes: float = Field(gt=0.0, le=1_000_000_000.0)
 
 
+class EvaluationSpec(StrictModel):
+    """Host-owned test inputs and ground-truth reference results.
+
+    The host owns both the inputs and the expected (reference) results. The
+    experiment supplies only **predictions** for each input; the host performs
+    the comparison and computes accuracy. This keeps the accuracy metric
+    independent of the tested code: a child cannot fabricate the metric because
+    it never sees the reference results, only the inputs.
+    """
+
+    inputs: tuple[Any, ...] = Field(min_length=1, max_length=100)
+    reference_results: tuple[Any, ...] = Field(min_length=1, max_length=100)
+
+    @model_validator(mode="after")
+    def _lengths_match(self) -> EvaluationSpec:
+        """Require one reference result per input."""
+        if len(self.inputs) != len(self.reference_results):
+            raise ValueError("inputs and reference_results must have the same length.")
+        return self
+
+
 class ExperimentSpec(StrictModel):
     """A bounded, reproducible experiment derived from a hypothesis and a paper."""
 
@@ -112,6 +137,7 @@ class ExperimentSpec(StrictModel):
     environment: str = Field(min_length=3, max_length=300)
     timeout_s: float = Field(default=5.0, ge=0.2, le=10.0)
     thresholds: VerificationThresholds
+    evaluation: EvaluationSpec
     edge_cases: tuple[str, ...] = Field(min_length=1, max_length=12)
 
     @field_validator("edge_cases")
@@ -137,6 +163,7 @@ def _canonical_spec(spec: ExperimentSpec) -> dict[str, object]:
         "environment": spec.environment,
         "timeout_s": spec.timeout_s,
         "thresholds": spec.thresholds.model_dump(mode="json"),
+        "evaluation": spec.evaluation.model_dump(mode="json"),
         "edge_cases": list(spec.edge_cases),
     }
 
@@ -163,22 +190,85 @@ def _safe_env() -> dict[str, str]:
     }
 
 
-def _child_limits_fn(cpu_secs: int) -> Any:  # noqa: ANN401
-    """Build a ``preexec_fn`` applying hard resource caps, or ``None`` off-POSIX."""
-    if not _HAS_RESOURCE:
+#: cgroup v2 mount point; used for whole-tree peak-memory measurement when the
+#: host permits creating a per-experiment cgroup subtree.
+_CGROUP_ROOT = "/sys/fs/cgroup"
+
+
+def _create_cgroup() -> str | None:
+    """Create a fresh cgroup v2 subtree for one experiment, or ``None`` if not permitted.
+
+    cgroup v2 ``memory.peak`` measures the **cumulative peak** of every process
+    in the cgroup, including grandchildren, which ``getrusage(RUSAGE_CHILDREN)``
+    cannot provide. We attempt a real creation and fall back honestly when the
+    host denies cgroup-create permission.
+    """
+    if not os.path.isdir(_CGROUP_ROOT):
+        return None
+    name = f"ai2027-research-{os.getpid()}-{uuid.uuid4().hex[:8]}"
+    path = os.path.join(_CGROUP_ROOT, name)
+    try:
+        os.mkdir(path)
+    except OSError:
+        return None
+    return path
+
+
+def _move_to_cgroup(pid: int, cgroup_path: str) -> None:
+    """Move a process into a cgroup (best-effort; called in the child)."""
+    try:
+        with open(os.path.join(cgroup_path, "cgroup.procs"), "w", encoding="utf-8") as fh:
+            fh.write(str(pid))
+    except OSError:
+        pass
+
+
+def _read_cgroup_peak(cgroup_path: str) -> float | None:
+    """Read ``memory.peak`` (bytes) from a cgroup v2 subtree, or ``None``."""
+    try:
+        with open(os.path.join(cgroup_path, "memory.peak"), encoding="utf-8") as fh:
+            return float(fh.read().strip())
+    except (OSError, ValueError):
+        return None
+
+
+def _remove_cgroup(cgroup_path: str) -> None:
+    """Best-effort removal of a per-experiment cgroup subtree."""
+    try:
+        os.rmdir(cgroup_path)
+    except OSError:
+        pass
+
+
+def _make_preexec(cpu_secs: int, cgroup_path: str | None) -> Any:  # noqa: ANN401
+    """Build a ``preexec_fn`` applying rlimits and moving into a cgroup, or ``None``."""
+    if not _HAS_RESOURCE and cgroup_path is None:
         return None
 
     def _apply() -> None:
-        _resource.setrlimit(_resource.RLIMIT_CPU, (cpu_secs, cpu_secs))
-        _resource.setrlimit(_resource.RLIMIT_FSIZE, (_MAX_FILE_BYTES, _MAX_FILE_BYTES))
-        _resource.setrlimit(_resource.RLIMIT_NPROC, (_MAX_PROCESSES, _MAX_PROCESSES))
-        _resource.setrlimit(_resource.RLIMIT_AS, (_MAX_MEMORY_BYTES, _MAX_MEMORY_BYTES))
+        if _HAS_RESOURCE:
+            _resource.setrlimit(_resource.RLIMIT_CPU, (cpu_secs, cpu_secs))
+            _resource.setrlimit(_resource.RLIMIT_FSIZE, (_MAX_FILE_BYTES, _MAX_FILE_BYTES))
+            _resource.setrlimit(_resource.RLIMIT_NPROC, (_MAX_PROCESSES, _MAX_PROCESSES))
+            _resource.setrlimit(_resource.RLIMIT_AS, (_MAX_MEMORY_BYTES, _MAX_MEMORY_BYTES))
+        if cgroup_path is not None:
+            _move_to_cgroup(os.getpid(), cgroup_path)
 
     return _apply
 
 
-def _peak_memory_bytes() -> float:
-    """Return the peak resident set size of child processes, measured on the host."""
+def _peak_memory_bytes(cgroup_path: str | None = None) -> float:
+    """Return the peak memory of the experiment, measured on the host.
+
+    When a per-experiment cgroup is available, ``memory.peak`` gives the true
+    cumulative peak of the whole process tree. Otherwise we fall back to
+    ``getrusage(RUSAGE_CHILDREN)``, which reports only the largest single
+    child's peak RSS and may understate a tree with many processes.
+    """
+    if cgroup_path is not None:
+        peak = _read_cgroup_peak(cgroup_path)
+        if peak is not None:
+            return peak
     if not _HAS_RESOURCE:
         return 0.0
     usage = _resource.getrusage(_resource.RUSAGE_CHILDREN)
@@ -203,18 +293,20 @@ def _close_pipes(proc: asyncio.subprocess.Process) -> None:
             pass
 
 
-def _kill_group(proc: asyncio.subprocess.Process) -> None:
+def _kill_group(proc: asyncio.subprocess.Process, pgid: int | None = None) -> None:
     """Terminate the child and its whole process group, tolerating already-exit.
 
-    The child is spawned with ``start_new_session=True``, so it is its own
-    process-group leader and ``pgid == pid``. Using ``proc.pid`` as the pgid
-    works even after the main process has exited, which lets us reap lingering
-    background children. A group that is already gone raises
-    ``ProcessLookupError``, which is swallowed.
+    ``pgid`` should be the process-group id captured at spawn (== ``proc.pid``
+    under ``start_new_session=True``) and reused so that killing after the parent
+    has been reaped still targets the original group rather than a recycled id.
+    Passing the captured pgid lets us reap lingering background children after the
+    parent exits without a TOCTOU on the reaped PID. A group that is already gone
+    raises ``ProcessLookupError``, which is swallowed.
     """
+    target = pgid if pgid is not None else proc.pid
     try:
         if os.name != "nt" and hasattr(os, "killpg"):
-            os.killpg(proc.pid, signal.SIGKILL)
+            os.killpg(target, signal.SIGKILL)
         else:
             proc.kill()
     except (ProcessLookupError, OSError):
@@ -226,7 +318,10 @@ def _kill_group(proc: asyncio.subprocess.Process) -> None:
 
 
 async def _read_bounded(
-    proc: asyncio.subprocess.Process, stream: asyncio.StreamReader, cap: int
+    proc: asyncio.subprocess.Process,
+    stream: asyncio.StreamReader,
+    cap: int,
+    pgid: int | None = None,
 ) -> tuple[bytes, bool]:
     """Stream a pipe up to ``cap`` bytes; kill the group on overflow. Returns (data, overflow)."""
     chunks: list[bytes] = []
@@ -236,7 +331,7 @@ async def _read_bounded(
         if not chunk:
             break
         if total + len(chunk) > cap:
-            _kill_group(proc)
+            _kill_group(proc, pgid)
             chunks.append(chunk[: cap - total])
             total += len(chunk)
             return b"".join(chunks), True
@@ -267,18 +362,27 @@ def _parse_result(stdout_text: str) -> dict[str, Any] | None:
     return None
 
 
-def _compute_accuracy(raw: Any) -> float:  # noqa: ANN401
-    """Compute accuracy on the host from raw ``correct`` / ``total`` counts."""
-    if not isinstance(raw, dict):
+def _accuracy_from_predictions(predictions: Any, reference: tuple[Any, ...]) -> float:  # noqa: ANN401
+    """Compute accuracy on the host by comparing predictions to reference results.
+
+    The reference results are host-owned and never exposed to the experiment.
+    Missing, malformed, or non-matching predictions count as incorrect, so the
+    tested code cannot inflate accuracy by omitting or fabricating entries.
+    """
+    if not isinstance(predictions, list) or not reference:
         return 0.0
-    try:
-        correct = float(raw.get("correct", 0))
-        total = float(raw.get("total", 0))
-    except (TypeError, ValueError):
-        return 0.0
-    if not (math.isfinite(correct) and math.isfinite(total)) or total <= 0:
-        return 0.0
-    return max(0.0, min(1.0, correct / total))
+    total = len(reference)
+    matches = 0
+    for idx, expected in enumerate(reference):
+        if idx >= len(predictions):
+            break
+        try:
+            matched = predictions[idx] == expected
+        except Exception:  # noqa: BLE001 - never trust the child for the metric
+            matched = False
+        if matched:
+            matches += 1
+    return max(0.0, min(1.0, matches / total))
 
 
 def _edge_cases_pass(spec: ExperimentSpec, edge_cases: Any) -> bool:  # noqa: ANN401
@@ -333,16 +437,25 @@ class ExperimentRunner:
         if base_dir is None:
             tmp = tempfile.TemporaryDirectory()
             base_dir = Path(tmp.name)
+        cgroup_path: str | None = None
         try:
             script = base_dir / "experiment.py"
             script.write_text(spec.code, encoding="utf-8")
+            # Write the host-owned test inputs so the experiment can produce
+            # predictions. The reference results are never written to the
+            # sandbox; only the host holds them for the comparison.
+            (base_dir / "inputs.json").write_text(
+                json.dumps(list(spec.evaluation.inputs), ensure_ascii=False),
+                encoding="utf-8",
+            )
             kwargs: dict[str, Any] = {
                 "stdout": asyncio.subprocess.PIPE,
                 "stderr": asyncio.subprocess.PIPE,
             }
             if os.name != "nt":
                 kwargs["start_new_session"] = True
-            limits = _child_limits_fn(int(spec.timeout_s) + 1)
+            cgroup_path = _create_cgroup()
+            limits = _make_preexec(int(spec.timeout_s) + 1, cgroup_path)
             if limits is not None:
                 kwargs["preexec_fn"] = limits
             proc = await asyncio.create_subprocess_exec(
@@ -355,35 +468,46 @@ class ExperimentRunner:
                 **kwargs,
             )
             assert proc.stdout is not None and proc.stderr is not None  # noqa: S101
+            # Capture the process-group id at spawn (== proc.pid under
+            # start_new_session=True) so every path can terminate the original
+            # group, including descendants, without relying on a reaped PID.
+            pgid = proc.pid if os.name != "nt" and hasattr(os, "killpg") else None
             try:
                 async with asyncio.timeout(spec.timeout_s):
                     (stdout_b, stdout_ovf), (stderr_b, stderr_ovf) = await asyncio.gather(
-                        _read_bounded(proc, proc.stdout, _MAX_OUTPUT_BYTES),
-                        _read_bounded(proc, proc.stderr, _MAX_OUTPUT_BYTES),
+                        _read_bounded(proc, proc.stdout, _MAX_OUTPUT_BYTES, pgid),
+                        _read_bounded(proc, proc.stderr, _MAX_OUTPUT_BYTES, pgid),
                     )
             except TimeoutError:
-                _kill_group(proc)
+                _kill_group(proc, pgid)
                 await proc.wait()
                 elapsed = (time.perf_counter() - started) * 1000.0
-                return _failed_evidence(spec, artifact_sha256, elapsed, _peak_memory_bytes())
+                return _failed_evidence(
+                    spec, artifact_sha256, elapsed, _peak_memory_bytes(cgroup_path)
+                )
+            # Reap any background descendants by killing the group *before*
+            # waiting: the parent is still a zombie (or alive), so the captured
+            # pgid has NOT been recycled. Killing after wait() would risk a
+            # TOCTOU on an unrelated process group that reused the recycled id.
+            _kill_group(proc, pgid)
             await proc.wait()
-            # Do NOT kill the group here: proc.wait() has reaped the child, so
-            # its PID may be recycled. Killing the (now-orphaned) group by the
-            # recycled PID would be a TOCTOU that could hit an unrelated process.
-            # Background children spawned before exit are reparented to init and
-            # inherit the same RLIMIT_* caps; the timeout/overflow paths above are
-            # the authoritative place where the live group is terminated.
             elapsed = (time.perf_counter() - started) * 1000.0
             if stdout_ovf or stderr_ovf or proc.returncode != 0:
-                return _failed_evidence(spec, artifact_sha256, elapsed, _peak_memory_bytes())
+                return _failed_evidence(
+                    spec, artifact_sha256, elapsed, _peak_memory_bytes(cgroup_path)
+                )
             stdout_text = redact_secrets(stdout_b.decode("utf-8", errors="replace"))
             result = _parse_result(stdout_text)
             if result is None:
-                return _failed_evidence(spec, artifact_sha256, elapsed, _peak_memory_bytes())
+                return _failed_evidence(
+                    spec, artifact_sha256, elapsed, _peak_memory_bytes(cgroup_path)
+                )
             return self._evidence_from_result(
-                spec, artifact_sha256, elapsed, _peak_memory_bytes(), result
+                spec, artifact_sha256, elapsed, _peak_memory_bytes(cgroup_path), result
             )
         finally:
+            if cgroup_path is not None:
+                _remove_cgroup(cgroup_path)
             if tmp is not None:
                 tmp.cleanup()
 
@@ -400,8 +524,8 @@ class ExperimentRunner:
         result: dict[str, Any],
     ) -> TestEvidence:
         """Turn a parsed experiment result into host-measured, gated evidence."""
-        raw_measurements = result.get("raw_measurements")
-        accuracy = _compute_accuracy(raw_measurements)
+        predictions = result.get("predictions")
+        accuracy = _accuracy_from_predictions(predictions, spec.evaluation.reference_results)
         gates = VerificationGates(
             accuracy_passed=accuracy >= spec.thresholds.min_accuracy,
             latency_passed=elapsed_ms <= spec.thresholds.max_latency_ms,
@@ -423,6 +547,7 @@ class ExperimentRunner:
 
 
 __all__ = [
+    "EvaluationSpec",
     "ExperimentRunner",
     "ExperimentSpec",
     "Hypothesis",
