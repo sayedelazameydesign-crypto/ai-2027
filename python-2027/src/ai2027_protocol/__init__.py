@@ -32,6 +32,13 @@ from .ai_providers import (
 )
 from .auditor import ProtocolAuditor, format_audit_markdown
 from .benchmark import run_benchmark_suite, summarize_nanoseconds
+from .benchmark_suite import (
+    BENCHMARK_CATEGORIES,
+    BenchmarkCase,
+    BenchmarkReport,
+    BenchmarkSuite,
+    default_cases,
+)
 from .bridges import (
     ApprovalProposal,
     ConnectorBridgePort,
@@ -83,7 +90,28 @@ from .contracts import (
     RuleStatus,
     TelemetrySink,
 )
+from .experience_store import (
+    COMPLEXITY_LEVELS,
+    PASSING_TEST_RESULTS,
+    ExperienceIntegrityError,
+    ExperienceRecord,
+    ExperienceStore,
+    fingerprint_text,
+)
+from .feedback_engine import (
+    ACCEPT_THRESHOLD,
+    Feedback,
+    FeedbackEngine,
+    FeedbackError,
+)
 from .lease import Lease, LeaseError, LeaseHeldError, LeaseLostError, LeaseStore, SqliteLeaseStore
+from .meta_router import (
+    FreeFirstPolicyError,
+    MetaRouter,
+    PrivacyPolicy,
+    VerificationResult,
+    default_verifier,
+)
 from .ollama_layer import (
     AsyncOllamaTransport,
     HardwareProfileSpec,
@@ -103,7 +131,46 @@ from .ollama_readiness import (
     inspect_host_readiness,
     verify_ollama_capabilities,
 )
+from .prompts import (
+    DEFAULT_PROMPTS_DIR,
+    PROMPT_FILES,
+    PromptBundle,
+    PromptDocument,
+    PromptIntegrityError,
+    PromptLoadError,
+    TemplateError,
+    load_prompt_bundle,
+    load_prompt_document,
+    parse_front_matter,
+    render_template,
+    validate_document,
+)
+from .prompts import (
+    REPO_ROOT as PROMPTS_REPO_ROOT,
+)
+from .provider_scoring import (
+    SIGNAL_WEIGHTS,
+    ProviderScore,
+    ProviderScorecard,
+)
 from .router import AllProvidersFailedError, FreeFirstRouter, RouterConfig
+from .routing_profiles import (
+    CAPABILITY_VOCABULARY,
+    DEFAULT_CONFIG_PATH,
+    SUPPORTED_PROVIDER_KINDS,
+    RoutingConfigError,
+    RoutingDecision,
+    RoutingProfile,
+    RoutingRegistry,
+    UnknownProfileError,
+    UnknownTaskTypeError,
+    load_routing_registry,
+    parse_simple_yaml,
+    text_rules_are_well_formed,
+)
+from .routing_profiles import (
+    BudgetPolicy as RoutingBudgetPolicy,
+)
 from .server import create_app
 from .studio import build_studio_router
 from .telemetry import ObservabilityConfig, ObservabilityMode, ObservabilityRuntime
@@ -115,6 +182,7 @@ from .tools import (
     ToolOutcome,
     ToolSpec,
 )
+from .yaml_subset import Jsonish, YamlSubsetError
 
 __all__ = [
     "SqliteLeaseStore",
@@ -140,6 +208,7 @@ __all__ = [
     "BudgetGuard",
     "BudgetPolicy",
     "BudgetSnapshot",
+    "CAPABILITY_VOCABULARY",
     "CapabilityCheckResult",
     "CeliaIndexSummary",
     "CeliaMemoryHit",
@@ -155,6 +224,8 @@ __all__ = [
     "ConnectorSearchOutcome",
     "ConnectorsBridge",
     "CostStatus",
+    "DEFAULT_CONFIG_PATH",
+    "DEFAULT_PROMPTS_DIR",
     "DeterministicFallbackProvider",
     "DeterministicLexicalEmbeddingBackend",
     "EmbeddingBackendProtocol",
@@ -162,6 +233,7 @@ __all__ = [
     "GeminiFreeProvider",
     "HardwareProfileSpec",
     "HostResourceSnapshot",
+    "Jsonish",
     "KernelSandboxBridge",
     "KernelSandboxPort",
     "KernelWriteResult",
@@ -183,16 +255,28 @@ __all__ = [
     "OllamaToolTurnResult",
     "OllamaVerificationReport",
     "OpenAICompatibleFreeProvider",
+    "PROMPT_FILES",
+    "PROMPTS_REPO_ROOT",
     "PlanStep",
     "ProjectTier",
+    "PromptBundle",
+    "PromptDocument",
+    "PromptIntegrityError",
+    "PromptLoadError",
     "PromptRequest",
     "ProtocolAuditReport",
     "ProtocolAuditor",
     "ProviderError",
     "ProviderKind",
     "ProviderStatus",
+    "RoutingBudgetPolicy",
+    "RoutingConfigError",
+    "RoutingDecision",
+    "RoutingProfile",
+    "RoutingRegistry",
     "RouterConfig",
     "RuleStatus",
+    "SUPPORTED_PROVIDER_KINDS",
     "SandboxToolRuntime",
     "SessionStore",
     "TelemetrySink",
@@ -201,6 +285,10 @@ __all__ = [
     "ToolInvocation",
     "ToolOutcome",
     "ToolSpec",
+    "TemplateError",
+    "UnknownProfileError",
+    "UnknownTaskTypeError",
+    "YamlSubsetError",
     "build_compliance_registry",
     "build_default_providers",
     "build_studio_router",
@@ -216,9 +304,40 @@ __all__ = [
     "format_audit_markdown",
     "format_compliance_markdown",
     "inspect_host_readiness",
+    "load_prompt_bundle",
+    "load_prompt_document",
+    "load_routing_registry",
+    "parse_front_matter",
+    "parse_simple_yaml",
+    "render_template",
     "resolve_hardware_profile",
     "run_benchmark_suite",
     "summarize_nanoseconds",
+    "text_rules_are_well_formed",
+    "validate_document",
     "verify_adr_0002_preserved",
     "verify_ollama_capabilities",
+    "BENCHMARK_CATEGORIES",
+    "ACCEPT_THRESHOLD",
+    "COMPLEXITY_LEVELS",
+    "PASSING_TEST_RESULTS",
+    "SIGNAL_WEIGHTS",
+    "BenchmarkCase",
+    "BenchmarkReport",
+    "BenchmarkSuite",
+    "ExperienceIntegrityError",
+    "ExperienceRecord",
+    "ExperienceStore",
+    "Feedback",
+    "FeedbackEngine",
+    "FeedbackError",
+    "FreeFirstPolicyError",
+    "MetaRouter",
+    "PrivacyPolicy",
+    "ProviderScore",
+    "ProviderScorecard",
+    "VerificationResult",
+    "default_cases",
+    "default_verifier",
+    "fingerprint_text",
 ]

@@ -108,6 +108,14 @@ jobs:
       - name: Zero third-party imports (AST gate)
         run: python scripts/ci_guard.py imports
 
+      # P1 cognitive-intelligence foundation: the operating-mind prompt loader
+      # and the capability routing profiles. These are stdlib-only, so they run
+      # here with no third-party packages installed — the same guarantee the
+      # AST gate above enforces on the source. Named explicitly so the
+      # baseline-sensitive operational-evidence suite is not pulled in.
+      - name: P1 foundation — prompt loader and routing profile tests (stdlib only)
+        run: python -m unittest tests.test_prompt_loader tests.test_routing_profiles -v
+
       - name: CI guard self-tests (keeps the gates honest)
         run: python scripts/test_ci_guard.py -v
 
