@@ -86,6 +86,38 @@ fail or when any GitHub Action is not pinned to a full-length SHA.
   the full `python-2027` pytest suite passes (963 tests) with 91.8% coverage
   (floor 90%); the protocol auditor scores `python-2027` at 100%.
 
+### Architecture — P4: scientific intelligence (experiment execution)
+- Added `python-2027/src/ai2027_protocol/research_experiment.py`, the isolated,
+  reproducible experiment runner that closes the one gap left by the Research
+  Radar: it actually *runs* the experiment a candidate paper implies and turns
+  the result into durable, reviewable evidence.
+- Added three types: `Hypothesis` (a first-class falsifiable claim, separate
+  from engineering inference), `ExperimentSpec` (a bounded, reproducible
+  experiment with thresholds and edge cases), and `ExperimentRunner` (executes
+  the spec in an isolated subprocess and measures the four verification gates).
+- The runner executes experiments locally and bounded: a `python -I -B`
+  subprocess with a sanitized environment, a hard timeout, and bounded output,
+  aligning with the existing sandbox pattern in `tools_exec.py`.
+- Produces `TestEvidence` compatible with the existing contracts and persists
+  it through the existing `ResearchStore.decide` human-review path and the
+  tamper-evident `ResearchAuditLedger` — no store or ledger changes required.
+- Enforced the rules in code: no automatic adoption (a failing experiment
+  cannot be used to adopt), reproducibility (content-addressed artifact hash),
+  bounded local execution (MAX_SPEND=0), and **no public Python-execution
+  endpoint** (the runner is a library component; the Research API's write paths
+  are not authenticated, so an execution route would be a remote code-execution
+  risk).
+- Reused, not rebuilt: `TestEvidence`, `VerificationGates`, `ResearchStore`,
+  and the audit ledger. No kernel, provider, or deployment changes.
+- Added `docs/agent/SCIENTIFIC-INTELLIGENCE.md` documenting the read-only audit
+  of the existing Research Radar, the P4 design, and its limits.
+- Tests: real bounded execution, gate evaluation, artifact reproducibility,
+  timeout and crash handling, and a full persist-and-reopen integration test
+  through the human decision path.
+- Verified: `ruff check`/`ruff format --check`, `mypy --strict`, and the full
+  `python-2027` pytest suite pass (coverage floor 90%); the protocol auditor
+  scores `python-2027` at 100%.
+
 ### CI maintenance — GitHub Actions runtime support
 - Updated the full-SHA-pinned checkout, Python, Node, artifact upload, CodeQL, and
   Pages deployment actions to maintained Node 24-compatible major versions.
