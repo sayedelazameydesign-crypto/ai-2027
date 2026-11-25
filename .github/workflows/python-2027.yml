@@ -88,6 +88,14 @@ jobs:
           .venv/bin/pytest --cov-fail-under=90 \
             --junitxml="$RUNNER_TEMP/junit-${{ matrix.python-version }}.xml"
 
+      - name: Upload JUnit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: junit-${{ matrix.python-version }}
+          path: ${{ runner.temp }}/junit-${{ matrix.python-version }}.xml
+          if-no-files-found: ignore
+
       - name: Summarize test failures as annotations (readable without the log)
         if: failure()
         working-directory: python-2027
