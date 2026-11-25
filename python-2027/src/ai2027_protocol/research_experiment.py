@@ -519,22 +519,16 @@ class ExperimentRunner:
                 return _failed_evidence(
                     spec, artifact_sha256, elapsed, _peak_memory_bytes(cgroup_path)
                 )
-            # The experiment has finished printing (we reached EOF). Reap any
-            # background descendants by killing the group by the captured pgid,
-            # while keeping the parent's own exit code intact. If the parent has
-            # already exited (a zombie), kill the group first: the pgid is not
-            # yet recycled, so this is TOCTOU-free and SIGKILL is a no-op on the
-            # zombie leader. If the parent is still running, let it exit cleanly
-            # first so we never SIGKILL it (which would corrupt returncode).
-            rc = proc.returncode
-            if rc is None:
-                rc = await _reap(proc)
-                _kill_group(proc, pgid, close_pipes=False)
-            else:
-                _kill_group(proc, pgid, close_pipes=False)
-                await _reap(proc)
+            # The experiment has finished printing (we reached EOF). Let the
+            # parent exit cleanly and reap it, then terminate any lingering
+            # background descendants by killing the group with the captured pgid.
+            # Waiting first keeps the parent's exit code intact (we never
+            # SIGKILL a still-running parent); the captured pgid lets us reap
+            # descendants that survived the parent's exit.
+            await _reap(proc)
+            _kill_group(proc, pgid, close_pipes=False)
             elapsed = (time.perf_counter() - started) * 1000.0
-            if stdout_ovf or stderr_ovf or rc != 0:
+            if stdout_ovf or stderr_ovf or proc.returncode != 0:
                 return _failed_evidence(
                     spec, artifact_sha256, elapsed, _peak_memory_bytes(cgroup_path)
                 )
