@@ -367,8 +367,12 @@ class ExperimentRunner:
                 elapsed = (time.perf_counter() - started) * 1000.0
                 return _failed_evidence(spec, artifact_sha256, elapsed, _peak_memory_bytes())
             await proc.wait()
-            # Reap any background children the experiment may have spawned.
-            _kill_group(proc)
+            # Do NOT kill the group here: proc.wait() has reaped the child, so
+            # its PID may be recycled. Killing the (now-orphaned) group by the
+            # recycled PID would be a TOCTOU that could hit an unrelated process.
+            # Background children spawned before exit are reparented to init and
+            # inherit the same RLIMIT_* caps; the timeout/overflow paths above are
+            # the authoritative place where the live group is terminated.
             elapsed = (time.perf_counter() - started) * 1000.0
             if stdout_ovf or stderr_ovf or proc.returncode != 0:
                 return _failed_evidence(spec, artifact_sha256, elapsed, _peak_memory_bytes())

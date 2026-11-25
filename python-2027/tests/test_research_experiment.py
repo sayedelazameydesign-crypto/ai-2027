@@ -9,6 +9,7 @@ child-process leaks are bounded and terminate.
 
 from __future__ import annotations
 
+import time
 from datetime import UTC, date, datetime
 from pathlib import Path
 
@@ -292,14 +293,33 @@ class TestRunnerAdversarial:
         evidence = await ExperimentRunner().run(_spec(code=CPU_BOMB_CODE, timeout_s=1.0))
         assert evidence.gates.all_passed is False
 
-    async def test_child_process_leak_is_killed(self) -> None:
+    async def test_child_process_leak_does_not_hang(self) -> None:
         # The child spawns a background process then exits cleanly. The runner
-        # must terminate and return bounded evidence; it must not hang waiting
-        # on the leaked child (the process group is reaped after the run).
+        # must terminate and return bounded evidence without hanging on the
+        # leaked child. (On normal exit the runner deliberately does NOT reap
+        # the group by the reaped PID, to avoid a TOCTOU; the timeout/overflow
+        # paths are where the live group is authoritatively terminated.)
         spec = _spec(code=CHILD_LEAK_CODE, timeout_s=5.0, edge_cases=("empty_input",))
         evidence = await ExperimentRunner().run(spec)
         assert evidence.measurements["latency_ms"] >= 0.0
         assert len(evidence.artifact_sha256) == 64
+
+    async def test_timeout_kills_grandchild_holding_pipe(self) -> None:
+        # A grandchild inheriting the runner's stdout pipe keeps it open, so the
+        # reader never sees EOF. The timeout path must kill the whole live group
+        # (parent + grandchild) and return bounded evidence, not hang.
+        inherit_code = (
+            "import subprocess, sys, json\n"
+            "subprocess.Popen([sys.executable, '-I', '-B', '-c', 'import time; time.sleep(30)'])\n"
+            "print(json.dumps({'raw_measurements': {'correct': 1, 'total': 1},\n"
+            "                  'edge_cases': {'empty_input': {'passed': True}}}))\n"
+        )
+        spec = _spec(code=inherit_code, timeout_s=1.0, edge_cases=("empty_input",))
+        t0 = time.perf_counter()
+        evidence = await ExperimentRunner().run(spec)
+        elapsed = time.perf_counter() - t0
+        assert evidence.gates.all_passed is False
+        assert elapsed < spec.timeout_s + 2.0  # terminated near the timeout, not 30s
 
     async def test_file_write_outside_sandbox_is_bounded(self) -> None:
         # The subprocess is confined by resource caps but is NOT a security
