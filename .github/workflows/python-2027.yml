@@ -41,7 +41,6 @@ on:
 
 permissions:
   contents: read
-  issues: write
 
 concurrency:
   group: python-2027-${{ github.ref }}
@@ -108,10 +107,8 @@ jobs:
               )[:4000]
 
           path = Path(os.environ["JUNIT"])
-          out = Path(os.environ["RUNNER_TEMP"]) / f"failures-${{ matrix.python-version }}.txt"
           if not path.is_file():
               print("::error title=pytest::no junit report was written (the suite did not start)")
-              out.write_text("no junit report was written (the suite did not start)\n", encoding="utf-8")
           else:
               tree = ET.parse(path)
               failures = []
@@ -123,53 +120,9 @@ jobs:
                           failures.append(f"{case.get('classname')}::{case.get('name')} — {message}")
               if not failures:
                   print("::error title=pytest::junit shows no failing case (coverage or step-level failure)")
-                  out.write_text("junit shows no failing case (coverage or step-level failure)\n", encoding="utf-8")
               for item in failures[:20]:
                   print(f"::error title=pytest::{esc(item)}")
-              out.write_text("\n".join(failures[:20]) + "\n", encoding="utf-8")
               print(f"::notice title=pytest::{len(failures)} failing case(s)")
-          PY
-
-      - name: Upload failing-test summary
-        if: failure()
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f  # v6
-        with:
-          name: failing-tests-${{ matrix.python-version }}
-          path: ${{ runner.temp }}/failures-${{ matrix.python-version }}.txt
-          if-no-files-found: ignore
-
-      - name: Report failing tests as an issue (diagnostic)
-        if: failure()
-        working-directory: python-2027
-        env:
-          FAILURES: ${{ runner.temp }}/failures-${{ matrix.python-version }}.txt
-          PYVER: ${{ matrix.python-version }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          GH_TOKEN: ${{ github.token }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
-        run: |
-          python - <<'PY'
-          import json, os, urllib.request
-          from pathlib import Path
-          path = Path(os.environ["FAILURES"])
-          run_url = os.environ["RUN_URL"]
-          body = path.read_text(encoding="utf-8") if path.is_file() else "no failure summary file"
-          payload = json.dumps({
-              "title": f"[ci-diag] python-2027 {os.environ.get('PYVER', '')} failing tests",
-              "body": f"Run: {run_url}\n\n```\n{body}\n```",
-          }).encode("utf-8")
-          req = urllib.request.Request(
-              f"https://api.github.com/repos/{os.environ['GITHUB_REPOSITORY']}/issues",
-              data=payload,
-              headers={
-                  "Authorization": f"Bearer {os.environ['GH_TOKEN']}",
-                  "Accept": "application/vnd.github+json",
-                  "X-GitHub-Api-Version": "2022-11-28",
-              },
-              method="POST",
-          )
-          urllib.request.urlopen(req, timeout=30).read()
-          print("issue posted")
           PY
 
       - name: PAP persistent-task gate · real SIGKILL, resume from checkpoint (evidence artifact)
