@@ -542,6 +542,12 @@ class ExperimentRunner:
             return self._evidence_from_result(
                 spec, artifact_sha256, elapsed, _peak_memory_bytes(cgroup_path), result
             )
+        except Exception:  # noqa: BLE001 - run() must never raise; fail closed
+            # Any unexpected error while driving the confined subprocess (for
+            # example a transport/reader edge on newer Python versions) is turned
+            # into failed evidence rather than escaping as a raised exception.
+            elapsed = (time.perf_counter() - started) * 1000.0
+            return _failed_evidence(spec, artifact_sha256, elapsed, _peak_memory_bytes(cgroup_path))
         finally:
             if cgroup_path is not None:
                 _remove_cgroup(cgroup_path)

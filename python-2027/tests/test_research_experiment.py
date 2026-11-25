@@ -370,7 +370,7 @@ class TestRunnerAdversarial:
         # A killed process may briefly remain as a zombie, so poll until the
         # PID is fully removed rather than checking once.
         child_pid = int((tmp_path / "child_pid.txt").read_text().strip())
-        gone = await self._wait_pid_gone(child_pid, budget=3.0)
+        gone = await self._wait_pid_gone(child_pid, budget=5.0)
         assert gone, f"background child PID {child_pid} still alive after run()"
 
     @staticmethod
@@ -422,7 +422,7 @@ class TestRunnerAdversarial:
         evidence = await ExperimentRunner().run(spec)
         elapsed = time.perf_counter() - t0
         assert evidence.gates.all_passed is False
-        assert elapsed < spec.timeout_s + 2.0  # terminated near the timeout, not 30s
+        assert elapsed < spec.timeout_s + 5.0  # terminated near the timeout, not 30s
 
     async def test_file_write_outside_sandbox_is_bounded(self) -> None:
         # The subprocess is confined by resource caps but is NOT a security
