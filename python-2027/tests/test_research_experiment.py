@@ -369,7 +369,11 @@ class TestRunnerAdversarial:
         # The experiment recorded its spawned child's PID; verify it is gone.
         # A killed process may briefly remain as a zombie, so poll until the
         # PID is fully removed rather than checking once.
-        child_pid = int((tmp_path / "child_pid.txt").read_text().strip())
+        pid_file = tmp_path / "child_pid.txt"
+        dbg = tmp_path / "run_debug.txt"
+        debug_txt = dbg.read_text(encoding="utf-8") if dbg.is_file() else "none"
+        assert pid_file.is_file(), f"no child_pid.txt; runner debug: {debug_txt}"
+        child_pid = int(pid_file.read_text().strip())
         gone = await self._wait_pid_gone(child_pid, budget=5.0)
         assert gone, f"background child PID {child_pid} still alive after run()"
 

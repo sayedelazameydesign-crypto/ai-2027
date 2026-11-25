@@ -436,6 +436,14 @@ def _edge_cases_pass(spec: ExperimentSpec, edge_cases: Any) -> bool:  # noqa: AN
     return True
 
 
+def _write_debug(base_dir: Path, message: str) -> None:
+    """Best-effort diagnostic dump (temporary; helps CI failure triage)."""
+    try:
+        (base_dir / "run_debug.txt").write_text(message, encoding="utf-8")
+    except OSError:
+        pass
+
+
 def _failed_evidence(
     spec: ExperimentSpec, artifact_sha256: str, elapsed_ms: float, peak_mem: float
 ) -> TestEvidence:
@@ -540,16 +548,24 @@ class ExperimentRunner:
             stdout_text = redact_secrets(stdout_b.decode("utf-8", errors="replace"))
             result = _parse_result(stdout_text)
             if result is None:
+                _stderr_snippet = stderr_b.decode("utf-8", errors="replace")[:500]
+                _write_debug(
+                    base_dir,
+                    f"no result; stdout={stdout_text[:500]!r} "
+                    f"stderr={_stderr_snippet!r}",
+                )
                 return _failed_evidence(
                     spec, artifact_sha256, elapsed, _peak_memory_bytes(cgroup_path)
                 )
             return self._evidence_from_result(
                 spec, artifact_sha256, elapsed, _peak_memory_bytes(cgroup_path), result
             )
-        except Exception:  # noqa: BLE001 - run() must never raise; fail closed
+        except Exception as exc:  # noqa: BLE001 - run() must never raise; fail closed
             # Any unexpected error while driving the confined subprocess (for
             # example a transport/reader edge on newer Python versions) is turned
             # into failed evidence rather than escaping as a raised exception.
+            import traceback
+            _write_debug(base_dir, f"exception: {exc!r}\n{traceback.format_exc()}")
             elapsed = (time.perf_counter() - started) * 1000.0
             return _failed_evidence(spec, artifact_sha256, elapsed, _peak_memory_bytes(cgroup_path))
         finally:
