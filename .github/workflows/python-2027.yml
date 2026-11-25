@@ -169,12 +169,9 @@ jobs:
           payload = json.dumps({"title": "[ci-diag] Python 3.13/3.14 test diagnostic", "body": body})
           repo = os.environ["GITHUB_REPOSITORY"]
           subprocess.run(
-              ["curl", "-sS", "-X", "POST",
-               f"https://api.github.com/repos/{repo}/issues",
-               "-H", f"Authorization: Bearer {os.environ['GH_TOKEN']}",
-               "-H", "Accept: application/vnd.github+json",
-               "-H", "Content-Type: application/json",
-               "--data", payload],
+              ["gh", "api", "-X", "POST",
+               f"repos/{repo}/issues", "--input", "-"],
+              input=payload,
               check=True,
           )
           PY
