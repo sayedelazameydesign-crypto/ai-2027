@@ -60,8 +60,8 @@ MEMORY_BLOWUP_CODE = "x = bytearray(1024 * 1024 * 1024)\nprint('done')\n"
 CPU_BOMB_CODE = "while True:\n    pass\n"
 # Child-process leak: spawns a background process that keeps running.
 CHILD_LEAK_CODE = (
-    "import subprocess, sys\n"
-    "subprocess.Popen([sys.executable, '-I', '-B', '-c', 'import time; time.sleep(30)'],\n"
+    "import subprocess\n"
+    "subprocess.Popen(['sleep', '30'],\n"
     "                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)\n"
     "import json\n"
     "print(json.dumps({'raw_measurements': {'correct': 1, 'total': 1},\n"
