@@ -32,6 +32,13 @@ from .ai_providers import (
 )
 from .auditor import ProtocolAuditor, format_audit_markdown
 from .benchmark import run_benchmark_suite, summarize_nanoseconds
+from .benchmark_suite import (
+    BENCHMARK_CATEGORIES,
+    BenchmarkCase,
+    BenchmarkReport,
+    BenchmarkSuite,
+    default_cases,
+)
 from .bridges import (
     ApprovalProposal,
     ConnectorBridgePort,
@@ -83,7 +90,28 @@ from .contracts import (
     RuleStatus,
     TelemetrySink,
 )
+from .experience_store import (
+    COMPLEXITY_LEVELS,
+    PASSING_TEST_RESULTS,
+    ExperienceIntegrityError,
+    ExperienceRecord,
+    ExperienceStore,
+    fingerprint_text,
+)
+from .feedback_engine import (
+    ACCEPT_THRESHOLD,
+    Feedback,
+    FeedbackEngine,
+    FeedbackError,
+)
 from .lease import Lease, LeaseError, LeaseHeldError, LeaseLostError, LeaseStore, SqliteLeaseStore
+from .meta_router import (
+    FreeFirstPolicyError,
+    MetaRouter,
+    PrivacyPolicy,
+    VerificationResult,
+    default_verifier,
+)
 from .ollama_layer import (
     AsyncOllamaTransport,
     HardwareProfileSpec,
@@ -119,6 +147,11 @@ from .prompts import (
 )
 from .prompts import (
     REPO_ROOT as PROMPTS_REPO_ROOT,
+)
+from .provider_scoring import (
+    SIGNAL_WEIGHTS,
+    ProviderScore,
+    ProviderScorecard,
 )
 from .router import AllProvidersFailedError, FreeFirstRouter, RouterConfig
 from .routing_profiles import (
@@ -284,4 +317,27 @@ __all__ = [
     "validate_document",
     "verify_adr_0002_preserved",
     "verify_ollama_capabilities",
+    "BENCHMARK_CATEGORIES",
+    "ACCEPT_THRESHOLD",
+    "COMPLEXITY_LEVELS",
+    "PASSING_TEST_RESULTS",
+    "SIGNAL_WEIGHTS",
+    "BenchmarkCase",
+    "BenchmarkReport",
+    "BenchmarkSuite",
+    "ExperienceIntegrityError",
+    "ExperienceRecord",
+    "ExperienceStore",
+    "Feedback",
+    "FeedbackEngine",
+    "FeedbackError",
+    "FreeFirstPolicyError",
+    "MetaRouter",
+    "PrivacyPolicy",
+    "ProviderScore",
+    "ProviderScorecard",
+    "VerificationResult",
+    "default_cases",
+    "default_verifier",
+    "fingerprint_text",
 ]

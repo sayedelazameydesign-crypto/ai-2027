@@ -47,6 +47,45 @@ fail or when any GitHub Action is not pinned to a full-length SHA.
   the full `python-2027` pytest suite pass with 91.7% coverage (floor 90%); the
   protocol auditor scores `python-2027` at 100%.
 
+### Architecture — P2 + P3: persistent learning & continuous evaluation
+- Added the **learning loop** around the free-first router, in five new modules
+  under `python-2027/src/ai2027_protocol/`:
+  - `intelligence/meta_router.py` — `MetaRouter` classifies a goal via the
+    existing `RoutingRegistry`, executes it through the existing
+    `FreeFirstRouter`, verifies the output, and emits an `ExperienceRecord`.
+    Enforces `MAX_SPEND=0` via `assert_free_first()` before any call, and is
+    local-only by default through `PrivacyPolicy`.
+  - `intelligence/provider_scoring.py` — `ProviderScorecard` / `ProviderScore`
+    score each model per capability from four weighted signals (verification,
+    success, preference, efficiency) and recommend the best free model. A
+    provider with no data scores `0.0` (never assumed good).
+  - `learning/experience_store.py` — `ExperienceStore`, a SQLite,
+    evidence-gated, restart-durable ledger. A record is admitted only when it
+    is verified, test `passed`, and carries a SHA-256 output fingerprint;
+    otherwise it is refused and logged to a `refusals` table.
+    `verify_durability()` reopens and re-validates every row.
+  - `learning/feedback_engine.py` — `FeedbackEngine` applies user accept/reject
+    and test verdicts to **verified** episodes only, raising `FeedbackError`
+    otherwise (NO VERIFIED RESULT = NO LEARNING).
+  - `evaluation/benchmark_suite.py` — `BenchmarkSuite` runs a fixed case set
+    across six categories, scores each as the fraction verified, and
+    `save_baseline` / `load_baseline` / `compare` detect regression against a
+    prior version.
+- Enforced the three non-negotiable rules in code, not documentation:
+  `MAX_SPEND=0`, `NO VERIFIED RESULT = NO LEARNING`, and
+  `NO PERSISTENCE = NO COMPLETION`.
+- Added `docs/agent/CONTINUOUS-LEARNING.md` mapping the learning loop to the
+  components that implement it and stating the privacy guard.
+- Reused, not rebuilt: `FreeFirstRouter`, `BudgetGuard`, `CircuitBreaker`,
+  `RoutingRegistry`, `AutonomousAgent`, `celia_memory` embeddings, and
+  `session_store`. No kernel, memory, provider, or deployment changes.
+- Learning is from usage-result feedback and routing-policy improvement only;
+  model-weight training (LoRA/QLoRA) is a later, separate step requiring clean
+  training data and a GPU.
+- Verified: `ruff check`/`ruff format --check`, `mypy --strict` (138 files),
+  the full `python-2027` pytest suite passes (963 tests) with 91.8% coverage
+  (floor 90%); the protocol auditor scores `python-2027` at 100%.
+
 ### CI maintenance — GitHub Actions runtime support
 - Updated the full-SHA-pinned checkout, Python, Node, artifact upload, CodeQL, and
   Pages deployment actions to maintained Node 24-compatible major versions.
