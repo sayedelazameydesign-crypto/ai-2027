@@ -267,7 +267,11 @@ def _peak_memory_bytes(cgroup_path: str | None = None) -> float:
     """
     if cgroup_path is not None:
         peak = _read_cgroup_peak(cgroup_path)
-        if peak is not None:
+        # A cgroup can be created but report a zero/absent peak (for example
+        # when the child could not be moved into it, or the peak file is not
+        # yet written). Treat a non-positive peak as "unavailable" and fall
+        # back to getrusage rather than reporting a misleading zero.
+        if peak is not None and peak > 0:
             return peak
     if not _HAS_RESOURCE:
         return 0.0

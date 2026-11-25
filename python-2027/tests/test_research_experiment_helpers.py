@@ -86,6 +86,15 @@ class TestRunnerHelpers:
         # No cgroup path: the getrusage fallback is used (>= 0 on Linux).
         assert _peak_memory_bytes(None) >= 0.0
 
+    def test_peak_memory_bytes_falls_back_on_zero_cgroup_peak(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # A cgroup that exists but reports a zero peak (child not moved, or the
+        # peak file not yet written) must not be reported as zero memory; the
+        # getrusage fallback is used instead.
+        monkeypatch.setattr(rexp, "_read_cgroup_peak", lambda _p: 0.0)
+        assert _peak_memory_bytes("/fake/cgroup") >= 0.0
+
     def test_close_pipes_is_exception_safe(self) -> None:
         proc = _FakeProc()
         _close_pipes(cast(asyncio.subprocess.Process, proc))  # must not raise
