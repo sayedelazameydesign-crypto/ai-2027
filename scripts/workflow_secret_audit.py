@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Audit how the workflows touch secrets — before a mistake reaches a runner.
 
-Two rules, both learned from real incidents rather than intuition:
+Three rules, all learned from real incidents rather than intuition:
 
 **Rule 1 — no inline interpolation.** A secret may be assigned to a step's
 `env:` or explicitly mapped by name to a reusable workflow's `secrets:` input.
@@ -16,6 +16,12 @@ also forbids referencing `secrets.*` directly in an `if:` expression.
 **Rule 2 — no undocumented secret.** Every secret a workflow references must be
 named in `docs/SECRETS.md`, which also says what it is for and what the workflow
 does when it is absent. An undocumented secret is a secret nobody can rotate.
+
+**Rule 3 — no secret in a public GitHub Pages workflow.** A workflow that
+publishes a static bundle to GitHub Pages (`actions/deploy-pages` or
+`pages: write`) ships every built byte to the public internet. Repository
+credentials must never enter a Pages workflow — even through `env:` — because
+client-side bundlers can inline build-time variables into published JavaScript.
 
 This is a static check: it reads files, never executes a workflow, and never
 touches a secret value (it only sees the *names*).
@@ -53,6 +59,19 @@ NAME_IN_EXPR = re.compile(r"secrets\.([A-Za-z_][A-Za-z0-9_]*)")
 #: key under `with:` or arbitrary script text is not a safe transport.
 MAPPING_KEY = re.compile(r"^\s*(?:-\s*)?([A-Za-z_][A-Za-z0-9_-]*)\s*:(.*)$")
 ENV_NAME = re.compile(r"[A-Z][A-Z0-9_]*\Z")
+PAGES_WRITE = re.compile(r"^\s*pages\s*:\s*write\s*(?:#.*)?$")
+DEPLOY_PAGES_USES = re.compile(r"^\s*(?:-\s*)?uses\s*:\s*actions/deploy-pages@")
+
+
+def publishes_static_pages(workflow_text: str) -> bool:
+    """Whether a workflow publishes a static bundle to public GitHub Pages."""
+    for line in workflow_text.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        if PAGES_WRITE.match(line) or DEPLOY_PAGES_USES.match(line):
+            return True
+    return False
 
 
 def find_references(workflow_text: str) -> list[dict]:
@@ -136,6 +155,7 @@ def audit(workflows_dir: Path = WORKFLOWS, register_path: Path = REGISTER_PATH) 
                              "detail": str(exc)[:120]})
             continue
         rel = path.relative_to(ROOT).as_posix() if path.is_relative_to(ROOT) else path.name
+        is_pages_workflow = publishes_static_pages(workflow_text)
         for ref in find_references(workflow_text):
             shown = display_name(ref["name"], register_text)
             used.setdefault(shown, []).append(f"{rel}:{ref['line']}")
@@ -150,6 +170,12 @@ def audit(workflows_dir: Path = WORKFLOWS, register_path: Path = REGISTER_PATH) 
                     "reference": shown,
                     "detail": "not named in docs/SECRETS.md — nobody can rotate what "
                               "nobody recorded"})
+            if is_pages_workflow:
+                findings.append({
+                    "file": rel, "line": ref["line"], "rule": "pages_public_bundle",
+                    "reference": shown,
+                    "detail": "GitHub Pages publishes static assets publicly — "
+                              "never pass repository secrets into a Pages workflow"})
 
     return {"ok": not findings, "workflows_scanned": len(files),
             "references": {k: sorted(v) for k, v in sorted(used.items())},

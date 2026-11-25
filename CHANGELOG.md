@@ -13,6 +13,23 @@ fail or when any GitHub Action is not pinned to a full-length SHA.
 
 ## [Unreleased]
 
+### Security — fail-closed static frontend workflow and SHA-256 bundle guard
+- Hardened `.github/workflows/deploy-frontend.yml`: removed `secrets.GEMINI_API_KEY`
+  from static bundle builds, pinned `actions/setup-node` by full SHA, set
+  `persist-credentials: false`, enforced `npm ci --ignore-scripts`, scoped
+  `pages: write` and `id-token: write` strictly to the manual `main`-only
+  `deploy` job (`deploy_to_pages: false` default), dropped automatic `push`
+  overwrites of `website/`, and aligned concurrency on `main` with `pages.yml`.
+- Added `scripts/frontend_bundle_guard.py` + `scripts/test_frontend_bundle_guard.py`
+  (stdlib + `kernel-2027` SHA-256 primitives): confines `frontend_path` and
+  `build_output` inside the repository root, refuses frozen `projects/` archives,
+  symlinks, hardlinks, forbidden files, and credential-shaped strings, writes a
+  byte-reproducible `artifact.tar`, and independently re-verifies every member
+  digest from disk.
+- Extended `scripts/workflow_secret_audit.py` + `scripts/test_workflow_secret_audit.py`
+  with Rule 3 (`pages_public_bundle`): any workflow publishing to GitHub Pages is
+  refused if it references `secrets.*`.
+
 ### Architecture — P1 cognitive intelligence foundation
 - Added the **operating-mind** prompt layer under `prompts/agent/`: `SYSTEM`,
   `UNDERSTANDING`, `REASONING`, `PLANNING`, `REFLECTION`, `VERIFICATION` and

@@ -319,6 +319,51 @@ class RealRepositoryTests(unittest.TestCase):
                 self.assertNotIn("/tmp/live-agent.log", text)
                 self.assertNotIn("/tmp/hud.log", text)
 
+    def test_35_pages_workflow_with_any_secret_is_refused(self):
+        pages_wf = (
+            "permissions:\n"
+            "  pages: write\n"
+            "jobs:\n"
+            "  build:\n"
+            "    steps:\n"
+            "      - env:\n"
+            "          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}\n"
+            "        run: npm run build\n"
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            wf = Path(tmp) / "workflows"
+            wf.mkdir()
+            (wf / "pages.yml").write_text(pages_wf, encoding="utf-8")
+            doc = Path(tmp) / "SECRETS.md"
+            doc.write_text("| `GEMINI_API_KEY` | documented |", encoding="utf-8")
+            result = wsa.audit(workflows_dir=wf, register_path=doc)
+        self.assertFalse(result["ok"])
+        rules = {f["rule"] for f in result["findings"]}
+        self.assertIn("pages_public_bundle", rules)
+
+    def test_36_deploy_frontend_workflow_is_secret_free_link_safe_and_opt_in(self):
+        text = (wsa.WORKFLOWS / "deploy-frontend.yml").read_text(encoding="utf-8")
+        active_lines = "\n".join(
+            line for line in text.splitlines() if not line.lstrip().startswith("#")
+        )
+        self.assertEqual(wsa.find_references(text), [])
+        self.assertNotIn("secrets.", active_lines)
+        self.assertNotIn("--dereference", active_lines)
+        self.assertNotIn("--hard-dereference", active_lines)
+        self.assertNotIn("\n  push:", active_lines)
+        self.assertIn("persist-credentials: false", active_lines)
+        self.assertIn('npm --prefix "$FRONTEND_PATH" ci --ignore-scripts', active_lines)
+        self.assertIn("scripts/frontend_bundle_guard.py validate-target", active_lines)
+        self.assertIn("scripts/frontend_bundle_guard.py package", active_lines)
+        self.assertIn("deploy_to_pages:", active_lines)
+        self.assertIn("default: false", active_lines)
+        deploy_job = active_lines.split("  deploy:\n", 1)[1]
+        self.assertIn("github.event_name == 'workflow_dispatch'", deploy_job)
+        self.assertIn("github.ref == 'refs/heads/main'", deploy_job)
+        self.assertIn("inputs.deploy_to_pages", deploy_job)
+        self.assertIn("pages: write", deploy_job)
+        self.assertIn("id-token: write", deploy_job)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
