@@ -135,24 +135,22 @@ jobs:
               print(f"::notice title=pytest::{len(failures)} failing case(s)")
           PY
 
-      - name: Report failing tests as an issue (diagnostic)
-        if: failure()
+      - name: Report test outcome as an issue (diagnostic)
+        if: always()
         working-directory: python-2027
         env:
           JUNIT: ${{ runner.temp }}/junit-${{ matrix.python-version }}.xml
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          GH_TOKEN: ${{ github.token }}
         run: |
+          set -e
           python - <<'PY'
-          import json
-          import os
-          import subprocess
-          import xml.etree.ElementTree as ET
+          import json, os, subprocess, xml.etree.ElementTree as ET
           from pathlib import Path
-
           path = Path(os.environ["JUNIT"])
           run_url = os.environ["RUN_URL"]
           if not path.is_file():
-              body = f"No JUnit report was written. Run: {run_url}\n\nThe suite did not complete (crash/timeout/OOM)."
+              body = f"No JUnit report written (suite did not complete). Run: {run_url}"
           else:
               tree = ET.parse(path)
               failures = []
@@ -163,17 +161,19 @@ jobs:
                           msg = (node.text or node.get("message") or "").strip()
                           failures.append(f"{case.get('classname')}::{case.get('name')}\n{msg}")
               if not failures:
-                  body = f"JUnit shows no failing case (coverage/step-level failure). Run: {run_url}"
+                  body = f"All tests passed; no failing case. Run: {run_url}"
               else:
                   body = f"## Failing tests\n\nRun: {run_url}\n\n" + "\n\n".join(
                       f"### {i+1}. {f}" for i, f in enumerate(failures[:20])
                   )
-          payload = json.dumps({"title": "[ci-diag] Python test failures diagnostic", "body": body})
+          payload = json.dumps({"title": "[ci-diag] Python 3.13/3.14 test diagnostic", "body": body})
+          repo = os.environ["GITHUB_REPOSITORY"]
           subprocess.run(
-              ["gh", "api", "-X", "POST",
-               f"repos/{os.environ['GITHUB_REPOSITORY']}/issues",
-               "--input", "-"],
-              input=payload,
+              ["curl", "-sS", "-X", "POST",
+               f"https://api.github.com/repos/{repo}/issues",
+               "-H", f"Authorization: Bearer {os.environ['GH_TOKEN']}",
+               "-H", "Accept: application/vnd.github+json",
+               "--data", payload],
               check=True,
           )
           PY
