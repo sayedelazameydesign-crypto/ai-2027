@@ -337,7 +337,7 @@ class TestRunnerAdversarial:
             evidence = await ExperimentRunner().run(_spec(code=FLOOD_CODE, timeout_s=5.0))
             assert evidence.gates.all_passed is False
             await asyncio.sleep(0.2)
-            assert self._pid_exists(sentinel_pid), (
+            assert self._pid_running(sentinel_pid), (
                 "unrelated process group was killed by the overflow kill"
             )
         finally:
@@ -367,24 +367,43 @@ class TestRunnerAdversarial:
         assert evidence.measurements["latency_ms"] >= 0.0
         assert len(evidence.artifact_sha256) == 64
         # The experiment recorded its spawned child's PID; verify it is gone.
+        # A killed process may briefly remain as a zombie, so poll until the
+        # PID is fully removed rather than checking once.
         child_pid = int((tmp_path / "child_pid.txt").read_text().strip())
-        # run() already reaped the group; allow a brief settling window.
-        await asyncio.sleep(0.2)
-        assert not self._pid_exists(child_pid), (
-            f"background child PID {child_pid} still alive after run()"
-        )
+        gone = await self._wait_pid_gone(child_pid, budget=3.0)
+        assert gone, f"background child PID {child_pid} still alive after run()"
 
     @staticmethod
-    def _pid_exists(pid: int) -> bool:
-        """Return True if a process with this PID currently exists."""
+    async def _wait_pid_gone(pid: int, *, budget: float = 3.0) -> bool:
+        """Return True once PID ``pid`` no longer exists (zombies count as gone)."""
+        deadline = asyncio.get_event_loop().time() + budget
+        while asyncio.get_event_loop().time() < deadline:
+            if not TestRunnerAdversarial._pid_running(pid):
+                return True
+            await asyncio.sleep(0.1)
+        return not TestRunnerAdversarial._pid_running(pid)
+
+    @staticmethod
+    def _pid_running(pid: int) -> bool:
+        """Return True if PID ``pid`` exists and is not a (terminated) zombie."""
         import os
 
+        # /proc is authoritative on Linux: a zombie still has a PID but has
+        # terminated, so it must count as gone.
+        stat_path = f"/proc/{pid}/stat"
         try:
-            os.kill(pid, 0)
-            return True
-        except ProcessLookupError:
-            return False
-        except PermissionError:
+            with open(stat_path, encoding="utf-8") as fh:
+                fields = fh.read().rsplit(")", 1)[-1].split()
+                # State is the field right after the closing paren of comm.
+                return fields[0] not in ("Z", "X", "x")
+        except (OSError, IndexError):
+            # No /proc (non-Linux) or process already reaped -> gone.
+            try:
+                os.kill(pid, 0)
+            except ProcessLookupError:
+                return False
+            except PermissionError:
+                return True
             return True
 
     async def test_timeout_kills_grandchild_holding_pipe(self) -> None:
