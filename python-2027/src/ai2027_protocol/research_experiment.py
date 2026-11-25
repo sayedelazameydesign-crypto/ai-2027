@@ -551,8 +551,7 @@ class ExperimentRunner:
                 _stderr_snippet = stderr_b.decode("utf-8", errors="replace")[:500]
                 _write_debug(
                     base_dir,
-                    f"no result; stdout={stdout_text[:500]!r} "
-                    f"stderr={_stderr_snippet!r}",
+                    f"no result; stdout={stdout_text[:500]!r} stderr={_stderr_snippet!r}",
                 )
                 return _failed_evidence(
                     spec, artifact_sha256, elapsed, _peak_memory_bytes(cgroup_path)
@@ -565,6 +564,7 @@ class ExperimentRunner:
             # example a transport/reader edge on newer Python versions) is turned
             # into failed evidence rather than escaping as a raised exception.
             import traceback
+
             _write_debug(base_dir, f"exception: {exc!r}\n{traceback.format_exc()}")
             elapsed = (time.perf_counter() - started) * 1000.0
             return _failed_evidence(spec, artifact_sha256, elapsed, _peak_memory_bytes(cgroup_path))
