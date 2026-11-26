@@ -166,7 +166,7 @@ def build_test_approval_row(action: str, payload: Dict[str, Any],
                             approval_id: str, now: datetime) -> List[str]:
     """Build a 22-cell pending approval row the governed executor can verify."""
     issued = now.strftime("%Y-%m-%dT%H:%M:%S.000Z")
-    expires = (now + timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+    expires = (now + timedelta(hours=24)).strftime("%Y-%m-%dT%H:%M:%S.000Z")
     row = [""] * 22
     row[0] = approval_id
     row[1] = issued
