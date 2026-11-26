@@ -27,6 +27,7 @@ class ProviderKind(StrEnum):
     GROQ = "groq"
     OPENROUTER = "openrouter"
     OMNIROUTERS = "omnirouters"
+    QWEN = "qwen"
     DETERMINISTIC = "deterministic"
 
 

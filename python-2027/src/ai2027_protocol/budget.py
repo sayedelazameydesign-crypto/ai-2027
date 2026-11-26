@@ -36,7 +36,9 @@ from .model_catalog import (
 #: free-model allowlist are both refused, and the result is always
 #: ``UNKNOWN_COST``. A provider in this set is admitted only under an explicit
 #: non-zero spend policy with ``allow_unknown_cost=True``.
-NON_RECLASSIFIABLE_PROVIDERS: frozenset[ProviderKind] = frozenset({ProviderKind.OMNIROUTERS})
+NON_RECLASSIFIABLE_PROVIDERS: frozenset[ProviderKind] = frozenset(
+    {ProviderKind.OMNIROUTERS, ProviderKind.QWEN}
+)
 
 #: Policy-declared free-tier IDs. Only IDs the provider still serves belong here:
 #: a retired ID that lingers in this map is how a "free" check starts failing with

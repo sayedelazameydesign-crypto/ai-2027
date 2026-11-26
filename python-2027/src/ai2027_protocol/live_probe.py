@@ -65,6 +65,7 @@ _SECRET_ENV_VARS = (
     "OPENROUTER_API_KEY",
     "OMNIROUTERS_API_KEY",
     "OLLAMA_API_KEY",
+    "DASHSCOPE_API_KEY",
 )
 
 AttemptStatus = Literal["ok", "no_key", "refused_unknown_cost", "config_error", "error"]
