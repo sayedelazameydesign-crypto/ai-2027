@@ -45,7 +45,7 @@ import {
 const copyByLanguage = {
   ar: {
     title: 'Agent Studio',
-    subtitle: 'المصدر الحقيقي للمهام والحالة والأدلة',
+    subtitle: 'Celia تشغّل المهام عبر Agent Studio: حالة وأدلة حقيقية',
     source: 'مصدر البيانات: واجهات Agent Studio',
     refresh: 'تحديث البيانات',
     retry: 'إعادة المحاولة',
@@ -167,7 +167,7 @@ const copyByLanguage = {
   },
   en: {
     title: 'Agent Studio',
-    subtitle: 'Live source for tasks, system status and evidence',
+    subtitle: 'Celia runs tasks through Agent Studio: live status and evidence',
     source: 'Data source: Agent Studio APIs',
     refresh: 'Refresh data',
     retry: 'Retry',
@@ -300,6 +300,7 @@ interface ArtifactPreview {
 interface StudioWorkspaceProps {
   lang: Language;
   resetKey: number;
+  initialSessionId?: string | null;
   onConnectionChange: (state: ConnectionState) => void;
 }
 
@@ -357,7 +358,7 @@ function artifactDownloadHref(sessionId: string, artifact: StudioArtifact): stri
   return artifactEndpoint(sessionId, artifact.path);
 }
 
-export function StudioWorkspace({ lang, resetKey, onConnectionChange }: StudioWorkspaceProps) {
+export function StudioWorkspace({ lang, resetKey, initialSessionId, onConnectionChange }: StudioWorkspaceProps) {
   const copy = copyByLanguage[lang];
   const [status, setStatus] = useState<StudioStatus | null>(null);
   const [statusError, setStatusError] = useState('');
@@ -451,6 +452,10 @@ export function StudioWorkspace({ lang, resetKey, onConnectionChange }: StudioWo
       if (requestId === sessionRequestRef.current) setSessionLoading(false);
     }
   }, [copy]);
+
+  useEffect(() => {
+    if (initialSessionId) void loadSession(initialSessionId);
+  }, [initialSessionId, loadSession]);
 
   const createSession = useCallback(async (title: string) => {
     const created = await requestJson<StudioSession>('/studio-api/v1/studio/sessions', {
