@@ -83,8 +83,8 @@ EXPECTED_HEADERS: Dict[str, List[str]] = {
         "id", "created_at", "updated_at", "version", "source_id", "confidence",
         "epistemic", "sensitivity", "consent", "retention", "review_at",
         "deleted_at", "taint", "checksum", "at", "unit", "action", "actor",
-        "outcome", "reason", "source_refs", "subjects", "payload", "prev_hash",
-        "self_hash",
+        "outcome", "subject_ids", "payload_digest", "policy_trace_id",
+        "approval_id", "prev_hash", "self_hash",
     ],
 }
 

@@ -74,6 +74,10 @@ class TestHeaderContracts(unittest.TestCase):
         self.assertEqual(grants[18], "denied_actions")
         self.assertEqual(grants[19], "limits")
         self.assertEqual(grants[22], "revoked_at")
+        self.assertEqual(audit[19], "subject_ids")
+        self.assertEqual(audit[20], "payload_digest")
+        self.assertEqual(audit[21], "policy_trace_id")
+        self.assertEqual(audit[22], "approval_id")
         self.assertEqual(audit[23], "prev_hash")
         self.assertEqual(audit[24], "self_hash")
 
