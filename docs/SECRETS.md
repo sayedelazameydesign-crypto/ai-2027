@@ -27,6 +27,7 @@
 | `SUBSTRATE_ACTOR_MASTER_KEY` | `.github/workflows/agent-substrate-deploy.yml` (تشغيل يدوي على `main`) | مفتاح اشتقاق HMAC لعناوين Agent؛ الحد الأدنى 32 حرفاً ويجب أن يبقى ثابتاً | يفشل النشر إذا غاب أو كان أقصر من 32 حرفاً | لا تدوّره تلقائياً: تغييره يتطلب ترحيل أسرار Actor immutable وإعادة إنشاء Pods؛ احتفظ به ثابتاً |
 | `EMBER_ALERT_WEBHOOK` | `.github/workflows/ember.yml` | إشعار المرحلة الثالثة عند تكرار التدهور | يُسجَّل `not-configured` — معلن، لا صامت | أي endpoint جديد |
 | `CONNECTORS_HUB_API_TOKEN` | `ai2027_protocol/studio.py` — مسار `/v1/studio/connectors/catalog` فقط. **غير مستعمل في أي Workflow ولا في CI تلقائي**؛ يُقرأ في `render.yaml` بـ`sync: false` أي يُدخل في لوحة Render ولا يُحفظ في Git | رمز Bearer لواجهة Connectors Hub. **الاستعمال اختياري تماماً**: غيابه لا يمنع تشغيل Studio ولا يوقف `/v1/studio/status` — يُبلَّغ عنه فقط كـ`token_missing` في مسار الكتالوج | مسار الكتالوج يعيد `token_missing` صراحةً بدل أن يتصرّف وكأن الكتالوج فارغ. بقية المسارات لا تتأثر | Connectors Hub → Dashboard → Tokens |
+| `PA_APPROVAL_BOT_TOKEN` | `src/watchers/approval_bot.py` و`scripts/live_smoke_runner.py` — بوت Telegram لبوابة الموافقات (P1). **غير مستعمل في أي Workflow ولا في CI تلقائي**؛ يُقرأ من بيئة التشغيل فقط | توكن BotFather يرسل بطاقات الموافقة لصفوف `pa_approvals` المعلّقة | لا بطاقة ولا تصويت — المراقبة تستمر والقراءة تبقى fail-closed بلا إنذار | Telegram @BotFather → /newbot |
 
 ### متغيّرات (ليست أسرارًا، ولا تحتاج تشفيرًا)
 
@@ -51,6 +52,12 @@
 | `AI2027_SESSION_LEASE` | وضع leases الجلسات. `off` يمنعها صراحةً؛ أي قيمة أخرى تُشغّلها | `off` |
 | `AI2027_OBSERVABILITY_MODE` | نمط الملاحظة (`off` / `local` / …). ليس سرّاً | فارغ ⇒ الوضع الافتراضي |
 | `AI2027_OLLAMA_PROFILE` | ملف تعريف Ollama المحلي (`4gb-laptop` …). ليس سرّاً | `4gb-laptop` |
+| `PA_MEMORY_SHEET_ID` | `src/watchers/proactive_watcher.py` و`src/watchers/approval_bot.py` و`scripts/live_smoke_runner.py` — الورقة الذاكرة `pa_*` (source/tasks/goals/approvals/grants/audit). معرّف علني للورقة، ليس سرّاً | فارغ ⇒ المراقبة وبوابة الموافقات لا تفتحان شيئاً (fail-closed) |
+| `WATCHER_INTERVAL_SEC` | فاصل نداءات المراقب بالثواني بين دورة فحص وأخرى | `900` |
+| `APPROVAL_BOT_INTERVAL_SEC` | فاصل نداءات بوابة الموافقات بالثواني | `300` |
+| `PA_APPROVAL_CHAT_ID` | معرّف محادثة Telegram التي تُرسل إليها بطاقات الموافقة | فارغ ⇒ لا إرسال (تخطّي صريح) |
+| `PA_APPROVAL_ALLOWED_SENDERS` | معرّفات المسموح لهم بالتصويت، مفصولة بفواصل. **القائمة الفارغة تمنع الجميع** — fail-closed بقصد | فارغ ⇒ يُمنع الجميع |
+| `PA_APPROVAL_API_BASE` | عنوان Telegram API البديل (وكيل/اختبار) | `https://api.telegram.org` |
 
 ### أسرار Cloudflare / R2 المعرَّفة وغير المستعملة بعد
 
