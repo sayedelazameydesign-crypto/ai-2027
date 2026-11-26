@@ -28,6 +28,7 @@
 | `EMBER_ALERT_WEBHOOK` | `.github/workflows/ember.yml` | إشعار المرحلة الثالثة عند تكرار التدهور | يُسجَّل `not-configured` — معلن، لا صامت | أي endpoint جديد |
 | `CONNECTORS_HUB_API_TOKEN` | `ai2027_protocol/studio.py` — مسار `/v1/studio/connectors/catalog` فقط. **غير مستعمل في أي Workflow ولا في CI تلقائي**؛ يُقرأ في `render.yaml` بـ`sync: false` أي يُدخل في لوحة Render ولا يُحفظ في Git | رمز Bearer لواجهة Connectors Hub. **الاستعمال اختياري تماماً**: غيابه لا يمنع تشغيل Studio ولا يوقف `/v1/studio/status` — يُبلَّغ عنه فقط كـ`token_missing` في مسار الكتالوج | مسار الكتالوج يعيد `token_missing` صراحةً بدل أن يتصرّف وكأن الكتالوج فارغ. بقية المسارات لا تتأثر | Connectors Hub → Dashboard → Tokens |
 | `PA_APPROVAL_BOT_TOKEN` | `src/watchers/approval_bot.py` و`scripts/live_smoke_runner.py` — بوت Telegram لبوابة الموافقات (P1). **غير مستعمل في أي Workflow ولا في CI تلقائي**؛ يُقرأ من بيئة التشغيل فقط | توكن BotFather يرسل بطاقات الموافقة لصفوف `pa_approvals` المعلّقة | لا بطاقة ولا تصويت — المراقبة تستمر والقراءة تبقى fail-closed بلا إنذار | Telegram @BotFather → /newbot |
+| `WAAPI_API_TOKEN` | `src/connectors/waapi.py` (تشغيل محلي عبر `.env`) و`.github/workflows/waapi-live-probe.yml` (فحص حي **للقراءة فقط** عبر أسرار Actions) — بوابة waapi.app. **القيمة نفسها في الموضعين**: تُنسخ يدوياً مرة من Actions إلى `.env`، ولا تُرفع أبداً | رمز `Bearer` لإشعار المالك عبر WhatsApp (اختياري) ولأداة `whatsapp.send` المنفَّذة عبر بوابة الموافقات فقط؛ لا يُطبع ولا يُسجَّل ولا يدخل استثناءات خام | لا إشعار ولا إرسال: الموصل يرفض `waapi_token_missing` قبل أي شبكة، والماسح الحي يفشل بوضوح — لا نجاح زائف | GitHub Settings → Secrets → Actions (وموضع محلي مطابق في `.env`) |
 
 ### متغيّرات (ليست أسرارًا، ولا تحتاج تشفيرًا)
 
@@ -58,6 +59,9 @@
 | `PA_APPROVAL_CHAT_ID` | معرّف محادثة Telegram التي تُرسل إليها بطاقات الموافقة | فارغ ⇒ لا إرسال (تخطّي صريح) |
 | `PA_APPROVAL_ALLOWED_SENDERS` | معرّفات المسموح لهم بالتصويت، مفصولة بفواصل. **القائمة الفارغة تمنع الجميع** — fail-closed بقصد | فارغ ⇒ يُمنع الجميع |
 | `PA_APPROVAL_API_BASE` | عنوان Telegram API البديل (وكيل/اختبار) | `https://api.telegram.org` |
+| `WAAPI_INSTANCE_ID` | معرّف instance عند تعددها في waapi.app؛ يتجاوز الاكتشاف التلقائي (واحد فقط يُقبل) | فارغ ⇒ instance واحد بالضبط يُقبل |
+| `WAAPI_OWNER_CHAT_ID` | المستلم الثابت لمسار إشعار WhatsApp — رقم المالك فقط (`011…` أو `2011…@c.us`) | فارغ ⇒ الإشعار يفشل `owner_chat_missing` |
+| `PA_WAAPI_NOTIFY` | يفعّل رفيق WhatsApp لبطاقات الموافقة (يرسل رابط تصويت passkey) | `0` (معطّل — fail-closed) |
 | `PA_APPROVAL_VOTE_BASE_URL` | `src/watchers/approval_bot.py` و`scripts/live_smoke_runner.py` — عنوان صفحة التصويت بـ Passkey التي يبنيها Worker في `worker/approval-worker/` (ADR-0006). يُضاف إلى البطاقة رابط `…?approval=<id>` | فارغ ⇒ البطاقة بلا رابط (الأزرار تبقى وحدها) |
 | `PA_APPROVAL_SIGNING_PUBKEY` | `src/executors/governed_executor.py` — المفتاح العام Ed25519 (hex،64 حرفاً) للتحقق من توقيع الـWorker على قرار الموافقة (ADR-0006) | فارغ ⇒ مسار الـassertion يفشل بـ`assertion_verification_key_missing` (fail-closed) ويعمل المسار البديل فقط |
 

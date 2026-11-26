@@ -100,6 +100,7 @@ OPTIONAL_SECRETS: tuple[tuple[str, str], ...] = (
     ("SUBSTRATE_API_TOKEN", "Agent Substrate gateway bearer token"),
     ("SUBSTRATE_ACTOR_MASTER_KEY", "Agent Substrate HMAC master key"),
     ("CONNECTORS_HUB_API_TOKEN", "Connectors Hub bearer token"),
+    ("WAAPI_API_TOKEN", "WAAPI (waapi.app) WhatsApp gateway — owner notify + approval-gated send"),
 )
 
 #: Variables that are configuration, not secrets. These are reported by value
@@ -119,6 +120,9 @@ NON_SECRET_SETTINGS: tuple[tuple[str, str], ...] = (
     ("OLLAMA_BASE_URL", "Local Ollama base URL"),
     ("RENDER_SERVICE_NAME", "Render service name"),
     ("CONNECTORS_HUB_URL", "Connectors Hub base URL"),
+    ("WAAPI_INSTANCE_ID", "waapi.app instance id when more than one exists"),
+    ("WAAPI_OWNER_CHAT_ID", "Fixed WhatsApp notify recipient (owner only)"),
+    ("PA_WAAPI_NOTIFY", "1 = WhatsApp companion for approval cards (default 0)"),
 )
 
 

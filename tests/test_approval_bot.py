@@ -21,6 +21,7 @@ What these tests prove:
 from __future__ import annotations
 
 import importlib.util
+import os
 import re
 import unittest
 from datetime import datetime, timezone
@@ -105,6 +106,22 @@ class FakeTransport:
 
     def fetch_updates(self, offset=None, timeout=0):
         return list(self.updates)
+
+
+class _FakeWaapiTransport:
+    """Canned waapi.app responses; records every call (hermetic)."""
+
+    def __init__(self):
+        self.calls = []
+
+    def __call__(self, method, url, body, token):
+        self.calls.append({"method": method, "url": url, "body": body,
+                           "token": token})
+        tr = ab._load_waapi().TransportResult
+        if url.endswith("/client/action/send-message"):
+            return tr("ok", 200, {"status": "success"})
+        return tr("ok", 200, {"status": "success",
+                              "instances": [{"id": 777}]})
 
 
 def seed_approval(ws, approval_id="01APRV000000000000000001", status="pending",
@@ -391,6 +408,87 @@ class TestTelegramTransport(unittest.TestCase):
         )
         transport.fetch_updates(offset=7)
         self.assertIn("offset=7", calls[0])
+
+
+class TestWaapiNotify(unittest.TestCase):
+    """Phase 3 of docs/WAAPI-INTEGRATION-PLAN.md — WhatsApp companion."""
+
+    def setUp(self):
+        self._env = dict(os.environ)
+        self.waapi = ab._load_waapi()
+        self._transport = self.waapi._transport
+        self.fake = _FakeWaapiTransport()
+        self.waapi._transport = self.fake
+        os.environ["PA_WAAPI_NOTIFY"] = "1"
+        os.environ["WAAPI_OWNER_CHAT_ID"] = "01100000000"
+        os.environ["WAAPI_API_TOKEN"] = "fixture-" + "notify-token"
+        os.environ["PA_APPROVAL_VOTE_BASE_URL"] = (
+            "https://vote.example.workers.dev")
+
+    def tearDown(self):
+        os.environ.clear()
+        os.environ.update(self._env)
+        self.waapi._transport = self._transport
+
+    @staticmethod
+    def _notify_audits(sheet):
+        rows = sheet.worksheet("pa_audit_logs_202611").rows[1:]
+        return [r for r in rows
+                if len(r) > 20 and str(r[16]) == "approval.waapi_notify"]
+
+    def test_flag_off_means_zero_notify_and_zero_network(self):
+        os.environ["PA_WAAPI_NOTIFY"] = "0"
+        gate, sheet, transport = make_gate(allowed=["777"])
+        seed_approval(sheet.worksheet("pa_approvals"), approval_id="N1")
+        gate.send_pending_cards()
+        self.assertEqual(len(transport.sent), 1)     # Telegram still works
+        self.assertEqual(self._notify_audits(sheet), [])
+        self.assertEqual(self.fake.calls, [])
+
+    def test_notify_sends_owner_only_message_with_vote_url(self):
+        gate, sheet, transport = make_gate(allowed=["777"])
+        seed_approval(sheet.worksheet("pa_approvals"), approval_id="N1")
+        gate.send_pending_cards()
+        self.assertEqual(len(transport.sent), 1)
+        audits = self._notify_audits(sheet)
+        self.assertEqual(len(audits), 1)
+        self.assertEqual(audits[0][18], "allowed")   # S: outcome
+        posts = [c for c in self.fake.calls if c["method"] == "POST"]
+        self.assertEqual(len(posts), 1)
+        body = posts[0]["body"]
+        # Owner-only recipient, normalised to the Egyptian international form.
+        self.assertEqual(body["chatId"], "201100000000@c.us")
+        self.assertIn("approval=N1", body["message"])
+        self.assertIn("action=gmail.send", body["message"])
+        self.assertIn("hash=", body["message"])
+        self.assertIn("passkey", body["message"])
+        blob = str(audits) + body["message"] + posts[0]["url"]
+        self.assertNotIn("notify-token", blob)       # token never leaks
+
+    def test_missing_token_is_structured_denial_and_card_survives(self):
+        os.environ.pop("WAAPI_API_TOKEN", None)
+        gate, sheet, transport = make_gate(allowed=["777"])
+        seed_approval(sheet.worksheet("pa_approvals"), approval_id="N1")
+        sent = gate.send_pending_cards()
+        self.assertEqual(len(sent), 1)              # Telegram card unaffected
+        self.assertEqual(len(transport.sent), 1)
+        audits = self._notify_audits(sheet)
+        self.assertEqual(len(audits), 1)
+        self.assertEqual(audits[0][18], "denied")    # S: outcome
+        # The audit payload is stage-only: token_missing, hashed to column U.
+        self.assertEqual(audits[0][20],
+                         ab.compute_sha256({"stage": "token_missing"}))
+        self.assertEqual(self.fake.calls, [])       # never reached the network
+
+    def test_build_vote_url_shapes_the_worker_triple(self):
+        ap = {"id": "A1", "action": "x.y", "payload_hash": "abcd"}
+        self.assertEqual(
+            ab.build_vote_url(ap, "https://v.example/"),
+            "https://v.example?approval=A1&action=x.y&hash=abcd")
+        self.assertEqual(
+            ab.build_vote_url(ap, "https://v.example/?x=1"),
+            "https://v.example/?x=1&approval=A1&action=x.y&hash=abcd")
+        self.assertEqual(ab.build_vote_url(ap, ""), "")
 
 
 if __name__ == "__main__":

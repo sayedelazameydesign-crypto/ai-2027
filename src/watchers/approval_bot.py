@@ -66,6 +66,22 @@ def _load_sibling(name: str) -> Any:
 
 
 _pw = _load_sibling("proactive_watcher")
+
+
+def _load_waapi() -> Any:
+    """Lazy-load src/connectors/waapi.py (stdlib-only, fail-closed)."""
+    if "waapi" in sys.modules:
+        return sys.modules["waapi"]
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                        "..", "connectors", "waapi.py")
+    spec = importlib.util.spec_from_file_location("waapi", path)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["waapi"] = module
+    spec.loader.exec_module(module)
+    return module
+
+
 SPREADSHEET_ID: str = _pw.SPREADSHEET_ID
 POLL_INTERVAL_SECONDS: int = int(os.getenv("APPROVAL_BOT_INTERVAL_SEC", "300"))
 sanitize_and_redact = _pw.sanitize_and_redact
@@ -154,6 +170,22 @@ def approval_checksum(ap: Dict[str, Any]) -> str:
     return compute_sha256(core)
 
 
+def build_vote_url(ap: Dict[str, Any], vote_base_url: str) -> str:
+    """Passkey voting URL for one approval (ADR-0006).
+
+    The Telegram card link and the WhatsApp notify companion share this one
+    builder so both always carry the exact (approval_id, action,
+    payload_hash) triple the Worker binds into the signed assertion.
+    """
+    base = str(vote_base_url or "").strip()
+    if not base:
+        return ""
+    sep = "&" if "?" in base else "?"
+    return "%s%sapproval=%s&action=%s&hash=%s" % (
+        base.rstrip("/"), sep, ap.get("id", ""), ap.get("action", ""),
+        ap.get("payload_hash", ""))
+
+
 def build_approval_card(ap: Dict[str, Any],
                         vote_base_url: str = "") -> Dict[str, Any]:
     """Build an outbound approval card. Summary is redacted (egress ssGateway).
@@ -177,16 +209,10 @@ def build_approval_card(ap: Dict[str, Any],
         approval_id=approval_id,
         expires_at=ap.get("expires_at", "?"),
     )
-    if vote_base_url:
-        sep = "&" if "?" in vote_base_url else "?"
-        # The page needs the exact (approval_id, action, payload_hash) triple
-        # the Worker binds into the signed assertion (ADR-0006).
+    vote_url = build_vote_url(ap, vote_base_url)
+    if vote_url:
         text += (
-            "\n\n🔑 موافقة بمفتاح المرور (Passkey — الأقوى): {url}"
-        ).format(
-            url="%s%sapproval=%s&action=%s&hash=%s"
-                % (vote_base_url.rstrip("/"), sep, approval_id,
-                   ap.get("action", ""), ap.get("payload_hash", "")))
+            "\n\n🔑 موافقة بمفتاح المرور (Passkey — الأقوى): %s" % vote_url)
     return {
         "approval_id": approval_id,
         "text": text,
@@ -354,6 +380,7 @@ class ApprovalGate:
             )
             message_id = self.transport.send_card(card, chat_id)
             self._sent_cards.add(ap["id"])
+            self._waapi_notify(ap)
             sent.append({"id": ap["id"], "message_id": message_id})
         if sent:
             self._audit.append_audit_log(
@@ -365,6 +392,31 @@ class ApprovalGate:
                 policy_id="P1-APPROVAL-BOT",
             )
         return sent
+
+    def _waapi_notify(self, ap: Dict[str, Any]) -> None:
+        """Opt-in WhatsApp companion to the Telegram card (plan phase 3).
+
+        Fail-closed and never blocking: the flag defaults off, the recipient
+        is fixed to WAAPI_OWNER_CHAT_ID, and every failure becomes one
+        structured audit row carrying a *stage* only — never the token, a
+        response body, or exception text.
+        """
+        if os.getenv("PA_WAAPI_NOTIFY", "").strip() != "1":
+            return
+        vote_url = build_vote_url(
+            ap, os.getenv("PA_APPROVAL_VOTE_BASE_URL", ""))
+        try:
+            result = _load_waapi().notify_approval(ap, vote_url)
+        except Exception:  # noqa: BLE001 — stage-only, never leak details
+            result = {"ok": False, "stage": "notify_error"}
+        self._audit.append_audit_log(
+            unit="approval",
+            action="approval.waapi_notify",
+            outcome="allowed" if result.get("ok") else "denied",
+            subjects=[str(ap.get("id", ""))],
+            payload={"stage": str(result.get("stage", "unknown"))},
+            policy_id="P1-APPROVAL-BOT",
+        )
 
     # -- inbound ------------------------------------------------------------
     def handle_callback(self, query: Dict[str, Any]) -> Dict[str, Any]:

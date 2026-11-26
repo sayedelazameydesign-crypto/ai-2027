@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import sys
 import unittest
 from datetime import datetime, timezone
@@ -217,13 +218,29 @@ def _active_grant_row(action="agent.plan_day"):
     return row
 
 
-def _executor_book(approval_rows):
+def _executor_book(approval_rows, grant_action="agent.plan_day"):
     return _Book({
         "pa_approvals": [sm.EXPECTED_HEADERS["pa_approvals"]] + approval_rows,
         "pa_delegation_grants": [sm.EXPECTED_HEADERS["pa_delegation_grants"]]
-        + [_active_grant_row()],
+        + [_active_grant_row(grant_action)],
         "pa_audit_logs_202611": [sm.EXPECTED_HEADERS["pa_audit_logs_202611"]],
     })
+
+
+class _FakeWaapiTransport:
+    """Canned waapi.app responses; records every call for assertions."""
+
+    def __init__(self):
+        self.calls = []
+
+    def __call__(self, method, url, body, token):
+        self.calls.append({"method": method, "url": url, "body": body,
+                           "token": token})
+        tr = sm._load_waapi().TransportResult
+        if url.endswith("/client/action/send-message"):
+            return tr("ok", 200, {"status": "success"})
+        return tr("ok", 200, {"status": "success",
+                              "instances": [{"id": 777}]})
 
 
 class TestExecutePath(unittest.TestCase):
@@ -298,6 +315,73 @@ class TestExecutePath(unittest.TestCase):
         self.assertFalse(result.ok)
         self.assertTrue(result.reason.startswith("action_explicitly_denied:"))
         self.assertGreaterEqual(report.failed, 1)
+
+    # -- whatsapp.send (docs/WAAPI-INTEGRATION-PLAN.md phases 1-2) ---------
+
+    def _whatsapp_row(self, appr_id):
+        tool_payload = {"chat_id": "201100000000@c.us", "message": "مرحبا"}
+        row = sm.build_test_approval_row("whatsapp.send", tool_payload,
+                                         appr_id, NOW)
+        row[17] = "granted"
+        return row, tool_payload
+
+    def test_execute_whatsapp_preflight_blocks_missing_token(self):
+        # No token -> the runner refuses BEFORE the consume gate, so a
+        # single-use approval is never burned on an unsendable message.
+        row, tool_payload = self._whatsapp_row("01SMOKEWA0000000000000001")
+        book = _executor_book([row], grant_action="whatsapp.send")
+        report = sm.Report()
+        saved = os.environ.pop("WAAPI_API_TOKEN", None)
+        try:
+            result = sm.execute_granted(book, lambda **kw: None,
+                                        "whatsapp.send", tool_payload,
+                                        report)
+        finally:
+            if saved is not None:
+                os.environ["WAAPI_API_TOKEN"] = saved
+        self.assertIsNone(result)
+        self.assertGreaterEqual(report.failed, 1)
+        stored = book.worksheet("pa_approvals").rows[1]
+        self.assertEqual(stored[17], "granted")   # untouched: no consume
+        self.assertEqual(stored[20], "")
+
+    def test_execute_whatsapp_delivers_and_consumes(self):
+        row, tool_payload = self._whatsapp_row("01SMOKEWA0000000000000002")
+        book = _executor_book([row], grant_action="whatsapp.send")
+        audits = []
+        report = sm.Report()
+        waapi = sm._load_waapi()
+        fake = _FakeWaapiTransport()
+        saved_token = os.environ.get("WAAPI_API_TOKEN")
+        saved_transport = waapi._transport
+        os.environ["WAAPI_API_TOKEN"] = "runtime-token-value"
+        waapi._transport = fake
+        try:
+            result = sm.execute_granted(book, lambda **kw: audits.append(kw),
+                                        "whatsapp.send", tool_payload, report)
+        finally:
+            waapi._transport = saved_transport
+            if saved_token is None:
+                os.environ.pop("WAAPI_API_TOKEN", None)
+            else:
+                os.environ["WAAPI_API_TOKEN"] = saved_token
+        self.assertIsNotNone(result)
+        self.assertTrue(result.ok, getattr(result, "reason", ""))
+        stored = book.worksheet("pa_approvals").rows[1]
+        self.assertEqual(stored[17], "consumed")
+        self.assertTrue(stored[20])
+        self.assertEqual(audits[-1]["outcome"], "allowed")
+        posts = [c for c in fake.calls if c["method"] == "POST"]
+        self.assertEqual(len(posts), 1)
+        self.assertTrue(posts[0]["url"].endswith(
+            "/client/action/send-message"))
+        self.assertEqual(posts[0]["body"]["chatId"],
+                         tool_payload["chat_id"])
+        self.assertEqual(posts[0]["body"]["message"],
+                         tool_payload["message"])
+        # The runtime token plumbed through — and never leaked anywhere.
+        self.assertEqual(posts[0]["token"], "runtime-token-value")
+        self.assertNotIn("runtime-token-value", json.dumps(audits))
 
     def test_execute_pending_row_with_passkey_assertion(self):
         # ADR-0006: pending row + valid signed assertion executes without a

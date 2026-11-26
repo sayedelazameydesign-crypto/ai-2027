@@ -44,6 +44,7 @@ from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 ROOT = Path(__file__).resolve().parents[1]
 EXECUTOR_PATH = ROOT / "src" / "executors" / "governed_executor.py"
+WAAPI_PATH = ROOT / "src" / "connectors" / "waapi.py"
 SPREADSHEETS_SCOPE = "https://www.googleapis.com/auth/spreadsheets"
 
 # ---------------------------------------------------------------------------
@@ -109,6 +110,18 @@ def _load_executor():
 
 
 ge = _load_executor()
+
+
+def _load_waapi():
+    """Shared module instance (tests swap its transport attribute)."""
+    if "waapi" in sys.modules:
+        return sys.modules["waapi"]
+    spec = importlib.util.spec_from_file_location("waapi", WAAPI_PATH)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["waapi"] = module
+    spec.loader.exec_module(module)
+    return module
 
 
 def header_problems(sheet_name: str, actual: Sequence[str]) -> List[str]:
@@ -300,8 +313,18 @@ def execute_granted(book: Any, audit_logger: Callable[..., None], action: str,
         return None
     executor = ge.GovernedExecutor(
         book, audit_logger, verification_public_key=verification_public_key)
-    executor.register_tool(action, lambda p: {"smoke_execution": True,
-                                              "action": action})
+    if action == "whatsapp.send":
+        # Preflight BEFORE the consume gate: a missing token must never
+        # burn a single-use approval (fail-closed, zero side effects).
+        waapi = _load_waapi()
+        pre = waapi.preflight()
+        if not pre["ok"]:
+            report.fail("execute denied before gates: %s" % pre["stage"])
+            return None
+        executor.register_tool(action, waapi.make_send_handler())
+    else:
+        executor.register_tool(action, lambda p: {"smoke_execution": True,
+                                                  "action": action})
     result = executor.execute(str(row[0]).strip(), action, payload,
                               assertion=assertion)
     if result.ok:
