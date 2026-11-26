@@ -10,6 +10,7 @@ checklist itself.
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
 import unittest
 from datetime import datetime, timezone
@@ -172,6 +173,154 @@ class TestReportExitCodes(unittest.TestCase):
         with_fail.skip("y")
         with_fail.fail("z")
         self.assertEqual(with_fail.exit_code(), 1)
+
+
+# ---------------------------------------------------------------------------
+# --execute path (pure halves: payload round-trip, row selection, gates)
+# ---------------------------------------------------------------------------
+class _WS:
+    def __init__(self, rows):
+        self.rows = [list(r) for r in rows]
+
+    def get_all_values(self):
+        return [list(r) for r in self.rows]
+
+    def batch_update(self, data):
+        for item in data:
+            n = int(item["range"].split(":")[0][1:])
+            self.rows[n - 1] = list(item["values"][0])
+
+
+class _Book:
+    def __init__(self, sheets):
+        self.s = {k: _WS(v) for k, v in sheets.items()}
+
+    def worksheet(self, name):
+        return self.s[name]
+
+
+def _granted_row(action="agent.plan_day", appr_id="01SMOKETESTROW00000001"):
+    payload = sm.default_execute_payload(action)
+    row = sm.build_test_approval_row(action, payload, appr_id, NOW)
+    row[17] = "granted"          # what the bot writes on an Approve vote
+    return row
+
+
+def _active_grant_row(action="agent.plan_day"):
+    row = [""] * 23
+    row[14] = "agent.write"
+    row[15] = "active"
+    row[17] = json.dumps([action])
+    row[18] = json.dumps(["gmail.send"])
+    row[19] = json.dumps({"max_per_day": 5})
+    row[22] = ""
+    return row
+
+
+def _executor_book(approval_rows):
+    return _Book({
+        "pa_approvals": [sm.EXPECTED_HEADERS["pa_approvals"]] + approval_rows,
+        "pa_delegation_grants": [sm.EXPECTED_HEADERS["pa_delegation_grants"]]
+        + [_active_grant_row()],
+        "pa_audit_logs_202611": [sm.EXPECTED_HEADERS["pa_audit_logs_202611"]],
+    })
+
+
+class TestExecutePath(unittest.TestCase):
+    def test_default_payload_roundtrip(self):
+        # --seed-approval and --execute share one deterministic payload, so
+        # the seeded payload_hash verifies without remembering volatile fields.
+        payload = sm.default_execute_payload("agent.plan_day")
+        self.assertEqual(payload, {"smoke": True, "action": "agent.plan_day"})
+        row = sm.build_test_approval_row("agent.plan_day", payload, "ID", NOW)
+        self.assertEqual(row[15], sm.ge.compute_sha256(payload))
+
+    def test_find_granted_approval_selects_only_executable(self):
+        pending = sm.build_test_approval_row(
+            "agent.plan_day", sm.default_execute_payload("agent.plan_day"),
+            "01SMOKEPENDING000000001", NOW)
+        granted = _granted_row(appr_id="01SMOKEGRANTED000000001")
+        consumed = _granted_row(appr_id="01SMOKECONSUMED00000001")
+        consumed[17] = "consumed"
+        consumed[20] = "2026-11-26T05:00:00.000Z"
+        rows = [pending, granted, consumed]
+
+        row_no, hit = sm.find_granted_approval(rows, "agent.plan_day")
+        self.assertEqual(hit[0], "01SMOKEGRANTED000000001")
+        self.assertEqual(row_no, 3)          # header(1) + pending(1) + this
+
+        _, none_hit = sm.find_granted_approval(rows, "other.action")
+        self.assertIsNone(none_hit)
+        _, by_id = sm.find_granted_approval(
+            rows, "agent.plan_day", approval_id="01SMOKECONSUMED00000001")
+        self.assertIsNone(by_id)             # consumed never re-executes
+
+    def test_execute_granted_consumes_and_audits(self):
+        book = _executor_book([_granted_row()])
+        audits = []
+        report = sm.Report()
+        payload = sm.default_execute_payload("agent.plan_day")
+        result = sm.execute_granted(book, lambda **kw: audits.append(kw),
+                                    "agent.plan_day", payload, report)
+        self.assertIsNotNone(result)
+        self.assertTrue(result.ok)
+        row = book.worksheet("pa_approvals").rows[1]
+        self.assertEqual(row[17], "consumed")
+        self.assertTrue(row[20])
+        self.assertEqual(row[3], "2")
+        self.assertEqual(audits[-1]["outcome"], "allowed")
+        self.assertGreaterEqual(report.passed, 1)
+
+    def test_execute_skips_when_nothing_is_granted(self):
+        pending = sm.build_test_approval_row(
+            "agent.plan_day", sm.default_execute_payload("agent.plan_day"),
+            "01SMOKEPENDING000000002", NOW)
+        book = _executor_book([pending])
+        report = sm.Report()
+        result = sm.execute_granted(book, lambda **kw: None,
+                                    "agent.plan_day",
+                                    sm.default_execute_payload("agent.plan_day"),
+                                    report)
+        self.assertIsNone(result)
+        self.assertGreaterEqual(report.skipped, 1)
+
+    def test_execute_denied_approval_reports_failure(self):
+        # Granted row whose action is on the grant's denied list -> the
+        # executor denies and the report counts a failure (fail-closed).
+        granted = _granted_row(action="gmail.send",
+                               appr_id="01SMOKEDENIED000000001")
+        book = _executor_book([granted])
+        report = sm.Report()
+        result = sm.execute_granted(book, lambda **kw: None, "gmail.send",
+                                    {"smoke": True, "action": "gmail.send"},
+                                    report)
+        self.assertIsNotNone(result)
+        self.assertFalse(result.ok)
+        self.assertTrue(result.reason.startswith("action_explicitly_denied:"))
+        self.assertGreaterEqual(report.failed, 1)
+
+    def test_gworksheet_prefixes_sheet_name(self):
+        # The executor sends sheet-relative ranges; the live values API needs
+        # "pa_approvals!A2:V2" — the adapter must prefix the title.
+        calls = []
+
+        class SS:
+            def values_update(self, range_, params=None, body=None):
+                calls.append((range_, body))
+
+        class WS:
+            spreadsheet = SS()
+
+            def get_all_values(self):
+                return [["h"], ["r"]]
+
+            def append_row(self, row, value_input_option="RAW"):
+                calls.append(("append", list(row)))
+
+        gws = sm._GWorksheet(WS(), "pa_approvals")
+        gws.batch_update([{"range": "A2:V2", "values": [["x", "y"]]}])
+        self.assertEqual(calls[0][0], "pa_approvals!A2:V2")
+        self.assertEqual(calls[0][1], {"values": [["x", "y"]]})
 
 
 if __name__ == "__main__":
