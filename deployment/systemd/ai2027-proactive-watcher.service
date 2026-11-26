@@ -1,0 +1,17 @@
+# Optional USER unit. Installation and credential prerequisites in docs/PROACTIVE-WATCHER.md.
+[Unit]
+Description=AI-2027 read-only proactive watcher
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+UMask=0077
+NoNewPrivileges=true
+Environment=GOOGLE_ACCESS_TOKEN_FILE=%h/.config/ai2027/google-access-token
+ExecStart=%h/.local/share/ai2027/venv/bin/python -m ai2027_protocol.proactive_watcher --interval 900 --calendar-timezone Africa/Cairo --state-db %h/.local/state/ai2027/watcher.sqlite --account-scope primary
+Restart=on-failure
+RestartSec=60
+
+[Install]
+WantedBy=default.target

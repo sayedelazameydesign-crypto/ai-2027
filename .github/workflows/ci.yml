@@ -41,6 +41,20 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  apps-script-watcher:
+    name: Apps Script watcher · offline privacy and pagination
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444  # v5
+        with:
+          node-version: "22"
+      - name: Run hermetic watcher tests (no credentials)
+        run: node --test integrations/apps-script/proactive-watcher/test_watcher.cjs
+
   free-first-tools:
     name: Free-first tools · offline safety and task previews
     runs-on: ubuntu-latest

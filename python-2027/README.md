@@ -83,3 +83,13 @@ This is deliberately **not** general MCP support: there is no HTTP transport, re
 - **Checkpoint/resume honesty:** the autonomous loop persists `checkpoint_step` after every completed step. `resume=True` (API body or `agent --resume SESSION_ID`) continues from the next step, and is **refused** — not silently restarted — when the session is not `running`, when the task text differs, or when nothing was checkpointed. `scripts/persistent_task_gate.py` proves it by SIGKILLing a real run inside step 3 and showing the second process starts at step 3.
 - **Cost classification honesty:** Local deterministic/Ollama execution records `cost_known=True, cost_usd=0.0`. Remote free-tier calls record `cost_usd=0.0, cost_known=False, cost_status="declared_free_tier_unbilled"` unless an invoice/usage proof exists — never faking invoice proof.
 - **Model IDs age:** the catalogue blocks retirements we have evidence for; it does not prove that a provider is serving a model right now, that a free plan still covers it, or that quota remains. Only `ai2027-py27 live --require-any` on `main` with Actions secrets shows the state at that instant.
+
+### Proactive watcher (P1, read-only)
+
+An opt-in Gmail/Calendar metadata poller and in-memory conflict proposals are
+available with `python -m ai2027_protocol.proactive_watcher --once`. It does not
+write to Sheets or execute actions. Setup, privacy limits, scheduling and the
+remaining P1 gates are documented in [the watcher runbook](../docs/PROACTIVE-WATCHER.md).
+
+For the zero-spend deployment decision and phased gates, see the
+[Arabic free-first execution plan](../docs/PROACTIVE-FREE-EXECUTION-PLAN.ar.md).
