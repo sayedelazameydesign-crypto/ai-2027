@@ -230,8 +230,9 @@ def _executor_book(approval_rows, grant_action="agent.plan_day"):
 class _FakeWaapiTransport:
     """Canned waapi.app responses; records every call for assertions."""
 
-    def __init__(self):
+    def __init__(self, client_status="ready"):
         self.calls = []
+        self.client_status = client_status
 
     def __call__(self, method, url, body, token):
         self.calls.append({"method": method, "url": url, "body": body,
@@ -239,6 +240,11 @@ class _FakeWaapiTransport:
         tr = sm._load_waapi().TransportResult
         if url.endswith("/client/action/send-message"):
             return tr("ok", 200, {"status": "success"})
+        if url.endswith("/client/status"):
+            return tr("ok", 200, {
+                "status": "success",
+                "clientStatus": {"status": "success", "instanceId": "777",
+                                 "instanceStatus": self.client_status}})
         return tr("ok", 200, {"status": "success",
                               "instances": [{"id": 777}]})
 
@@ -382,6 +388,36 @@ class TestExecutePath(unittest.TestCase):
         # The runtime token plumbed through — and never leaked anywhere.
         self.assertEqual(posts[0]["token"], "runtime-token-value")
         self.assertNotIn("runtime-token-value", json.dumps(audits))
+
+    def test_execute_whatsapp_not_ready_blocks_before_consume(self):
+        # Review action item: a client that is not ``ready`` must not burn
+        # the approval — refusal happens BEFORE the consume gate, and no
+        # POST ever fires.
+        row, tool_payload = self._whatsapp_row("01SMOKEWA0000000000000003")
+        book = _executor_book([row], grant_action="whatsapp.send")
+        report = sm.Report()
+        waapi = sm._load_waapi()
+        fake = _FakeWaapiTransport(client_status="qr")
+        saved_token = os.environ.get("WAAPI_API_TOKEN")
+        saved_transport = waapi._transport
+        os.environ["WAAPI_API_TOKEN"] = "runtime-token-value"
+        waapi._transport = fake
+        try:
+            result = sm.execute_granted(book, lambda **kw: None,
+                                        "whatsapp.send", tool_payload,
+                                        report)
+        finally:
+            waapi._transport = saved_transport
+            if saved_token is None:
+                os.environ.pop("WAAPI_API_TOKEN", None)
+            else:
+                os.environ["WAAPI_API_TOKEN"] = saved_token
+        self.assertIsNone(result)
+        self.assertGreaterEqual(report.failed, 1)
+        stored = book.worksheet("pa_approvals").rows[1]
+        self.assertEqual(stored[17], "granted")   # untouched: no consume
+        self.assertEqual(stored[20], "")
+        self.assertEqual([c for c in fake.calls if c["method"] == "POST"], [])
 
     def test_execute_pending_row_with_passkey_assertion(self):
         # ADR-0006: pending row + valid signed assertion executes without a

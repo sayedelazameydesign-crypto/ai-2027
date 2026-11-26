@@ -209,11 +209,59 @@ class ClientStatusTests(EnvCase):
 
 
 class SendTests(EnvCase):
-    def _responses(self, send_result):
+    def _responses(self, send_result, client_status=None):
         return {
             INSTANCES_URL: w.TransportResult("ok", 200, INSTANCES_OK),
+            STATUS_URL: w.TransportResult(
+                "ok", 200, client_status or STATUS_OK),
             SEND_URL: send_result,
         }
+
+    def _posts(self):
+        return [c for c in w._transport.calls if c["method"] == "POST"]
+
+    def test_send_posts_only_after_client_status_ready(self):
+        self.ok_transport(self._responses(
+            w.TransportResult("ok", 200, {"status": "success"})))
+        result = w.send_text("201100000000@c.us", "hello")
+        self.assertEqual(result, {"ok": True, "stage": "sent"})
+        # Both GETs happened before the POST: list -> status -> send.
+        methods = [c["method"] for c in w._transport.calls]
+        self.assertEqual(methods, ["GET", "GET", "POST"])
+
+    def test_not_ready_never_posts(self):
+        # Review action item: qr / disconnected must refuse BEFORE any POST.
+        for observed in ("qr", "disconnected", "booting", "auth_failure"):
+            status = json.loads(json.dumps(STATUS_OK))
+            status["clientStatus"]["instanceStatus"] = observed
+            w._transport = FakeTransport(self._responses(
+                w.TransportResult("ok", 200, {"status": "success"}),
+                client_status=status))
+            result = w.send_text("201100000000@c.us", "hello")
+            self.assertEqual(result,
+                             {"ok": False, "stage": "not_ready",
+                              "status": observed}, observed)
+            self.assertEqual(self._posts(), [], observed)
+
+    def test_status_shape_failure_never_posts(self):
+        bad = json.loads(json.dumps(STATUS_OK))
+        bad["clientStatus"]["instanceId"] = "999"
+        self.ok_transport(self._responses(
+            w.TransportResult("ok", 200, {"status": "success"}),
+            client_status=bad))
+        result = w.send_text("201100000000@c.us", "hello")
+        self.assertEqual(result, {"ok": False, "stage": "shape_invalid"})
+        self.assertEqual(self._posts(), [])
+
+    def test_status_transport_failure_never_posts(self):
+        responses = self._responses(
+            w.TransportResult("ok", 200, {"status": "success"}))
+        responses[STATUS_URL] = w.TransportResult("http_error", 503, None)
+        self.ok_transport(responses)
+        result = w.send_text("201100000000@c.us", "hello")
+        self.assertEqual(result,
+                         {"ok": False, "stage": "http_error", "http": 503})
+        self.assertEqual(self._posts(), [])
 
     def test_send_success(self):
         self.ok_transport(self._responses(
@@ -263,26 +311,43 @@ class SendTests(EnvCase):
 
 
 class SendHandlerTests(EnvCase):
-    def test_handler_returns_delivery_on_success(self):
-        self.ok_transport({
+    def _responses(self, send_result, client_status=None):
+        return {
             INSTANCES_URL: w.TransportResult("ok", 200, INSTANCES_OK),
-            SEND_URL: w.TransportResult("ok", 200, {"status": "success"}),
-        })
+            STATUS_URL: w.TransportResult(
+                "ok", 200, client_status or STATUS_OK),
+            SEND_URL: send_result,
+        }
+
+    def test_handler_returns_delivery_on_success(self):
+        self.ok_transport(self._responses(
+            w.TransportResult("ok", 200, {"status": "success"})))
         handler = w.make_send_handler()
         self.assertEqual(handler({"chat_id": "201100000000@c.us",
                                   "message": "hi"}),
                          {"delivered": True, "stage": "sent"})
 
     def test_handler_raises_stage_only_error(self):
-        self.ok_transport({
-            INSTANCES_URL: w.TransportResult("ok", 200, INSTANCES_OK),
-            SEND_URL: w.TransportResult("http_error", 422, None),
-        })
+        self.ok_transport(self._responses(
+            w.TransportResult("http_error", 422, None)))
         handler = w.make_send_handler()
         with self.assertRaises(w.WaapiSendError) as ctx:
             handler({"chat_id": "201100000000@c.us", "message": "hi"})
         self.assertEqual(str(ctx.exception), "waapi_refused_422")
         self.assertNotIn(SECRET, str(ctx.exception))
+
+    def test_handler_raises_not_ready_without_post(self):
+        status = json.loads(json.dumps(STATUS_OK))
+        status["clientStatus"]["instanceStatus"] = "qr"
+        self.ok_transport(self._responses(
+            w.TransportResult("ok", 200, {"status": "success"}),
+            client_status=status))
+        handler = w.make_send_handler()
+        with self.assertRaises(w.WaapiSendError) as ctx:
+            handler({"chat_id": "201100000000@c.us", "message": "hi"})
+        self.assertEqual(str(ctx.exception), "waapi_not_ready")
+        posts = [c for c in w._transport.calls if c["method"] == "POST"]
+        self.assertEqual(posts, [])
 
 
 class NotifyTests(EnvCase):
@@ -299,6 +364,7 @@ class NotifyTests(EnvCase):
     def test_notify_normalises_owner_number_and_sends(self):
         self.ok_transport({
             INSTANCES_URL: w.TransportResult("ok", 200, INSTANCES_OK),
+            STATUS_URL: w.TransportResult("ok", 200, STATUS_OK),
             SEND_URL: w.TransportResult("ok", 200, {"status": "success"}),
         })
         result = w.notify_approval({"action": "agent.plan_day"},
@@ -324,6 +390,34 @@ class NotifyTests(EnvCase):
         os.environ.pop("WAAPI_API_TOKEN", None)
         w._transport = FakeTransport(error=AssertionError("must not call"))
         self.assertEqual(w.notify_approval({"action": "a"}, "https://v"),
+                         {"ok": False, "stage": "token_missing"})
+
+
+class ReadinessTests(EnvCase):
+    """readiness() = pre-consume gate used by the runner."""
+
+    def test_ready_passes(self):
+        self.ok_transport({
+            INSTANCES_URL: w.TransportResult("ok", 200, INSTANCES_OK),
+            STATUS_URL: w.TransportResult("ok", 200, STATUS_OK),
+        })
+        self.assertEqual(w.readiness(), {"ok": True, "stage": "ready"})
+
+    def test_not_ready_refused_with_status(self):
+        status = json.loads(json.dumps(STATUS_OK))
+        status["clientStatus"]["instanceStatus"] = "disconnected"
+        self.ok_transport({
+            INSTANCES_URL: w.TransportResult("ok", 200, INSTANCES_OK),
+            STATUS_URL: w.TransportResult("ok", 200, status),
+        })
+        self.assertEqual(w.readiness(),
+                         {"ok": False, "stage": "not_ready",
+                          "status": "disconnected"})
+
+    def test_token_missing_is_local(self):
+        os.environ.pop("WAAPI_API_TOKEN", None)
+        w._transport = FakeTransport(error=AssertionError("must not call"))
+        self.assertEqual(w.readiness(),
                          {"ok": False, "stage": "token_missing"})
 
 

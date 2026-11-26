@@ -195,8 +195,35 @@ def client_status(iid: str) -> Dict[str, Any]:
             "status": observed.get("instanceStatus")}
 
 
+def readiness() -> Dict[str, Any]:
+    """Preflight + live client readiness — the runner's PRE-consume gate.
+
+    Combines the local token check with the provider's own ``ready`` state,
+    so an unlinked or disconnected WhatsApp instance never burns a
+    single-use approval either.
+    """
+    pre = preflight()
+    if not pre["ok"]:
+        return pre
+    iid = instance_id()
+    if not iid["ok"]:
+        return iid
+    status = client_status(iid["instance_id"])
+    if not status["ok"]:
+        return status
+    if status.get("status") != "ready":
+        return {"ok": False, "stage": "not_ready",
+                "status": status.get("status")}
+    return {"ok": True, "stage": "ready"}
+
+
 def send_text(chat_id: str, message: str) -> Dict[str, Any]:
-    """The single write entry point. Structured result, never an exception."""
+    """The single write entry point. Structured result, never an exception.
+
+    Readiness is enforced HERE as well (defense in depth): the POST never
+    fires while the client is not ``ready`` — the live probe checks state,
+    and this gate guarantees the send path cannot skip it.
+    """
     chat = str(chat_id or "").strip()
     text = str(message or "").strip()
     if not _CHAT_RE.match(chat):
@@ -206,6 +233,12 @@ def send_text(chat_id: str, message: str) -> Dict[str, Any]:
     iid = instance_id()
     if not iid["ok"]:
         return iid
+    status = client_status(iid["instance_id"])
+    if not status["ok"]:
+        return status                    # transport/shape failure: no POST
+    if status.get("status") != "ready":
+        return {"ok": False, "stage": "not_ready",
+                "status": status.get("status")}
     url = "%s/%s/client/action/send-message" % (BASE_URL, iid["instance_id"])
     state, data = _call("POST", url, {"chatId": chat, "message": text})
     if not state["ok"]:

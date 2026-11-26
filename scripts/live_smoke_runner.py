@@ -314,12 +314,15 @@ def execute_granted(book: Any, audit_logger: Callable[..., None], action: str,
     executor = ge.GovernedExecutor(
         book, audit_logger, verification_public_key=verification_public_key)
     if action == "whatsapp.send":
-        # Preflight BEFORE the consume gate: a missing token must never
-        # burn a single-use approval (fail-closed, zero side effects).
+        # Readiness BEFORE the consume gate: a missing token or a client
+        # that is not ``ready`` must never burn a single-use approval
+        # (fail-closed, zero side effects).
         waapi = _load_waapi()
-        pre = waapi.preflight()
+        pre = waapi.readiness()
         if not pre["ok"]:
-            report.fail("execute denied before gates: %s" % pre["stage"])
+            report.fail("execute denied before gates: %s%s" % (
+                pre["stage"],
+                " (%s)" % pre["status"] if pre.get("status") else ""))
             return None
         executor.register_tool(action, waapi.make_send_handler())
     else:

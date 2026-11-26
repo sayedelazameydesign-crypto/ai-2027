@@ -120,6 +120,11 @@ class _FakeWaapiTransport:
         tr = ab._load_waapi().TransportResult
         if url.endswith("/client/action/send-message"):
             return tr("ok", 200, {"status": "success"})
+        if url.endswith("/client/status"):
+            return tr("ok", 200, {
+                "status": "success",
+                "clientStatus": {"status": "success", "instanceId": "777",
+                                 "instanceStatus": "ready"}})
         return tr("ok", 200, {"status": "success",
                               "instances": [{"id": 777}]})
 
