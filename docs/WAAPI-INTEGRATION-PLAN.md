@@ -6,6 +6,13 @@
 > الموصل). المتبقّي: المرحلة 0 (تأكيد الاشتراك المدفوع) والمرحلة 4
 > (إرسال حي واحد) — الاثنان يحتاجان قيمة التوكن في `.env` المحلي
 > وإقراراً مالياً.
+>
+> **دليل الاتصال الحي (2026-11-26، run `45790624784`)**:
+> `Check token presence ✓` ← `token authenticated against waapi.app ✓`
+> ← `instance stage=instance_count_0`. أي: **التوكن صحيح وفعّال ضد
+> الخدمة مباشرة**، ويبقى خطوة واحدة لصاحب النظام: ربط instance واحد
+> (مسح QR في waapi.app) ثم إعادة تشغيل الماسح ⇒ `LIVE CONNECTION
+> VERIFIED`. روابط: `https://github.com/sayedelazameydesign-crypto/ai-2027/actions/runs/45790624784`
 > **الحقائق مستندة إلى**: `projects/dr.mukhtar/.github/workflows/setup-status.yml`،
 > `projects/dr.mukhtar/docs/secrets-manifest.json`، توثيق waapi.app الرسمي،
 > وبنية النظام الحالي (`src/executors/governed_executor.py`، `src/watchers/approval_bot.py`).
