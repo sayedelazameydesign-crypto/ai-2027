@@ -80,3 +80,7 @@ fleet-2027/bench/latest.json
 # Local Free-Pi MCP configuration may contain environment-specific settings.
 .pi/mcp.json
 .coverage
+
+# Local Python environments and Google credential files must not be committed.
+.venv/
+credentials.json

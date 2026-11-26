@@ -1,0 +1,14 @@
+{
+  "timeZone": "Africa/Cairo",
+  "exceptionLogging": "STACKDRIVER",
+  "runtimeVersion": "V8",
+  "oauthScopes": [
+    "https://www.googleapis.com/auth/gmail.readonly",
+    "https://www.googleapis.com/auth/calendar.events.readonly",
+    "https://www.googleapis.com/auth/script.external_request"
+  ],
+  "urlFetchWhitelist": [
+    "https://gmail.googleapis.com/gmail/v1/users/me/messages",
+    "https://www.googleapis.com/calendar/v3/calendars/primary/events"
+  ]
+}
