@@ -14,7 +14,7 @@ import json
 import os
 import sys
 import unittest
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -431,7 +431,10 @@ class TestExecutePath(unittest.TestCase):
         row = sm.build_test_approval_row(action, payload,
                                          "01SMOKEASSERT00000001", NOW)
         book = _executor_book([row])
-        exp = "2026-11-26T13:00:00.000Z"
+        # Wall-clock expiry: must stay in the future at verification time
+        # (a fixed timestamp turns this test into a time bomb).
+        exp = (datetime.now(timezone.utc) + timedelta(hours=1)).strftime(
+            "%Y-%m-%dT%H:%M:%S.000Z")
         message = sm.ge.canonical_assertion_message(
             row[0], action, row[15], "grant", exp)
         assertion = {
