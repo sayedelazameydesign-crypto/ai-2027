@@ -113,8 +113,11 @@ jobs:
       # here with no third-party packages installed — the same guarantee the
       # AST gate above enforces on the source. Named explicitly so the
       # baseline-sensitive operational-evidence suite is not pulled in.
-      - name: P1 foundation — prompt loader and routing profile tests (stdlib only)
-        run: python -m unittest tests.test_prompt_loader tests.test_routing_profiles -v
+      # test_proactive_watcher stubs the Google connector modules, so it also
+      # runs bare — proving the watcher's column/taint/hash contracts without
+      # gspread or a credential.
+      - name: P1 foundation — prompt loader, routing profiles and watcher contracts (stdlib only)
+        run: python -m unittest tests.test_prompt_loader tests.test_routing_profiles tests.test_proactive_watcher -v
 
       - name: CI guard self-tests (keeps the gates honest)
         run: python scripts/test_ci_guard.py -v
