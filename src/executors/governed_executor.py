@@ -44,11 +44,31 @@ Design notes
 
 from __future__ import annotations
 
+import base64
 import hashlib
+import importlib.util
 import json
+import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
+
+
+def _load_sibling(name: str) -> Any:
+    """Import a stdlib sibling module from this directory by path."""
+    if name in sys.modules:
+        return sys.modules[name]
+    path = Path(__file__).with_name(name + ".py")
+    spec = importlib.util.spec_from_file_location(name, path)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+ed25519 = _load_sibling("ed25519")
 
 
 class ExecutionDeniedError(PermissionError):
@@ -153,6 +173,20 @@ def approval_from_row(row: List[Any]) -> Dict[str, Any]:
     return dict(zip(APPROVAL_HEADER, values[: len(APPROVAL_HEADER)]))
 
 
+def canonical_assertion_message(approval_id: str, action: str,
+                                payload_hash: str, decision: str,
+                                exp: str) -> bytes:
+    """Canonical bytes signed by the passkey Worker (ADR-0006).
+
+    Pipe-delimited — every field is charset-constrained (ids/hex/dotted
+    action/ISO-8601), so no escaping ambiguity exists, and the JS Worker
+    builds the identical string without a JSON canonicalisation step.
+    """
+    return ("%s|%s|%s|%s|%s"
+            % (approval_id, action, payload_hash, decision, exp)
+            ).encode("utf-8")
+
+
 class GovernedExecutor:
     """Fail-closed executor linking pa_approvals + pa_delegation_grants +
     pa_audit_logs before any WRITE."""
@@ -161,11 +195,24 @@ class GovernedExecutor:
 
     def __init__(self, spreadsheet: Any,
                  audit_logger: Callable[..., None],
-                 now_fn: Optional[Callable[[], datetime]] = None):
+                 now_fn: Optional[Callable[[], datetime]] = None,
+                 verification_public_key: Optional[str] = None):
         self.sheet = spreadsheet
         self.append_audit_log = audit_logger
         self.now_fn = now_fn or utc_now
         self._handlers: Dict[str, Callable[[Dict[str, Any]], Any]] = {}
+        # Hex-encoded Ed25519 public key of the passkey Worker (ADR-0006).
+        # None disables the assertion path: pending rows then deny, exactly
+        # as before (fail-closed).
+        self.verification_public_key = (verification_public_key or "").strip()
+        if self.verification_public_key:
+            try:
+                key = bytes.fromhex(self.verification_public_key)
+            except ValueError as exc:
+                raise ValueError(
+                    "verification_public_key must be hex") from exc
+            if len(key) != 32:
+                raise ValueError("verification_public_key must be 32 bytes")
 
     def register_tool(self, action: str, handler: Callable[[Dict[str, Any]], Any]) -> None:
         if not action or not action.strip():
@@ -323,10 +370,68 @@ class GovernedExecutor:
             "values": [padded],
         }])
 
+    # -- gate 1b: passkey assertion (ADR-0006) ------------------------------
+    def _check_assertion(self, approval_id: str, action: str,
+                         row: List[str], payload: Dict[str, Any],
+                         assertion: Any, now: datetime) -> Optional[str]:
+        """Verify a signed passkey decision attached to a PENDING row.
+
+        Returns None when the assertion authorises execution, otherwise the
+        deny reason (fail-closed on every structural or cryptographic gap).
+        The signature binds approval_id + action + payload_hash + decision +
+        exp, so a captured assertion cannot be replayed for another row,
+        another payload, another action, or after its expiry — and the
+        single-use consume still applies afterwards.
+        """
+        if not self.verification_public_key:
+            return "assertion_verification_key_missing"
+        if not isinstance(assertion, dict):
+            return "assertion_malformed"
+        required = ("approval_id", "action", "payload_hash", "decision",
+                    "exp", "signature")
+        if any(key not in assertion for key in required):
+            return "assertion_malformed"
+
+        env_id = str(assertion["approval_id"])
+        env_action = str(assertion["action"])
+        env_hash = str(assertion["payload_hash"])
+        decision = str(assertion["decision"])
+        exp_raw = str(assertion["exp"])
+        if env_id != approval_id or env_id != str(row[0]).strip():
+            return "assertion_field_mismatch:approval_id"
+        if (env_action != action
+                or env_action != str(row[COL_APPROVAL_ACTION]).strip()):
+            return "assertion_field_mismatch:action"
+        if (env_hash != str(row[COL_APPROVAL_PAYLOAD_HASH]).strip()
+                or env_hash != compute_sha256(payload)):
+            return "assertion_field_mismatch:payload_hash"
+        if decision != "grant":
+            return "assertion_invalid_decision:%s" % decision
+        exp_dt = parse_iso_utc(exp_raw)
+        if exp_dt is None or now >= exp_dt:
+            return "assertion_expired"
+        try:
+            signature = base64.b64decode(str(assertion["signature"]),
+                                         validate=True)
+        except (ValueError, TypeError):
+            return "assertion_malformed"
+        public_key = bytes.fromhex(self.verification_public_key)
+        message = canonical_assertion_message(env_id, env_action, env_hash,
+                                              decision, exp_raw)
+        if not ed25519.verify(signature, message, public_key):
+            return "assertion_signature_invalid"
+        return None
+
     # -- entry point --------------------------------------------------------
     def execute(self, approval_id: str, action: str,
-                payload: Dict[str, Any]) -> ExecutionResult:
-        """The single entry point for any WRITE operation."""
+                payload: Dict[str, Any],
+                assertion: Optional[Dict[str, Any]] = None) -> ExecutionResult:
+        """The single entry point for any WRITE operation.
+
+        ``assertion``: optional signed passkey decision (ADR-0006) for a
+        pending approval row; without it only bot-granted/approved rows
+        execute.
+        """
         if action not in self._handlers:
             return self._deny(approval_id, action, "unregistered_write_action")
 
@@ -343,10 +448,20 @@ class GovernedExecutor:
         if str(padded[COL_APPROVAL_CONSUMED_AT]).strip() or padded[17].strip().lower() == "consumed":
             return self._deny(approval_id, action, "approval_already_consumed")
 
-        # 2. Explicit approval status only.
+        # 2. Explicit approval status, or a valid passkey assertion on a
+        #    pending row (ADR-0006). Everything else denies.
+        now = self.now_fn()
         status = padded[COL_APPROVAL_STATUS].strip().lower()
-        if status not in self.VALID_APPROVED_STATES:
-            return self._deny(approval_id, action, "invalid_approval_status:%s" % status)
+        if status in self.VALID_APPROVED_STATES:
+            pass  # bot-voted path (transitional fallback, ADR-0006)
+        elif status == "pending" and assertion is not None:
+            assertion_reason = self._check_assertion(
+                approval_id, action, padded, payload, assertion, now)
+            if assertion_reason:
+                return self._deny(approval_id, action, assertion_reason)
+        else:
+            return self._deny(approval_id, action,
+                              "invalid_approval_status:%s" % status)
 
         # 3. Action match + payload binding (anti-tamper).
         row_action = str(padded[COL_APPROVAL_ACTION]).strip()
@@ -362,7 +477,6 @@ class GovernedExecutor:
             return self._deny(approval_id, action, "payload_hash_mismatch")
 
         # 4. Validity window (unparsable expiry counts as expired).
-        now = self.now_fn()
         expires_dt = parse_iso_utc(str(padded[COL_APPROVAL_EXPIRES_AT]))
         if expires_dt is None or now >= expires_dt:
             return self._deny(approval_id, action, "approval_expired_or_missing_expiry")

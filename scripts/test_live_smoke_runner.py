@@ -299,6 +299,56 @@ class TestExecutePath(unittest.TestCase):
         self.assertTrue(result.reason.startswith("action_explicitly_denied:"))
         self.assertGreaterEqual(report.failed, 1)
 
+    def test_execute_pending_row_with_passkey_assertion(self):
+        # ADR-0006: pending row + valid signed assertion executes without a
+        # bot vote (the passkey path), then single-use consumes.
+        import base64 as _b64
+        secret = bytes.fromhex(
+            "c5aa8df43f9f837bedb7442f31dcb7b166d38535076f094b85ce3a2e0b4458f7")
+        pubkey = sm.ge.ed25519.secret_public_key(secret).hex()
+        action = "agent.plan_day"
+        payload = sm.default_execute_payload(action)
+        row = sm.build_test_approval_row(action, payload,
+                                         "01SMOKEASSERT00000001", NOW)
+        book = _executor_book([row])
+        exp = "2026-11-26T13:00:00.000Z"
+        message = sm.ge.canonical_assertion_message(
+            row[0], action, row[15], "grant", exp)
+        assertion = {
+            "approval_id": row[0],
+            "action": action,
+            "payload_hash": row[15],
+            "decision": "grant",
+            "exp": exp,
+            "signature": _b64.b64encode(
+                sm.ge.ed25519.sign(message, secret)).decode(),
+        }
+        report = sm.Report()
+        result = sm.execute_granted(book, lambda **kw: None, action, payload,
+                                    report,
+                                    verification_public_key=pubkey,
+                                    assertion=assertion)
+        self.assertIsNotNone(result)
+        self.assertTrue(result.ok, getattr(result, "reason", ""))
+        stored = book.worksheet("pa_approvals").rows[1]
+        self.assertEqual(stored[17], "consumed")
+
+    def test_execute_without_key_denies_assertion_fail_closed(self):
+        # No pubkey configured -> the assertion path denies loudly instead of
+        # silently executing (fail-closed, ADR-0006).
+        action = "agent.plan_day"
+        payload = sm.default_execute_payload(action)
+        row = sm.build_test_approval_row(action, payload,
+                                         "01SMOKEPENDING000000003", NOW)
+        book = _executor_book([row])
+        report = sm.Report()
+        result = sm.execute_granted(book, lambda **kw: None, action, payload,
+                                    report, assertion={"bogus": True})
+        self.assertIsNotNone(result)
+        self.assertFalse(result.ok)
+        self.assertEqual(result.reason, "assertion_verification_key_missing")
+        self.assertGreaterEqual(report.failed, 1)
+
     def test_gworksheet_prefixes_sheet_name(self):
         # The executor sends sheet-relative ranges; the live values API needs
         # "pa_approvals!A2:V2" — the adapter must prefix the title.

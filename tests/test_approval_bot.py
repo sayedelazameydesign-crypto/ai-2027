@@ -162,6 +162,24 @@ class TestCardEgress(unittest.TestCase):
             "appr:01APRV000000000000000001:deny",
         ])
 
+    def test_card_appends_passkey_link_when_base_url_set(self):
+        # ADR-0006: the card gains a Passkey vote link; the inline buttons
+        # stay as the transitional fallback.
+        ap = ab.approval_from_row(
+            seed_approval(FakeSheet().worksheet("pa_approvals"))
+        )
+        plain = ab.build_approval_card(ap)
+        self.assertNotIn("Passkey", plain["text"])
+        linked = ab.build_approval_card(
+            ap, vote_base_url="https://vote.example.workers.dev/")
+        self.assertIn("Passkey", linked["text"])
+        self.assertIn(
+            "https://vote.example.workers.dev"
+            "?approval=01APRV000000000000000001&action=",
+            linked["text"])
+        self.assertIn("&hash=", linked["text"])
+        self.assertEqual(len(linked["buttons"]), 2)
+
 
 class TestSendPending(unittest.TestCase):
     def test_sends_only_pending_unexpired_and_dedupes(self):

@@ -265,23 +265,45 @@ def find_granted_approval(rows: Sequence[Sequence[str]], action: str,
 
 def execute_granted(book: Any, audit_logger: Callable[..., None], action: str,
                     payload: Dict[str, Any], report: "Report",
-                    approval_id: Optional[str] = None) -> Any:
-    """Run the governed executor against a granted approval on the live sheet.
+                    approval_id: Optional[str] = None,
+                    verification_public_key: Optional[str] = None,
+                    assertion: Optional[Dict[str, Any]] = None) -> Any:
+    """Run the governed executor against an executable approval.
 
+    Prefers a granted (bot-voted) row; when ``assertion`` is given, a pending
+    row carrying a matching signed passkey decision also executes (ADR-0006).
     This is what makes consumed_at appear: four gates, single-use consume
     (status/version/checksum via batch_update), chained audit append.
     """
     rows = book.worksheet("pa_approvals").get_all_values()
     row_no, row = find_granted_approval(rows[1:], action, approval_id)
+    if row is None and assertion is not None:
+        # Passkey path: the executor accepts a pending row + valid assertion.
+        for idx, candidate in enumerate(rows[1:]):
+            if not candidate or not str(candidate[0]).strip():
+                continue
+            if approval_id and str(candidate[0]).strip() != approval_id:
+                continue
+            if str(candidate[14] if len(candidate) > 14 else "").strip() != action:
+                continue
+            status = (str(candidate[17]).strip().lower()
+                      if len(candidate) > 17 else "")
+            consumed = str(candidate[20]).strip() if len(candidate) > 20 else ""
+            deleted = str(candidate[11]).strip() if len(candidate) > 11 else ""
+            if not deleted and not consumed and status == "pending":
+                row_no, row = idx + 2, list(candidate)
+                break
     if row is None:
-        report.skip("execute: no granted, unconsumed approval for %s — vote "
-                    "on the card first (or --seed-approval, then grant it)"
-                    % action)
+        report.skip("execute: no granted (or asserted-pending) approval for "
+                    "%s — vote on the card first (or --seed-approval + "
+                    "grant / --assertion)" % action)
         return None
-    executor = ge.GovernedExecutor(book, audit_logger)
+    executor = ge.GovernedExecutor(
+        book, audit_logger, verification_public_key=verification_public_key)
     executor.register_tool(action, lambda p: {"smoke_execution": True,
                                               "action": action})
-    result = executor.execute(str(row[0]).strip(), action, payload)
+    result = executor.execute(str(row[0]).strip(), action, payload,
+                              assertion=assertion)
     if result.ok:
         report.ok("execute %s via %s -> consumed (version bump + checksum + "
                   "chained audit)" % (action, str(row[0])[:14]))
@@ -401,13 +423,26 @@ def run_execute(args: argparse.Namespace, report: Report) -> None:
     if not isinstance(payload, dict):
         report.fail("--payload must be a JSON object")
         return
+    assertion = None
+    if args.assertion:
+        try:
+            assertion = json.loads(args.assertion)
+        except json.JSONDecodeError:
+            report.fail("--assertion is not valid JSON")
+            return
+        if not isinstance(assertion, dict):
+            report.fail("--assertion must be a JSON object")
+            return
     try:
         audit_logger = _bind_watcher_audit(book)
     except Exception as exc:  # noqa: BLE001
         report.fail("cannot bind watcher audit logger (%s)" % exc)
         return
+    pubkey = os.environ.get("PA_APPROVAL_SIGNING_PUBKEY", "").strip()
     execute_granted(book, audit_logger, args.execute, payload, report,
-                    approval_id=args.approval_id)
+                    approval_id=args.approval_id,
+                    verification_public_key=pubkey or None,
+                    assertion=assertion)
 
 
 def run_live(args: argparse.Namespace, report: Report) -> None:
@@ -534,20 +569,24 @@ def run_live(args: argparse.Namespace, report: Report) -> None:
             if target is None:
                 report.skip("--send-card: no pending approval to attach to")
             else:
-                result = transport.send_card(
-                    chat_id=chat_id,
-                    title="P1-APPROVAL-BOT-LIVE-SMOKE",
-                    summary=str(target[16]) if len(target) > 16 else "",
-                    row=[str(c) for c in target],
+                cells = [str(c) for c in target]
+                cells += [""] * (len(bot_module.APPROVAL_COLUMNS) - len(cells))
+                ap = bot_module.approval_from_row(cells)
+                card = bot_module.build_approval_card(
+                    ap,
+                    vote_base_url=os.environ.get(
+                        "PA_APPROVAL_VOTE_BASE_URL", "").strip(),
                 )
-                if result["ok"]:
-                    report.ok("real card delivered (message_id=%s) for %s"
-                              % (result.get("message_id"),
-                                 str(target[0])[:14]))
+                try:
+                    message_id = transport.send_card(card, chat_id)
+                except Exception as exc:  # noqa: BLE001
+                    report.fail("card delivery failed: %s" % exc)
                 else:
-                    report.fail("card delivery failed: %s" % result["error"])
-                report.manual("tap Approve on the card, then re-run this script "
-                              "and confirm consumed_at + version +1 + audit row")
+                    report.ok("real card delivered (message_id=%s) for %s"
+                              % (message_id, str(target[0])[:14]))
+                report.manual("tap Approve on the card (or the Passkey link), "
+                              "then --execute %s and confirm consumed_at"
+                              % str(target[14] if len(target) > 14 else ""))
 
 
 def main(argv: Optional[List[str]] = None) -> int:
@@ -571,6 +610,9 @@ def main(argv: Optional[List[str]] = None) -> int:
                              "deterministic --seed-approval payload)")
     parser.add_argument("--approval-id", default=None,
                         help="specific approval id for --execute")
+    parser.add_argument("--assertion", default=None,
+                        help="signed passkey assertion JSON for --execute "
+                             "(executes a pending row without a bot vote)")
     args = parser.parse_args(argv)
 
     report = Report()

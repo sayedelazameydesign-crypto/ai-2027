@@ -1,0 +1,18 @@
+{
+  "name": "approval-worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Passkey (WebAuthn) voting page + Ed25519 assertion signer for the ai-2027 governed approval loop (ADR-0006)",
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "check": "node --check src/crypto.js && node --check src/index.js",
+    "deploy": "wrangler deploy"
+  },
+  "dependencies": {
+    "@simplewebauthn/server": "^9.0.3"
+  },
+  "devDependencies": {
+    "wrangler": "^3.90.0"
+  }
+}

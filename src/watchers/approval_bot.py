@@ -154,8 +154,14 @@ def approval_checksum(ap: Dict[str, Any]) -> str:
     return compute_sha256(core)
 
 
-def build_approval_card(ap: Dict[str, Any]) -> Dict[str, Any]:
-    """Build an outbound approval card. Summary is redacted (egress ssGateway)."""
+def build_approval_card(ap: Dict[str, Any],
+                        vote_base_url: str = "") -> Dict[str, Any]:
+    """Build an outbound approval card. Summary is redacted (egress ssGateway).
+
+    ``vote_base_url`` (PA_APPROVAL_VOTE_BASE_URL) appends a passkey voting
+    link (ADR-0006). The inline buttons remain as the transitional fallback
+    path — remove them only after the passkey flow is proven in production.
+    """
     summary, _sensitivity = sanitize_and_redact(str(ap.get("summary", "")))
     approval_id = str(ap.get("id", ""))
     text = (
@@ -171,6 +177,16 @@ def build_approval_card(ap: Dict[str, Any]) -> Dict[str, Any]:
         approval_id=approval_id,
         expires_at=ap.get("expires_at", "?"),
     )
+    if vote_base_url:
+        sep = "&" if "?" in vote_base_url else "?"
+        # The page needs the exact (approval_id, action, payload_hash) triple
+        # the Worker binds into the signed assertion (ADR-0006).
+        text += (
+            "\n\n🔑 موافقة بمفتاح المرور (Passkey — الأقوى): {url}"
+        ).format(
+            url="%s%sapproval=%s&action=%s&hash=%s"
+                % (vote_base_url.rstrip("/"), sep, approval_id,
+                   ap.get("action", ""), ap.get("payload_hash", "")))
     return {
         "approval_id": approval_id,
         "text": text,
@@ -331,7 +347,11 @@ class ApprovalGate:
         for ap in self.pending_approvals(now):
             if ap["id"] in self._sent_cards:
                 continue
-            card = build_approval_card(ap)
+            card = build_approval_card(
+                ap,
+                vote_base_url=os.getenv("PA_APPROVAL_VOTE_BASE_URL",
+                                        "").strip(),
+            )
             message_id = self.transport.send_card(card, chat_id)
             self._sent_cards.add(ap["id"])
             sent.append({"id": ap["id"], "message_id": message_id})

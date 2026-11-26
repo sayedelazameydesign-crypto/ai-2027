@@ -496,6 +496,175 @@ class TestAuditChainInputs(unittest.TestCase):
         self.assertEqual(call["subjects"], ["X"])
 
 
+class TestAssertionGate(unittest.TestCase):
+    """ADR-0006: a pending row executes only with a valid signed assertion."""
+
+    SECRET = bytes.fromhex(
+        "c5aa8df43f9f837bedb7442f31dcb7b166d38535076f094b85ce3a2e0b4458f7")
+
+    @classmethod
+    def setUpClass(cls):
+        cls.pub_hex = ge.ed25519.secret_public_key(cls.SECRET).hex()
+
+    def _executor(self, sheet, with_key=True):
+        audits = AuditSpy()
+        ex = ge.GovernedExecutor(
+            sheet, audits, now_fn=lambda: NOW,
+            verification_public_key=self.pub_hex if with_key else None)
+        return ex, audits
+
+    def _assertion(self, row, payload, decision="grant",
+                   exp="2026-11-26T13:00:00.000Z", signature=None,
+                   approval_id=None, action=None, payload_hash=None):
+        import base64 as _b64
+        aid = row[0] if approval_id is None else approval_id
+        act = row[14] if action is None else action
+        phash = row[15] if payload_hash is None else payload_hash
+        message = ge.canonical_assertion_message(aid, act, phash, decision, exp)
+        sig = signature
+        if sig is None:
+            sig = _b64.b64encode(ge.ed25519.sign(message, self.SECRET)).decode()
+        return {"approval_id": aid, "action": act, "payload_hash": phash,
+                "decision": decision, "exp": exp, "signature": sig}
+
+    def _pending_sheet(self, payload=GOOD_PAYLOAD, **appr_kwargs):
+        row = make_approval_row(payload, status="pending", **appr_kwargs)
+        return make_sheet([row], [make_grant_row()]), row
+
+    def test_pending_with_valid_assertion_executes_and_consumes(self):
+        sheet, row = self._pending_sheet()
+        executor, audit = self._executor(sheet)
+        executor.register_tool("gmail.send_draft", lambda p: {"ok": True})
+        res = executor.execute("01APPR001", "gmail.send_draft", GOOD_PAYLOAD,
+                               assertion=self._assertion(row, GOOD_PAYLOAD))
+        self.assertTrue(res.ok, res.reason)
+        self.assertEqual(res.outcome, "allowed")
+        stored = sheet.worksheet("pa_approvals").rows[1]
+        self.assertEqual(stored[17], "consumed")
+        self.assertEqual(audit.calls[-1]["outcome"], "allowed")
+
+    def test_assertion_without_configured_key_denies(self):
+        sheet, row = self._pending_sheet()
+        executor, _ = self._executor(sheet, with_key=False)
+        executor.register_tool("gmail.send_draft", lambda p: "ok")
+        res = executor.execute("01APPR001", "gmail.send_draft", GOOD_PAYLOAD,
+                               assertion=self._assertion(row, GOOD_PAYLOAD))
+        self.assertFalse(res.ok)
+        self.assertEqual(res.reason, "assertion_verification_key_missing")
+
+    def test_replay_after_consume_denies(self):
+        sheet, row = self._pending_sheet()
+        executor, _ = self._executor(sheet)
+        executor.register_tool("gmail.send_draft", lambda p: "ok")
+        assertion = self._assertion(row, GOOD_PAYLOAD)
+        first = executor.execute("01APPR001", "gmail.send_draft",
+                                 GOOD_PAYLOAD, assertion=assertion)
+        self.assertTrue(first.ok)
+        second = executor.execute("01APPR001", "gmail.send_draft",
+                                  GOOD_PAYLOAD, assertion=assertion)
+        self.assertFalse(second.ok)
+        self.assertEqual(second.reason, "approval_already_consumed")
+
+    def test_tampered_payload_denies_binding(self):
+        sheet, row = self._pending_sheet()
+        executor, _ = self._executor(sheet)
+        executor.register_tool("gmail.send_draft", lambda p: "ok")
+        res = executor.execute("01APPR001", "gmail.send_draft",
+                               {"to": "attacker@example.com"},
+                               assertion=self._assertion(row, GOOD_PAYLOAD))
+        self.assertFalse(res.ok)
+        self.assertEqual(res.reason, "assertion_field_mismatch:payload_hash")
+
+    def test_invalid_signature_denies(self):
+        import base64 as _b64
+        sheet, row = self._pending_sheet()
+        executor, _ = self._executor(sheet)
+        executor.register_tool("gmail.send_draft", lambda p: "ok")
+        garbage = _b64.b64encode(b"\x11" * 64).decode()
+        res = executor.execute(
+            "01APPR001", "gmail.send_draft", GOOD_PAYLOAD,
+            assertion=self._assertion(row, GOOD_PAYLOAD, signature=garbage))
+        self.assertFalse(res.ok)
+        self.assertEqual(res.reason, "assertion_signature_invalid")
+
+    def test_expired_assertion_denies(self):
+        sheet, row = self._pending_sheet()
+        executor, _ = self._executor(sheet)
+        executor.register_tool("gmail.send_draft", lambda p: "ok")
+        res = executor.execute(
+            "01APPR001", "gmail.send_draft", GOOD_PAYLOAD,
+            assertion=self._assertion(row, GOOD_PAYLOAD,
+                                      exp="2026-11-26T11:00:00.000Z"))
+        self.assertFalse(res.ok)
+        self.assertEqual(res.reason, "assertion_expired")
+
+    def test_non_grant_decision_denies(self):
+        sheet, row = self._pending_sheet()
+        executor, _ = self._executor(sheet)
+        executor.register_tool("gmail.send_draft", lambda p: "ok")
+        res = executor.execute(
+            "01APPR001", "gmail.send_draft", GOOD_PAYLOAD,
+            assertion=self._assertion(row, GOOD_PAYLOAD, decision="deny"))
+        self.assertFalse(res.ok)
+        self.assertEqual(res.reason, "assertion_invalid_decision:deny")
+
+    def test_wrong_approval_id_denies_before_signature(self):
+        sheet, row = self._pending_sheet()
+        executor, _ = self._executor(sheet)
+        executor.register_tool("gmail.send_draft", lambda p: "ok")
+        res = executor.execute(
+            "01APPR001", "gmail.send_draft", GOOD_PAYLOAD,
+            assertion=self._assertion(row, GOOD_PAYLOAD,
+                                      approval_id="01APPR_OTHER"))
+        self.assertFalse(res.ok)
+        self.assertEqual(res.reason, "assertion_field_mismatch:approval_id")
+
+    def test_wrong_action_in_envelope_denies(self):
+        sheet, row = self._pending_sheet()
+        executor, _ = self._executor(sheet)
+        executor.register_tool("gmail.send_draft", lambda p: "ok")
+        res = executor.execute(
+            "01APPR001", "gmail.send_draft", GOOD_PAYLOAD,
+            assertion=self._assertion(row, GOOD_PAYLOAD,
+                                      action="calendar.create_event"))
+        self.assertFalse(res.ok)
+        self.assertEqual(res.reason, "assertion_field_mismatch:action")
+
+    def test_malformed_assertions_deny(self):
+        for bad in (None, "not-a-dict", {}, {"approval_id": "x"}):
+            # None is handled by the status gate, not the assertion path.
+            if bad is None:
+                continue
+            sheet, row = self._pending_sheet()
+            executor, _ = self._executor(sheet)
+            executor.register_tool("gmail.send_draft", lambda p: "ok")
+            res = executor.execute("01APPR001", "gmail.send_draft",
+                                   GOOD_PAYLOAD, assertion=bad)
+            self.assertFalse(res.ok, repr(bad))
+            self.assertEqual(res.reason, "assertion_malformed", repr(bad))
+
+    def test_bad_base64_signature_denies(self):
+        sheet, row = self._pending_sheet()
+        executor, _ = self._executor(sheet)
+        executor.register_tool("gmail.send_draft", lambda p: "ok")
+        res = executor.execute(
+            "01APPR001", "gmail.send_draft", GOOD_PAYLOAD,
+            assertion=self._assertion(row, GOOD_PAYLOAD,
+                                      signature="!!!not-base64!!!"))
+        self.assertFalse(res.ok)
+        self.assertEqual(res.reason, "assertion_malformed")
+
+    def test_granted_path_needs_no_key_or_assertion(self):
+        # Transitional fallback (ADR-0006): bot-granted rows keep working
+        # without any passkey configuration.
+        sheet = make_sheet([make_approval_row(GOOD_PAYLOAD)],
+                           [make_grant_row()])
+        executor, _ = self._executor(sheet, with_key=False)
+        executor.register_tool("gmail.send_draft", lambda p: "ok")
+        res = executor.execute("01APPR001", "gmail.send_draft", GOOD_PAYLOAD)
+        self.assertTrue(res.ok, res.reason)
+
+
 class TestCanonicalisationDrift(unittest.TestCase):
     """The modules share one canonicalisation — these tests stop silent drift."""
 

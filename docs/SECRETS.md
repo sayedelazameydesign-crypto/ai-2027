@@ -58,6 +58,8 @@
 | `PA_APPROVAL_CHAT_ID` | معرّف محادثة Telegram التي تُرسل إليها بطاقات الموافقة | فارغ ⇒ لا إرسال (تخطّي صريح) |
 | `PA_APPROVAL_ALLOWED_SENDERS` | معرّفات المسموح لهم بالتصويت، مفصولة بفواصل. **القائمة الفارغة تمنع الجميع** — fail-closed بقصد | فارغ ⇒ يُمنع الجميع |
 | `PA_APPROVAL_API_BASE` | عنوان Telegram API البديل (وكيل/اختبار) | `https://api.telegram.org` |
+| `PA_APPROVAL_VOTE_BASE_URL` | `src/watchers/approval_bot.py` و`scripts/live_smoke_runner.py` — عنوان صفحة التصويت بـ Passkey التي يبنيها Worker في `worker/approval-worker/` (ADR-0006). يُضاف إلى البطاقة رابط `…?approval=<id>` | فارغ ⇒ البطاقة بلا رابط (الأزرار تبقى وحدها) |
+| `PA_APPROVAL_SIGNING_PUBKEY` | `src/executors/governed_executor.py` — المفتاح العام Ed25519 (hex،64 حرفاً) للتحقق من توقيع الـWorker على قرار الموافقة (ADR-0006) | فارغ ⇒ مسار الـassertion يفشل بـ`assertion_verification_key_missing` (fail-closed) ويعمل المسار البديل فقط |
 
 ### أسرار Cloudflare / R2 المعرَّفة وغير المستعملة بعد
 

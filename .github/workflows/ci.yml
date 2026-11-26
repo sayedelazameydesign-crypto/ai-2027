@@ -117,8 +117,10 @@ jobs:
       # stub the Google connector modules, so they also run bare — proving the
       # watcher's column/taint/hash contracts, the approval bot's fail-closed
       # gate and the governed executor's four write-gates without gspread,
-      # Telegram or a credential.
-      - name: P1 foundation — prompt loader, routing profiles, watcher, approval bot and governed executor contracts (stdlib only)
+      # Telegram or a credential. test_ed25519 is RFC 8032 conformance for
+      # the stdlib signer (ADR-0006); test_passkey_interop proves the
+      # Python <-> Worker canonical/signature agreement (skips without node).
+      - name: P1 foundation — prompt loader, routing profiles, watcher, approval bot, governed executor and passkey contracts (stdlib only)
         run: >-
           python -m unittest
           tests.test_prompt_loader
@@ -126,7 +128,14 @@ jobs:
           tests.test_proactive_watcher
           tests.test_approval_bot
           tests.test_governed_executor
+          tests.test_ed25519
+          tests.test_passkey_interop
           -v
+
+      # ADR-0006 worker: the pure signing core runs on node builtins only —
+      # no npm install, no network, no KV.
+      - name: P1 approval worker signing core (node --test)
+        run: node --test worker/approval-worker/test/*.test.js
 
       - name: CI guard self-tests (keeps the gates honest)
         run: python scripts/test_ci_guard.py -v
