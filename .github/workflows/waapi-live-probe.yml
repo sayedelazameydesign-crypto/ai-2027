@@ -67,17 +67,23 @@ jobs:
           health = module.health()
           print("health: stage=%s ok=%s" % (health.get("stage"), health.get("ok")))
           if not health.get("ok"):
+              print("::error title=WAAPI probe::health stage=%s http=%s" % (
+                  health.get("stage"), health.get("http")))
               sys.exit(1)
 
           inst = module.instance_id()
           print("instance: stage=%s ok=%s" % (inst.get("stage"), inst.get("ok")))
           if not inst.get("ok"):
+              print("::error title=WAAPI probe::instance stage=%s http=%s" % (
+                  inst.get("stage"), inst.get("http")))
               sys.exit(1)
 
           status = module.client_status(inst["instance_id"])
           print("client: stage=%s status=%s ok=%s" % (
               status.get("stage"), status.get("status"), status.get("ok")))
           if not status.get("ok") or status.get("status") != "ready":
+              print("::error title=WAAPI probe::client stage=%s status=%s http=%s" % (
+                  status.get("stage"), status.get("status"), status.get("http")))
               sys.exit(1)
 
           print("::notice title=WAAPI::LIVE CONNECTION VERIFIED — token "
