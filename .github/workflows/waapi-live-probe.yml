@@ -70,12 +70,16 @@ jobs:
               print("::error title=WAAPI probe::health stage=%s http=%s" % (
                   health.get("stage"), health.get("http")))
               sys.exit(1)
+          print("::notice title=WAAPI::token authenticated against waapi.app "
+                "(read-only instances API answered a valid success shape)")
 
           inst = module.instance_id()
           print("instance: stage=%s ok=%s" % (inst.get("stage"), inst.get("ok")))
           if not inst.get("ok"):
-              print("::error title=WAAPI probe::instance stage=%s http=%s" % (
-                  inst.get("stage"), inst.get("http")))
+              print("::error title=WAAPI probe::instance stage=%s http=%s — "
+                    "create/link an instance in the waapi.app console (scan "
+                    "the WhatsApp QR), then re-run this workflow" % (
+                        inst.get("stage"), inst.get("http")))
               sys.exit(1)
 
           status = module.client_status(inst["instance_id"])
