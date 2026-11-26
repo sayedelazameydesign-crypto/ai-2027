@@ -59,8 +59,7 @@ _QWEN_ENV_VARS = (
 )
 
 _EXPECTED_ENDPOINT = (
-    "https://ws-fixture-001.ap-southeast-1.maas.aliyuncs.com"
-    "/compatible-mode/v1/chat/completions"
+    "https://ws-fixture-001.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1/chat/completions"
 )
 
 
@@ -368,8 +367,7 @@ def test_region_and_workspace_come_from_the_environment(
 
     provider = create_qwen_model_studio_provider(transport=_ExplodingTransport())
     assert provider.endpoint_url == (
-        "https://ws-env-42.cn-beijing.maas.aliyuncs.com"
-        "/compatible-mode/v1/chat/completions"
+        "https://ws-env-42.cn-beijing.maas.aliyuncs.com/compatible-mode/v1/chat/completions"
     )
     assert provider.model == "qwen-env-model"
 

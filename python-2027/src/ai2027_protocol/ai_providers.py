@@ -524,9 +524,7 @@ def create_qwen_model_studio_provider(
             "cannot be built without your workspace id."
         )
     if not _WORKSPACE_ID_RE.match(resolved_workspace):
-        raise ValueError(
-            "DASHSCOPE_WORKSPACE_ID must be hostname-safe (letters, digits, hyphens)."
-        )
+        raise ValueError("DASHSCOPE_WORKSPACE_ID must be hostname-safe (letters, digits, hyphens).")
     resolved_region = (region or os.environ.get("DASHSCOPE_REGION", "")).strip() or "ap-southeast-1"
     if not _REGION_RE.match(resolved_region):
         raise ValueError(
