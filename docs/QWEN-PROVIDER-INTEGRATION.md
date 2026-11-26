@@ -14,11 +14,16 @@
 | المفتاح | `DASHSCOPE_API_KEY` في ترويسة `Authorization: Bearer` | [Model service overview](https://docs.modelstudio.console.alibabacloud.com/en/model-studio/what-is-model-studio) |
 | base_url | `https://{WorkspaceId}.{region}.maas.aliyuncs.com/compatible-mode/v1` | [Overview + Chat docs] (كما في الأعلى) |
 | المناطق | `ap-southeast-1` (الأكثر ظهوراً في الأمثلة)، `cn-beijing`، وغيرها — حسب المنطقة | [Responses API docs](https://help.aliyun.com/en/model-studio/compatibility-with-openai-responses-api) |
-| النماذج | التوثيق الرسمي يعرض **`qwen3.8-max`**؛ البلاغات التشغيلية تذكر **`qwen4-max`** — **لا قيمة افتراضية مُعلنة** | قائمة النماذج: https://www.alibabacloud.com/help/model-studio/getting-started/models |
-| التسعير | رصيد مجاني ثم مدفوع — **لا ضمان مجاني** | سياسة الحساب في Model Studio |
+| النماذج | **`qwen4-max`** (GA2026-11-16، سياق1M) هو الأحدث والأرخص؛ ما زال متاحاً **`qwen3.8-max`** — **لا قيمة افتراضية مُعلنة** | قائمة النماذج: https://www.alibabacloud.com/help/model-studio/getting-started/models |
+| التسعير (سنغافورة) | `qwen4-max`: **$1.50 / $4.50** لكل1M مدخلات/مخرجات (أرخص25% من `qwen3.8-max` $2/$6)؛ قراءة الكاش $0.075 لكل1M | https://www.alibabacloud.com/en/campaign/qwen-ai-landing-page |
+| الحصة المجانية | **1M رمز مجاناً /90 يوماً** (حسابات سنغافورة فقط)؛ تنتهي ولا تُعاد | نفس الصفحة |
+| **Free Quota Only** | إعداد في Console **مُعطَّل افتراضياً**: عند تفعيله تتوقف الخدمة عند انتهاء الحصة **بدلاً من** التحويل التلقائي إلى الدفع — **فعّله إذا كنت تريد حماية من الفوترة غير المقصودة** | إعدادات Model Studio في Console |
 
 **القرار المبني على ذلك**: `QWEN_MODEL` مطلوب بلا افتراض (المعرّفات تدور)،
 والمزوّد يُصنَّف `UNKNOWN_COST` ويُوضع في `NON_RECLASSIFIABLE_PROVIDERS`.
+لأن السقف المالي (`MAX_SPEND`) **لا يُستهلك** من هذه النداءات (لا تقدير تكلفة)،
+أُقرن التفويض بـ**حد يومي قابل للقياس**: `AI2027_UNKNOWN_COST_DAILY_LIMIT`
+(الافتراضي5 نداءات مكتملة/يوم UTC، و`0` يعني الرفض حتى عند `ALLOW_UNKNOWN_COST=1`).
 
 ## 2. خريطة التكامل (كلها إضافية — لا عقد مكسور)
 

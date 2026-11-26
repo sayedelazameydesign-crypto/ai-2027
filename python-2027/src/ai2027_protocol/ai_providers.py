@@ -487,9 +487,10 @@ def create_qwen_model_studio_provider(
       quota and then charges, so it is classified ``UNKNOWN_COST`` only —
       admitted under ``MAX_SPEND=0`` never, and only via an explicit
       non-zero budget otherwise (``NON_RECLASSIFIABLE_PROVIDERS``).
-    * It has NO default model. Official docs advertised ``qwen3.8-max`` while
-      operators report ``qwen4-max``; ids rotate, so ``QWEN_MODEL`` must be
-      set explicitly from the account's model list.
+    * It has NO default model. ``qwen4-max`` (GA 2026-11-16) is current and
+      cheaper than ``qwen3.8-max``, but ids rotate, so ``QWEN_MODEL`` must be
+      set explicitly from the account's model list — no silent guess at a
+      model or cost tier.
     * The endpoint is ``https://{WorkspaceId}.{region}.maas.aliyuncs.com/
       compatible-mode/v1/chat/completions`` per the official OpenAI-compatible
       docs; ``DASHSCOPE_WORKSPACE_ID`` is required and ``DASHSCOPE_REGION``
@@ -512,9 +513,9 @@ def create_qwen_model_studio_provider(
     resolved_model = (model or os.environ.get("QWEN_MODEL", "")).strip()
     if not resolved_model:
         raise MissingProviderConfigError(
-            "QWEN_MODEL is required: Model Studio model ids rotate (official docs "
-            "showed qwen3.8-max; accounts may serve qwen4-max). Set it to an id "
-            "from your account's model list."
+            "QWEN_MODEL is required: Model Studio model ids rotate (qwen4-max "
+            "is current as of 2026-11; qwen3.8-max still exists). Set it to an "
+            "id from your account's model list — no default is guessed."
         )
     resolved_workspace = (workspace_id or os.environ.get("DASHSCOPE_WORKSPACE_ID", "")).strip()
     if not resolved_workspace:

@@ -61,6 +61,11 @@ class BudgetSnapshot(StrictModel):
     unknown_cost_blocked: int = Field(default=0, ge=0)
     paid_blocked: int = Field(default=0, ge=0)
     api_key_never_implies_free: bool = True
+    #: Measurable bound on unknown-cost admissions: the dollar ceiling cannot
+    #: consume calls that carry no estimate, so the ledger also reports the
+    #: daily limit and today's completed count.
+    unknown_cost_daily_call_limit: int = Field(default=5, ge=0)
+    unknown_cost_admitted_today: int = Field(default=0, ge=0)
 
 
 class ProviderStatus(StrictModel):

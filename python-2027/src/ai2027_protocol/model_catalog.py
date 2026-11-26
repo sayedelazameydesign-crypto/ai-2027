@@ -39,8 +39,8 @@ MODEL_ENV_VARS: dict[ProviderKind, str] = {
     # and unverifiable. `OMNIROUTERS_MODEL` must be set explicitly.
     ProviderKind.OMNIROUTERS: "OMNIROUTERS_MODEL",
     # Qwen (Alibaba Cloud Model Studio) also has NO default model: ids rotate
-    # (official docs advertised qwen3.8-max while operators report qwen4-max),
-    # and the service is free-quota-then-paid, not free-guaranteed.
+    # (qwen4-max is current as of 2026-11; qwen3.8-max still exists), and the
+    # service is free-quota-then-paid, not free-guaranteed.
     # `QWEN_MODEL` must be set explicitly.
     ProviderKind.QWEN: "QWEN_MODEL",
 }

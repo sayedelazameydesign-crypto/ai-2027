@@ -113,6 +113,7 @@ NON_SECRET_SETTINGS: tuple[tuple[str, str], ...] = (
     ("AI2027_READ_ONLY", "1 = refuse every write"),
     ("AI2027_FREE_MODELS", "Extra model ids declared free by the operator"),
     ("AI2027_ALLOW_UNKNOWN_COST", "1 = permit UNKNOWN_COST calls (authorisation, not a ceiling)"),
+    ("AI2027_UNKNOWN_COST_DAILY_LIMIT", "default 5; daily count cap for unknown-cost calls (0 = refuse)"),
     ("OPENROUTER_MODEL", "OpenRouter model id (must be openrouter/free or *:free)"),
     ("GROQ_MODEL", "Groq model id"),
     ("GEMINI_MODEL", "Gemini model id"),
