@@ -81,11 +81,10 @@ def _qwen_provider() -> OpenAICompatibleFreeProvider:
 
 
 def _open_guard(limit: int | None = None, *, max_spend: float = 10.0) -> BudgetGuard:
-    policy = BudgetPolicy(
-        max_spend_usd=max_spend,
-        allow_unknown_cost=True,
-        **({} if limit is None else {"unknown_cost_daily_call_limit": limit}),
-    )
+    kwargs: dict[str, Any] = {}
+    if limit is not None:
+        kwargs["unknown_cost_daily_call_limit"] = limit
+    policy = BudgetPolicy(max_spend_usd=max_spend, allow_unknown_cost=True, **kwargs)
     return BudgetGuard(policy)
 
 
