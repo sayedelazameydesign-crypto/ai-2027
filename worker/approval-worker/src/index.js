@@ -310,7 +310,13 @@ export default {
       }
       return json({ error: "not_found" }, 404);
     } catch (err) {
-      return json({ error: String(err && err.message || err) }, 500);
+      // Never stringify the exception itself: String(err) includes the
+      // stack trace in V8 and would leak it to the client (CodeQL
+      // stack-trace exposure). Only the plain message may leave, and a
+      // missing message becomes a fixed token.
+      const detail = err && typeof err.message === "string" ? err.message
+                                                             : "internal_error";
+      return json({ error: detail }, 500);
     }
   },
 };

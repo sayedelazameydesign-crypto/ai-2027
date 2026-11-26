@@ -25,6 +25,7 @@ from __future__ import annotations
 import inspect
 from collections.abc import Mapping
 from typing import Any
+from urllib.parse import urlparse
 
 import pytest
 
@@ -380,7 +381,12 @@ def test_region_defaults_to_ap_southeast_1() -> None:
         model="qwen-test-model",
         transport=_ExplodingTransport(),
     )
-    assert ".ap-southeast-1.maas.aliyuncs.com" in provider.endpoint_url
+    # Exact hostname comparison (never a substring check: CodeQL flags
+    # `"...host..." in url` as incomplete sanitization, and equality is
+    # the stronger assertion anyway).
+    assert urlparse(provider.endpoint_url).hostname == (
+        "ws-fixture-001.ap-southeast-1.maas.aliyuncs.com"
+    )
 
 
 def test_hostname_unsafe_workspace_or_region_is_refused() -> None:
