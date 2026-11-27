@@ -1,0 +1,93 @@
+name: Deploy CELIA Telegram (Apps Script)
+
+# Pushes integrations/apps-script/celia-telegram/ to the user's standalone
+# Apps Script project identified by the APPS_SCRIPT_ID secret. Free: Apps Script
+# is inside the Google quota and clasp is open source — no billing involved.
+#
+# One-time setup (user): `npm i -g @google/clasp`, `clasp login`, then copy the
+# contents of ~/.clasprc.json into a repository secret named CLASPRC_JSON.
+# Then run this workflow from main. It performs a `clasp push --force`, which
+# overwrites the project's files (including the default myFunction stub).
+
+on:
+  workflow_dispatch:
+    inputs:
+      label:
+        description: 'Version label (kept in Apps Script version history)'
+        required: true
+        default: 'CELIA Telegram integration'
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-celia-gas
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Push integration to Apps Script project
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+
+      - name: Require the main branch
+        run: |
+          test "${{ github.ref }}" = refs/heads/main || {
+            echo '::error::Production deployments must originate from main.'; exit 1; }
+
+      - name: Set up Node
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: ${{ vars.NODE_VERSION || '20' }}
+
+      - name: Confirm both identifiers are configured
+        env:
+          SCRIPT_ID: ${{ secrets.APPS_SCRIPT_ID }}
+          CLASPRC: ${{ secrets.CLASPRC_JSON }}
+        run: |
+          if [ -z "$SCRIPT_ID" ]; then
+            echo '::error::Add repository secret APPS_SCRIPT_ID (Apps Script → Project Settings → Script ID).'
+            exit 1
+          fi
+          if [ -z "$CLASPRC" ]; then
+            echo '::error::Add repository secret CLASPRC_JSON (contents of ~/.clasprc.json after `clasp login`).'
+            exit 1
+          fi
+          echo "Both identifiers are present. Values are not printed."
+
+      - name: Stage the bundle
+        run: |
+          mkdir -p gas
+          cp integrations/apps-script/celia-telegram/Code.gs gas/Code.gs
+          cp integrations/apps-script/celia-telegram/appsscript.json gas/appsscript.json
+
+      - name: Write clasp credentials
+        env:
+          CLASPRC: ${{ secrets.CLASPRC_JSON }}
+        run: |
+          umask 077
+          printf '%s' "$CLASPRC" > "$HOME/.clasprc.json"
+          echo "Credentials file written (mode 600). Contents never logged."
+
+      - name: Bind this folder to the Apps Script project
+        env:
+          SCRIPT_ID: ${{ secrets.APPS_SCRIPT_ID }}
+        run: printf '{"scriptId":"%s","rootDir":"gas"}\n' "$SCRIPT_ID" > .clasp.json
+
+      - name: Push gas/ to the project
+        run: npx --yes @google/clasp@2.4.2 push --force
+
+      - name: Create a version with the supplied label
+        env:
+          LABEL: ${{ inputs.label }}
+        run: npx --yes @google/clasp@2.4.2 version "$LABEL"
+
+      - name: Remove the credentials file
+        if: always()
+        run: rm -f "$HOME/.clasprc.json" .clasp.json

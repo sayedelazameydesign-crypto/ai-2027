@@ -70,6 +70,7 @@ _PROVIDER_ENV_LABELS = {
     "groq": "GROQ_API_KEY",
     "openrouter": "OPENROUTER_API_KEY",
     "omnirouters": "OMNIROUTERS_API_KEY",
+    "qwen": "DASHSCOPE_API_KEY",
     "deterministic": "—",
 }
 

@@ -458,6 +458,93 @@ def create_omnirouters_provider(
     )
 
 
+class MissingProviderConfigError(MissingProviderModelError):
+    """Required provider configuration (workspace, region, or model) is missing."""
+
+
+#: Hostname-safe shapes for the Model Studio endpoint parts. The values are
+#: interpolated into a URL hostname, so anything outside these sets is
+#: refused before a request can be attempted.
+_WORKSPACE_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9-]{0,62}$")
+_REGION_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
+
+
+def create_qwen_model_studio_provider(
+    *,
+    api_key: str | None = None,
+    workspace_id: str | None = None,
+    region: str | None = None,
+    model: str | None = None,
+    transport: AsyncHttpTransport | None = None,
+) -> OpenAICompatibleFreeProvider:
+    """Build an Alibaba Cloud Model Studio (Qwen) provider (OpenAI-compatible API).
+
+    Integration audit: docs recorded in ``docs/QWEN-PROVIDER-INTEGRATION.md``.
+
+    Deliberate properties, mirroring ``create_omnirouters_provider``:
+
+    * It accepts NO ``billing_tier`` parameter. Model Studio serves a free
+      quota and then charges, so it is classified ``UNKNOWN_COST`` only —
+      admitted under ``MAX_SPEND=0`` never, and only via an explicit
+      non-zero budget otherwise (``NON_RECLASSIFIABLE_PROVIDERS``).
+    * It has NO default model. ``qwen4-max`` (GA 2026-11-16) is current and
+      cheaper than ``qwen3.8-max``, but ids rotate, so ``QWEN_MODEL`` must be
+      set explicitly from the account's model list — no silent guess at a
+      model or cost tier.
+    * The endpoint is ``https://{WorkspaceId}.{region}.maas.aliyuncs.com/
+      compatible-mode/v1/chat/completions`` per the official OpenAI-compatible
+      docs; ``DASHSCOPE_WORKSPACE_ID`` is required and ``DASHSCOPE_REGION``
+      defaults to ``ap-southeast-1`` (the region the docs lead with).
+
+    Args:
+        api_key: ``DASHSCOPE_API_KEY`` value; falls back to the environment.
+        workspace_id: Model Studio workspace id; falls back to ``DASHSCOPE_WORKSPACE_ID``.
+        region: Endpoint region; falls back to ``DASHSCOPE_REGION``, then ``ap-southeast-1``.
+        model: Model id; falls back to ``QWEN_MODEL`` (required, no default).
+        transport: Injected HTTP transport for hermetic tests.
+
+    Returns:
+        A configured provider that the budget guard still evaluates per call.
+
+    Raises:
+        MissingProviderConfigError: The model or workspace id is missing.
+        ValueError: The workspace id or region is not hostname-safe.
+    """
+    resolved_model = (model or os.environ.get("QWEN_MODEL", "")).strip()
+    if not resolved_model:
+        raise MissingProviderConfigError(
+            "QWEN_MODEL is required: Model Studio model ids rotate (qwen4-max "
+            "is current as of 2026-11; qwen3.8-max still exists). Set it to an "
+            "id from your account's model list — no default is guessed."
+        )
+    resolved_workspace = (workspace_id or os.environ.get("DASHSCOPE_WORKSPACE_ID", "")).strip()
+    if not resolved_workspace:
+        raise MissingProviderConfigError(
+            "DASHSCOPE_WORKSPACE_ID is required: the OpenAI-compatible base_url is "
+            "https://{WorkspaceId}.{region}.maas.aliyuncs.com/compatible-mode/v1 and "
+            "cannot be built without your workspace id."
+        )
+    if not _WORKSPACE_ID_RE.match(resolved_workspace):
+        raise ValueError("DASHSCOPE_WORKSPACE_ID must be hostname-safe (letters, digits, hyphens).")
+    resolved_region = (region or os.environ.get("DASHSCOPE_REGION", "")).strip() or "ap-southeast-1"
+    if not _REGION_RE.match(resolved_region):
+        raise ValueError(
+            "DASHSCOPE_REGION must be hostname-safe (lowercase letters, digits, hyphens)."
+        )
+    endpoint = (
+        f"https://{resolved_workspace}.{resolved_region}.maas.aliyuncs.com"
+        "/compatible-mode/v1/chat/completions"
+    )
+    return OpenAICompatibleFreeProvider(
+        kind=ProviderKind.QWEN,
+        endpoint_url=endpoint,
+        api_key=api_key if api_key is not None else os.environ.get("DASHSCOPE_API_KEY", ""),
+        model=resolved_model,
+        env_var="DASHSCOPE_API_KEY",
+        transport=transport,
+    )
+
+
 class DeterministicFallbackProvider:
     """Zero-cost offline fallback explicitly marked as deterministic simulation."""
 

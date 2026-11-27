@@ -1,0 +1,138 @@
+name: Approval bot · Telegram (free tier)
+
+# Two-way Telegram approval loop over GitHub Actions secrets only
+# (docs/TELEGRAM-APPROVAL-RUNBOOK.md). The Bot API is free; this public
+# repo gets unlimited Actions minutes. Secrets never reach logs: values
+# are passed via env and the runner prints stage names only.
+#
+# schedule : one cards+votes cycle every 5 min (same cadence as
+#            APPROVAL_BOT_INTERVAL_SEC); card dedup + getUpdates offset
+#            persist in actions/cache (.bot-state.json).
+# dispatch : manual "test" proves delivery with one plain message.
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "test = proof message · run = cards+votes · welcome = auto-reply"
+        type: choice
+        options:
+          - test
+          - run
+          - welcome
+        default: test
+
+permissions:
+  contents: read
+
+concurrency:
+  group: approval-bot
+  cancel-in-progress: false  # never cancel mid-vote: state must stay consistent
+
+jobs:
+  bot:
+    name: ${{ github.event_name == 'schedule' && 'scheduled cycle' || 'manual run' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5
+        with:
+          persist-credentials: false
+
+      - name: Restore bot state (sent cards + Telegram offset)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: .bot-state.json
+          key: approval-bot-state-${{ github.run_id }}
+          restore-keys: |
+            approval-bot-state-
+
+      - name: Install runtime deps
+        run: python3 -m pip install --quiet gspread google-auth google-api-python-client
+
+      - name: Run (fail-closed preflight; secrets stay in env only)
+        env:
+          # Either naming works: canonical .env.example keys or TELEGRAM_*.
+          PA_APPROVAL_BOT_TOKEN: ${{ secrets.PA_APPROVAL_BOT_TOKEN || secrets.TELEGRAM_BOT_TOKEN }}
+          PA_APPROVAL_CHAT_ID: ${{ secrets.PA_APPROVAL_CHAT_ID || secrets.TELEGRAM_CHAT_ID }}
+          PA_APPROVAL_ALLOWED_SENDERS: ${{ secrets.PA_APPROVAL_ALLOWED_SENDERS || secrets.TELEGRAM_ALLOWED_SENDERS }}
+          PA_MEMORY_SHEET_ID: ${{ secrets.PA_MEMORY_SHEET_ID }}
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+          PA_APPROVAL_API_BASE: https://api.telegram.org
+          PA_WAAPI_NOTIFY: "0"  # WhatsApp companion stays off (paid tier)
+          BOT_STATE_FILE: .bot-state.json
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            python3 scripts/approval_bot_ci.py --mode "${{ inputs.mode }}"
+          else
+            python3 scripts/approval_bot_ci.py --mode run
+          fi
+
+      # Failure-only diagnostics: identify the token's bot (getMe), report
+      # which chat ids exist — chat ids are not credentials; the token
+      # itself is never printed (redaction also guards the script output).
+      # Failure-only: a foreign webhook blocks getUpdates (409) and made
+      # earlier "no messages" readings unreliable — inspect + remove it,
+      # keeping queued updates (no drop_pending_updates), then rediscover.
+      - name: Clear webhook + rediscover (diagnostic)
+        if: failure()
+        env:
+          PA_APPROVAL_BOT_TOKEN: ${{ secrets.PA_APPROVAL_BOT_TOKEN || secrets.TELEGRAM_BOT_TOKEN }}
+        run: |
+          curl -sS --max-time 10 "https://api.telegram.org/bot${PA_APPROVAL_BOT_TOKEN}/getWebhookInfo" \
+            | python3 -c '
+          import json, sys, urllib.parse
+          d = json.load(sys.stdin)
+          if d.get("ok"):
+              r = d.get("result", {})
+              url = r.get("url") or ""
+              host = urllib.parse.urlparse(url).netloc if url else "-"
+              print("::notice title=webhook-info::url_host=%s has_url=%s pending=%s last_error=%s"
+                    % (host, bool(url), r.get("pending_update_count", 0),
+                       (r.get("last_error_date") or "-")))
+          else:
+              print("::notice title=webhook-info::getWebhookInfo failed: %s" % d.get("description"))
+          '
+          curl -sS --max-time 10 "https://api.telegram.org/bot${PA_APPROVAL_BOT_TOKEN}/deleteWebhook" \
+            | python3 -c '
+          import json, sys
+          d = json.load(sys.stdin)
+          print("::notice title=webhook-clear::delete ok=%s desc=%s"
+                % (d.get("ok"), d.get("description", "-")))
+          '
+
+      - name: Discover chat id (diagnostic)
+        if: failure()
+        env:
+          PA_APPROVAL_BOT_TOKEN: ${{ secrets.PA_APPROVAL_BOT_TOKEN || secrets.TELEGRAM_BOT_TOKEN }}
+        run: |
+          curl -sS --max-time 10 "https://api.telegram.org/bot${PA_APPROVAL_BOT_TOKEN}/getMe" \
+            | python3 -c '
+          import json, sys
+          d = json.load(sys.stdin)
+          if d.get("ok"):
+              r = d["result"]
+              print("::notice title=bot-identity::this token belongs to @%s (id=%s)" % (r.get("username"), r.get("id")))
+          else:
+              print("::notice title=bot-identity::getMe failed: %s" % d.get("description"))
+          '
+          curl -sS --max-time 10 "https://api.telegram.org/bot${PA_APPROVAL_BOT_TOKEN}/getUpdates" \
+            | python3 -c '
+          import json, sys
+          d = json.load(sys.stdin)
+          ids = set()
+          for u in d.get("result", []):
+              for key in ("message", "edited_message", "channel_post"):
+                  m = u.get(key) or {}
+                  c = m.get("chat") or {}
+                  if c.get("id") is not None:
+                      ids.add((c["id"], c.get("type", "?"), c.get("username") or "-"))
+          if ids:
+              for i, typ, user in sorted(ids):
+                  print("::notice title=chat-discovery::found chat id=%s type=%s username=@%s" % (i, typ, user))
+              print("::notice title=chat-discovery::put the FIRST id into PA_APPROVAL_CHAT_ID")
+          else:
+              print("::notice title=chat-discovery::no messages yet - open t.me/CELIAFASHIONBOT and press Start, then say اختبار")
+          '
