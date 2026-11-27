@@ -47,36 +47,29 @@ jobs:
           PROBE_WAAPI_API_TOKEN: ${{ secrets.WAAPI_API_TOKEN }}
           PROBE_PA_APPROVAL_BOT_TOKEN: ${{ secrets.PA_APPROVAL_BOT_TOKEN }}
           PROBE_TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          PROBE_TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
-          PROBE_TELEGRAM_API_TOKEN: ${{ secrets.TELEGRAM_API_TOKEN }}
-          PROBE_TELEGRAM_BOT_API_TOKEN: ${{ secrets.TELEGRAM_BOT_API_TOKEN }}
-          PROBE_BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
-          PROBE_BOT_API_TOKEN: ${{ secrets.BOT_API_TOKEN }}
-          PROBE_TG_TOKEN: ${{ secrets.TG_TOKEN }}
-          PROBE_TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
-          PROBE_CELIA_BOT_TOKEN: ${{ secrets.CELIA_BOT_TOKEN }}
-          PROBE_CELIA_TOKEN: ${{ secrets.CELIA_TOKEN }}
-          PROBE_CELIA_TELEGRAM_TOKEN: ${{ secrets.CELIA_TELEGRAM_TOKEN }}
-          PROBE_CELIAFASHIONBOT_TOKEN: ${{ secrets.CELIAFASHIONBOT_TOKEN }}
-          PROBE_CELIA_FASHION_BOT_TOKEN: ${{ secrets.CELIA_FASHION_BOT_TOKEN }}
-          PROBE_CELIAFASHION_BOT_TOKEN: ${{ secrets.CELIAFASHION_BOT_TOKEN }}
-          PROBE_FASHION_BOT_TOKEN: ${{ secrets.FASHION_BOT_TOKEN }}
-          PROBE_FASHIONBOT_TOKEN: ${{ secrets.FASHIONBOT_TOKEN }}
+          PROBE_PA-APPROVAL-BOT-TOKEN: ${{ secrets[format('PA-APPROVAL-BOT-TOKEN')] }}
+          PROBE_TELEGRAM-BOT-TOKEN: ${{ secrets[format('TELEGRAM-BOT-TOKEN')] }}
+          PROBE_BOT-TOKEN: ${{ secrets[format('BOT-TOKEN')] }}
+          PROBE_telegram_bot_token: ${{ secrets[format('telegram_bot_token')] }}
+          PROBE_bot_token: ${{ secrets[format('bot_token')] }}
+          PROBE_pa_approval_bot_token: ${{ secrets[format('pa_approval_bot_token')] }}
+          PROBE_TELEGRAMBOT_TOKEN: ${{ secrets.TELEGRAMBOT_TOKEN }}
+          PROBE_TELEGRAM_BOT: ${{ secrets.TELEGRAM_BOT }}
+          PROBE_CELIABOT_TOKEN: ${{ secrets.CELIABOT_TOKEN }}
+          PROBE_CELIABOT: ${{ secrets.CELIABOT }}
+          PROBE_CELIA_FASHIONBOT_TOKEN: ${{ secrets.CELIA_FASHIONBOT_TOKEN }}
+          PROBE_CELIAFASHIONBOT: ${{ secrets.CELIAFASHIONBOT }}
+          PROBE_FASHIONBOT: ${{ secrets.FASHIONBOT }}
+          PROBE_MY_BOT: ${{ secrets.MY_BOT }}
+          PROBE_AI2027_BOT_TOKEN: ${{ secrets.AI2027_BOT_TOKEN }}
+          PROBE_P1_APPROVAL_BOT_TOKEN: ${{ secrets.P1_APPROVAL_BOT_TOKEN }}
+          PROBE_WATCHER_BOT_TOKEN: ${{ secrets.WATCHER_BOT_TOKEN }}
+          PROBE_PROJECT_BOT_TOKEN: ${{ secrets.PROJECT_BOT_TOKEN }}
+          PROBE_APPROVAL_TOKEN: ${{ secrets.APPROVAL_TOKEN }}
           PROBE_PA_APPROVAL_TOKEN: ${{ secrets.PA_APPROVAL_TOKEN }}
-          PROBE_APPROVAL_BOT_TOKEN: ${{ secrets.APPROVAL_BOT_TOKEN }}
-          PROBE_PA_BOT_TOKEN: ${{ secrets.PA_BOT_TOKEN }}
-          PROBE_PA_TELEGRAM_BOT_TOKEN: ${{ secrets.PA_TELEGRAM_BOT_TOKEN }}
-          PROBE_TELEGRAM_BOT_KEY: ${{ secrets.TELEGRAM_BOT_KEY }}
-          PROBE_BOT_KEY: ${{ secrets.BOT_KEY }}
-          PROBE_API_TOKEN: ${{ secrets.API_TOKEN }}
-          PROBE_TOKEN: ${{ secrets.TOKEN }}
-          PROBE_MY_BOT_TOKEN: ${{ secrets.MY_BOT_TOKEN }}
-          PROBE_BOT_FATHER_TOKEN: ${{ secrets.BOT_FATHER_TOKEN }}
-          PROBE_BOTFATHER_TOKEN: ${{ secrets.BOTFATHER_TOKEN }}
-          PROBE_PA_APPROVAL_CHAT_ID: ${{ secrets.PA_APPROVAL_CHAT_ID }}
-          PROBE_TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          PROBE_CHAT_ID: ${{ secrets.CHAT_ID }}
-          PROBE_CELIA_CHAT_ID: ${{ secrets.CELIA_CHAT_ID }}
+          PROBE_PA_TELEGRAM_TOKEN: ${{ secrets.PA_TELEGRAM_TOKEN }}
+          PROBE_PA_CHAT_ID: ${{ secrets.PA_CHAT_ID }}
+          PROBE_PA_APPROVAL_CHAT: ${{ secrets.PA_APPROVAL_CHAT }}
         run: |
           found=""
           for var in $(compgen -e | grep '^PROBE_'); do
