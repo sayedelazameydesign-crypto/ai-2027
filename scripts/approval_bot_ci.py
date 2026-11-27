@@ -176,6 +176,11 @@ def main(argv: Optional[List[str]] = None) -> int:
         print("preflight failed — missing configuration (names only):")
         for name in missing:
             print("  - %s" % name)
+        # Surface the NAMES as a workflow annotation so the run page (and
+        # the API) show exactly what to create — values never appear here.
+        if os.getenv("GITHUB_ACTIONS") == "true":
+            print("::error title=approval-bot preflight::missing"
+                  " configuration (names only): %s" % " · ".join(missing))
         print("see docs/TELEGRAM-APPROVAL-RUNBOOK.md (Actions secrets)")
         return 2
 

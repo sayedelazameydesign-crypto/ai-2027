@@ -49,7 +49,7 @@ ENV_KEYS = (
     "PA_APPROVAL_CHAT_ID", "TELEGRAM_CHAT_ID",
     "PA_APPROVAL_ALLOWED_SENDERS", "TELEGRAM_ALLOWED_SENDERS",
     "PA_MEMORY_SHEET_ID", "GOOGLE_SERVICE_ACCOUNT_JSON",
-    "GOOGLE_SERVICE_ACCOUNT", "BOT_STATE_FILE",
+    "GOOGLE_SERVICE_ACCOUNT", "BOT_STATE_FILE", "GITHUB_ACTIONS",
 )
 
 
@@ -102,6 +102,17 @@ class TestPreflight(unittest.TestCase):
         self.assertEqual(rc, 2)
         self.assertIn("PA_APPROVAL_CHAT_ID", out)  # name is printed
         self.assertNotIn("SUPER-SECRET-TOKEN-VALUE", out)  # value never
+
+    def test_main_preflight_emits_annotation_in_actions(self):
+        with clean_env():
+            os.environ["GITHUB_ACTIONS"] = "true"
+            buffer = io.StringIO()
+            with contextlib.redirect_stdout(buffer):
+                rc = ci.main(["--mode", "test"])
+        out = buffer.getvalue()
+        self.assertEqual(rc, 2)
+        self.assertIn("::error title=approval-bot preflight::", out)
+        self.assertIn("PA_APPROVAL_BOT_TOKEN", out)
 
 
 class TestAliases(unittest.TestCase):
