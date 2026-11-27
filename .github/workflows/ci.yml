@@ -143,6 +143,8 @@ jobs:
           tests.test_routing_profiles
           tests.test_proactive_watcher
           tests.test_approval_bot
+          tests.test_approval_bot_ci
+          tests.test_approval_bot_workflow
           tests.test_governed_executor
           tests.test_ed25519
           tests.test_passkey_interop

@@ -7,13 +7,13 @@ runner the workflow calls.
 
 Modes:
   test  send one plain proof message        (bot token + chat id)
-  run   one full cycle: cards + votes       (+ sheet id + service account)
+  run   one full cycle: cards + votes       (+ allowed senders + sheet id + service account)
 
 Fail-closed rules:
   * missing required secrets -> print the missing NAMES (never values),
     exit 2;
-  * empty PA_APPROVAL_ALLOWED_SENDERS -> every vote will be denied
-    (by design, AD-004) — loud notice, not a failure;
+  * empty PA_APPROVAL_ALLOWED_SENDERS -> run preflight exits 2;
+    the runtime voter also denies all senders when its list is empty;
   * no secret value is ever printed, logged, or written to disk.
 
 Exit codes: 0 success · 1 runtime failure · 2 configuration/preflight.
@@ -25,7 +25,6 @@ import json
 import os
 import pathlib
 import sys
-import urllib.error
 from typing import Any, Dict, List, Optional, Tuple
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -68,6 +67,10 @@ def preflight(mode: str) -> List[str]:
     if not chat:
         missing.append("PA_APPROVAL_CHAT_ID (or TELEGRAM_CHAT_ID)")
     if mode == "run":
+        senders, _ = resolve("PA_APPROVAL_ALLOWED_SENDERS",
+                             "TELEGRAM_ALLOWED_SENDERS")
+        if not any(sender.strip() for sender in senders.split(",")):
+            missing.append("PA_APPROVAL_ALLOWED_SENDERS (or TELEGRAM_ALLOWED_SENDERS)")
         if not os.getenv("PA_MEMORY_SHEET_ID", "").strip():
             missing.append("PA_MEMORY_SHEET_ID")
         raw, _ = resolve("GOOGLE_SERVICE_ACCOUNT_JSON",
@@ -153,7 +156,8 @@ def mode_run(state_file: pathlib.Path) -> int:
                    {"sent": sorted(bot.state_snapshot()["sent"]),
                     "offset": prior_offset})
         print("stage=cycle ok=false reason=%s" % type(exc).__name__)
-        print("error=%s" % str(exc)[:300])
+        # Exception messages may contain request URLs, credentials or row data.
+        # Emit classification only; do not rely on token-pattern redaction.
         return 1
 
     save_state(state_file, bot.state_snapshot())
@@ -195,12 +199,6 @@ def mode_welcome() -> int:
     return 0
 
 
-def redact(text: str) -> str:
-    """Strip anything token-shaped before it can reach a log or annotation."""
-    import re
-    return re.sub(r"bot\d+:[A-Za-z0-9_-]{8,}", "[redacted-token]", text)
-
-
 def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(
         description="Telegram approval bot — CI runner (fail-closed)")
@@ -208,6 +206,8 @@ def main(argv: Optional[List[str]] = None) -> int:
                         default="test",
                         help="test: proof message · run: cards + votes"
                              " cycle · welcome: auto-reply loop")
+    parser.add_argument("--preflight-only", action="store_true",
+                        help="validate configuration without imports, network or state I/O")
     args = parser.parse_args(argv)
 
     apply_aliases()
@@ -224,10 +224,9 @@ def main(argv: Optional[List[str]] = None) -> int:
         print("see docs/TELEGRAM-APPROVAL-RUNBOOK.md (Actions secrets)")
         return 2
 
-    if args.mode == "run" and not resolve(
-            "PA_APPROVAL_ALLOWED_SENDERS", "TELEGRAM_ALLOWED_SENDERS")[0]:
-        print("notice: PA_APPROVAL_ALLOWED_SENDERS is empty — every vote"
-              " will be denied (fail-closed by design, AD-004)")
+    if args.preflight_only:
+        print("stage=preflight ok=true mode=%s" % args.mode)
+        return 0
 
     state_file = pathlib.Path(
         os.getenv("BOT_STATE_FILE", ".bot-state.json")).expanduser()
@@ -239,21 +238,11 @@ def main(argv: Optional[List[str]] = None) -> int:
         return mode_run(state_file)
     except Exception as exc:  # noqa: BLE001 — classified below, never leaked
         print("stage=runner ok=false reason=%s" % type(exc).__name__)
-        detail = str(exc)
-        if isinstance(exc, urllib.error.HTTPError):
-            # The provider's description lives in the body — the only place
-            # that says "chat not found" vs other 400s. Redacted below.
-            try:
-                detail = "%s | body=%s" % (
-                    detail, exc.read().decode("utf-8", "replace")[:300])
-            except Exception:  # noqa: BLE001 — body may be unreadable
-                pass
-        print("error=%s" % redact(detail)[:400])
-        # Surface the failure on the run page (job logs may be unreachable);
-        # redacted first — a token must never reach an annotation.
+        # Provider bodies and arbitrary exception strings can contain secrets,
+        # personal data or workflow annotation commands. Never log them.
         if os.getenv("GITHUB_ACTIONS") == "true":
-            print("::error title=approval-bot::%s: %s"
-                  % (type(exc).__name__, redact(detail)[:400]))
+            print("::error title=approval-bot::runtime failure (%s); "
+                  "see docs/TELEGRAM-APPROVAL-RUNBOOK.md" % type(exc).__name__)
         return 1
 
 
