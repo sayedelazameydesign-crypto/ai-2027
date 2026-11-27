@@ -40,51 +40,6 @@ jobs:
         with:
           persist-credentials: false
 
-      # TEMPORARY diagnostic (branch only): which candidate secret/vars
-      # NAMES are non-empty — names only, values never printed.
-      - name: Probe names (secrets + vars)
-        env:
-          PROBE_WAAPI_API_TOKEN: ${{ secrets.WAAPI_API_TOKEN }}
-          PROBE_PA_APPROVAL_BOT_TOKEN: ${{ secrets.PA_APPROVAL_BOT_TOKEN }}
-          PROBE_TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          PROBE_TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
-          PROBE_BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
-          PROBE_BOT_API_TOKEN: ${{ secrets.BOT_API_TOKEN }}
-          PROBE_TG_TOKEN: ${{ secrets.TG_TOKEN }}
-          PROBE_TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
-          PROBE_CELIA_BOT_TOKEN: ${{ secrets.CELIA_BOT_TOKEN }}
-          PROBE_CELIA_TOKEN: ${{ secrets.CELIA_TOKEN }}
-          PROBE_CELIAFASHIONBOT_TOKEN: ${{ secrets.CELIAFASHIONBOT_TOKEN }}
-          PROBE_CELIA_FASHION_BOT_TOKEN: ${{ secrets.CELIA_FASHION_BOT_TOKEN }}
-          PROBE_FASHION_BOT_TOKEN: ${{ secrets.FASHION_BOT_TOKEN }}
-          PROBE_APPROVAL_BOT_TOKEN: ${{ secrets.APPROVAL_BOT_TOKEN }}
-          PROBE_PA_APPROVAL_TOKEN: ${{ secrets.PA_APPROVAL_TOKEN }}
-          PROBE_NOTIFY_TOKEN: ${{ secrets.NOTIFY_TOKEN }}
-          PROBE_NOTIFICATION_TOKEN: ${{ secrets.NOTIFICATION_TOKEN }}
-          PROBE_ALERT_BOT_TOKEN: ${{ secrets.ALERT_BOT_TOKEN }}
-          PROBE_API_TOKEN: ${{ secrets.API_TOKEN }}
-          PROBE_TOKEN: ${{ secrets.TOKEN }}
-          PROBE_VARS_TELEGRAM_BOT_TOKEN: ${{ vars.TELEGRAM_BOT_TOKEN }}
-          PROBE_VARS_BOT_TOKEN: ${{ vars.BOT_TOKEN }}
-          PROBE_VARS_TELEGRAM_TOKEN: ${{ vars.TELEGRAM_TOKEN }}
-          PROBE_VARS_PA_APPROVAL_BOT_TOKEN: ${{ vars.PA_APPROVAL_BOT_TOKEN }}
-          PROBE_VARS_CELIA_BOT_TOKEN: ${{ vars.CELIA_BOT_TOKEN }}
-          PROBE_VARS_TELEGRAM_CHAT_ID: ${{ vars.TELEGRAM_CHAT_ID }}
-          PROBE_VARS_CHAT_ID: ${{ vars.CHAT_ID }}
-          PROBE_VARS_PA_APPROVAL_CHAT_ID: ${{ vars.PA_APPROVAL_CHAT_ID }}
-        run: |
-          found=""
-          for var in $(compgen -e | grep '^PROBE_'); do
-            if [ -n "$(printenv "$var" 2>/dev/null)" ]; then
-              found="${found}${found:+ · }${var#PROBE_}"
-            fi
-          done
-          if [ -n "$found" ]; then
-            echo "::notice title=name-probe::NON-EMPTY: ${found}"
-          else
-            echo "::notice title=name-probe::NONE of the candidates exist"
-          fi
-
       - name: Restore bot state (sent cards + Telegram offset)
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
@@ -112,36 +67,4 @@ jobs:
             python3 scripts/approval_bot_ci.py --mode "${{ inputs.mode }}"
           else
             python3 scripts/approval_bot_ci.py --mode run
-          fi
-
-  probe-production-environment:
-    # TEMPORARY diagnostic (branch only): names scoped to Environment
-    # "production" — invisible unless the job declares the environment.
-    runs-on: ubuntu-latest
-    timeout-minutes: 3
-    environment: production
-    steps:
-      - name: Probe production-env names (names only)
-        env:
-          PROBE_WAAPI_API_TOKEN: ${{ secrets.WAAPI_API_TOKEN }}
-          PROBE_PA_APPROVAL_BOT_TOKEN: ${{ secrets.PA_APPROVAL_BOT_TOKEN }}
-          PROBE_TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          PROBE_TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
-          PROBE_BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
-          PROBE_CELIA_BOT_TOKEN: ${{ secrets.CELIA_BOT_TOKEN }}
-          PROBE_CELIAFASHIONBOT_TOKEN: ${{ secrets.CELIAFASHIONBOT_TOKEN }}
-          PROBE_PA_APPROVAL_CHAT_ID: ${{ secrets.PA_APPROVAL_CHAT_ID }}
-          PROBE_TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          PROBE_CHAT_ID: ${{ secrets.CHAT_ID }}
-        run: |
-          found=""
-          for var in $(compgen -e | grep '^PROBE_'); do
-            if [ -n "$(printenv "$var" 2>/dev/null)" ]; then
-              found="${found}${found:+ · }${var#PROBE_}"
-            fi
-          done
-          if [ -n "$found" ]; then
-            echo "::notice title=env-probe::NON-EMPTY: ${found}"
-          else
-            echo "::notice title=env-probe::NONE (production env holds no matching name)"
           fi
