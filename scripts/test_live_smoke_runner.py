@@ -32,7 +32,9 @@ def _load_runner():
 
 sm = _load_runner()
 
-NOW = datetime(2026, 11, 26, 12, 0, 0, tzinfo=timezone.utc)
+# Wall-clock reference: approval rows expire NOW+24h against real time,
+# so a fixed date turns this suite into a time bomb (it did, twice).
+NOW = datetime.now(timezone.utc)
 
 
 def audit_row(prev: str, self_hash: str, width: int = 25):
