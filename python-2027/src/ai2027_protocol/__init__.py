@@ -153,6 +153,12 @@ from .provider_scoring import (
     ProviderScore,
     ProviderScorecard,
 )
+from .research_experiment import (
+    ExperimentRunner,
+    ExperimentSpec,
+    Hypothesis,
+    VerificationThresholds,
+)
 from .router import AllProvidersFailedError, FreeFirstRouter, RouterConfig
 from .routing_profiles import (
     CAPABILITY_VOCABULARY,
@@ -340,4 +346,8 @@ __all__ = [
     "default_cases",
     "default_verifier",
     "fingerprint_text",
+    "ExperimentRunner",
+    "ExperimentSpec",
+    "Hypothesis",
+    "VerificationThresholds",
 ]

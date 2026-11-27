@@ -24,6 +24,11 @@ from .research_contracts import (
     TestEvidence,
     parse_paper_identifier,
 )
+from .research_experiment_store import (
+    experiment_results_schema,
+    list_experiment_results,
+    record_experiment_result,
+)
 from .research_ledger import ResearchAuditLedger
 from .research_store_errors import (
     ResearchConflictError,
@@ -149,6 +154,7 @@ class ResearchStore:
         with self._connect() as connection:
             connection.execute("PRAGMA journal_mode = WAL")
             connection.executescript(_SCHEMA)
+            connection.executescript(experiment_results_schema())
             connection.commit()
         if os.name != "nt" and self.path.exists():
             self.path.chmod(0o600)
@@ -500,14 +506,23 @@ class ResearchStore:
         reason: str | None = None,
         evidence: TestEvidence | None = None,
         actor: str = "human",
+        proof: str | None = None,
     ) -> ResearchRecord:
-        """Move a candidate to tested/rejected only with the required independent evidence."""
+        """Move a candidate to tested/rejected only with the required independent evidence.
+
+        A human decision is a privileged write: ``actor="human"`` is never granted
+        automatically. Callers acting on behalf of a human must supply a non-empty
+        ``proof`` token, so an unauthenticated or proxied request cannot mint a
+        "human" decision into the tamper-evident audit chain.
+        """
         try:
             status = ResearchStatus(status)
         except ValueError as exc:
             raise ResearchTransitionError("Decision status must be tested or rejected.") from exc
         if status is ResearchStatus.CANDIDATE:
             raise ResearchTransitionError("A decision must be tested or rejected, not candidate.")
+        if actor == "human" and not (proof and proof.strip()):
+            raise ResearchTransitionError("A human decision requires an authenticated proof token.")
         if status is ResearchStatus.TESTED:
             if evidence is None or not evidence.gates.all_passed:
                 raise ResearchTransitionError(
@@ -558,6 +573,38 @@ class ResearchStore:
         finally:
             connection.close()
         return self.get_by_key(current.paper.paper_key)
+
+    def record_experiment_result(
+        self, raw_identifier: str, evidence: TestEvidence, *, actor: str = "agent"
+    ) -> int:
+        """Persist every result (incl. failures) durably; ``tested`` needs :meth:`decide`."""
+        connection = self._connect()
+        try:
+            connection.execute("BEGIN IMMEDIATE")
+            self._assert_integrity(connection)
+            paper_key = self._record_for_identifier(connection, raw_identifier).paper.paper_key
+            result_id = record_experiment_result(connection, paper_key, evidence, actor)
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
+        return result_id
+
+    def list_experiment_results(
+        self, raw_identifier: str, *, limit: int = 50
+    ) -> tuple[dict[str, Any], ...]:
+        """Return durable, auditable experiment results for a paper."""
+        if not 1 <= limit <= 200:
+            raise ValueError("limit must be between 1 and 200.")
+        connection = self._connect()
+        try:
+            self._assert_integrity(connection)
+            paper_key = self._record_for_identifier(connection, raw_identifier).paper.paper_key
+            return list_experiment_results(connection, paper_key, limit=limit)
+        finally:
+            connection.close()
 
     def audit_report(self, *, limit: int = 200) -> dict[str, Any]:
         """Verify the full local chain and return a bounded tail for human review."""

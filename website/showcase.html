@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI-2027 Studio — عرض ذاتي</title>
+<meta name="description" content="AI-2027 Agent Studio — عرض ذاتي: ما هو، مميزاته، طبقاته، ودوره Evidence-First. عرضية توضيحية فقط، لا أفعال حقيقية.">
+<style>
+:root{
+  --bg:#06090f; --bg2:#0b1120; --card:#0e1626; --line:#1c2942;
+  --txt:#e6edf7; --dim:#8fa1bd; --acc:#00e5a0; --acc2:#38bdf8; --acc3:#a78bfa; --warn:#fbbf24;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--txt);font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;overflow-x:hidden;line-height:1.6}
+.bg{position:fixed;inset:0;z-index:-1;background:
+  radial-gradient(55% 45% at 15% 5%,rgba(0,229,160,.09),transparent 60%),
+  radial-gradient(45% 40% at 90% 12%,rgba(56,189,248,.10),transparent 60%),
+  radial-gradient(40% 40% at 50% 100%,rgba(167,139,250,.07),transparent 60%),
+  var(--bg)}
+nav{position:sticky;top:0;z-index:50;display:flex;align-items:center;justify-content:space-between;padding:14px 28px;background:rgba(6,9,15,.78);backdrop-filter:blur(14px);border-bottom:1px solid var(--line)}
+.logo{font-weight:800;font-size:19px;letter-spacing:.4px}
+.logo b{color:var(--acc)}
+nav .links{display:flex;gap:20px;align-items:center}
+nav a{color:var(--dim);text-decoration:none;font-size:14px;transition:.2s}
+nav a:hover{color:var(--txt)}
+.badge-top{font-size:12px;color:var(--acc);border:1px solid var(--line);border-radius:99px;padding:5px 14px;background:rgba(0,229,160,.06)}
+.hero{max-width:1120px;margin:0 auto;padding:104px 28px 72px;text-align:center}
+.eyebrow{display:inline-block;padding:6px 16px;border:1px solid var(--line);border-radius:99px;font-size:13px;color:var(--acc);background:rgba(0,229,160,.06);margin-bottom:26px}
+h1{font-size:clamp(38px,6.5vw,72px);line-height:1.06;font-weight:900;letter-spacing:-1.2px}
+h1 .grad{background:linear-gradient(120deg,var(--acc),var(--acc2),var(--acc3));-webkit-background-clip:text;background-clip:text;color:transparent}
+.hero p{max-width:680px;margin:28px auto 0;color:var(--dim);font-size:19px}
+.cta{display:flex;gap:14px;justify-content:center;margin-top:40px;flex-wrap:wrap}
+.btn{display:inline-block;padding:11px 22px;border-radius:10px;font-weight:600;font-size:14px;text-decoration:none;transition:.2s;border:1px solid var(--line);color:var(--txt);background:var(--card)}
+.btn:hover{transform:translateY(-2px);border-color:var(--acc)}
+.btn.primary{background:linear-gradient(135deg,var(--acc),#00b8d4);color:#04121a;border:none}
+.note{margin-top:26px;font-size:12.5px;color:var(--dim);opacity:.85}
+.note b{color:var(--warn)}
+section{max-width:1120px;margin:0 auto;padding:76px 28px}
+h2{font-size:clamp(26px,4vw,38px);font-weight:800;letter-spacing:-.5px;margin-bottom:12px}
+.sub{color:var(--dim);font-size:16px;margin-bottom:44px;max-width:660px;line-height:1.7}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:18px}
+.card{background:var(--bg2);border:1px solid var(--line);border-radius:16px;padding:26px 24px;transition:.2s}
+.card:hover{transform:translateY(-3px);border-color:var(--acc)}
+.card .ic{width:46px;height:46px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:22px;background:var(--card);border:1px solid var(--line);margin-bottom:16px}
+.card h3{font-size:17px;margin-bottom:8px}
+.card p{font-size:14px;color:var(--dim);line-height:1.6}
+.layers{display:flex;flex-wrap:wrap;gap:14px}
+.layer{flex:1;min-width:150px;background:var(--bg2);border:1px solid var(--line);border-radius:14px;padding:20px;position:relative;overflow:hidden}
+.layer .lv{font-size:12px;color:var(--acc);font-weight:700;letter-spacing:1px}
+.layer h4{font-size:16px;margin:6px 0}
+.layer p{font-size:13px;color:var(--dim)}
+.cycle{display:flex;gap:0;align-items:stretch;justify-content:space-between;flex-wrap:wrap;background:var(--bg2);border:1px solid var(--line);border-radius:18px;padding:34px 26px}
+.step{flex:1;min-width:110px;text-align:center;position:relative;padding:10px 6px}
+.step .n{width:48px;height:48px;margin:0 auto 12px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;background:var(--card);border:1px solid var(--line);color:var(--acc);position:relative;z-index:2}
+.step:not(:last-child)::after{content:"";position:absolute;top:34px;inset-inline-start:calc(50% + 28px);width:calc(100% - 56px);height:2px;background:linear-gradient(90deg,var(--acc),transparent);z-index:1}
+.step h4{font-size:14px;margin-bottom:4px}
+.step p{font-size:12px;color:var(--dim);line-height:1.5}
+.demo-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:18px;margin-top:8px}
+.demo{background:var(--bg2);border:1px solid var(--line);border-radius:16px;padding:26px}
+.demo .tag{font-size:11px;color:var(--acc2);border:1px solid var(--line);border-radius:99px;padding:3px 12px;display:inline-block;margin-bottom:14px}
+.demo h3{font-size:16px;margin-bottom:10px}
+.demo p{font-size:13.5px;color:var(--dim)}
+.demo ul{margin:14px 0 0 0;padding-inline-start:18px;color:var(--dim);font-size:13.5px}
+.demo li{margin-bottom:6px}
+.bar{height:8px;border-radius:99px;background:var(--card);border:1px solid var(--line);overflow:hidden;margin-top:14px}
+.bar i{display:block;height:100%;background:linear-gradient(90deg,var(--acc),var(--acc2));border-radius:99px}
+.statline{display:flex;gap:14px;justify-content:center;flex-wrap:wrap;margin-top:18px}
+.stat{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 26px;min-width:120px;text-align:center}
+.stat b{display:block;font-size:26px;color:var(--acc)}
+.stat span{color:var(--dim);font-size:12.5px}
+footer{max-width:1120px;margin:60px auto 0;padding:40px 28px;border-top:1px solid var(--line);text-align:center;color:var(--dim);font-size:14px}
+footer b{color:var(--txt)}
+.pill-row{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:30px}
+.pill{font-size:12px;color:var(--dim);border:1px solid var(--line);border-radius:99px;padding:6px 14px;background:var(--bg2)}
+@media(max-width:680px){.step:not(:last-child)::after{display:none}}
+</style>
+</head>
+<body>
+<div class="bg"></div>
+
+<nav>
+  <div class="logo">AI<b>-2027</b> Studio</div>
+  <div class="links">
+    <a href="#features">المميزات</a>
+    <a href="#layers">الطبقات</a>
+    <a href="#cycle">الدورة</a>
+    <a href="#caps">الإمكانيات</a>
+    <span class="badge-top">عرض ذاتي</span>
+  </div>
+</nav>
+
+<header class="hero">
+  <span class="eyebrow">● عرض ذاتي — Evidence-First Agent Studio</span>
+  <h1>عالم <span class="grad">AI-2027</span> <br>يُعرِّف نفسه بنفسه</h1>
+  <p>هذا عرض ذاتي. يُظهر AI-2027 Agent Studio ما هو، وما مميزاته، وكيف يعمل — بأسلوب واضح ومدروس. كل ما هنا <b>عرضي توضيحي</b>؛ لا يُنفّذ أفعالاً حقيقية، ولا يتصل بأي خدمة خلفية.</p>
+  <div class="cta">
+    <a class="btn primary" href="#features">تعرّف على المميزات</a>
+    <a class="btn" href="#cycle">اطلع على الدورة</a>
+  </div>
+  <p class="note">⚠ <b>تنبيه:</b> هذه الصفحة عرضية توضيحية فقط. لا تقوم بأي فعل حقيقي، ولا تُنفّذ agent، ولا تستهلك أي API.</p>
+</header>
+
+<section id="features">
+  <h2>مميزاته — ما يُقدمه AI-2027 Studio</h2>
+  <p class="sub">عرض موجز للمميزات الأساسية. الوصف عرضي، يوضح طبيعة النظام دون تنفيذ.</p>
+  <div class="grid">
+    <div class="card"><div class="ic">🧠</div><h3>عقل Evidence-First</h3><p>دورة فهم → خطة → سياسة → تنفيذ → تحقق → دليل. لا يُسمح بأي "إنجاز" دون دليل مُعاد قراءته بشكل مستقل.</p></div>
+    <div class="card"><div class="ic">🧩</div><h3>طبقات مترابطة</h3><p>Kernel وMemory وLLMs وConnectors في بنية موحدة — كل طبقة تُدار خلف نفس واجهة الأداة.</p></div>
+    <div class="card"><div class="ic">🛡️</div><h3>جدار سياسة</h3><p>فحص الأذونات قبل التنفيذ. محاولة الخروج عن الحدود تُرفض مع سبب مسجل.</p></div>
+    <div class="card"><div class="ic">🔍</div><h3>محقق مستقل</h3><p>لا يثق المنفذ في نفسه. المحقق يعيد قراءة العالم ويعيد حساب الدلائل قبل إصدار VERIFIED.</p></div>
+    <div class="card"><div class="ic">🔗</div><h3>مركز Connectors</h3><p>توصيل أنظمة خارجية عبر جسر موحد، مع عزل وحدود صلاحيات واضحة.</p></div>
+    <div class="card"><div class="ic">🎛️</div><h3>إشراف بشري</h3><p>موافقات متعددة الحدود — لا كتابة من النموذج دون موافقة صريحة مسجلة.</p></div>
+    <div class="card"><div class="ic">📊</div><h3>ميزانية قابلة للقياس</h3><p>كلفة تُحسب بدقة، وتعطل الإنفاق غير المعروف — لا رسوم خفية، لا إنفاق غير مصرّح.</p></div>
+    <div class="card"><div class="ic">🗂️</div><h3>ذاكرة مثبتة</h3><p>تخزين واسترجاع للنتائج، مع رفض الضجيج وحماية من التلوث.</p></div>
+  </div>
+</section>
+
+<section id="layers">
+  <h2>طبقاته — بنية موحدة</h2>
+  <p class="sub">AI-2027 مقسّم إلى طبقات، من النواة إلى الواجهات. العرض التالي توضيحي لهيكل النظام.</p>
+  <div class="layers">
+    <div class="layer"><div class="lv">L0</div><h4>النواة</h4><p>المنطق الأساسي: Goal → Planner → Policy → Executor → Verifier → Evidence.</p></div>
+    <div class="layer"><div class="lv">L1</div><h4>الذاكرة</h4><p>تخزين واسترجاع للنتائج والتجارب.</p></div>
+    <div class="layer"><div class="lv">L4</div><h4>LLMs مجانيون أولاً</h4><p>Ollama محلياً + مزوّدين خارجيين، مختار بحسب الميزانية.</p></div>
+    <div class="layer"><div class="lv">L5</div><h4>مركز Connectors</h4><p>جسور للأنظمة الخارجية ضمن حدود الصلاحية.</p></div>
+  </div>
+</section>
+
+<section id="cycle">
+  <h2>دورة Evidence-First</h2>
+  <p class="sub">الفلسفة الأساسية: لا ادعاء دون دليل. كل مرحلة تؤدي إلى التالية، ولا تنتقل دون تحقق.</p>
+  <div class="cycle">
+    <div class="step"><div class="n">1</div><h4>فهم</h4><p>تحليل الهدف</p></div>
+    <div class="step"><div class="n">2</div><h4>خطة</h4><p>قائمة خطوات علنية</p></div>
+    <div class="step"><div class="n">3</div><h4>سياسة</h4><p>فحص الإذن</p></div>
+    <div class="step"><div class="n">4</div><h4>تنفيذ</h4><p>أدوات مسموح بها فقط</p></div>
+    <div class="step"><div class="n">5</div><h4>تحقق</h4><p>فحص مستقل</p></div>
+    <div class="step"><div class="n">6</div><h4>دليل</h4><p>تسجيل المخرجات</p></div>
+    <div class="step"><div class="n">7</div><h4>تقرير</h4><p>نجاحات وفشل</p></div>
+  </div>
+  <div class="statline">
+    <div class="stat"><b>7</b><span>مراحل</span></div>
+    <div class="stat"><b>0</b><span>ادعاءات بلا دليل</span></div>
+    <div class="stat"><b>∞</b><span>رفض دون سبب</span></div>
+  </div>
+</section>
+
+<section id="caps">
+  <h2>إمكانياته — عرض توضيحي</h2>
+  <p class="sub">ما يُظهره النظام. كل عنصر أدناه <b>وصف عرضي</b>، ولا يُنفّذ عملاً فعلياً من هذه الصفحة.</p>
+  <div class="demo-row">
+    <div class="demo">
+      <span class="tag">عرض توضيحي</span>
+      <h3>حلقة متعددة الخطوات</h3>
+      <p>يعرض سلسلة خطوات مترابطة: يخطط، ثم يطلب الإذن، ثم يُظهر نتيجة كل خطوة.</p>
+      <ul>
+        <li>خطوات علنية وواضحة</li>
+        <li>تسلسل منظم مع تسجيل</li>
+        <li>عرضي — لا تنفيذ فعلي</li>
+      </ul>
+      <div class="bar"><i style="width:72%"></i></div>
+      <p class="note" style="margin-top:8px">نسبة توضيحية فقط</p>
+    </div>
+    <div class="demo">
+      <span class="tag">عرض توضيحي</span>
+      <h3>جدار السياسة</h3>
+      <p>يعرض كيف تُفحص الطلبات قبل السماح بها، وكيف يُرفض ما يتجاوز الحدود.</p>
+      <ul>
+        <li>فحص مسبق للأذونات</li>
+        <li>رفض مع سبب مسجل</li>
+        <li>عرضي — لا تنفيذ فعلي</li>
+      </ul>
+      <div class="bar"><i style="width:88%"></i></div>
+      <p class="note" style="margin-top:8px">نسبة توضيحية فقط</p>
+    </div>
+    <div class="demo">
+      <span class="tag">عرض توضيحي</span>
+      <h3>مخططات HTML/SVG</h3>
+      <p>يعرض مخرجات بصرية (مخططات، جداول، رسوم) كمثال على أنواع الدلائل المسجلة.</p>
+      <ul>
+        <li>مخرجات بصرية متنوعة</li>
+        <li>مثال على أنواع الأدلة</li>
+        <li>عرضي — لا تنفيذ فعلي</li>
+      </ul>
+      <div class="bar"><i style="width:64%"></i></div>
+      <p class="note" style="margin-top:8px">نسبة توضيحية فقط</p>
+    </div>
+  </div>
+  <div class="pill-row">
+    <span class="pill">✓ لا اتصال بخدمة خلفية</span>
+    <span class="pill">✓ لا استهلاك API</span>
+    <span class="pill">✓ لا كتابة على disk</span>
+    <span class="pill">✓ عرض ذاتي فقط</span>
+  </div>
+</section>
+
+<footer>
+  <p><b>AI-2027 Agent Studio</b> — عرض ذاتي. هذا المعرض يوضح طبيعة النظام ومميزاته.</p>
+  <p style="margin-top:8px">صفحة عرضية توضيحية · لا تقوم بأفعال حقيقية · مدعومة على GitHub Pages (مجاناً)</p>
+</footer>
+
+<script>
+// عرض توضيحي ثابت فقط — لا تنفيذ حقيقي، لا اتصال بخدمة خلفية، لا fetch.
+// كل ما هنا تأثيرات بصرية محلية داخل الصفحة.
+(function(){
+  // إضافة تأثير خفيف عند التمرير (تمييز المراحل) — محلي بالكامل.
+  var steps = document.querySelectorAll('.step .n');
+  if ('IntersectionObserver' in window && steps.length) {
+    var io = new IntersectionObserver(function(entries){
+      entries.forEach(function(e){
+        if (e.isIntersecting) {
+          e.target.style.boxShadow = '0 0 0 3px rgba(0,229,160,.25)';
+          setTimeout(function(){ e.target.style.boxShadow = ''; }, 1400);
+        }
+      });
+    }, { threshold: 0.5 });
+    steps.forEach(function(s){ io.observe(s); });
+  }
+})();
+</script>
+</body>
+</html>
