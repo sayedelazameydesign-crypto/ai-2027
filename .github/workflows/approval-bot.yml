@@ -69,8 +69,9 @@ jobs:
             python3 scripts/approval_bot_ci.py --mode run
           fi
 
-      # TEMPORARY (branch): on failure, report which chat ids the bot can
-      # actually see — chat ids are not credentials; the token never prints.
+      # Failure-only diagnostics: identify the token's bot (getMe), report
+      # which chat ids exist — chat ids are not credentials; the token
+      # itself is never printed (redaction also guards the script output).
       - name: Discover chat id (diagnostic)
         if: failure()
         env:
