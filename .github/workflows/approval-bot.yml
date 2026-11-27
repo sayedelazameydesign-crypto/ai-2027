@@ -45,10 +45,6 @@ jobs:
       - name: Probe secret names (temporary)
         env:
           PROBE_WAAPI_API_TOKEN: ${{ secrets.WAAPI_API_TOKEN }}
-          PROBE_PA_APPROVAL_BOT_TOKEN: ${{ secrets.PA_APPROVAL_BOT_TOKEN }}
-          PROBE_TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          PROBE_PA-APPROVAL-BOT-TOKEN: ${{ secrets[format('PA-APPROVAL-BOT-TOKEN')] }}
-          PROBE_TELEGRAM-BOT-TOKEN: ${{ secrets[format('TELEGRAM-BOT-TOKEN')] }}
           PROBE_BOT-TOKEN: ${{ secrets[format('BOT-TOKEN')] }}
           PROBE_telegram_bot_token: ${{ secrets[format('telegram_bot_token')] }}
           PROBE_bot_token: ${{ secrets[format('bot_token')] }}
@@ -73,7 +69,7 @@ jobs:
         run: |
           found=""
           for var in $(compgen -e | grep '^PROBE_'); do
-            if [ -n "${!var}" ]; then
+            if [ -n "$(printenv "$var" 2>/dev/null)" ]; then
               found="${found}${found:+ · }${var#PROBE_}"
             fi
           done
