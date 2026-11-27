@@ -73,6 +73,36 @@ jobs:
       # Failure-only diagnostics: identify the token's bot (getMe), report
       # which chat ids exist — chat ids are not credentials; the token
       # itself is never printed (redaction also guards the script output).
+      # Failure-only: a foreign webhook blocks getUpdates (409) and made
+      # earlier "no messages" readings unreliable — inspect + remove it,
+      # keeping queued updates (no drop_pending_updates), then rediscover.
+      - name: Clear webhook + rediscover (diagnostic)
+        if: failure()
+        env:
+          PA_APPROVAL_BOT_TOKEN: ${{ secrets.PA_APPROVAL_BOT_TOKEN || secrets.TELEGRAM_BOT_TOKEN }}
+        run: |
+          curl -sS --max-time 10 "https://api.telegram.org/bot${PA_APPROVAL_BOT_TOKEN}/getWebhookInfo" \
+            | python3 -c '
+          import json, sys, urllib.parse
+          d = json.load(sys.stdin)
+          if d.get("ok"):
+              r = d.get("result", {})
+              url = r.get("url") or ""
+              host = urllib.parse.urlparse(url).netloc if url else "-"
+              print("::notice title=webhook-info::url_host=%s has_url=%s pending=%s last_error=%s"
+                    % (host, bool(url), r.get("pending_update_count", 0),
+                       (r.get("last_error_date") or "-")))
+          else:
+              print("::notice title=webhook-info::getWebhookInfo failed: %s" % d.get("description"))
+          '
+          curl -sS --max-time 10 "https://api.telegram.org/bot${PA_APPROVAL_BOT_TOKEN}/deleteWebhook" \
+            | python3 -c '
+          import json, sys
+          d = json.load(sys.stdin)
+          print("::notice title=webhook-clear::delete ok=%s desc=%s"
+                % (d.get("ok"), d.get("description", "-")))
+          '
+
       - name: Discover chat id (diagnostic)
         if: failure()
         env:
