@@ -288,6 +288,19 @@ class TelegramTransport:
             raise RuntimeError("telegram sendMessage failed: %s" % response)
         return str(response.get("result", {}).get("message_id", ""))
 
+    def send_text(self, text: str, chat_id: str = "") -> str:
+        """Send one plain message (test/ping path). Raises when unconfigured."""
+        if not self.configured:
+            raise RuntimeError(
+                "approval bot transport not configured "
+                "(PA_APPROVAL_BOT_TOKEN / PA_APPROVAL_CHAT_ID) — fail-closed"
+            )
+        payload = {"chat_id": chat_id or self.chat_id, "text": text}
+        response = self._post(self._url("sendMessage"), payload)
+        if not response.get("ok"):
+            raise RuntimeError("telegram sendMessage failed: %s" % response)
+        return str(response.get("result", {}).get("message_id", ""))
+
     def answer_callback(self, callback_query_id: str, text: str,
                         show_alert: bool = False) -> None:
         response = self._post(self._url("answerCallbackQuery"), {
@@ -300,6 +313,11 @@ class TelegramTransport:
 
     def fetch_updates(self, offset: Optional[int] = None,
                       timeout: int = 0) -> List[Dict[str, Any]]:
+        if not self.configured:
+            raise RuntimeError(
+                "approval bot transport not configured "
+                "(PA_APPROVAL_BOT_TOKEN / PA_APPROVAL_CHAT_ID) — fail-closed"
+            )
         params: Dict[str, Any] = {"timeout": timeout}
         if offset is not None:
             params["offset"] = offset
@@ -571,6 +589,23 @@ class ApprovalBot:
         self.gate = ApprovalGate(self.sheet, self.transport,
                                  allowed_senders=allowed_senders, now_fn=now_fn)
         self._offset: Optional[int] = None
+
+    def restore_state(self, sent_ids: Optional[List[str]] = None,
+                      offset: Optional[int] = None) -> None:
+        """Rehydrate cross-process state from a persistent store.
+
+        The CI runner (github actions) is stateless between cycles: sent-card
+        ids and the Telegram getUpdates offset live in an external store so a
+        new process neither re-sends a card nor re-answers an old callback.
+        """
+        if sent_ids:
+            self._sent_cards.update(str(i) for i in sent_ids)
+        if offset is not None:
+            self._offset = int(offset)
+
+    def state_snapshot(self) -> Dict[str, Any]:
+        """Serializable snapshot for the persistent store."""
+        return {"sent": sorted(self._sent_cards), "offset": self._offset}
 
     def run_once(self) -> Dict[str, Any]:
         """One loop: deliver new cards, then apply any pending callbacks."""

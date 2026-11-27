@@ -414,6 +414,17 @@ class TestTelegramTransport(unittest.TestCase):
         transport.fetch_updates(offset=7)
         self.assertIn("offset=7", calls[0])
 
+    def test_fetch_updates_unconfigured_fails_closed(self):
+        # No configured token -> refuse BEFORE any network call (the guard
+        # keeps an unconfigured daemon from spamming empty-token requests).
+        transport = ab.TelegramTransport(
+            bot_token="", chat_id="", api_base="https://tg.example",
+            http_get=lambda u: {"ok": True, "result": []},
+        )
+        self.assertFalse(transport.configured)
+        with self.assertRaises(RuntimeError):
+            transport.fetch_updates()
+
 
 class TestWaapiNotify(unittest.TestCase):
     """Phase 3 of docs/WAAPI-INTEGRATION-PLAN.md — WhatsApp companion."""

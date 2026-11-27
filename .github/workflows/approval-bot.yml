@@ -1,0 +1,70 @@
+name: Approval bot · Telegram (free tier)
+
+# Two-way Telegram approval loop over GitHub Actions secrets only
+# (docs/TELEGRAM-APPROVAL-RUNBOOK.md). The Bot API is free; this public
+# repo gets unlimited Actions minutes. Secrets never reach logs: values
+# are passed via env and the runner prints stage names only.
+#
+# schedule : one cards+votes cycle every 5 min (same cadence as
+#            APPROVAL_BOT_INTERVAL_SEC); card dedup + getUpdates offset
+#            persist in actions/cache (.bot-state.json).
+# dispatch : manual "test" proves delivery with one plain message.
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "test = one proof message · run = full cards+votes cycle"
+        type: choice
+        options:
+          - test
+          - run
+        default: test
+
+permissions:
+  contents: read
+
+concurrency:
+  group: approval-bot
+  cancel-in-progress: false  # never cancel mid-vote: state must stay consistent
+
+jobs:
+  bot:
+    name: ${{ github.event_name == 'schedule' && 'scheduled cycle' || 'manual run' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5
+        with:
+          persist-credentials: false
+
+      - name: Restore bot state (sent cards + Telegram offset)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: .bot-state.json
+          key: approval-bot-state-${{ github.run_id }}
+          restore-keys: |
+            approval-bot-state-
+
+      - name: Install runtime deps
+        run: python3 -m pip install --quiet gspread google-auth google-api-python-client
+
+      - name: Run (fail-closed preflight; secrets stay in env only)
+        env:
+          # Either naming works: canonical .env.example keys or TELEGRAM_*.
+          PA_APPROVAL_BOT_TOKEN: ${{ secrets.PA_APPROVAL_BOT_TOKEN || secrets.TELEGRAM_BOT_TOKEN }}
+          PA_APPROVAL_CHAT_ID: ${{ secrets.PA_APPROVAL_CHAT_ID || secrets.TELEGRAM_CHAT_ID }}
+          PA_APPROVAL_ALLOWED_SENDERS: ${{ secrets.PA_APPROVAL_ALLOWED_SENDERS || secrets.TELEGRAM_ALLOWED_SENDERS }}
+          PA_MEMORY_SHEET_ID: ${{ secrets.PA_MEMORY_SHEET_ID }}
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+          PA_APPROVAL_API_BASE: https://api.telegram.org
+          PA_WAAPI_NOTIFY: "0"  # WhatsApp companion stays off (paid tier)
+          BOT_STATE_FILE: .bot-state.json
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            python3 scripts/approval_bot_ci.py --mode "${{ inputs.mode }}"
+          else
+            python3 scripts/approval_bot_ci.py --mode run
+          fi
