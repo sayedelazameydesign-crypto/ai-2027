@@ -163,6 +163,12 @@ def mode_run(state_file: pathlib.Path) -> int:
     return 0
 
 
+def redact(text: str) -> str:
+    """Strip anything token-shaped before it can reach a log or annotation."""
+    import re
+    return re.sub(r"bot\d+:[A-Za-z0-9_-]{8,}", "[redacted-token]", text)
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(
         description="Telegram approval bot — CI runner (fail-closed)")
@@ -197,7 +203,12 @@ def main(argv: Optional[List[str]] = None) -> int:
         return mode_run(state_file)
     except Exception as exc:  # noqa: BLE001 — classified below, never leaked
         print("stage=runner ok=false reason=%s" % type(exc).__name__)
-        print("error=%s" % str(exc)[:300])
+        print("error=%s" % redact(str(exc))[:300])
+        # Surface the failure on the run page (job logs may be unreachable);
+        # redacted first — a token must never reach an annotation.
+        if os.getenv("GITHUB_ACTIONS") == "true":
+            print("::error title=approval-bot::%s: %s"
+                  % (type(exc).__name__, redact(str(exc))[:300]))
         return 1
 
 
