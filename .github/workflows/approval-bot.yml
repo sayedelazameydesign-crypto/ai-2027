@@ -76,6 +76,16 @@ jobs:
         env:
           PA_APPROVAL_BOT_TOKEN: ${{ secrets.PA_APPROVAL_BOT_TOKEN || secrets.TELEGRAM_BOT_TOKEN }}
         run: |
+          curl -sS --max-time 10 "https://api.telegram.org/bot${PA_APPROVAL_BOT_TOKEN}/getMe" \
+            | python3 -c '
+          import json, sys
+          d = json.load(sys.stdin)
+          if d.get("ok"):
+              r = d["result"]
+              print("::notice title=bot-identity::this token belongs to @%s (id=%s)" % (r.get("username"), r.get("id")))
+          else:
+              print("::notice title=bot-identity::getMe failed: %s" % d.get("description"))
+          '
           curl -sS --max-time 10 "https://api.telegram.org/bot${PA_APPROVAL_BOT_TOKEN}/getUpdates" \
             | python3 -c '
           import json, sys
