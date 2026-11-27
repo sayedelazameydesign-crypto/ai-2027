@@ -25,6 +25,7 @@ import json
 import os
 import pathlib
 import sys
+import urllib.error
 from typing import Any, Dict, List, Optional, Tuple
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -163,6 +164,12 @@ def mode_run(state_file: pathlib.Path) -> int:
     return 0
 
 
+def redact(text: str) -> str:
+    """Strip anything token-shaped before it can reach a log or annotation."""
+    import re
+    return re.sub(r"bot\d+:[A-Za-z0-9_-]{8,}", "[redacted-token]", text)
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(
         description="Telegram approval bot — CI runner (fail-closed)")
@@ -176,6 +183,11 @@ def main(argv: Optional[List[str]] = None) -> int:
         print("preflight failed — missing configuration (names only):")
         for name in missing:
             print("  - %s" % name)
+        # Surface the NAMES as a workflow annotation so the run page (and
+        # the API) show exactly what to create — values never appear here.
+        if os.getenv("GITHUB_ACTIONS") == "true":
+            print("::error title=approval-bot preflight::missing"
+                  " configuration (names only): %s" % " · ".join(missing))
         print("see docs/TELEGRAM-APPROVAL-RUNBOOK.md (Actions secrets)")
         return 2
 
@@ -192,7 +204,21 @@ def main(argv: Optional[List[str]] = None) -> int:
         return mode_run(state_file)
     except Exception as exc:  # noqa: BLE001 — classified below, never leaked
         print("stage=runner ok=false reason=%s" % type(exc).__name__)
-        print("error=%s" % str(exc)[:300])
+        detail = str(exc)
+        if isinstance(exc, urllib.error.HTTPError):
+            # The provider's description lives in the body — the only place
+            # that says "chat not found" vs other 400s. Redacted below.
+            try:
+                detail = "%s | body=%s" % (
+                    detail, exc.read().decode("utf-8", "replace")[:300])
+            except Exception:  # noqa: BLE001 — body may be unreadable
+                pass
+        print("error=%s" % redact(detail)[:400])
+        # Surface the failure on the run page (job logs may be unreachable);
+        # redacted first — a token must never reach an annotation.
+        if os.getenv("GITHUB_ACTIONS") == "true":
+            print("::error title=approval-bot::%s: %s"
+                  % (type(exc).__name__, redact(detail)[:400]))
         return 1
 
 

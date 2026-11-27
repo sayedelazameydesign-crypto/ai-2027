@@ -68,3 +68,40 @@ jobs:
           else
             python3 scripts/approval_bot_ci.py --mode run
           fi
+
+      # Failure-only diagnostics: identify the token's bot (getMe), report
+      # which chat ids exist — chat ids are not credentials; the token
+      # itself is never printed (redaction also guards the script output).
+      - name: Discover chat id (diagnostic)
+        if: failure()
+        env:
+          PA_APPROVAL_BOT_TOKEN: ${{ secrets.PA_APPROVAL_BOT_TOKEN || secrets.TELEGRAM_BOT_TOKEN }}
+        run: |
+          curl -sS --max-time 10 "https://api.telegram.org/bot${PA_APPROVAL_BOT_TOKEN}/getMe" \
+            | python3 -c '
+          import json, sys
+          d = json.load(sys.stdin)
+          if d.get("ok"):
+              r = d["result"]
+              print("::notice title=bot-identity::this token belongs to @%s (id=%s)" % (r.get("username"), r.get("id")))
+          else:
+              print("::notice title=bot-identity::getMe failed: %s" % d.get("description"))
+          '
+          curl -sS --max-time 10 "https://api.telegram.org/bot${PA_APPROVAL_BOT_TOKEN}/getUpdates" \
+            | python3 -c '
+          import json, sys
+          d = json.load(sys.stdin)
+          ids = set()
+          for u in d.get("result", []):
+              for key in ("message", "edited_message", "channel_post"):
+                  m = u.get(key) or {}
+                  c = m.get("chat") or {}
+                  if c.get("id") is not None:
+                      ids.add((c["id"], c.get("type", "?"), c.get("username") or "-"))
+          if ids:
+              for i, typ, user in sorted(ids):
+                  print("::notice title=chat-discovery::found chat id=%s type=%s username=@%s" % (i, typ, user))
+              print("::notice title=chat-discovery::put the FIRST id into PA_APPROVAL_CHAT_ID")
+          else:
+              print("::notice title=chat-discovery::no messages yet - open t.me/CELIAFASHIONBOT and press Start, then say اختبار")
+          '
