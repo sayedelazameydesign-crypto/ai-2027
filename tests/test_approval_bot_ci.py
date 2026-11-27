@@ -215,3 +215,73 @@ class TestTransportSendText(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class WelcomeModeTests(unittest.TestCase):
+    def _run_welcome(self, updates):
+        """Run mode_welcome with a fake transport; returns (rc, fake)."""
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "ci_under_test", ROOT / "scripts" / "approval_bot_ci.py")
+        ci = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(ci)
+
+        class FakeTransport:
+            def __init__(self):
+                self.sent = []
+                self.offsets = []
+
+            def fetch_updates(self, offset=None, timeout=0):
+                if offset is not None:
+                    self.offsets.append(offset)
+                    return []
+                return list(updates)
+
+            def send_text(self, text, chat_id=""):
+                self.sent.append((text, str(chat_id)))
+                return 42
+
+        fake = FakeTransport()
+        import types
+        fake_module = types.SimpleNamespace(
+            TelegramTransport=lambda: fake)
+        orig = ci._import_bot_module
+        ci._import_bot_module = lambda: fake_module
+        try:
+            with contextlib.redirect_stdout(io.StringIO()) as buf:
+                rc = ci.mode_welcome()
+            return rc, fake, buf.getvalue()
+        finally:
+            ci._import_bot_module = orig
+
+    def test_welcome_replies_to_start_and_confirms_offset(self):
+        updates = [{"update_id": 5,
+                    "message": {"chat": {"id": 777}, "text": "/start go"}}]
+        rc, fake, out = self._run_welcome(updates)
+        self.assertEqual(rc, 0)
+        self.assertEqual(len(fake.sent), 1)
+        text, chat_id = fake.sent[0]
+        self.assertEqual(chat_id, "777")
+        self.assertIn("مرحبا", text)
+        self.assertEqual(fake.offsets, [6])
+        self.assertIn("stage=welcome ok=true received=1 replied=1", out)
+
+    def test_welcome_replies_to_plain_text_and_skips_non_messages(self):
+        updates = [
+            {"update_id": 9,
+             "message": {"chat": {"id": 42}, "text": "مرحبا"}},
+            {"update_id": 10, "callback_query": {"id": "cb"}},  # no chat
+        ]
+        rc, fake, out = self._run_welcome(updates)
+        self.assertEqual(rc, 0)
+        self.assertEqual(len(fake.sent), 1)
+        self.assertEqual(fake.sent[0][1], "42")
+        self.assertEqual(fake.offsets, [11])
+        self.assertIn("received=2 replied=1", out)
+
+    def test_welcome_no_updates_is_a_noop_success(self):
+        rc, fake, out = self._run_welcome([])
+        self.assertEqual(rc, 0)
+        self.assertEqual(fake.sent, [])
+        self.assertEqual(fake.offsets, [])
+        self.assertIn("received=0 replied=0", out)

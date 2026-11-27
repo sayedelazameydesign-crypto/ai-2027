@@ -16,11 +16,12 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: "test = one proof message · run = full cards+votes cycle"
+        description: "test = proof message · run = cards+votes · welcome = auto-reply"
         type: choice
         options:
           - test
           - run
+          - welcome
         default: test
 
 permissions:

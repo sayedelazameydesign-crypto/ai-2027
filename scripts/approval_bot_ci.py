@@ -164,6 +164,37 @@ def mode_run(state_file: pathlib.Path) -> int:
     return 0
 
 
+def mode_welcome() -> int:
+    """Reply to whatever the user sent (welcome loop). Sender's chat id is
+    taken from the update itself — the stored PA_APPROVAL_CHAT_ID is only
+    needed for preflight/configured(); replies never target it."""
+    ab = _import_bot_module()
+    transport = ab.TelegramTransport()
+    updates = transport.fetch_updates() or []
+    replied = 0
+    for upd in updates:
+        msg = upd.get("message") or {}
+        chat = msg.get("chat") or {}
+        cid = chat.get("id")
+        if cid is None:
+            continue
+        text = str(msg.get("text") or "")
+        if text.startswith("/start"):
+            body = ("مرحباً! هذا بوت موافقات CELIA — يعمل الآن عبر "
+                    "GitHub Actions (مجاني). اكتب اختبار لتجربة المسار.")
+        else:
+            body = ("وصلت رسالتك ✓ — البوت حيّ ويرد عليك "
+                    "(اختبار الرد التلقائي).")
+        transport.send_text(body, chat_id=str(cid))
+        replied += 1
+    if updates:
+        offset = max(int(u.get("update_id", 0)) for u in updates) + 1
+        transport.fetch_updates(offset=offset)  # confirm: don't reply twice
+    print("stage=welcome ok=true received=%d replied=%d"
+          % (len(updates), replied))
+    return 0
+
+
 def redact(text: str) -> str:
     """Strip anything token-shaped before it can reach a log or annotation."""
     import re
@@ -173,8 +204,10 @@ def redact(text: str) -> str:
 def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(
         description="Telegram approval bot — CI runner (fail-closed)")
-    parser.add_argument("--mode", choices=("test", "run"), default="test",
-                        help="test: proof message · run: cards + votes cycle")
+    parser.add_argument("--mode", choices=("test", "run", "welcome"),
+                        default="test",
+                        help="test: proof message · run: cards + votes"
+                             " cycle · welcome: auto-reply loop")
     args = parser.parse_args(argv)
 
     apply_aliases()
@@ -201,6 +234,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     try:
         if args.mode == "test":
             return mode_test()
+        if args.mode == "welcome":
+            return mode_welcome()
         return mode_run(state_file)
     except Exception as exc:  # noqa: BLE001 — classified below, never leaked
         print("stage=runner ok=false reason=%s" % type(exc).__name__)
