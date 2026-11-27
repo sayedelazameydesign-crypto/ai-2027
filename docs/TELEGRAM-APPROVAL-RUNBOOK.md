@@ -1,147 +1,117 @@
-# Runbook: تشغيل بوت الموافقات عبر تيليجرام (والرفيق واتساب)
+# Runbook — بوت الموافقات عبر Telegram وGitHub Actions
 
-> **الحالة بعد التنفيذ (2026-11-27)**:
-> - `.env` جاهز في جذر المستودع (مُتجاهل من git — التحقق: `git check-ignore .env`) بجميع مفاتيح الأقسام 8–10.
-> - التبعيات مثبتة محلياً: `gspread 6.2.1` + `google-auth` + `google-api-python-client`.
-> - اختبار المنطق hermetic: **`python3 -m unittest tests.test_approval_bot` → 25/25 OK**.
-> - تجربة حية fail-closed (بلا توكنات): كل المسارات رفضت **بلا أي اتصال شبكة وبلا أي رسالة**:
->   `send_card` ✓ · `fetch_updates` ✓ (حُسِّن — كان يهمل الفحص) · allowlist فارغ = رفض ✓ · `waapi.notify_approval` = `notify_disabled` ✓.
+## 1. الحالة وحدود الإثبات (2026-11-27)
 
----
+- المشغّل: `scripts/approval_bot_ci.py`؛ الجدول: `.github/workflows/approval-bot.yml`.
+- التحقق المحلي الحالي: **53 اختباراً OK** لمنطق البوت والمشغّل وحماية workflow؛
+  اختبارات hermetic بلا شبكة أو مفاتيح حية. هذا ليس إثبات تشغيل Telegram أو Sheets.
+- تعليقات GitHub للتشغيل المجدول `46080120988` تسجل نقص
+  `PA_MEMORY_SHEET_ID` و`GOOGLE_SERVICE_ACCOUNT_JSON` (exit 2).
+- تعليقات التشغيل اليدوي `46080993577` تسجل `400: chat not found` (exit 1).
+  لا تُخلط هذه المشكلة مع إعداد Sheets. قرئت annotations؛ لم يُجلب سجل الوظيفة الكامل.
+- PR #190 مدمج، لكن الدمج ليس إثبات تشغيل حي. عند فحص `main` ما زال تشخيص
+  الفشل يحذف webhook ويكتشف المحادثات. إصلاح هذا الفرع لا يغيّر main قبل الدمج.
+- لا ادعاء بوجود `.env` محلي أو تثبيت تبعيات أو صلاحية أسرار غير متحقق منها.
 
-## 1. القاعدة المعمارية (لا تُكسر أبداً)
+## 2. الحدود الأمنية والتكلفة
 
-```
-أسرار GitHub Actions ──▶ مسار CI فقط (probes قراءة فقط)
-القيم تُلصق يدوياً في ‎.env ──▶ مسار النظام المحلي (البوت + المراقب + المنفّذ)
-```
-- **التوكنات تُلصق في ملف `.env` فقط — لا في الشات، لا في السجلات، لا في أي commit.**
-- `.env` مُتجاهل من git (`.gitignore:4`) — أبداً لا تزيل هذا السطر.
-- النظام **fail-closed** بكل بواباته: لا توكن = لا إرسال · allowlist فارغ = **لا أحد يصوّت** · توقيع غائب = لا تنفيذ.
-- **استثناء واحد — مسار CI (§8)**: الـworkflow المؤقت يقرأ الأسرار داخل job واحد وينتهي — النظام المحلي لا يرى الأسرار إطلاقاً، والتوكن لا يغادر GitHub أبداً.
+- في مسار Actions، ضع القيم في **Settings → Secrets and variables → Actions →
+  Secrets** فقط. لا في المحادثة أو المستودع أو السجلات أو browser URL/history.
+- موصل Google OAuth في Arena ليس اعتماداً لمشغّل Actions. `APPS_SCRIPT_ID`
+  ليس Sheet ID أو مفتاح حساب خدمة.
+- غياب إعداد إلزامي يعيد **exit 2** مع أسماء الإعدادات فقط. في وضع `run`
+  يرفض preflight أيضاً قائمة مصوتين فارغة أو محتوية على فواصل ومسافات فقط.
+  يظل رفض المصوتين غير المصرحين في runtime قائماً كطبقة مستقلة.
+- `PA_WAAPI_NOTIFY=0`: واتساب المدفوع غير مفعّل. لا ترقية أو اشتراك ضمن هذا الإجراء.
+- لا تشغّل أكثر من مستهلك polling لنفس البوت. لا تستعمل `welcome` أثناء
+  وجود موافقات معلقة: يؤكد التحديثات وقد يتجاوز callback مخصصاً لدورة الموافقات.
 
-## 2. ماذا تحصل عليه (ومع أين) — ثم تلصقه في `.env`
+## 3. الإعدادات حسب الوضع
 
-| # | القيمة | المصدر | مفتاح `.env` |
-|---|---|---|---|
-| 1 | توكن البوت | تيليجرام → `@BotFather` → `/newbot` → انسخ التوكن | `PA_APPROVAL_BOT_TOKEN` |
-| 2 | معرّف الشات (`chat_id`) | أرسل `/start` للبوت، ثم افتح:<br>`https://api.telegram.org/bot<TOKEN>/getUpdates` واقرأ `message.chat.id` (أرقام، قد يكون سالباً) | `PA_APPROVAL_CHAT_ID` |
-| 3 | معرّفك الشخصي (`user id`) | نفس الـgetUpdates → `message.from.id` (أو `@userinfobot`) | `PA_APPROVAL_ALLOWED_SENDERS` |
-| 4 | معرّف الورقة | ورقة Google فيها جدول `pa_approvals` (مشتركة مع المراقب) | `PA_MEMORY_SHEET_ID` |
-| 5 | حساب خدمة Google | Google Cloud → Service Accounts → مفتاح JSON · **ثم شارك الورقة مع البريد الإلكتروني للحساب (Editor)** | مسار الملف (انظر §4) |
-| 6 | (اختياري) رابط التصويت passkey | العامل `worker/approval-worker/` على Cloudflare | `PA_APPROVAL_VOTE_BASE_URL` + `PA_APPROVAL_SIGNING_PUBKEY` |
+| الإعداد | test / welcome | run |
+|---|---|---|
+| `PA_APPROVAL_BOT_TOKEN` أو `TELEGRAM_BOT_TOKEN` | إلزامي | إلزامي |
+| `PA_APPROVAL_CHAT_ID` أو `TELEGRAM_CHAT_ID` | إلزامي | إلزامي |
+| `PA_APPROVAL_ALLOWED_SENDERS` أو `TELEGRAM_ALLOWED_SENDERS` | غير مطلوب | قائمة غير فارغة إلزامية |
+| `PA_MEMORY_SHEET_ID` | غير مطلوب | إلزامي؛ ورقة الذاكرة القائمة لا سجل التقارير |
+| `GOOGLE_SERVICE_ACCOUNT_JSON` | غير مطلوب | JSON لحساب الخدمة؛ شارك الورقة مع `client_email` كـEditor |
 
-> **القاعدة 3** (المصاغة فشلاً): أضف معرّفك إلى `PA_APPROVAL_ALLOWED_SENDERS` (افصل بفواصل). بدونه تصلك البطاقة لكن **صوتك يُرفَض**.
+الأسماء canonical تسبق aliases. قائمة المصوتين معرّفات **مستخدمين** مفصولة
+بفواصل؛ لا تضع `chat_id` لمجموعة مكان user ID ولا تختَر أول محادثة مكتشفة
+تلقائياً. preflight يتحقق من وجود الإعداد وشكل JSON الأساسي، وليس صلاحية
+المفتاح أو وجود الورقة أو أذونات المشاركة أو ملكية هوية Telegram.
 
-## 3. اختبارات قبل التشغيل (دقيقة واحدة)
+## 4. الاستعادة الآمنة بالترتيب
+
+1. إذا كان workflow القديم لا يزال مفعلاً على main، عطّله مؤقتاً من واجهة
+   Actions حتى تتوقف محاولات التشخيص التي تغيّر webhook أو تكشف بيانات المحادثات.
+   لا يعني ذكر هذه الخطوة أن التعطيل نُفّذ بالفعل.
+2. راجع تعديل workflow واختباراته ثم ادمجه عبر PR؛ لا تعديل مباشر على main.
+3. افتح محادثة **البوت المقصود** وأرسل `/start`. حدّد معرّف المحادثة الصحيحة
+   بطريقة موثوقة وخاصة واضبط `PA_APPROVAL_CHAT_ID`. لا تنشر مخرجات getUpdates
+   في سجلات عامة، ولا تضع token في رابط متصفح. لا يُصحح chat ID آلياً من قائمة
+   عشوائية. إذا لم تتوفر قناة تحقق خاصة، توقف واطلب مساعدة المالك.
+4. بعد دمج الإصلاح أعد تمكين workflow عند الاستعداد للاختبار (تعطيل workflow
+   يمنع التشغيل اليدوي أيضاً)، ثم شغّل `mode=test`. يجب أن تصل رسالة proof
+   إلى المحادثة المقصودة فعلياً. يمكن أن يفشل الجدول المغلق بإعدادات ناقصة
+   أثناء الإعداد؛ لا يحاول الإصلاح الجديد تشخيص Telegram عند ذلك.
+5. أضف معرّف ورقة الذاكرة وحساب الخدمة وقائمة المصوتين، وشارك الورقة مع
+   حساب الخدمة. الـworkflow يقرأ `secrets` لا `vars`.
+6. شغّل `mode=run` يدوياً. راجع `stage=cycle ok=true` ووصول بطاقة موافقة
+   **حقيقية مقصودة**، ثم تحقق مستقلاً من أثر صوت المستخدم المصرّح في الورقة
+   وسجل التدقيق. لا تُنشئ موافقة مصطنعة لإظهار نجاح التكامل.
+7. راقب دورة مجدولة تالية قبل إعلان الاستعادة. نجاح test أو welcome أو
+   اختبار محلي لا يثبت Sheets أو التصويت أو التنفيذ النهائي.
+
+## 5. الفحص المبكر وحفظ الحالة
 
 ```bash
-cd /path/to/ai-2027
-# أ) منطق الموافقات كاملاً (بلا شبكة، بلا توكنات):
-python3 -m unittest tests.test_approval_bot        # → 25 tests OK
-
-# ب) رفض حي (يظهر أن المسارات مغلقة بلا قيم):
-python3 - <<'PY'
-import os, pathlib, sys
-for line in pathlib.Path(".env").read_text().splitlines():
-    s = line.strip()
-    if s and not s.startswith("#") and "=" in s:
-        k, v = s.split("=", 1); os.environ.setdefault(k.strip(), v.strip())
-sys.path.insert(0, "src/watchers")
-import approval_bot
-try:
-    approval_bot.TelegramTransport().send_card({"text": "x", "buttons": []})
-    print("FAIL: أُرسلت رسالة بلا توكن!")
-except RuntimeError as e:
-    print("OK fail-closed:", e)
-PY
+# stdlib فقط. يفحص بيئة العملية ولا يستورد البوت أو يقرأ/يكتب state أو يتصل بالشبكة.
+# لا يحمّل .env تلقائياً؛ لا تضع قيماً سرية مباشرة في الأمر.
+python3 scripts/approval_bot_ci.py --mode run --preflight-only
 ```
 
-## 4. تشغيل دورة واحدة (run_once) ثم التشغيل المستمر
+- exit 0 يعني اجتياز **الفحص البنيوي المحلي فقط**؛ exit 2 يعني إعداداً ناقصاً.
+- workflow يجري الفحص قبل تثبيت تبعيات البوت، وبنفس الوضع والاعتماد المستخدمين
+  في الدورة. لا تثبيت للتبعيات أو استدعاء Telegram عند فشل الفحص.
+- `run` يحتفظ بـsent card IDs وoffset في `.bot-state.json`. عند فشل الدورة
+  يحتفظ بتقدم إرسال البطاقات وبـ**offset السابق** لإعادة محاولة callback غير المطبق.
+- `actions/cache/restore` و`actions/cache/save` منفصلان؛ save يعمل حتى إذا
+  فشلت الدورة، فقط لوضع run وبعد محاولة الدورة ووجود الملف. مفاتيح cache تشمل
+  `run_id` و`run_attempt` لتجنب اصطدام إعادة التشغيل بمفتاح immutable سابق.
+- الحفظ best-effort وليس exactly-once. الإلغاء أو timeout أو فشل cache قد
+  يسبب إعادة إرسال أو إعادة معالجة؛ لا تتجاوز موافقات runtime لمنع التكرار.
+- cache مقيد بنطاق الفرع وقواعد GitHub. نجاح حفظه على فرع عمل لا يعني توافره
+  على main. قد يحتوي state على معرّفات تشغيل، لا أسرار: لا تضع tokens أو محتوى
+  صفوف خاصاً فيه. لا يعتمد الأمان على سرية Actions cache.
 
-ضع بيانات الاعتماد في مسار مُتجاهل من git (الأنماط مغطاة في `.gitignore` — قسم «Google credential files»)، ثم:
+## 6. تشخيص الفشل دون كشف البيانات
 
-```python
-# run_once.py — دورة واحدة: يرسل البطاقات المعلّقة ويطبق أصوات الـgetUpdates
-import os, pathlib, sys
+**لا توجد اتصالات Telegram في تشخيص فشل workflow الجديد**: لا حذف webhook،
+ولا `getUpdates`، ولا اكتشاف chat IDs، ولا طباعة هويات المستخدمين. وضعا run
+وwelcome يستدعيان polling ضمن تشغيلهما المقصود فقط، لا كأثر جانبي للفشل.
 
-for line in pathlib.Path(".env").read_text().splitlines():
-    s = line.strip()
-    if s and not s.startswith("#") and "=" in s:
-        k, v = s.split("=", 1); os.environ.setdefault(k.strip(), v.strip())
+المشغّل يطبع نوع الاستثناء ومرحلة الفشل فقط، ولا النص الخام أو جسم استجابة
+HTTP أو عنوان طلب قد يتضمن بيانات اعتماد. لذلك قد يظهر `HTTPError` دون وصف
+المزوّد. لا تعِد تشغيل تشخيص عام يعرض الأسرار للحصول على مزيد من التفاصيل.
 
-import gspread
-from google.oauth2 import service_account
-
-CREDS_PATH = os.environ["GOOGLE_APPLICATION_CREDENTIALS"]  # مسار ملف JSON
-creds = service_account.Credentials.from_service_account_file(
-    CREDS_PATH, scopes=[gspread.auth.DEFAULT_SCOPES])
-
-sys.path.insert(0, "src/watchers")
-import approval_bot
-
-print(approval_bot.ApprovalBot(creds).run_once())
-# المتوقع بعد تعبئة كل القيم: {"cards_sent": N, "callbacks_handled": M, ...}
-```
-
-**التشغيل المستمر** — الحلقة نفسها بلا توقف:
-```python
-approval_bot.start_daemon(creds)   # دورة كل APPROVAL_BOT_INTERVAL_SEC (افتراضي 300s)
-```
-شغّلها كخدمة على جهاز يعمل دائماً (systemd/`tmux`/cron كل 5 دقائق). ملاحظة: **Actions لا تستمع لرسائلك** — الاستقبال من هذه الحلقة فقط.
-
-## 5. استكشاف الأخطاء
-
-| العَرَض | السبب | العلاج |
-|---|---|---|
-| `not configured … fail-closed` | `.env` غير معبّأ أو لم يُحمَّل | املأ المفاتيح §2 |
-| `telegram getUpdates/sendMessage failed: …401` | توكن خاطئ/منتهٍ | انسخه مجدداً من BotFather |
-| الرد `403: bot was blocked` | المستخدم حظر البوت | افتح البوت واضغط `/start` |
-| البطاقات لا تصل والتوكن سليم | `PA_APPROVAL_CHAT_ID` خاطئ أو البوت ليس في الشات | أعد قراءة getUpdates |
-| الصوت يُرفَض بصمت | `PA_APPROVAL_ALLOWED_SENDERS` فارغ/غير يضمّ معرّفك | أضف معرّفك (§2.3) |
-| خطأ فتح الورقة | الحساب غير مشترك أو `PA_MEMORY_SHEET_ID` فارغ | شارك الورقة بحساب الخدمة (Editor) |
-| `WhatsApp notify: notify_disabled` | `PA_WAAPI_NOTIFY=0` (الافتراضي الآمن) | لا شيء — إشعارات واتساب مرحلة منفصلة (§6) |
-
-## 6. الرفيق واتساب (غير مفعّل — بوابات متتابعة)
-
-المسار موجود (`src/connectors/waapi.py::notify_approval` → `send_text` بوابتان) لكنه **مغلق عمداً**:
-1. إقرار مالي: اشتراك $10/شهر/رقم (المرحلة 0 في `docs/WAAPI-INTEGRATION-PLAN.md`) ·
-2. ربط instance (مسح QR في waapi.app) ·
-3. إعادة `waapi-live-probe` حتى `LIVE CONNECTION VERIFIED` ·
-4. انسخ `WAAPI_API_TOKEN` من Actions إلى `.env` يدوياً + اضبط `WAAPI_OWNER_CHAT_ID` ·
-5. أعد `PA_WAAPI_NOTIFY=1` (المرحلة 4: إرسال حي واحد للإثبات).
-
-حتى تلك اللحظة: `PA_WAAPI_NOTIFY=0` و`WAAPI_API_TOKEN=` فارغ = **صفر إرسال** (مُثبَّت تجريبياً أعلاه).
-
-## 7. أرقام التحقق السريعة
-
-| الفحص | النتيجة |
+| العَرَض | إجراء آمن |
 |---|---|
-| `python3 -m unittest tests.test_approval_bot tests.test_approval_bot_ci` | **39 OK** |
-| تجربة fail-closed حية (4 مسارات) | **كلها رفضت، صفر شبكة، صفر رسائل** |
-| `python3 scripts/approval_bot_ci.py --mode test\|run` بلا أسرار | **rc=2** + أسماء الناقصة فقط (لا قيم) |
-| `git check-ignore .env` | `.gitignore:4` ✓ |
-| توكنات في المستودع/السجلات | **لا** (أسماء فقط في أي مكان) |
+| preflight exit 2 | أصلح أسماء الإعدادات المذكورة في Secrets؛ لا تنشر قيمها |
+| test يفشل / الرسالة لا تصل | تحقق من البوت والمحادثة و`/start` وحظر البوت؛ `chat not found` في التشغيل المشار إليه دليل مشكلة وجهة لا Sheets |
+| 409 في polling معروف من فحص خاص | حدد مالك webhook والمستهلك المقصود أولاً؛ لا إزالة تلقائية ولا إسقاط للتحديثات |
+| run يفشل مع نجاح test | تحقق من اعتماد حساب الخدمة ومشاركة الورقة وتبويباتها؛ لا تلُم Telegram بلا دليل |
+| رفض صوت | راجع هوية المصوت وقائمة السماح وبوابات الموافقة؛ لا توسع الأذونات لتجاوز الرفض |
+| cache save/restore يفشل | راجع أثر إعادة الإرسال/التصويت؛ لا تدّع exactly-once |
 
-## 8. التشغيل المتكامل المجاني عبر Actions (المُوصى به)
+## 7. فحوص محلية قابلة للإعادة
 
-المسار الذي يعمل **مجاناً بالكامل** (بوت تيليجرام مجاني + مستودع عام = دقائق Actions غير محدودة) **ومن أسرار Actions مباشرة** — بلا أي تشغيل محلي:
+```bash
+python3 -m unittest tests.test_approval_bot tests.test_approval_bot_ci tests.test_approval_bot_workflow
+python3 scripts/ci_guard.py imports
+python3 -m compileall -q scripts/approval_bot_ci.py tests/test_approval_bot_ci.py tests/test_approval_bot_workflow.py
+```
 
-| المكوّن | الملف |
-|---|---|
-| الـworkflow (كل 5 دقائق + تشغيل يدوي) | `.github/workflows/approval-bot.yml` |
-| المُشغّل (test/run، preflight مغلق) | `scripts/approval_bot_ci.py` |
-| اختباراته | `tests/test_approval_bot_ci.py` (14 اختباراً) |
-
-**خطوات التفعيل (مرة واحدة):**
-1. أنشئ الأسرار في **Settings → Secrets and variables → Actions** (القيم **هناك** — لا في الشات ولا في ملف):
-   - `PA_APPROVAL_BOT_TOKEN` (أو `TELEGRAM_BOT_TOKEN`) — إلزامي
-   - `PA_APPROVAL_CHAT_ID` (أو `TELEGRAM_CHAT_ID`) — إلزامي
-   - `PA_APPROVAL_ALLOWED_SENDERS` (أو `TELEGRAM_ALLOWED_SENDERS`) — معرّفك بفواصل، وإلا **كل الأصوات مرفوضة**
-   - `PA_MEMORY_SHEET_ID` + `GOOGLE_SERVICE_ACCOUNT_JSON` (نص JSON كامل للحساب) — لوضع `run`
-2. من تبويب **Actions** → «Approval bot · Telegram» → **Run workflow** → `mode=test` ← يجب أن تصلك رسالة ✅.
-3. بعد الدمج إلى `main` يبدأ **الجدول التلقائي** (كل 5 دقائق): بطاقات الموافقة تصل، والأصوات تُطبَّق على الورقة، **state** (البطاقات المُرسلة + offset تيليجرام) يبقى في `actions/cache` فلا تكرار ولا إعادة تصويت.
-
-**ضمانات:** `permissions: contents: read` فقط · `concurrency` بلا إلغاء وسط تصويت · الأسرار عبر `env:` (تُخفَّي تلقائياً في السجلات) · واتساب `PA_WAAPI_NOTIFY=0` (مدفوع — راجع §6) · عند نقص أي سرّ: **rc=2 وأسماء فقط**.
-
-**ملاحظتان:** الجدول التلقائي يتوقف بعد 60 يوماً من خمول المستودع (يفعّله GitHub بزر) · وباء state نادر: إعادة إرسال بطاقة واحدة فقط إذا فشل حفظ الـcache بعد إرسال ناجح.
+اختبارات workflow فحوص نصية ضيقة لسياسات الأمان والترتيب والحفظ، وليست محاكي
+Actions أو parser عاماً للمخطط. تبعيات البوت لا تُضاف إلى root requirements.
+لا إثبات لتشغيل حي أو نجاح CI من هذه الفحوص وحدها.

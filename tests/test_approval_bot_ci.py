@@ -213,10 +213,6 @@ class TestTransportSendText(unittest.TestCase):
             transport.send_text("hello")
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class WelcomeModeTests(unittest.TestCase):
     def _run_welcome(self, updates):
         """Run mode_welcome with a fake transport; returns (rc, fake)."""
@@ -285,3 +281,100 @@ class WelcomeModeTests(unittest.TestCase):
         self.assertEqual(fake.sent, [])
         self.assertEqual(fake.offsets, [])
         self.assertIn("received=0 replied=0", out)
+
+
+class TestCIHardening(unittest.TestCase):
+    @staticmethod
+    def _configure_run():
+        os.environ.update({
+            "PA_APPROVAL_BOT_TOKEN": "test-token-not-real",
+            "PA_APPROVAL_CHAT_ID": "42",
+            "PA_MEMORY_SHEET_ID": "test-sheet-not-real",
+            "GOOGLE_SERVICE_ACCOUNT_JSON": '{"client_email":"fake@example.invalid"}',
+            "PA_APPROVAL_ALLOWED_SENDERS": "42",
+        })
+
+    def test_run_requires_nonempty_effective_sender_list(self):
+        for value in ("", "  ", ", , "):
+            with self.subTest(value=value), clean_env():
+                self._configure_run()
+                os.environ["PA_APPROVAL_ALLOWED_SENDERS"] = value
+                self.assertTrue(any("PA_APPROVAL_ALLOWED_SENDERS" in name
+                                    for name in ci.preflight("run")))
+
+    def test_preflight_only_accepts_alias_without_import_or_state_io(self):
+        with clean_env():
+            self._configure_run()
+            os.environ.pop("PA_APPROVAL_ALLOWED_SENDERS")
+            os.environ["TELEGRAM_ALLOWED_SENDERS"] = "42, 43"
+            with mock.patch.object(ci, "_import_bot_module") as runtime, \
+                    mock.patch.object(ci, "load_state") as load, \
+                    mock.patch.object(ci, "save_state") as save, \
+                    contextlib.redirect_stdout(io.StringIO()) as output:
+                self.assertEqual(ci.main(["--mode", "run", "--preflight-only"]), 0)
+            runtime.assert_not_called()
+            load.assert_not_called()
+            save.assert_not_called()
+            self.assertIn("stage=preflight ok=true mode=run", output.getvalue())
+            self.assertNotIn("test-token-not-real", output.getvalue())
+
+    def test_failed_preflight_only_returns_two_without_running(self):
+        with clean_env(), mock.patch.object(ci, "_import_bot_module") as runtime, \
+                contextlib.redirect_stdout(io.StringIO()) as output:
+            self.assertEqual(ci.main(["--mode", "run", "--preflight-only"]), 2)
+        runtime.assert_not_called()
+        self.assertIn("PA_APPROVAL_ALLOWED_SENDERS", output.getvalue())
+        self.assertNotIn("ok=true", output.getvalue())
+
+    def test_test_and_welcome_preflight_do_not_require_sheets_or_senders(self):
+        for mode in ("test", "welcome"):
+            with self.subTest(mode=mode), clean_env(), \
+                    mock.patch.object(ci, "_import_bot_module") as runtime, \
+                    contextlib.redirect_stdout(io.StringIO()):
+                os.environ["PA_APPROVAL_BOT_TOKEN"] = "fake"
+                os.environ["PA_APPROVAL_CHAT_ID"] = "42"
+                self.assertEqual(ci.main(["--mode", mode, "--preflight-only"]), 0)
+                runtime.assert_not_called()
+
+    def test_runner_never_logs_exception_or_http_body(self):
+        import urllib.error
+        secret = "private-row-and-unprefixed-token"
+        for mode in ("test", "run", "welcome"):
+            body = io.BytesIO(('body-' + secret).encode())
+            error = urllib.error.HTTPError("https://example.invalid/" + secret,
+                                           400, secret, {}, body)
+            with self.subTest(mode=mode), clean_env():
+                self._configure_run()
+                os.environ["GITHUB_ACTIONS"] = "true"
+                with mock.patch.object(ci, "mode_" + mode, side_effect=error), \
+                        contextlib.redirect_stdout(io.StringIO()) as output:
+                    self.assertEqual(ci.main(["--mode", mode]), 1)
+                self.assertIn("reason=HTTPError", output.getvalue())
+                self.assertIn("::error title=approval-bot::", output.getvalue())
+                self.assertNotIn(secret, output.getvalue())
+                self.assertEqual(body.tell(), 0)
+
+    def test_cycle_failure_keeps_progress_and_old_offset_without_details(self):
+        import types
+        secret = "private-sheet-row-or-credential"
+        bot = mock.Mock()
+        bot.run_once.side_effect = RuntimeError(secret)
+        bot.state_snapshot.return_value = {"sent": ["B", "A"], "offset": 99}
+        module = types.SimpleNamespace(ApprovalBot=mock.Mock(return_value=bot))
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "state.json"
+            path.write_text('{"sent":["A"],"offset":7}', encoding="utf-8")
+            with mock.patch.object(ci, "_import_bot_module", return_value=module), \
+                    mock.patch.object(ci, "build_sheet_credentials", return_value=object()), \
+                    contextlib.redirect_stdout(io.StringIO()) as output:
+                self.assertEqual(ci.mode_run(path), 1)
+            # Read the file independently rather than using the writer's loader.
+            self.assertEqual(json.loads(path.read_text(encoding="utf-8")),
+                             {"sent": ["A", "B"], "offset": 7})
+        bot.restore_state.assert_called_once_with(sent_ids=["A"], offset=7)
+        self.assertIn("stage=cycle ok=false reason=RuntimeError", output.getvalue())
+        self.assertNotIn(secret, output.getvalue())
+
+
+if __name__ == "__main__":
+    unittest.main()
