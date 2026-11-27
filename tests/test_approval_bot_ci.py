@@ -263,7 +263,9 @@ class WelcomeModeTests(unittest.TestCase):
         text, chat_id = fake.sent[0]
         self.assertEqual(chat_id, "777")
         self.assertIn("مرحبا", text)
+        self.assertIn("chat id الخاص بك: 777", text)
         self.assertEqual(fake.offsets, [6])
+        self.assertIn("::notice title=chat-discovery::found chat id=777", out)
         self.assertIn("stage=welcome ok=true received=1 replied=1", out)
 
     def test_welcome_replies_to_plain_text_and_skips_non_messages(self):

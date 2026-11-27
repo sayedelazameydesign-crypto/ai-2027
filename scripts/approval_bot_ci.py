@@ -172,12 +172,15 @@ def mode_welcome() -> int:
     transport = ab.TelegramTransport()
     updates = transport.fetch_updates() or []
     replied = 0
+    found_cids = []
     for upd in updates:
         msg = upd.get("message") or {}
         chat = msg.get("chat") or {}
         cid = chat.get("id")
         if cid is None:
             continue
+        cid = int(cid)
+        found_cids.append(cid)
         text = str(msg.get("text") or "")
         if text.startswith("/start"):
             body = ("مرحباً! هذا بوت موافقات CELIA — يعمل الآن عبر "
@@ -185,11 +188,18 @@ def mode_welcome() -> int:
         else:
             body = ("وصلت رسالتك ✓ — البوت حيّ ويرد عليك "
                     "(اختبار الرد التلقائي).")
+        # Surface the chat id in the reply itself so the sender can read it
+        # straight from Telegram and paste it back for PA_APPROVAL_CHAT_ID.
+        # The chat id is not a secret (the token never leaves the env).
+        body += "\n\nchat id الخاص بك: %d" % cid
         transport.send_text(body, chat_id=str(cid))
         replied += 1
     if updates:
         offset = max(int(u.get("update_id", 0)) for u in updates) + 1
         transport.fetch_updates(offset=offset)  # confirm: don't reply twice
+    for cid in found_cids:
+        # Annotation the CI log parses into a check-run notice.
+        print("::notice title=chat-discovery::found chat id=%d" % cid)
     print("stage=welcome ok=true received=%d replied=%d"
           % (len(updates), replied))
     return 0
