@@ -1,0 +1,95 @@
+name: WAAPI live probe
+
+# Evidence that the shipped connector (src/connectors/waapi.py) actually
+# authenticates against waapi.app with the repository secret. READ-ONLY:
+# instances list + client status; no message is ever sent, and only stage
+# names are printed (never the token, an instance id, or a response body).
+#
+# Runs when this workflow, the connector, or its tests change on the arena
+# branch (so the proof travels with the code), and on manual dispatch —
+# after the file lands on the default branch it can be dispatched from main
+# as well (docs/WAAPI-INTEGRATION-PLAN.md phase 0/5).
+
+on:
+  push:
+    branches: [arena/23919461-ai-2027]
+    paths:
+      - src/connectors/waapi.py
+      - tests/test_waapi_connector.py
+      - .github/workflows/waapi-live-probe.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: waapi-live-probe
+  cancel-in-progress: true
+
+jobs:
+  probe:
+    name: read-only live probe
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5
+        with:
+          persist-credentials: false
+
+      # Names only — GitHub never exposes the value to logs.
+      - name: Check token presence
+        env:
+          WAAPI_API_TOKEN: ${{ secrets.WAAPI_API_TOKEN }}
+        run: |
+          if [ -n "$WAAPI_API_TOKEN" ]; then
+            echo 'WAAPI token is available to this job.'
+          else
+            echo '::error::WAAPI_API_TOKEN is not available to this job; check its name and scope (Settings → Secrets → Actions).'
+            exit 1
+          fi
+
+      # The exact code the runtime ships: one GET for the instance list and
+      # one for client status. Structured stages only — fail-closed.
+      - name: Live probe via the shipped connector
+        env:
+          WAAPI_API_TOKEN: ${{ secrets.WAAPI_API_TOKEN }}
+        run: |
+          python3 - <<'PY'
+          import importlib.util
+          import pathlib
+          import sys
+
+          path = pathlib.Path("src/connectors/waapi.py")
+          spec = importlib.util.spec_from_file_location("waapi_probe", path)
+          module = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(module)
+
+          health = module.health()
+          print("health: stage=%s ok=%s" % (health.get("stage"), health.get("ok")))
+          if not health.get("ok"):
+              print("::error title=WAAPI probe::health stage=%s http=%s" % (
+                  health.get("stage"), health.get("http")))
+              sys.exit(1)
+          print("::notice title=WAAPI::token authenticated against waapi.app "
+                "(read-only instances API answered a valid success shape)")
+
+          inst = module.instance_id()
+          print("instance: stage=%s ok=%s" % (inst.get("stage"), inst.get("ok")))
+          if not inst.get("ok"):
+              print("::error title=WAAPI probe::instance stage=%s http=%s — "
+                    "create/link an instance in the waapi.app console (scan "
+                    "the WhatsApp QR), then re-run this workflow" % (
+                        inst.get("stage"), inst.get("http")))
+              sys.exit(1)
+
+          status = module.client_status(inst["instance_id"])
+          print("client: stage=%s status=%s ok=%s" % (
+              status.get("stage"), status.get("status"), status.get("ok")))
+          if not status.get("ok") or status.get("status") != "ready":
+              print("::error title=WAAPI probe::client stage=%s status=%s http=%s" % (
+                  status.get("stage"), status.get("status"), status.get("http")))
+              sys.exit(1)
+
+          print("::notice title=WAAPI::LIVE CONNECTION VERIFIED — token "
+                "authenticated, instance ready (read-only, no message sent)")
+          PY

@@ -127,8 +127,32 @@ jobs:
       # here with no third-party packages installed — the same guarantee the
       # AST gate above enforces on the source. Named explicitly so the
       # baseline-sensitive operational-evidence suite is not pulled in.
-      - name: P1 foundation — prompt loader and routing profile tests (stdlib only)
-        run: python -m unittest tests.test_prompt_loader tests.test_routing_profiles -v
+      # test_proactive_watcher / test_approval_bot / test_governed_executor
+      # stub the Google connector modules, so they also run bare — proving the
+      # watcher's column/taint/hash contracts, the approval bot's fail-closed
+      # gate and the governed executor's four write-gates without gspread,
+      # Telegram or a credential. test_ed25519 is RFC 8032 conformance for
+      # the stdlib signer (ADR-0006); test_passkey_interop proves the
+      # Python <-> Worker canonical/signature agreement (skips without node);
+      # test_waapi_connector is the hermetic waapi.app connector (transport
+      # swapped, zero network — docs/WAAPI-INTEGRATION-PLAN.md).
+      - name: P1 foundation — prompt loader, routing profiles, watcher, approval bot, governed executor, passkey and waapi contracts (stdlib only)
+        run: >-
+          python -m unittest
+          tests.test_prompt_loader
+          tests.test_routing_profiles
+          tests.test_proactive_watcher
+          tests.test_approval_bot
+          tests.test_governed_executor
+          tests.test_ed25519
+          tests.test_passkey_interop
+          tests.test_waapi_connector
+          -v
+
+      # ADR-0006 worker: the pure signing core runs on node builtins only —
+      # no npm install, no network, no KV.
+      - name: P1 approval worker signing core (node --test)
+        run: node --test worker/approval-worker/test/*.test.js
 
       - name: CI guard self-tests (keeps the gates honest)
         run: python scripts/test_ci_guard.py -v

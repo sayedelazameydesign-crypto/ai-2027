@@ -39,7 +39,7 @@ secret follows.
 | --- | --- | --- | --- | --- |
 | `GEMINI_API_KEY` | secret | repo | optional live smoke test; runtime value lives in Script Properties | no |
 | `GROQ_API_KEY` | secret | repo | reserved name for the fallback provider slot (not implemented) | no |
-| `WAAPI_API_TOKEN` | secret | repo | manual Actions read-only WAAPI check; not used by the runtime | no card for the advertised trial; paid terms unverified |
+| `WAAPI_API_TOKEN` | secret | repo | read-only checks (`setup-status.yml`, `waapi-live-probe.yml`); runtime connector `src/connectors/waapi.py` reads the same value from the local `.env` (opt-in owner notify + approval-gated send) — rotate both copies together | no card for the advertised trial; paid terms unverified ($10/month per number claimed) |
 | `CELIA_ADMIN_PIN` | secret | environment `production` | deployment checklist only | no |
 | `APP_ENV` | variable | repo | workflows (`ci` / `preview` / `production`) | — |
 | `NODE_VERSION` | variable | repo | workflows (`20`) | — |

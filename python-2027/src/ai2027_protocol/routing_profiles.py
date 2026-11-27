@@ -105,6 +105,7 @@ SUPPORTED_PROVIDER_KINDS: frozenset[str] = frozenset(
         "groq",
         "openrouter",
         "omnirouters",
+        "qwen",
         "deterministic",
     }
 )

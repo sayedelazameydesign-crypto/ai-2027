@@ -27,6 +27,9 @@
 | `SUBSTRATE_ACTOR_MASTER_KEY` | `.github/workflows/agent-substrate-deploy.yml` (تشغيل يدوي على `main`) | مفتاح اشتقاق HMAC لعناوين Agent؛ الحد الأدنى 32 حرفاً ويجب أن يبقى ثابتاً | يفشل النشر إذا غاب أو كان أقصر من 32 حرفاً | لا تدوّره تلقائياً: تغييره يتطلب ترحيل أسرار Actor immutable وإعادة إنشاء Pods؛ احتفظ به ثابتاً |
 | `EMBER_ALERT_WEBHOOK` | `.github/workflows/ember.yml` | إشعار المرحلة الثالثة عند تكرار التدهور | يُسجَّل `not-configured` — معلن، لا صامت | أي endpoint جديد |
 | `CONNECTORS_HUB_API_TOKEN` | `ai2027_protocol/studio.py` — مسار `/v1/studio/connectors/catalog` فقط. **غير مستعمل في أي Workflow ولا في CI تلقائي**؛ يُقرأ في `render.yaml` بـ`sync: false` أي يُدخل في لوحة Render ولا يُحفظ في Git | رمز Bearer لواجهة Connectors Hub. **الاستعمال اختياري تماماً**: غيابه لا يمنع تشغيل Studio ولا يوقف `/v1/studio/status` — يُبلَّغ عنه فقط كـ`token_missing` في مسار الكتالوج | مسار الكتالوج يعيد `token_missing` صراحةً بدل أن يتصرّف وكأن الكتالوج فارغ. بقية المسارات لا تتأثر | Connectors Hub → Dashboard → Tokens |
+| `PA_APPROVAL_BOT_TOKEN` | `src/watchers/approval_bot.py` و`scripts/live_smoke_runner.py` — بوت Telegram لبوابة الموافقات (P1). **غير مستعمل في أي Workflow ولا في CI تلقائي**؛ يُقرأ من بيئة التشغيل فقط | توكن BotFather يرسل بطاقات الموافقة لصفوف `pa_approvals` المعلّقة | لا بطاقة ولا تصويت — المراقبة تستمر والقراءة تبقى fail-closed بلا إنذار | Telegram @BotFather → /newbot |
+| `WAAPI_API_TOKEN` | `src/connectors/waapi.py` (تشغيل محلي عبر `.env`) و`.github/workflows/waapi-live-probe.yml` (فحص حي **للقراءة فقط** عبر أسرار Actions) — بوابة waapi.app. **القيمة نفسها في الموضعين**: تُنسخ يدوياً مرة من Actions إلى `.env`، ولا تُرفع أبداً | رمز `Bearer` لإشعار المالك عبر WhatsApp (اختياري) ولأداة `whatsapp.send` المنفَّذة عبر بوابة الموافقات فقط؛ لا يُطبع ولا يُسجَّل ولا يدخل استثناءات خام | لا إشعار ولا إرسال: الموصل يرفض `waapi_token_missing` قبل أي شبكة، والماسح الحي يفشل بوضوح — لا نجاح زائف | GitHub Settings → Secrets → Actions (وموضع محلي مطابق في `.env`) |
+| `DASHSCOPE_API_KEY` | `python-2027/src/ai2027_protocol/ai_providers.py` — `create_qwen_model_studio_provider()` فقط. **غير مستعمل في أي Workflow ولا في CI تلقائي**؛ يُقرأ من بيئة التشغيل فقط | مفتاح Alibaba Cloud Model Studio (Qwen) للواجهة المتوافقة مع OpenAI. **المزوّد ليس مجانياً مضموناً**: رصيد مجاني ثم اشتراك مدفوع، لذلك يُصنَّف **`UNKNOWN_COST`** ويُحجب تحت `AI2027_MAX_SPEND_USD=0`. الحماية مركزية: `ProviderKind.QWEN` في `NON_RECLASSIFIABLE_PROVIDERS` (`budget.py`) — لا إعادة تصنيف عبر `billing_tier` صريح ولا عبر `AI2027_FREE_MODELS` | لا يُبنى المزوّد أصلاً بلا `QWEN_MODEL` و`DASHSCOPE_WORKSPACE_ID`؛ وحتى مع المفتاح، الحارس يرفض قبل أي شبكة (`unknown_cost_blocked`) | Alibaba Cloud → Model Studio → API Key |
 
 ### متغيّرات (ليست أسرارًا، ولا تحتاج تشفيرًا)
 
@@ -46,11 +49,26 @@
 | `AI2027_READ_ONLY` | يفعّل الوضع القرائي: يرفض كل كتابة على مستوى التطبيق كله | `1` في المخطّط العام (Blueprint) |
 | `AI2027_MAX_SPEND_USD` | سقف الإنفاق.Fail-closed: الافتراضي `0` يعني رفض كل نداء مدفوع أو غير معروف التكلفة | `0` |
 | `AI2027_ALLOW_UNKNOWN_COST` | يسمح بالنداءات التي لا يمكن إثبات تكلفتها. **هذا تفويض وليس سقفاً مالياً**: النداء ينفق مالاً حقيقياً، لكنه يُمتنع عن الرفض. **يُتجاهل بالكامل إذا كان `AI2027_MAX_SPEND_USD=0`** — لأن `BudgetPolicy.from_env()` يُجبره على `False` عند سقف صفري، فلا يمكنه تجاوز الحراسة Fail-closed | `0` |
+| `AI2027_UNKNOWN_COST_DAILY_LIMIT` | الحد اليومي القابل للقياس للنداءات غير المعروفة التكلفة (عدد نداءات مكتملة لكل يوم UTC). ضروري لأن `MAX_SPEND` لا يُستهلك من هذه النداءات (لا تقدير تكلفة فيُرسَل بدون أن يزداد `spent_usd`) — فالسقف المالي وحده لا يقيّدها. الافتراضي `5`؛ `0` يعني الرفض حتى عند `AI2027_ALLOW_UNKNOWN_COST=1`؛ القيمة غير الرقمية تُغلق الفشل إلى `0` | `5` |
 | `AI2027_CELIA_MEMORY_DB` | مسار قاعدة بيانات ذاكرة CELIA. مسار محلي، ليس سرّاً | فارغ ⇒ الذاكرة في الوضع غير الدائم |
 | `AI2027_TELEMETRY_DIR` | مجلد كتابة أحداث التتبّع (Telemetry). مسار محلي، ليس سرّاً | فارغ ⇒ التتبّع معطّل |
 | `AI2027_SESSION_LEASE` | وضع leases الجلسات. `off` يمنعها صراحةً؛ أي قيمة أخرى تُشغّلها | `off` |
 | `AI2027_OBSERVABILITY_MODE` | نمط الملاحظة (`off` / `local` / …). ليس سرّاً | فارغ ⇒ الوضع الافتراضي |
 | `AI2027_OLLAMA_PROFILE` | ملف تعريف Ollama المحلي (`4gb-laptop` …). ليس سرّاً | `4gb-laptop` |
+| `PA_MEMORY_SHEET_ID` | `src/watchers/proactive_watcher.py` و`src/watchers/approval_bot.py` و`scripts/live_smoke_runner.py` — الورقة الذاكرة `pa_*` (source/tasks/goals/approvals/grants/audit). معرّف علني للورقة، ليس سرّاً | فارغ ⇒ المراقبة وبوابة الموافقات لا تفتحان شيئاً (fail-closed) |
+| `WATCHER_INTERVAL_SEC` | فاصل نداءات المراقب بالثواني بين دورة فحص وأخرى | `900` |
+| `APPROVAL_BOT_INTERVAL_SEC` | فاصل نداءات بوابة الموافقات بالثواني | `300` |
+| `PA_APPROVAL_CHAT_ID` | معرّف محادثة Telegram التي تُرسل إليها بطاقات الموافقة | فارغ ⇒ لا إرسال (تخطّي صريح) |
+| `PA_APPROVAL_ALLOWED_SENDERS` | معرّفات المسموح لهم بالتصويت، مفصولة بفواصل. **القائمة الفارغة تمنع الجميع** — fail-closed بقصد | فارغ ⇒ يُمنع الجميع |
+| `PA_APPROVAL_API_BASE` | عنوان Telegram API البديل (وكيل/اختبار) | `https://api.telegram.org` |
+| `WAAPI_INSTANCE_ID` | معرّف instance عند تعددها في waapi.app؛ يتجاوز الاكتشاف التلقائي (واحد فقط يُقبل) | فارغ ⇒ instance واحد بالضبط يُقبل |
+| `WAAPI_OWNER_CHAT_ID` | المستلم الثابت لمسار إشعار WhatsApp — رقم المالك فقط (`011…` أو `2011…@c.us`) | فارغ ⇒ الإشعار يفشل `owner_chat_missing` |
+| `PA_WAAPI_NOTIFY` | يفعّل رفيق WhatsApp لبطاقات الموافقة (يرسل رابط تصويت passkey) | `0` (معطّل — fail-closed) |
+| `DASHSCOPE_WORKSPACE_ID` | معرّف مساحة Model Studio — يُبنى منه base_url: `https://{WorkspaceId}.{region}.maas.aliyuncs.com/compatible-mode/v1` | فارغ ⇒ لا يُبنى المزوّد (يرفض `MissingProviderConfigError`) |
+| `DASHSCOPE_REGION` | منطقة نقطة النهاية (وثائق رسمية: `ap-southeast-1` و`cn-beijing` وغيرهما) | `ap-southeast-1` |
+| `QWEN_MODEL` | معرّف نموذج Qwen **مطلوب** (لا قيمة افتراضية): المعرّفات تدور — التوثيق الرسمي أظهر `qwen3.8-max` بينما الحسابات قد تخدم `qwen4-max`؛ يُختار من قائمة نماذج حسابك | **لا شيء** — غيابه يمنع بناء المزوّد ويمنع أي طلب شبكة |
+| `PA_APPROVAL_VOTE_BASE_URL` | `src/watchers/approval_bot.py` و`scripts/live_smoke_runner.py` — عنوان صفحة التصويت بـ Passkey التي يبنيها Worker في `worker/approval-worker/` (ADR-0006). يُضاف إلى البطاقة رابط `…?approval=<id>` | فارغ ⇒ البطاقة بلا رابط (الأزرار تبقى وحدها) |
+| `PA_APPROVAL_SIGNING_PUBKEY` | `src/executors/governed_executor.py` — المفتاح العام Ed25519 (hex،64 حرفاً) للتحقق من توقيع الـWorker على قرار الموافقة (ADR-0006) | فارغ ⇒ مسار الـassertion يفشل بـ`assertion_verification_key_missing` (fail-closed) ويعمل المسار البديل فقط |
 
 ### أسرار Cloudflare / R2 المعرَّفة وغير المستعملة بعد
 
