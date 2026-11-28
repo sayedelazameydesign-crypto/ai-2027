@@ -183,6 +183,16 @@ _KIND_HINTS: tuple[tuple[MemoryKind, tuple[str, ...]], ...] = (
 )
 
 
+def memory_spec() -> dict[str, object]:
+    """Memory data shared with ports (layer labels, hints, limits) as JSON."""
+    return {
+        "max_record_chars": MAX_RECORD_CHARS,
+        "default_max_records": DEFAULT_MAX_RECORDS,
+        "kind_labels": {k.value: v for k, v in _KIND_LABELS.items()},
+        "kind_hints": [[k.value, list(h)] for k, h in _KIND_HINTS],
+    }
+
+
 def parse_memory_command(text: str) -> MemoryCommand | None:
     """Return the owner command in ``text``, or ``None`` for ordinary chat."""
     norm = normalize_bilingual_text(text or "")
@@ -440,5 +450,6 @@ __all__ = [
     "PersonalMemory",
     "classify_kind",
     "looks_sensitive",
+    "memory_spec",
     "parse_memory_command",
 ]

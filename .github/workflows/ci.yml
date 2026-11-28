@@ -62,6 +62,29 @@ jobs:
           python3 scripts/apps_script_bundle.py --verify
           python3 -m unittest scripts.test_apps_script_bundle -v
 
+  supabase-edge:
+    name: Supabase Edge Functions · Deno tests + CELIA parity ($0)
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444  # v5
+        with:
+          node-version: "22"
+      # Deno from the npm registry, pinned; no credentials, no network calls in tests.
+      - name: CELIA on Telegram — parity with python-2027 + webhook behaviour
+        env:
+          AI2027_EDGE_TEST: "1"
+        run: npx --yes deno@2.9.6 test --allow-env --allow-read supabase/functions/celia-telegram/
+      - name: ycloud-webhook — parity with the Python reference stack
+        env:
+          AI2027_EDGE_TEST: "1"
+        run: npx --yes deno@2.9.6 test --allow-env --allow-read supabase/functions/ycloud-webhook/
+      - name: Lint the CELIA function
+        run: npx --yes deno@2.9.6 lint supabase/functions/celia-telegram/
+
   free-first-tools:
     name: Free-first tools · offline safety and task previews
     runs-on: ubuntu-latest

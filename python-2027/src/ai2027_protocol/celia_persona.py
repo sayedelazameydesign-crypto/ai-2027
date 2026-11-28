@@ -300,6 +300,8 @@ _CUSTOMER_SCOPE = (
 #: Upper bound on the memory block, so the persona fits a 2048-token local model.
 MEMORY_BLOCK_MAX_CHARS = 1200
 
+_MEMORY_HEADER = "ما حفظه المالك في ذاكرتك ويتعلق بهذه الرسالة (استعمليه ولا تخترعي غيره):"
+
 
 def _memory_block(memories: Sequence[str]) -> str:
     lines: list[str] = []
@@ -312,9 +314,7 @@ def _memory_block(memories: Sequence[str]) -> str:
         used += len(line)
     if not lines:
         return ""
-    return "ما حفظه المالك في ذاكرتك ويتعلق بهذه الرسالة (استعمليه ولا تخترعي غيره):\n" + "\n".join(
-        lines
-    )
+    return _MEMORY_HEADER + "\n" + "\n".join(lines)
 
 
 def render_system_prompt(
@@ -361,6 +361,29 @@ CELIA_OWNER_FALLBACK = (
 )
 
 
+def persona_spec() -> dict[str, object]:
+    """CELIA's persona as plain JSON data, for ports to other runtimes.
+
+    The Supabase Edge Function (``supabase/functions/celia-telegram``) embeds
+    this verbatim (``scripts/celia_edge_parity_vectors.py --write``), so the
+    identity is written once — here — and a test fails if a port drifts.
+    """
+    return {
+        "identity_text": _IDENTITY_TEXT,
+        "owner_scope": _OWNER_SCOPE,
+        "honesty_text": _HONESTY_TEXT,
+        "owner_memory_text": _OWNER_MEMORY_TEXT,
+        "memory_header": _MEMORY_HEADER,
+        "memory_block_max_chars": MEMORY_BLOCK_MAX_CHARS,
+        "mode_labels": {m.value: _MODE_LABELS[m] for m in CeliaMode},
+        "mode_instructions": {m.value: _MODE_INSTRUCTIONS[m] for m in CeliaMode},
+        "mode_keywords": [[m.value, list(k)] for m, k in _MODE_KEYWORDS],
+        "explicit_modes": {k: v.value for k, v in _EXPLICIT_MODE.items()},
+        "owner_fallback": CELIA_OWNER_FALLBACK,
+        "autonomy": CHANNEL_AUTONOMY.value,
+    }
+
+
 def celia_system_prompt(audience: Audience | str) -> str:
     """Return CELIA's base prompt for ``audience`` (unknown => customer scope)."""
     return render_system_prompt(audience)
@@ -380,5 +403,6 @@ __all__ = [
     "detect_mode",
     "mode_label",
     "normalize",
+    "persona_spec",
     "render_system_prompt",
 ]
