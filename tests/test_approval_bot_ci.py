@@ -11,6 +11,7 @@ import importlib.util
 import io
 import json
 import os
+import sys
 import tempfile
 import types
 import unittest
@@ -876,7 +877,8 @@ class TestCeliaMemoryOverTelegram(TestRealAssistantOverTelegram):
         with contextlib.ExitStack() as stack:
             for p in patches:
                 stack.enter_context(p)
-            stack.enter_context(mock.patch.object(ci, "_probe_sheet", return_value=sheet))
+            stack.enter_context(mock.patch.object(ci, "_probe_sheet",
+                                                  return_value=(sheet, "ok")))
             stack.enter_context(mock.patch(
                 "ai2027_protocol.ai_providers.build_default_providers",
                 return_value=(free,)))
@@ -887,5 +889,34 @@ class TestCeliaMemoryOverTelegram(TestRealAssistantOverTelegram):
                 rc = ci.mode_assistant()
         self.assertEqual(rc, 0, out.getvalue())
         self.assertIn("result=memory_saved", out.getvalue())
-        self.assertIn("memory=sheet", out.getvalue())
+        self.assertIn("memory=sheet sheet=ok", out.getvalue())
         self.assertEqual(sheet.tabs[ci.CELIA_MEMORY_TAB].values[1][2], "اختبار الذاكرة الحي")
+
+
+class TestProbeSheetReasons(unittest.TestCase):
+    def _reason(self, env):
+        with mock.patch.dict(os.environ, env, clear=True):
+            return ci._probe_sheet()
+
+    def test_each_missing_piece_is_named_without_leaking_values(self):
+        self.assertEqual(self._reason({}), (None, "no_credentials"))
+        self.assertEqual(self._reason({"GOOGLE_SERVICE_ACCOUNT_JSON": "{}"}),
+                         (None, "no_sheet_id"))
+        with mock.patch.dict(sys.modules, {"gspread": None}):
+            self.assertEqual(self._reason({"GOOGLE_SERVICE_ACCOUNT_JSON": "{}",
+                                           "PA_MEMORY_SHEET_ID": "s"}),
+                             (None, "gspread_missing"))
+
+    def test_open_failure_is_distinguished_from_bad_credentials(self):
+        fake = types.SimpleNamespace(authorize=mock.Mock(side_effect=ValueError("k")))
+        env = {"GOOGLE_SERVICE_ACCOUNT_JSON": "{}", "PA_MEMORY_SHEET_ID": "s"}
+        with mock.patch.dict(sys.modules, {"gspread": fake}), \
+                mock.patch.object(ci, "build_sheet_credentials", return_value=object()):
+            self.assertEqual(self._reason(env), (None, "bad_credentials"))
+            client = mock.Mock()
+            client.open_by_key.side_effect = PermissionError("not shared")
+            fake.authorize = mock.Mock(return_value=client)
+            self.assertEqual(self._reason(env), (None, "open_failed"))
+            client.open_by_key.side_effect = None
+            client.open_by_key.return_value = "SHEET"
+            self.assertEqual(self._reason(env), ("SHEET", "ok"))

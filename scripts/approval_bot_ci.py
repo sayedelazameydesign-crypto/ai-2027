@@ -212,6 +212,9 @@ ASSISTANT_STAGES = ("replied", "no_provider_available", "duplicate_message",
 ASSISTANT_MODES = ("companion", "intelligence", "developer", "executive",
                    "creative")
 MEMORY_BACKENDS = ("sheet", "state", "none")
+#: Why the probe has no sheet — allowlisted, safe for run-page annotations.
+SHEET_REASONS = ("ok", "no_credentials", "no_sheet_id", "gspread_missing",
+                 "bad_credentials", "open_failed")
 #: Probe stages that prove the path works (a model replied, or a memory
 #: command ran and was confirmed from code).
 PROBE_OK_STAGES = frozenset((
@@ -457,19 +460,26 @@ def mode_run(state_file: pathlib.Path) -> int:
 DEFAULT_ASSISTANT_PROBE = "مرحباً! عرّف بنفسك في سطرين، وقل لي ما الذي تستطيع مساعدتي فيه."
 
 
-def _probe_sheet() -> Any:
-    """The memory sheet for the live probe, or ``None`` if not configured."""
+def _probe_sheet() -> Tuple[Any, str]:
+    """(memory sheet | None, reason from ``SHEET_REASONS``) for the live probe."""
     raw, _ = resolve("GOOGLE_SERVICE_ACCOUNT_JSON", "GOOGLE_SERVICE_ACCOUNT")
-    if not raw or not os.getenv("PA_MEMORY_SHEET_ID", "").strip():
-        return None
+    if not raw:
+        return None, "no_credentials"
+    sheet_id = os.getenv("PA_MEMORY_SHEET_ID", "").strip()
+    if not sheet_id:
+        return None, "no_sheet_id"
     try:
         import gspread  # noqa: PLC0415
-
-        return gspread.authorize(build_sheet_credentials()).open_by_key(
-            os.environ["PA_MEMORY_SHEET_ID"].strip())
-    except Exception as exc:  # noqa: BLE001 — probe still answers, memory off
-        print("stage=memory backend=none reason=%s" % type(exc).__name__)
-        return None
+    except ImportError:
+        return None, "gspread_missing"
+    try:
+        client = gspread.authorize(build_sheet_credentials())
+    except Exception:  # noqa: BLE001 — malformed JSON / key; never echo it
+        return None, "bad_credentials"
+    try:
+        return client.open_by_key(sheet_id), "ok"
+    except Exception:  # noqa: BLE001 — not shared with the SA, wrong id, API off
+        return None, "open_failed"
 
 
 def mode_assistant() -> int:
@@ -494,7 +504,8 @@ def mode_assistant() -> int:
     for item in describe_provider_readiness(providers):
         readiness.append("%s=%s" % (item.provider, item.credential_state))
     print("assistant providers: %s" % " ".join(readiness))
-    memory, backend_label, _ = open_celia_memory(ca, _probe_sheet())
+    sheet, sheet_reason = _probe_sheet()
+    memory, backend_label, _ = open_celia_memory(ca, sheet)
     brain = ca.CeliaBrain(
         router=ca.build_assistant_router(providers=providers),
         sender_factory=lambda chat: ca.TelegramReplySender(chat_id=chat),
@@ -505,8 +516,9 @@ def mode_assistant() -> int:
         text=probe[:2000], message_id="probe-%d" % os.getpid())
     turn = asyncio.run(brain.handle(inbound))
     result = _label(turn.stage, ASSISTANT_STAGES)
-    summary = "result=%s %s memory=%s" % (
-        result, _reply_summary(turn), _label(backend_label, MEMORY_BACKENDS))
+    summary = "result=%s %s memory=%s sheet=%s" % (
+        result, _reply_summary(turn), _label(backend_label, MEMORY_BACKENDS),
+        _label(sheet_reason, SHEET_REASONS))
     print("stage=assistant-probe %s" % summary)
     if os.getenv("GITHUB_ACTIONS") == "true":
         # Run-page annotation: job logs may be unreachable. Allowlisted labels only.
