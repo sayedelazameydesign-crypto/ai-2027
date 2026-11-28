@@ -258,7 +258,9 @@ def build_assistant_reply_fn(history: Any = None) -> Tuple[Callable[[Dict[str, A
         assistant = ca.ChannelAssistant(
             router=router,
             sender=ca.TelegramReplySender(chat_id=inbound.chat_id),
-            store=store)
+            store=store,
+            system_prompt=ca.CELIA_OWNER_PROMPT,
+            fallback_text=ca.CELIA_OWNER_FALLBACK)
         reply = asyncio.run(assistant.handle_inbound(inbound))
         stage = _label(reply.stage, ASSISTANT_STAGES)
         print("assistant stage=%s %s" % (stage, _reply_summary(reply)))
@@ -380,7 +382,9 @@ def mode_assistant() -> int:
     print("assistant providers: %s" % " ".join(readiness))
     assistant = ca.ChannelAssistant(
         router=ca.build_assistant_router(providers=providers),
-        sender=ca.TelegramReplySender(chat_id=chat_id))
+        sender=ca.TelegramReplySender(chat_id=chat_id),
+        system_prompt=ca.CELIA_OWNER_PROMPT,
+        fallback_text=ca.CELIA_OWNER_FALLBACK)
     inbound = ca.ChannelInboundMessage(
         channel=ca.Channel.TELEGRAM, chat_id=chat_id, sender_id=chat_id,
         text=probe[:2000], message_id="probe-%d" % os.getpid())

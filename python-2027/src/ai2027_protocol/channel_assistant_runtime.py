@@ -13,8 +13,9 @@ Kept apart from the core module so the assistant contract stays small
   ``pending_approval`` and leaves only through ``GovernedReplyBridge`` after a
   single-use approval.
 
-The names the runners need from the core module are re-exported, so each
-runner imports exactly one module.
+The names the runners need from the core module and CELIA's persona
+(:mod:`celia_persona`) are re-exported, so each runner imports exactly one
+module.
 """
 
 from __future__ import annotations
@@ -23,6 +24,11 @@ import asyncio
 from collections.abc import Callable
 from typing import Any
 
+from .celia_persona import (
+    CELIA_CUSTOMER_PROMPT,
+    CELIA_OWNER_FALLBACK,
+    CELIA_OWNER_PROMPT,
+)
 from .channel_assistant import (
     ARABIC_NO_PROVIDER_FALLBACK,
     AssistantReply,
@@ -175,6 +181,9 @@ def make_whatsapp_draft_generator(
 
 
 __all__ = [
+    "CELIA_CUSTOMER_PROMPT",
+    "CELIA_OWNER_FALLBACK",
+    "CELIA_OWNER_PROMPT",
     "Channel",
     "ChannelAssistant",
     "ChannelInboundMessage",

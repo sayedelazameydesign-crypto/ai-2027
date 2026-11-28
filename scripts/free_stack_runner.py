@@ -660,7 +660,13 @@ def build_assistant_reply_generator(
         except Exception:  # noqa: BLE001 — missing deps => stay on defaults
             return None
     capture = ca.DraftCaptureSender()
-    assistant = ca.ChannelAssistant(router=ca.build_assistant_router(), sender=capture)
+    # CELIA in customer scope: same voice, no owner context, no invented
+    # prices/stock/coupons (python-2027 celia_persona). Drafts only.
+    persona = getattr(ca, "CELIA_CUSTOMER_PROMPT", None)
+    extra = {"system_prompt": persona} if persona else {}
+    assistant = ca.ChannelAssistant(
+        router=ca.build_assistant_router(), sender=capture, **extra
+    )
     draft = ca.make_whatsapp_draft_generator(
         assistant, capture, timeout_s=timeout_s, on_error=lambda ev: ""
     )

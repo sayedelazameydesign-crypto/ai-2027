@@ -670,17 +670,20 @@ class TestRealAssistantOverTelegram(unittest.TestCase):
             model = "groq-model"
             is_remote = True
             billing_tier = BillingTier.FREE_TIER
+            system_prompts = []
 
             def is_configured(self):
                 return True
 
             async def complete(self, request, *, timeout_s):
+                self.system_prompts.append(request.system_prompt)
                 return text
 
         return P()
 
     def test_cycle_reply_fn_answers_in_the_sender_chat_with_history(self):
-        _, posts, patches = self._patches([self._free("أهلاً بك!")])
+        free = self._free("أهلاً بك!")
+        ca, posts, patches = self._patches([free])
         with contextlib.ExitStack() as stack:
             for p in patches:
                 stack.enter_context(p)
@@ -693,6 +696,8 @@ class TestRealAssistantOverTelegram(unittest.TestCase):
         self.assertEqual(snapshot()[0]["turns"], [["user", "مرحبا"], ["assistant", "أهلاً بك!"]])
         self.assertIn("provider=groq", out.getvalue())
         self.assertNotIn("tok", out.getvalue())
+        # The owner talks to CELIA in owner scope, never the generic prompt.
+        self.assertEqual(free.system_prompts, [ca.CELIA_OWNER_PROMPT])
 
     def test_probe_mode_exit_codes(self):
         from ai2027_protocol.ai_providers import DeterministicFallbackProvider
@@ -712,7 +717,7 @@ class TestRealAssistantOverTelegram(unittest.TestCase):
                     rc = ci.mode_assistant()
                 self.assertEqual(rc, expected_rc, out.getvalue())
                 sent = posts[0][1]["text"]
-                self.assertEqual(sent, expected_text or ca.ARABIC_NO_PROVIDER_FALLBACK)
+                self.assertEqual(sent, expected_text or ca.CELIA_OWNER_FALLBACK)
                 self.assertIn("stage=assistant-probe", out.getvalue())
                 expected = "replied" if expected_rc == 0 else "no_provider_available"
                 self.assertIn("::notice title=assistant probe::result=%s" % expected,

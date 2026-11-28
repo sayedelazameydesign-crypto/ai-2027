@@ -148,6 +148,12 @@ cd python-2027
 PYTHONPATH=src .venv/bin/python -m pytest tests/test_channel_assistant.py -q
 ```
 
+## 9.1 الشخصية: سيليا (CELIA)
+
+المشغّلان الإنتاجيان يمرّران شخصية سيليا (`celia_persona.py`) بدل الـprompt العام:
+`CELIA_OWNER_PROMPT` + `CELIA_OWNER_FALLBACK` لك على Telegram، و`CELIA_CUSTOMER_PROMPT`
+لمسودات عملاء واتساب. التفاصيل وخريطة الطريق: [`docs/CELIA.md`](CELIA.md).
+
 ## 10. حدود الحالية
 
 - الربط التشغيلي موجود خلف مفتاح `AI2027_ASSISTANT_ENABLED` (مُطفأ افتراضياً) —

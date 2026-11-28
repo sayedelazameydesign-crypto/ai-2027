@@ -298,6 +298,10 @@ class RealAssistantEndToEndTests(unittest.TestCase):
         self.assertEqual(status, "pending_approval")
         self.assertIn("10 صباحاً", reply)
         self.assertEqual(paid.prompts, [])
+        # Customers meet CELIA in customer scope (no owner context).
+        from ai2027_protocol.celia_persona import CELIA_CUSTOMER_PROMPT
+
+        self.assertEqual(free.prompts[0].system_prompt, CELIA_CUSTOMER_PROMPT)
         self.assertEqual(len(free.prompts), 1)
         self.assertIn("ما مواعيد العمل؟", free.prompts[0].prompt)
 
