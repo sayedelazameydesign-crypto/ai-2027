@@ -19,6 +19,12 @@ Fail-closed rules:
     (by design, AD-004) — loud notice, not a failure;
   * no secret value is ever printed, logged, or written to disk.
 
+One integrated bot (scripts/celia_relay.py): when the bot's webhook points at
+the Supabase function ``celia-telegram``, updates are read from its relay
+queue instead of ``getUpdates`` (discovered via getWebhookInfo every cycle;
+no new secret), and CELIA's memory is the Supabase ``celia_memory`` table —
+the Google Sheet tab is no longer written. No webhook => historical path.
+
 Exit codes: 0 success · 1 runtime failure · 2 configuration/preflight.
 """
 from __future__ import annotations
@@ -37,6 +43,10 @@ _REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT / "kernel-2027") not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT / "kernel-2027"))
 from kernel2027 import redact as kernel_redact  # noqa: E402 — stdlib-only kernel, no install
+
+if str(_REPO_ROOT / "scripts") not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT / "scripts"))
+import celia_relay  # noqa: E402 — stdlib-only sibling module
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 
@@ -211,10 +221,15 @@ ASSISTANT_STAGES = ("replied", "no_provider_available", "duplicate_message",
                     "memory_unavailable")
 ASSISTANT_MODES = ("companion", "intelligence", "developer", "executive",
                    "creative")
-MEMORY_BACKENDS = ("sheet", "state", "none")
+MEMORY_BACKENDS = ("supabase", "sheet", "state", "none")
+#: Where this cycle reads Telegram updates from (allowlisted log labels).
+UPDATE_SOURCES = ("relay", "getUpdates")
+CHAT_MODES = ("instant", "relay")
 #: Why the probe has no sheet — allowlisted, safe for run-page annotations.
 SHEET_REASONS = ("ok", "no_credentials", "no_sheet_id", "gspread_missing",
-                 "bad_credentials", "open_failed")
+                 "bad_credentials", "open_failed",
+                 # integrated bot: memory lives in Supabase, the sheet is not used
+                 "not_used")
 #: Probe stages that prove the path works (a model replied, or a memory
 #: command ran and was confirmed from code).
 PROBE_OK_STAGES = frozenset((
@@ -304,14 +319,34 @@ def _import_assistant_module() -> Any:
     return channel_assistant_runtime
 
 
+def discover_relay() -> Optional["celia_relay.RelayClient"]:
+    """The relay client when the bot is integrated with CELIA's function."""
+    token, _ = resolve("PA_APPROVAL_BOT_TOKEN", "TELEGRAM_BOT_TOKEN")
+    api = os.getenv("PA_APPROVAL_API_BASE", "https://api.telegram.org")
+    return celia_relay.discover(token, api)
+
+
 def open_celia_memory(ca: Any, sheet: Any = None,
-                      fallback_rows: Any = None) -> Tuple[Any, str, Any]:
+                      fallback_rows: Any = None,
+                      relay: Any = None) -> Tuple[Any, str, Any]:
     """(PersonalMemory | None, backend label, state-backend | None).
 
-    The sheet tab first; if it cannot be read, the bot state file (still
-    durable across cycles via actions/cache); ``none`` only when neither
-    exists. A storage problem never stops the cycle or the votes.
+    Integrated bot: the Supabase ``celia_memory`` table (the ONE memory; the
+    sheet is then never written). Otherwise the sheet tab first; if it cannot
+    be read, the bot state file (still durable across cycles via
+    actions/cache); ``none`` only when neither exists. A storage problem never
+    stops the cycle or the votes.
     """
+    if relay is not None:
+        try:
+            imported = celia_relay.import_legacy_rows(relay, fallback_rows)
+            if imported:
+                print("stage=memory imported_legacy_rows=%d" % imported)
+            return ca.PersonalMemory(celia_relay.RelayMemoryBackend(relay)), "supabase", None
+        except Exception as exc:  # noqa: BLE001 — never write the sheet instead
+            print("stage=memory backend=none reason=%s (supabase unavailable)"
+                  % type(exc).__name__)
+            return None, "none", None
     if sheet is not None:
         try:
             return (ca.PersonalMemory(SheetMemoryBackend(sheet, ca.SHEET_HEADERS)),
@@ -325,7 +360,7 @@ def open_celia_memory(ca: Any, sheet: Any = None,
 
 
 def build_assistant_reply_fn(history: Any = None, *, sheet: Any = None,
-                             memory_rows: Any = None,
+                             memory_rows: Any = None, relay: Any = None,
                              ) -> Tuple[Callable[[Dict[str, Any]], str],
                                         Callable[[], Any]]:
     """(reply_fn, snapshot_fn): CELIA (``CeliaBrain``) for this cycle.
@@ -342,7 +377,7 @@ def build_assistant_reply_fn(history: Any = None, *, sheet: Any = None,
     store = ca.SnapshotConversationStore(max_turns=ca.env_max_history_turns())
     store.restore(history or [])
     memory, backend_label, state_backend = open_celia_memory(
-        ca, sheet, memory_rows if memory_rows is not None else [])
+        ca, sheet, memory_rows if memory_rows is not None else [], relay=relay)
     brain = ca.CeliaBrain(
         router=ca.build_assistant_router(),
         sender_factory=lambda chat: ca.TelegramReplySender(chat_id=chat),
@@ -391,10 +426,20 @@ def mode_test() -> int:
     return 0
 
 
+def updates_transport(ab: Any, relay: Any) -> Any:
+    """The approval transport: relay queue when integrated, else getUpdates."""
+    transport = ab.TelegramTransport()
+    if relay is None:
+        return transport
+    return celia_relay.RelayTransport(transport, relay, owners=allowed_sender_ids())
+
+
 def mode_run(state_file: pathlib.Path) -> int:
     ab = _import_bot_module()
     creds = build_sheet_credentials()
-    bot = ab.ApprovalBot(creds)
+    relay = discover_relay()
+    bot = ab.ApprovalBot(creds, transport=updates_transport(ab, relay))
+    print("stage=transport updates=%s" % ("relay" if relay is not None else "getUpdates"))
 
     prior = load_state(state_file)
     bot.restore_state(sent_ids=prior["sent"], offset=prior["offset"])
@@ -407,7 +452,7 @@ def mode_run(state_file: pathlib.Path) -> int:
         try:
             reply_fn, snapshot_fn = build_assistant_reply_fn(
                 prior_assistant.get("history"), sheet=getattr(bot, "sheet", None),
-                memory_rows=prior_assistant.get("memory"))
+                memory_rows=prior_assistant.get("memory"), relay=relay)
         except Exception as exc:  # noqa: BLE001 — votes must still run
             print("stage=assistant ok=false reason=%s (approvals continue)"
                   % type(exc).__name__)
@@ -504,8 +549,9 @@ def mode_assistant() -> int:
     for item in describe_provider_readiness(providers):
         readiness.append("%s=%s" % (item.provider, item.credential_state))
     print("assistant providers: %s" % " ".join(readiness))
-    sheet, sheet_reason = _probe_sheet()
-    memory, backend_label, _ = open_celia_memory(ca, sheet)
+    relay = discover_relay()
+    sheet, sheet_reason = (None, "not_used") if relay is not None else _probe_sheet()
+    memory, backend_label, _ = open_celia_memory(ca, sheet, relay=relay)
     brain = ca.CeliaBrain(
         router=ca.build_assistant_router(providers=providers),
         sender_factory=lambda chat: ca.TelegramReplySender(chat_id=chat),
@@ -538,7 +584,7 @@ def mode_welcome() -> int:
     taken from the update itself — the stored PA_APPROVAL_CHAT_ID is only
     needed for preflight/configured(); replies never target it."""
     ab = _import_bot_module()
-    transport = ab.TelegramTransport()
+    transport = updates_transport(ab, discover_relay())
     updates = transport.fetch_updates() or []
     replied = 0
     for upd in updates:
@@ -623,7 +669,11 @@ def mode_chatcheck(source: str = "") -> int:
     api = os.getenv("PA_APPROVAL_API_BASE", "https://api.telegram.org")
     # getUpdates WITHOUT an offset only peeks: nothing is confirmed or consumed.
     me = _telegram_get(api, token, "getMe").get("result") or {}
-    updates = _telegram_get(api, token, "getUpdates").get("result") or []
+    relay = celia_relay.discover(token, api)
+    if relay is not None:  # webhook set: peek the relay queue (no offset = nothing consumed)
+        updates = relay.fetch_updates()
+    else:
+        updates = _telegram_get(api, token, "getUpdates").get("result") or []
     discovered: List[str] = []
     for upd in updates:
         for key in ("message", "edited_message", "channel_post"):

@@ -920,3 +920,124 @@ class TestProbeSheetReasons(unittest.TestCase):
             client.open_by_key.side_effect = None
             client.open_by_key.return_value = "SHEET"
             self.assertEqual(self._reason(env), ("SHEET", "ok"))
+
+
+# ---------------------------------------------------------------------------
+# One integrated bot: @CeliaFashionBot's webhook -> celia-telegram -> relay
+# ---------------------------------------------------------------------------
+from tests.test_celia_relay import FUNCTION, TOKEN, FakeEdge  # noqa: E402
+
+
+class TestIntegratedBotCycle(unittest.TestCase):
+    """mode_run reads the relay queue; a REAL vote is applied by the REAL gate."""
+
+    def _cycle(self, edge, *, flag="0", build=None):
+        from tests import test_approval_bot as tab
+
+        sheet = tab.FakeSheet()
+        tab.seed_approval(sheet.worksheet("pa_approvals"), approval_id="A1")
+        original = tab.FakeTransport()
+        built = {}
+
+        def approval_bot(creds, transport=None):
+            bot = ab.ApprovalBot.__new__(ab.ApprovalBot)
+            bot._sent_cards, bot._offset, bot.text_handler = set(), None, None
+            bot.transport = transport
+            bot.gate = ab.ApprovalGate(sheet, transport, allowed_senders=[OWNER],
+                                       now_fn=lambda: tab.NOW)
+            built["transport"] = transport
+            return bot
+
+        fake_module = types.SimpleNamespace(ApprovalBot=approval_bot,
+                                            TelegramTransport=lambda: original)
+        client = ci.celia_relay.RelayClient(FUNCTION, TOKEN, edge.post)
+        env = {ci.ASSISTANT_FLAG: flag, "PA_APPROVAL_CHAT_ID": OWNER_CHAT,
+               "PA_APPROVAL_ALLOWED_SENDERS": OWNER}
+        with tempfile.TemporaryDirectory() as tmp, clean_env(), \
+                mock.patch.dict(os.environ, env), \
+                mock.patch.object(ci, "_import_bot_module", return_value=fake_module), \
+                mock.patch.object(ci, "build_sheet_credentials", return_value=object()), \
+                mock.patch.object(ci, "discover_relay", return_value=client), \
+                mock.patch.object(ci, "build_assistant_reply_fn", build or mock.Mock()):
+            path = Path(tmp) / "state.json"
+            with contextlib.redirect_stdout(io.StringIO()) as out:
+                rc = ci.mode_run(path)
+            return rc, ci.load_state(path), out.getvalue(), sheet, original, built
+
+    def test_real_button_press_arrives_through_the_relay_and_is_applied(self):
+        edge = FakeEdge()
+        edge.queue = {41: {"update_id": 41, "callback_query": {
+            "id": "q41", "data": "appr:A1:grant", "from": {"id": int(OWNER)},
+            "message": {"message_id": 3, "chat": {"id": int(OWNER_CHAT)}}}}}
+        rc, state, out, sheet, original, built = self._cycle(edge)
+        self.assertEqual(rc, 0)
+        self.assertIn("stage=transport updates=relay", out)
+        self.assertIn("granted=1", out)
+        from tests import test_approval_bot as tab
+        self.assertEqual(sheet.worksheet("pa_approvals").rows[1][tab.ab.COL_STATUS], "granted")
+        self.assertEqual(original.answers[0]["id"], "q41", "answered through the same bot")
+        self.assertEqual(state["offset"], 42)
+        self.assertEqual(edge.owners, [OWNER], "allowlist pushed to the function")
+
+    def test_next_cycle_confirms_the_offset_so_nothing_is_applied_twice(self):
+        edge = FakeEdge()
+        edge.queue = {41: {"update_id": 41, "callback_query": {
+            "id": "q41", "data": "appr:A1:grant", "from": {"id": int(OWNER)}}}}
+        self._cycle(edge)
+        # The runner sent offset=None on its first fetch (fresh state) — the
+        # next cycle restores offset 42, which confirms (deletes) update 41.
+        client = ci.celia_relay.RelayClient(FUNCTION, TOKEN, edge.post)
+        client.fetch_updates(offset=42)
+        self.assertEqual(edge.queue, {})
+
+    def test_assistant_receives_the_relay_for_one_memory(self):
+        kwargs = {}
+
+        def build(history, **kw):
+            kwargs.update(kw)
+            return (lambda u: "replied"), (lambda: [])
+
+        self._cycle(FakeEdge(), flag="1", build=build)
+        self.assertIsNotNone(kwargs.get("relay"))
+
+    def test_without_a_celia_webhook_the_historical_transport_is_used(self):
+        fake_module = types.SimpleNamespace(TelegramTransport=lambda: "ORIGINAL")
+        self.assertEqual(ci.updates_transport(fake_module, None), "ORIGINAL")
+
+
+class TestCeliaMemoryInSupabase(TestRealAssistantOverTelegram):
+    """Integrated bot: CELIA's memory is the Supabase table; the sheet is never written."""
+
+    def _cycle(self, edge, sheet, texts):
+        free = self._free("تمام.")
+        ca, posts, patches = self._patches([free])
+        client = ci.celia_relay.RelayClient(FUNCTION, TOKEN, edge.post)
+        with contextlib.ExitStack() as stack:
+            for p in patches:
+                stack.enter_context(p)
+            reply_fn, _ = ci.build_assistant_reply_fn(None, sheet=sheet, memory_rows=[], relay=client)
+            with contextlib.redirect_stdout(io.StringIO()) as out:
+                stages = [reply_fn(_text_update(i + 1, t)) for i, t in enumerate(texts)]
+        return stages, [p["text"] for _, p in posts], out.getvalue()
+
+    def test_remember_goes_to_supabase_not_the_sheet(self):
+        edge, sheet = FakeEdge(), _FakeSheet()
+        stages, sent, out = self._cycle(edge, sheet, ["تذكّري: أفضّل الردود القصيرة"])
+        self.assertEqual(stages, ["memory_saved"])
+        self.assertIn("memory=supabase", out)
+        self.assertEqual(sheet.tabs, {}, "the Google Sheet is read-only legacy now")
+        self.assertEqual(edge.memory[0]["text"], "أفضّل الردود القصيرة")
+        # What CELIA's instant path saved (same table) is recalled by the runner.
+        edge.memory.append({"id": 2, "kind": "project", "text": "قرار محفوظ من سيليا الفورية",
+                            "source": "telegram:9", "created_at": "2026-11-28T12:00:00+00:00",
+                            "confidence": 1})
+        stages, sent, _ = self._cycle(edge, sheet, ["ماذا تتذكرين؟"])
+        self.assertIn("قرار محفوظ من سيليا الفورية", sent[0])
+
+    def test_supabase_down_means_no_memory_never_a_sheet_write(self):
+        edge, sheet = FakeEdge(), _FakeSheet()
+        edge.down = True
+        stages, sent, out = self._cycle(edge, sheet, ["تذكّري: شيء"])
+        self.assertEqual(stages, ["memory_unavailable"])
+        self.assertEqual(sheet.tabs, {})
+        self.assertIn("memory=none", out)

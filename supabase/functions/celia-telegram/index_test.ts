@@ -13,9 +13,11 @@ import {
   MemoryBook,
   type MemoryRecord,
   openAiProvider,
+  ALLOWED_UPDATES,
   parseMemoryCommand,
   type Provider,
   renderOwnerPrompt,
+  relaySecret,
   routeOf,
   SPEC,
   splitForTelegram,
@@ -155,6 +157,29 @@ const OWNER = 777;
 class FakeStore extends MemStore implements CeliaStore {
   claimed = new Set<number>();
   turns: Turn[] = [];
+  relay = new Map<number, unknown>();
+  ownersSaved: string[] = [];
+  relayFails = false;
+  relayPush(id: number, payload: unknown) {
+    if (this.relayFails) return Promise.reject(new Error("db down"));
+    if (!this.relay.has(id)) this.relay.set(id, payload);
+    return Promise.resolve();
+  }
+  relayFetch(offset: number | null, limit: number) {
+    if (offset !== null) for (const id of [...this.relay.keys()]) if (id < offset) this.relay.delete(id);
+    return Promise.resolve([...this.relay.entries()].sort((a, b) => a[0] - b[0]).slice(0, limit).map((e) => e[1]));
+  }
+  loadOwners() {
+    return Promise.resolve([...this.ownersSaved]);
+  }
+  saveOwners(o: string[]) {
+    this.ownersSaved = o;
+    return Promise.resolve();
+  }
+  memoryReplace(rows: MemoryRecord[]) {
+    this.rows = rows.map((r) => ({ ...r }));
+    return Promise.resolve(this.rows.length);
+  }
   claimUpdate(id: number) {
     const first = !this.claimed.has(id);
     this.claimed.add(id);
@@ -192,7 +217,7 @@ function setup(envExtra: Record<string, string> = {}, providerReply: string | nu
     },
   };
   const env: Record<string, string> = {
-    CELIA_TELEGRAM_TOKEN: TOKEN, CELIA_OWNER_IDS: String(OWNER),
+    CELIA_TELEGRAM_TOKEN: TOKEN, CELIA_OWNER_IDS: String(OWNER), CELIA_CHAT: "instant",
     SUPABASE_URL: "https://ref.supabase.co", ...envExtra,
   };
   const store = new FakeStore();
@@ -264,12 +289,13 @@ Deno.test("telegram retries of the same update are processed once", async () => 
   ok(t.logs.includes("celia stage=duplicate_update"));
 });
 
-Deno.test("strangers and groups get nothing", async () => {
+Deno.test("strangers and groups get nothing from CELIA — their updates go to the runner", async () => {
   const t = setup();
   await post(t.handler, msg(1, "hi", 999));
   await post(t.handler, msg(2, "hi", OWNER, "group"));
   eq(t.tgCalls.length, 0);
-  ok(t.logs.includes("celia stage=ignored_sender") && t.logs.includes("celia stage=ignored_group"));
+  eq([...t.store.relay.keys()], [1, 2]);
+  eq(t.systems.length, 0);
 });
 
 Deno.test("before owners are configured a chat only learns its own id", async () => {
@@ -278,6 +304,13 @@ Deno.test("before owners are configured a chat only learns its own id", async ()
   eq(t.tgCalls.length, 1);
   ok(String(t.tgCalls[0].body.text).includes("4242"));
   eq(t.systems.length, 0);
+});
+
+Deno.test("owners pushed by the authenticated runner are honoured (no extra Supabase secret)", async () => {
+  const t = setup({ CELIA_OWNER_IDS: "" });
+  await t.store.saveOwners([String(OWNER)]);
+  await post(t.handler, msg(1, "تذكّري: معلومة"));
+  eq(t.store.rows.length, 1);
 });
 
 Deno.test("no free model => CELIA's honest fallback, no history written", async () => {
@@ -294,17 +327,115 @@ Deno.test("/setup points the webhook at this function with the derived secret", 
   const hook = t.tgCalls.find((c) => c.method === "setWebhook")!;
   eq(hook.body.url, "https://ref.supabase.co/functions/v1/celia-telegram/telegram");
   eq(hook.body.secret_token, await webhookSecret(TOKEN));
+  ok(ALLOWED_UPDATES.includes("callback_query"), "approval buttons must reach the bot");
+  eq(hook.body.allowed_updates, ALLOWED_UPDATES);
+  eq(hook.body.drop_pending_updates, false);
   ok(!JSON.stringify(await res.json()).includes(TOKEN));
 });
 
 Deno.test("healthz reports booleans only", async () => {
   const t = setup();
   const body = await (await t.handler(new Request("https://x/functions/v1/celia-telegram/healthz"))).json();
-  eq(body, { ok: true, service: "celia-telegram", telegram: true, owners: true, providers: 1, store: true });
+  eq(body, {
+    ok: true, service: "celia-telegram", telegram: true, chat: "instant", webhook: "on",
+    owners: true, providers: 1, store: true,
+  });
 });
 
 Deno.test("long replies are split under Telegram's limit", () => {
   const parts = splitForTelegram("كلمة ".repeat(2000), 4000);
   ok(parts.length === 3 && parts.every((p) => Array.from(p).length <= 4000));
   eq(routeOf("/functions/v1/celia-telegram/telegram/"), "/telegram");
+});
+
+// ------------------------------------------------- one integrated bot (relay)
+const press = (id: number, data: string, from = OWNER) => ({
+  update_id: id,
+  callback_query: { id: `q${id}`, data, from: { id: from }, message: { message_id: 9, chat: { id: from } } },
+});
+
+async function relayCall(handler: (r: Request) => Promise<Response>, body: unknown, secret?: string) {
+  return handler(new Request("https://x/functions/v1/celia-telegram/relay", {
+    method: "POST",
+    headers: { "X-Celia-Relay-Secret": secret ?? await relaySecret(TOKEN) },
+    body: JSON.stringify(body),
+  }));
+}
+
+Deno.test("shadow mode (default): every update is queued, CELIA stays silent", async () => {
+  const t = setup({ CELIA_CHAT: "" });
+  eq((await post(t.handler, msg(1, "ازيك"))).status, 200);
+  await post(t.handler, press(2, "appr:A1:grant"));
+  eq(t.tgCalls.length, 0);
+  eq(t.systems.length, 0);
+  eq([...t.store.relay.keys()], [1, 2]);
+});
+
+Deno.test("instant mode: approval buttons still go to the runner untouched", async () => {
+  const t = setup();
+  await post(t.handler, press(3, "appr:A1:grant"));
+  eq(t.tgCalls.length, 0, "the function never answers a vote itself");
+  eq(t.store.relay.get(3), press(3, "appr:A1:grant"));
+});
+
+Deno.test("instant mode: owner chat is answered here and NOT queued (no double reply)", async () => {
+  const t = setup();
+  await post(t.handler, msg(4, "ازيك"));
+  eq(t.store.relay.size, 0);
+  ok(t.logs.includes("celia stage=replied"));
+});
+
+Deno.test("unknown commands are left to the runner", async () => {
+  const t = setup();
+  await post(t.handler, msg(5, "/status"));
+  eq(t.tgCalls.length, 0);
+  eq([...t.store.relay.keys()], [5]);
+});
+
+Deno.test("a failed queue write returns 503 so Telegram retries (no lost vote)", async () => {
+  const t = setup();
+  t.store.relayFails = true;
+  eq((await post(t.handler, press(6, "appr:A1:deny"))).status, 503);
+});
+
+Deno.test("relay secret is byte-identical to the python runner's (tests/test_celia_relay.py)", async () => {
+  eq(await relaySecret(TOKEN), "bb383f437d96b3aafee1e51a64091a3132549abadb7dbb1d62a40941540399e1");
+  eq(await webhookSecret(TOKEN), "05ba56bb43983b5af25375879b542d44c1aaa29278b8700b2386fb73c10e8686");
+});
+
+Deno.test("relay endpoint: wrong secret is rejected; the webhook secret is not accepted", async () => {
+  const t = setup();
+  eq((await relayCall(t.handler, { op: "updates" }, "nope")).status, 401);
+  eq((await relayCall(t.handler, { op: "updates" }, await webhookSecret(TOKEN))).status, 401);
+});
+
+Deno.test("relay endpoint behaves like getUpdates (offset confirms) and stores the owner allowlist", async () => {
+  const t = setup({ CELIA_CHAT: "" });
+  for (const id of [10, 11, 12]) await post(t.handler, msg(id, "x"));
+  let r = await (await relayCall(t.handler, { op: "updates", owners: ["777", "bad id", "778"] })).json();
+  eq(r.result.map((u: { update_id: number }) => u.update_id), [10, 11, 12], "no offset = peek");
+  eq(r.chat, "relay");
+  eq(t.store.ownersSaved, ["777", "778"]);
+  r = await (await relayCall(t.handler, { op: "updates", offset: 12 })).json();
+  eq(r.result.map((u: { update_id: number }) => u.update_id), [12]);
+  eq([...t.store.relay.keys()], [12]);
+});
+
+Deno.test("one memory: the runner reads and replaces the same Supabase rows CELIA uses", async () => {
+  const t = setup();
+  await post(t.handler, msg(20, "تذكّري: أفضّل الردود القصيرة"));
+  const loaded = await (await relayCall(t.handler, { op: "memory_load" })).json();
+  eq(loaded.rows.map((r: MemoryRecord) => r.text), ["أفضّل الردود القصيرة"]);
+  const rows = [...loaded.rows, { id: 2, kind: "project", text: "قرار من الدورة", source: "telegram:1", created_at: V.now, confidence: 1 }];
+  eq((await (await relayCall(t.handler, { op: "memory_replace", rows })).json()).count, 2);
+  await post(t.handler, msg(21, "ماذا تتذكرين؟"));
+  ok(String(t.tgCalls.filter((c) => c.method === "sendMessage").at(-1)!.body.text).includes("قرار من الدورة"));
+});
+
+Deno.test("rollback: CELIA_WEBHOOK=off makes /setup delete the webhook (and never set it)", async () => {
+  const t = setup({ CELIA_WEBHOOK: "off" });
+  const res = await t.handler(new Request("https://x/functions/v1/celia-telegram/setup"));
+  eq(res.status, 200);
+  eq(t.tgCalls.map((c) => c.method), ["deleteWebhook"]);
+  eq(t.tgCalls[0].body.drop_pending_updates, false);
 });

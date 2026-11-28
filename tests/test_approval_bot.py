@@ -261,6 +261,25 @@ class TestDecisions(unittest.TestCase):
         self.assertEqual(audit[0][18], "granted")
         self.assertEqual(audit[0][21], "POL-004:DELEGATION-GRANTED")
 
+    def test_real_telegram_callback_shape_is_applied(self):
+        # Telegram's CallbackQuery puts the button payload in "data" (not
+        # "callback_data"); before the fix every real press was denied.
+        gate, sheet, transport = make_gate(allowed=["777"])
+        seed_approval(sheet.worksheet("pa_approvals"), approval_id="A1")
+        real = {"id": "q-9", "data": "appr:A1:grant", "from": {"id": 777},
+                "message": {"message_id": 5, "chat": {"id": 777}}}
+        result = gate.handle_callback(real)
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["state"], "granted")
+        self.assertEqual(sheet.worksheet("pa_approvals").rows[1][ab.COL_STATUS], "granted")
+
+    def test_real_shape_still_fail_closed_for_strangers(self):
+        gate, sheet, transport = make_gate(allowed=["777"])
+        seed_approval(sheet.worksheet("pa_approvals"), approval_id="A1")
+        result = gate.handle_callback({"id": "q", "data": "appr:A1:grant", "from": {"id": 999}})
+        self.assertFalse(result["ok"])
+        self.assertEqual(sheet.worksheet("pa_approvals").rows[1][ab.COL_STATUS], "pending")
+
     def test_deny_sets_denied_state(self):
         gate, sheet, transport = make_gate(allowed=["777"])
         seed_approval(sheet.worksheet("pa_approvals"), approval_id="A1")

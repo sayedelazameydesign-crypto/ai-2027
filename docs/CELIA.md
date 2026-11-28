@@ -51,7 +51,7 @@
 | الهوية والشخصية | **PROVEN** (offline) | `tests/test_celia_persona.py` |
 | Telegram — محادثة | **PROVEN live** | تشغيل `mode=assistant`: `result=replied provider=gemini tier=free_tier cost_usd=0.00` |
 | Telegram — دائم | جاهز، ينتظر دمج #204 + `AI2027_ASSISTANT_ENABLED=1` | `docs/CHANNEL-ASSISTANT.md` §11 |
-| Telegram — **فوري + أنيميشن** (Supabase Edge) | **منشور** على `ziaedqqhvsmcwcmlbcpi` (`celia-telegram` v1، الجداول `celia_*`)، `healthz: store=true`؛ ينتظر `CELIA_TELEGRAM_TOKEN` | `supabase/functions/celia-telegram/index_test.ts` (23 اختبار) · §2.1 |
+| Telegram — **بوت واحد متكامل، فوري + أنيميشن** (Supabase Edge) | @CeliaFashionBot نفسه عبر `celia-telegram` (v2: relay + علم `CELIA_CHAT`)؛ ينتظر `CELIA_TELEGRAM_TOKEN` | `index_test.ts` (34) · `tests/test_celia_relay.py` · `TestIntegratedBotCycle` · §2.2 |
 | WhatsApp — مسودات | **PROVEN** offline (مسار VM) | `scripts/test_free_stack_assistant.py` |
 | WhatsApp — إرسال بعد الموافقة | **غير موجود** في أي مسار (VM أو Supabase) | — |
 | الذاكرة قصيرة المدى | آخر 8 دورات من المحادثة (ملف حالة البوت) | `channel_assistant_runtime.SnapshotConversationStore` |
@@ -68,7 +68,44 @@
 
 **الذاكرة:** جدول `celia_memory` في Postgres (تبقى بعد إعادة التشغيل)، آخر 16 رسالة من `celia_turns` (يُحتفظ بـ40)، و`celia_updates` يمنع تكرار الرد عند إعادة Telegram المحاولة.
 
-**التشغيل (مرة واحدة):** بوت جديد من BotFather ← سرّ `CELIA_TELEGRAM_TOKEN` + مفتاح مجاني واحد على الأقل في Supabase ← افتح `https://ziaedqqhvsmcwcmlbcpi.supabase.co/functions/v1/celia-telegram/setup` ← أرسل /start للبوت فيرد بمعرّفك ← ضعه في `CELIA_OWNER_IDS`. الأسرار: `docs/SECRETS.md`.
+**التشغيل:** §2.2 — بلا بوت جديد. الأسرار: `docs/SECRETS.md`.
+
+### 2.2 بوت واحد، ذاكرة واحدة — الترحيل بعلم وبتراجع
+
+**القيد التقني:** Telegram يسلّم تحديثات البوت إمّا لـwebhook **أو** لـ`getUpdates` — لا الاثنين (409).
+لذلك لا «بوت ثانٍ»: الـwebhook لـ@CeliaFashionBot يشير إلى الدالة، والدالة تصفّ كل ما لا ترد عليه هي
+في `celia_relay`، ودورة الموافقات تقرأه بنفس دلالة `getUpdates` (نفس `update_id`، نفس تأكيد الـoffset).
+منطق الموافقات (`src/watchers/approval_bot.py` + `pa_approvals` + سلسلة التدقيق) **لم يتغيّر**.
+
+```
+Telegram ──webhook──▶ celia-telegram ──▶ CELIA_CHAT=instant و محادثة المالك الخاصة؟ ── نعم ─▶ رد فوري + أنيميشن
+                              │                                                   └─ لا ──▶ celia_relay (قبل 200؛ فشل ⇒ 503 فيعيد Telegram)
+approval-bot (كل 5 د) ──POST /relay {updates, offset, owners}──▶ الأزرار/الأوامر ──▶ ApprovalGate (بلا تغيير)
+                      ──POST /relay {memory_load|memory_replace}──▶ celia_memory (الذاكرة الواحدة)
+```
+
+- **الاكتشاف تلقائي** (`scripts/celia_relay.py`): كل دورة تسأل `getWebhookInfo`؛ فقط رابط ينتهي بـ
+  `/functions/v1/celia-telegram/telegram` على نطاق `supabase.co` يفعّل الـrelay. لا سرّ ولا متغيّر جديد في GitHub.
+- **الذاكرة الواحدة:** مع الـrelay تقرأ الدورة وتكتب جدول Supabase `celia_memory` نفسه الذي تستعمله الدالة.
+  تبويب الورقة `celia_memory` **لا يُكتب إطلاقاً** (قراءة فقط/إرث)؛ إن تعذّر Supabase ⇒ بلا ذاكرة في تلك الدورة، لا كتابة للورقة.
+  صفوف ملف الحالة القديمة تُستورد مرة واحدة فقط إن كان الجدول فارغاً (لا تُستبدل ذاكرة قائمة).
+  `pa_approvals` و`pa_audit_logs_*` تبقى في الورقة — هي سجل الموافقات المعتمد، لا ذاكرة سيليا.
+- **مرحلة الإخفاق محمية:** خطوة التشخيص في `approval-bot.yml` كانت تحذف أي webhook عند الفشل؛ الآن تُبقي webhook سيليا
+  وتحذف الغريب فقط.
+- **إصلاح مُكتشف:** `ApprovalGate.handle_callback` كان يقرأ `callback_data`، بينما Telegram يرسل الزر في `data` —
+  فكان كل ضغط حقيقي يُرفض `invalid_callback`. صار يقرأ `data` (مع إبقاء الشكل القديم)، باختبار بشكل Telegram الحقيقي.
+
+| نقطة تفتيش | الفعل | التحقق | التراجع |
+|---|---|---|---|
+| 0 | تطبيق الهجرة `20261128000400` + نشر v2 | `healthz`: `chat=relay` | لا أثر على البوت (لا webhook بعد) |
+| 1 | سرّ `CELIA_TELEGRAM_TOKEN` (= توكن البوت) + مفتاح مجاني واحد | `healthz`: `telegram=true, providers≥1` | حذف السرّ |
+| 2 | **الظل:** فتح `/setup` (العلم غير مضبوط) | دورة `run` تطبع `stage=transport updates=relay`، والبطاقات/الأزرار تعمل كما كانت | `CELIA_WEBHOOK=off` + `/setup` |
+| 3 | فحص الموافقات الحي على البناء المتكامل | بطاقة حقيقية ← ضغط «موافقة» ← الصف `granted` + رد الزر | نفسه |
+| 4 | **القطع:** `CELIA_CHAT=instant` | رد فوري بالأنيميشن؛ `/memory` يعرض ما حفظته الدورة والعكس | حذف `CELIA_CHAT` (عودة للظل فوراً) |
+| 5 | تجميد الورقة | لا كتابة على تبويب `celia_memory` (مضمون بالكود) | إزالة الـwebhook يعيد مسار الورقة القديم |
+
+**ما ليس مدعوماً أثناء الـwebhook:** خطوة التشخيص «Discover chat id» تستعمل `getUpdates` مباشرة فتتلقى 409 (تشخيص فقط، بلا ضرر)؛
+`--mode chatcheck` و`--mode welcome` يقرآن من الـrelay.
 
 ### الذاكرة الدائمة — `celia_personal_memory.py` + `celia_brain.py`
 

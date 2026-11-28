@@ -439,7 +439,11 @@ class ApprovalGate:
     # -- inbound ------------------------------------------------------------
     def handle_callback(self, query: Dict[str, Any]) -> Dict[str, Any]:
         """Apply one callback query. Persist first, then answer the client."""
-        callback_data = str(query.get("callback_data", ""))
+        # Telegram's CallbackQuery carries the button payload in ``data``;
+        # ``callback_data`` is the InlineKeyboardButton field (kept for the
+        # historical synthetic shape). Reading only the latter denied every
+        # real button press as ``invalid_callback``.
+        callback_data = str(query.get("data") or query.get("callback_data") or "")
         sender = str(query.get("from", {}).get("id", ""))
         query_id = str(query.get("id", ""))
 

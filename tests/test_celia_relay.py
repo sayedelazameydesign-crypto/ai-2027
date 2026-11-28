@@ -1,0 +1,176 @@
+"""One integrated bot — the approval runner's relay client (scripts/celia_relay.py).
+
+Hermetic: a fake Telegram (getWebhookInfo) and a fake Edge Function that
+implements the same /relay contract as supabase/functions/celia-telegram
+(index_test.ts proves the TypeScript side of the same contract).
+"""
+from __future__ import annotations
+
+import importlib.util
+import unittest
+from pathlib import Path
+from typing import Any, Dict, List
+
+ROOT = Path(__file__).resolve().parents[1]
+_spec = importlib.util.spec_from_file_location("celia_relay", ROOT / "scripts" / "celia_relay.py")
+assert _spec and _spec.loader
+relay = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(relay)
+
+TOKEN = "123:TEST"
+FUNCTION = "https://ziaedqqhvsmcwcmlbcpi.supabase.co/functions/v1/celia-telegram"
+
+
+class FakeEdge:
+    """The /relay contract of the celia-telegram Edge Function, in memory."""
+
+    def __init__(self, chat: str = "relay") -> None:
+        self.queue: Dict[int, Dict[str, Any]] = {}
+        self.memory: List[Dict[str, Any]] = []
+        self.owners: List[str] = []
+        self.calls: List[Dict[str, Any]] = []
+        self.chat = chat
+        self.down = False
+
+    def post(self, url: str, payload: Dict[str, Any], headers: Dict[str, str]) -> Dict[str, Any]:
+        self.calls.append({"url": url, "payload": payload, "headers": headers})
+        if self.down:
+            raise OSError("connection refused")
+        if headers.get("X-Celia-Relay-Secret") != relay.relay_secret(TOKEN):
+            return {"ok": False}
+        op = payload.get("op")
+        if op == "updates":
+            if "owners" in payload:
+                self.owners = list(payload["owners"])
+            offset = payload.get("offset")
+            if offset is not None:
+                self.queue = {k: v for k, v in self.queue.items() if k >= offset}
+            return {"ok": True, "chat": self.chat,
+                    "result": [self.queue[k] for k in sorted(self.queue)][:100]}
+        if op == "memory_load":
+            return {"ok": True, "rows": [dict(r) for r in self.memory]}
+        if op == "memory_replace":
+            self.memory = [dict(r) for r in payload["rows"]]
+            return {"ok": True, "count": len(self.memory)}
+        return {"ok": False}
+
+
+def telegram_get(webhook_url: str):
+    def get(url: str) -> Dict[str, Any]:
+        assert url.endswith("/bot%s/getWebhookInfo" % TOKEN), url
+        return {"ok": True, "result": {"url": webhook_url, "pending_update_count": 0}}
+    return get
+
+
+class TestSecretParity(unittest.TestCase):
+    def test_relay_secret_matches_the_edge_function(self):
+        # Same constant is asserted in supabase/functions/celia-telegram/index_test.ts.
+        self.assertEqual(relay.relay_secret(TOKEN),
+                         "bb383f437d96b3aafee1e51a64091a3132549abadb7dbb1d62a40941540399e1")
+
+
+class TestDiscovery(unittest.TestCase):
+    def test_celia_webhook_enables_the_relay(self):
+        client = relay.discover(TOKEN, http_get=telegram_get(FUNCTION + "/telegram"))
+        self.assertIsNotNone(client)
+        self.assertEqual(client.base, FUNCTION)
+
+    def test_no_webhook_or_foreign_webhook_keeps_get_updates(self):
+        for url in ("", "https://example.com/functions/v1/celia-telegram/telegram",
+                    "http://ziaedqqhvsmcwcmlbcpi.supabase.co/functions/v1/celia-telegram/telegram",
+                    FUNCTION + "/telegram?x=1", "https://x.supabase.co/functions/v1/other/telegram"):
+            with self.subTest(url=url):
+                self.assertIsNone(relay.discover(TOKEN, http_get=telegram_get(url)))
+
+    def test_telegram_unreachable_or_no_token_falls_back(self):
+        def boom(url):
+            raise OSError("network down")
+        self.assertIsNone(relay.discover(TOKEN, http_get=boom))
+        for junk in ([], {"result": []}, {"result": {"url": None}}, None):
+            self.assertIsNone(relay.discover(TOKEN, http_get=lambda url, j=junk: j))
+        self.assertIsNone(relay.discover("", http_get=telegram_get(FUNCTION + "/telegram")))
+
+
+class TestRelayClient(unittest.TestCase):
+    def setUp(self):
+        self.edge = FakeEdge()
+        self.client = relay.RelayClient(FUNCTION, TOKEN, self.edge.post)
+
+    def test_get_updates_semantics_and_owner_allowlist(self):
+        self.edge.queue = {7: {"update_id": 7}, 8: {"update_id": 8}}
+        got = self.client.fetch_updates(owners=["777", "not-an-id", " 778 "])
+        self.assertEqual([u["update_id"] for u in got], [7, 8])
+        self.assertEqual(self.edge.owners, ["777", "778"])
+        self.assertNotIn("offset", self.edge.calls[0]["payload"], "no offset = peek")
+        self.client.fetch_updates(offset=8)
+        self.assertEqual(sorted(self.edge.queue), [8])
+        self.assertEqual(self.edge.calls[0]["url"], FUNCTION + "/relay")
+
+    def test_the_token_itself_never_travels(self):
+        self.client.fetch_updates()
+        self.assertNotIn(TOKEN, repr(self.edge.calls))
+
+    def test_rejected_or_unreachable_relay_raises(self):
+        bad = relay.RelayClient(FUNCTION, "wrong:token", self.edge.post)
+        with self.assertRaises(RuntimeError):
+            bad.fetch_updates()
+        self.edge.down = True
+        with self.assertRaises(OSError):
+            self.client.fetch_updates()
+
+    def test_chat_mode_is_reported(self):
+        self.edge.chat = "instant"
+        self.client.fetch_updates()
+        self.assertEqual(self.client.chat_mode, "instant")
+
+
+class TestRelayTransport(unittest.TestCase):
+    def test_reads_the_queue_but_sends_through_the_original_transport(self):
+        edge = FakeEdge()
+        edge.queue = {3: {"update_id": 3, "callback_query": {"id": "q", "data": "appr:A1:grant"}}}
+
+        class Original:
+            configured = True
+            sent: List[str] = []
+
+            def send_text(self, text, chat_id=""):
+                self.sent.append(text)
+                return "1"
+
+            def fetch_updates(self, offset=None, timeout=0):
+                raise AssertionError("getUpdates must not be called when integrated")
+
+        original = Original()
+        transport = relay.RelayTransport(original, relay.RelayClient(FUNCTION, TOKEN, edge.post),
+                                         owners=["777"])
+        self.assertEqual(transport.fetch_updates(offset=None)[0]["update_id"], 3)
+        self.assertTrue(transport.configured)
+        transport.send_text("hi")
+        self.assertEqual(original.sent, ["hi"])
+        self.assertEqual(edge.owners, ["777"])
+
+
+class TestOneMemory(unittest.TestCase):
+    ROW = {"id": 1, "kind": "personal", "text": "أفضّل الردود القصيرة",
+           "source": "telegram:1", "created_at": "2026-11-28T12:00:00Z", "confidence": 1.0}
+
+    def test_backend_round_trips_through_supabase(self):
+        edge = FakeEdge()
+        backend = relay.RelayMemoryBackend(relay.RelayClient(FUNCTION, TOKEN, edge.post))
+        backend.save([self.ROW])
+        self.assertEqual(edge.memory, [self.ROW])
+        self.assertEqual(backend.load(), [self.ROW])
+
+    def test_legacy_rows_are_imported_once_and_never_overwrite(self):
+        edge = FakeEdge()
+        client = relay.RelayClient(FUNCTION, TOKEN, edge.post)
+        self.assertEqual(relay.import_legacy_rows(client, [self.ROW, "junk"]), 1)
+        newer = dict(self.ROW, id=2, text="معلومة أحدث")
+        edge.memory = [newer]
+        self.assertEqual(relay.import_legacy_rows(client, [self.ROW]), 0)
+        self.assertEqual(edge.memory, [newer])
+        self.assertEqual(relay.import_legacy_rows(client, []), 0)
+
+
+if __name__ == "__main__":
+    unittest.main()

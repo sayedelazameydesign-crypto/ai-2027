@@ -179,6 +179,7 @@ jobs:
           tests.test_waapi_connector
           tests.test_whatsapp_cloud
           tests.test_approval_bot_ci
+          tests.test_celia_relay
           -v
 
       # tests/ has no blanket discover here (connectors-hub's `discover -s tests`
