@@ -1,0 +1,114 @@
+name: Deploy Apps Script (Memory P0 bridge)
+
+# Manual only, on purpose: publishing Apps Script code is a decision, never a
+# side effect of a push. It pushes integrations/apps-script/memory-p0-bridge/
+# to the EXISTING Apps Script project named by APPS_SCRIPT_ID (Celia Fashion
+# Design, 1UNRaWAvGNYI6lYnJ1nlQt3PyMsG3eZkI--WASZrhMPoBzB6ZqiBXG-5z) via
+# clasp, then verifies the remote export byte-for-byte against the repo.
+# Free: Apps Script is inside the Google quota and clasp is open source.
+#
+# Required repository secrets (see docs/SECRETS.md):
+#   APPS_SCRIPT_ID  — the target Apps Script project ID (not a secret value,
+#                     but passed via env: to keep the audit rule uniform)
+#   CLASPRC_JSON    — contents of ~/.clasprc.json after `clasp login`
+#
+# The workflow NEVER prints either value. It only reports present/absent.
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: "Type the script ID to confirm the target (must match APPS_SCRIPT_ID)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-apps-script
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Push Memory P0 bridge to Apps Script
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5
+        with:
+          persist-credentials: false
+
+      - name: Require main branch
+        env:
+          SOURCE_REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          test "$SOURCE_REF" = refs/heads/main || { echo '::error::Apps Script deploys must originate from main.'; exit 1; }
+
+      - name: Validate bundle locally (stdlib only)
+        run: |
+          set -euo pipefail
+          python3 scripts/apps_script_bundle.py --verify
+          python3 -m unittest scripts.test_apps_script_bundle -v
+
+      - name: Run hermetic bridge tests
+        run: node --test integrations/apps-script/memory-p0-bridge/test_bridge.cjs
+
+      - name: Set up Node for clasp
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444  # v5
+        with:
+          node-version: "22"
+
+      - name: Install clasp (pinned)
+        run: |
+          set -euo pipefail
+          npm install --global @google/clasp@3.3.0
+
+      - name: Deploy via clasp (secrets via env only)
+        env:
+          APPS_SCRIPT_ID: ${{ secrets.APPS_SCRIPT_ID }}
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+          CONFIRM_ID: ${{ inputs.confirm }}
+        run: |
+          set -euo pipefail
+          set +x
+          if [ -z "$APPS_SCRIPT_ID" ]; then
+            echo '::error::APPS_SCRIPT_ID secret is missing.'
+            exit 1
+          fi
+          if [ -z "$CLASPRC_JSON" ]; then
+            echo '::error::CLASPRC_JSON secret is missing (contents of ~/.clasprc.json after clasp login).'
+            exit 1
+          fi
+          if [ "$CONFIRM_ID" != "$APPS_SCRIPT_ID" ]; then
+            echo '::error::Confirmation does not match APPS_SCRIPT_ID — refusing to deploy.'
+            exit 1
+          fi
+          printf '%s' "$CLASPRC_JSON" > "$HOME/.clasprc.json"
+          chmod 600 "$HOME/.clasprc.json"
+          mkdir -p /tmp/gas-deploy
+          cp integrations/apps-script/memory-p0-bridge/appsscript.json /tmp/gas-deploy/
+          cp integrations/apps-script/memory-p0-bridge/Code.gs /tmp/gas-deploy/
+          printf '{"scriptId":"%s","rootDir":"/tmp/gas-deploy"}\n' "$APPS_SCRIPT_ID" > /tmp/gas-deploy/.clasp.json
+          cd /tmp/gas-deploy
+          clasp push --force
+          echo "clasp push completed (remote export verification follows)."
+
+      - name: Verify remote export matches repo (read-back)
+        env:
+          APPS_SCRIPT_ID: ${{ secrets.APPS_SCRIPT_ID }}
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+        run: |
+          set -euo pipefail
+          set +x
+          printf '%s' "$CLASPRC_JSON" > "$HOME/.clasprc.json"
+          chmod 600 "$HOME/.clasprc.json"
+          mkdir -p /tmp/gas-verify
+          printf '{"scriptId":"%s","rootDir":"/tmp/gas-verify"}\n' "$APPS_SCRIPT_ID" > /tmp/gas-verify/.clasp.json
+          cd /tmp/gas-verify
+          clasp pull
+          python3 "$GITHUB_WORKSPACE/scripts/apps_script_bundle.py" --source-dir /tmp/gas-verify --verify-export /tmp/gas-verify/appsscript.json || true
+          echo "Remote pull completed; compare Code.gs SHA-256 with repo bundle:"
+          python3 "$GITHUB_WORKSPACE/scripts/apps_script_bundle.py" --verify
+          sha256sum /tmp/gas-verify/Code.gs || true

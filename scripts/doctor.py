@@ -102,6 +102,7 @@ OPTIONAL_SECRETS: tuple[tuple[str, str], ...] = (
     ("CONNECTORS_HUB_API_TOKEN", "Connectors Hub bearer token"),
     ("WAAPI_API_TOKEN", "WAAPI (waapi.app) WhatsApp gateway — owner notify + approval-gated send"),
     ("DASHSCOPE_API_KEY", "Alibaba Model Studio / Qwen (UNKNOWN_COST, blocked at $0)"),
+    ("CLASPRC_JSON", "clasp auth for Apps Script deploy (manual workflow only)"),
 )
 
 #: Variables that are configuration, not secrets. These are reported by value
@@ -128,6 +129,7 @@ NON_SECRET_SETTINGS: tuple[tuple[str, str], ...] = (
     ("DASHSCOPE_WORKSPACE_ID", "Model Studio workspace id (builds the Qwen base_url)"),
     ("DASHSCOPE_REGION", "Model Studio endpoint region (default ap-southeast-1)"),
     ("QWEN_MODEL", "Qwen model id (required, no default — ids rotate)"),
+    ("APPS_SCRIPT_ID", "Apps Script project id for clasp deploy (Celia Fashion Design)"),
 )
 
 
