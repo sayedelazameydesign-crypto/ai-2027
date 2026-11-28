@@ -54,6 +54,13 @@ jobs:
           node-version: "22"
       - name: Run hermetic watcher tests (no credentials)
         run: node --test integrations/apps-script/proactive-watcher/test_watcher.cjs
+      - name: Run hermetic Memory P0 bridge tests (no credentials)
+        run: node --test integrations/apps-script/memory-p0-bridge/test_bridge.cjs
+      - name: Verify Apps Script bundle and Python interop (stdlib only)
+        run: |
+          set -euo pipefail
+          python3 scripts/apps_script_bundle.py --verify
+          python3 -m unittest scripts.test_apps_script_bundle -v
 
   free-first-tools:
     name: Free-first tools · offline safety and task previews
