@@ -565,7 +565,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command in {"serve", "studio"}:  # pragma: no cover - long-running server
         sdir = getattr(args, "studio_dir", None)
         app = create_app(workspace_root=args.root, studio_dir=sdir)
-        uvicorn.run(app, host=args.host, port=args.port, log_level="info")
+        # OAuth callbacks contain one-time codes in the query string. Never log them.
+        uvicorn.run(app, host=args.host, port=args.port, log_level="info", access_log=False)
         return 0
     return asyncio.run(_run_cli_async(args))
 

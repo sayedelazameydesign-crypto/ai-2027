@@ -41,6 +41,7 @@ from .research_contracts import ResearchGateway
 from .router import AllProvidersFailedError, FreeFirstRouter
 from .security import SecurityValidationError
 from .studio import build_studio_router
+from .studio_auth import StudioAuthConfig, install_studio_auth
 from .telemetry import (
     ObservabilityConfig,
     ObservabilityRuntime,
@@ -126,6 +127,10 @@ def create_app(
         response = await call_next(request)
         response.headers.setdefault("x-trace-id", runtime.current_trace_id())
         return response
+
+    auth_config = StudioAuthConfig.from_env()
+    if auth_config is not None:
+        install_studio_auth(app, auth_config)
 
     studio_router, _agent, _store = build_studio_router(
         workspace_root=root,

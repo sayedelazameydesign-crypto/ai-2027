@@ -6,6 +6,12 @@
 
 </div>
 
+**Security:** Studio is unauthenticated by default; read-only mode is not authentication.
+An optional, unverified-on-Render Google login is documented in
+[`docs/STUDIO-GOOGLE-AUTH.ar.md`](../docs/STUDIO-GOOGLE-AUTH.ar.md).
+Do not connect private accounts until identity protection is configured, independently
+reviewed, and tested on the actual deployment.
+
 **One-command Agent Studio (Manus + Claude Workspace UI, L0/L1/L4/L5 + BudgetGuard + 48-Project Registry):**
 
 ```bash
