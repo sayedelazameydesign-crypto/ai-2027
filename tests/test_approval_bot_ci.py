@@ -285,3 +285,50 @@ class WelcomeModeTests(unittest.TestCase):
         self.assertEqual(fake.sent, [])
         self.assertEqual(fake.offsets, [])
         self.assertIn("received=0 replied=0", out)
+
+
+class TestRedaction(unittest.TestCase):
+    """redact() delegates to kernel2027.redact and keeps Telegram coverage.
+
+    kernel2027.SECRET_PATTERNS has no Telegram bot-token shape, so a bare
+    swap to the kernel would pass scripts/kernel_guard.py while leaking the
+    one credential this runner actually holds. These cases pin both halves.
+    """
+
+    TOKEN = "7123456789:AAHk3vQ9xY2zW8pL5mN0bC4dE7fG1hJ6kTq"  # shape only, not real
+
+    def test_bot_api_url_token_is_masked(self):
+        out = ci.redact("POST https://api.telegram.org/bot%s/sendMessage 400" % self.TOKEN)
+        self.assertNotIn(self.TOKEN.split(":")[1], out)
+        self.assertIn("[redacted-token]", out)
+        self.assertIn("400", out)
+
+    def test_truncated_url_token_is_still_masked(self):
+        # The previous local regex masked bot<id>:<8+ chars>; that must hold.
+        out = ci.redact("url=https://api.telegram.org/bot71234:AAHk3vQ9 cut")
+        self.assertNotIn("AAHk3vQ9", out)
+
+    def test_bare_token_without_bot_prefix_is_masked(self):
+        out = ci.redact("token=%s" % self.TOKEN)
+        self.assertNotIn(self.TOKEN.split(":")[1], out)
+
+    def test_known_env_value_is_masked_whatever_its_shape(self):
+        odd = "not-a-telegram-shape-but-secret-123"
+        with mock.patch.dict(os.environ, {"TELEGRAM_BOT_TOKEN": odd, "PA_APPROVAL_BOT_TOKEN": ""}):
+            out = ci.redact("auth failed for %s" % odd)
+        self.assertNotIn(odd, out)
+
+    def test_kernel_provider_patterns_now_apply(self):
+        gh = "ghp_" + "A" * 36
+        out = ci.redact("leaked %s and Bearer abcdefghijklmnop" % gh)
+        self.assertNotIn(gh, out)
+        self.assertNotIn("abcdefghijklmnop", out)
+
+    def test_ordinary_diagnostics_are_untouched(self):
+        text = "HTTPError: HTTP Error 400: Bad Request | body={\"description\":\"chat not found\"} at 12:30"
+        self.assertEqual(ci.redact(text), text)
+
+    def test_redact_is_kernel_delegation(self):
+        with mock.patch.object(ci, "kernel_redact", wraps=ci.kernel_redact) as spy:
+            ci.redact("x")
+        spy.assert_called_once()

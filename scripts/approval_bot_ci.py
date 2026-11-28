@@ -24,9 +24,15 @@ import argparse
 import json
 import os
 import pathlib
+import re
 import sys
 import urllib.error
 from typing import Any, Dict, List, Optional, Tuple
+
+_REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT / "kernel-2027") not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT / "kernel-2027"))
+from kernel2027 import redact as kernel_redact  # noqa: E402 — stdlib-only kernel, no install
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 
@@ -195,10 +201,21 @@ def mode_welcome() -> int:
     return 0
 
 
+#: Telegram bot-token shape (``<bot id>:<secret>``), the one credential this
+#: runner handles that kernel2027.SECRET_PATTERNS does not recognise — with the
+#: ``bot`` prefix it has inside every Bot API URL (even truncated) or bare.
+_TELEGRAM_TOKEN = re.compile(r"bot\d+:[A-Za-z0-9_-]{8,}|\b\d{5,}:[A-Za-z0-9_-]{30,}")
+
+
 def redact(text: str) -> str:
-    """Strip anything token-shaped before it can reach a log or annotation."""
-    import re
-    return re.sub(r"bot\d+:[A-Za-z0-9_-]{8,}", "[redacted-token]", text)
+    """Strip anything token-shaped before it can reach a log or annotation.
+
+    Delegates to the kernel (all provider patterns + the literal values this
+    process was handed), then masks the Telegram token shape on top.
+    """
+    known = [os.getenv(name, "") for pair in ALIASES[:1] for name in pair]
+    known.append(os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON", ""))
+    return _TELEGRAM_TOKEN.sub("[redacted-token]", kernel_redact(text, secrets=known))
 
 
 def main(argv: Optional[List[str]] = None) -> int:
