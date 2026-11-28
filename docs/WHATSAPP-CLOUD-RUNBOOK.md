@@ -64,7 +64,9 @@
 | `duplicate_event` / `duplicate_outbound_reply` | إعادة تسليم من Meta أو محاولة إرسال مكررة لنفس المحتوى | محمي تلقائياً عبر `effect_key` و`sent_effect_keys` دون أثر خارجي. |
 | `payload_hash_mismatch` | تغيّر أي حقل في الحمولة بعد إصدار الموافقة | تنبيه أمني (منع تلاعب بالحمولة) — أصدر موافقة جديدة للحمولة الصحيحة. |
 | `approval_already_consumed` | محاولة إعادة استخدام موافقة أحادية مستهلكة | محمي تلقائياً؛ كل إرسال خارجي يتطلب موافقة مستقلة جديدة. |
-| `daily_limit_exceeded` | بلوغ سقف `max_per_day` في `pa_delegation_grants` | راجع حجم الرسائل اليومي قبل رفع السقف في العمود `T`. |
+| `limits_exceeded:max_per_day` | بلوغ سقف `max_per_day` في `pa_delegation_grants` | راجع حجم الرسائل اليومي قبل رفع السقف في العمود `T`. |
+
+> **تصنيف التنبيهات الآلي (`whatsapp_cloud.classify_audit_stage`):** تصنّف الدالة كل سبب رفض إلى أربع فئات رصد: `security_tamper` (تنبيه أمني فوري عند فشل التوقيع أو عدم تطابق `payload_hash`)، و`idempotency_guard` (كبح تكرار طبيعي)، و`policy_budget_gate` (إنفاذ نافذة الـ 24 ساعة أو سقف `max_per_day` أو رفض التفويض)، و`protocol_or_transport` (تحذير شبكة أو إعدادات).
 
 ---
 

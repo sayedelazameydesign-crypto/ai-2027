@@ -517,6 +517,61 @@ def make_send_reply_handler(
     return handler
 
 
+_SECURITY_TAMPER_STAGES = frozenset(
+    {
+        "invalid_signature",
+        "malformed_signature",
+        "missing_signature",
+        "payload_hash_mismatch",
+        "challenge_mismatch",
+        "invalid_challenge",
+    }
+)
+_IDEMPOTENCY_STAGES = frozenset(
+    {
+        "duplicate_event",
+        "duplicate_outbound_reply",
+        "approval_already_consumed",
+    }
+)
+_POLICY_BUDGET_STAGES = frozenset(
+    {
+        "outside_24h_service_window",
+        "limits_exceeded",
+        "daily_limit_exceeded",
+        "action_explicitly_denied",
+        "action_not_in_allowed_actions",
+        "approval_denied",
+        "approval_pending",
+        "non_text_ignored",
+    }
+)
+
+
+def classify_audit_stage(stage_or_reason: str) -> str:
+    """Classify a stage/denial reason for monitoring & alert routing.
+
+    Returns one of:
+    - ``"security_tamper"``: signature or payload-hash mismatch (P1 alert).
+    - ``"idempotency_guard"``: benign replay/duplicate suppression.
+    - ``"policy_budget_gate"``: $0 24h window, daily cap, or delegation/approval gate.
+    - ``"protocol_or_transport"``: HTTP/network/config/shape warning.
+    """
+    normalized = str(stage_or_reason or "").strip().lower()
+    if normalized.startswith("tool_execution_error:"):
+        normalized = normalized.split(":", 1)[1]
+    if normalized.startswith("whatsapp_cloud_"):
+        normalized = normalized[len("whatsapp_cloud_") :]
+    prefix = normalized.split(":", 1)[0]
+    if prefix in _SECURITY_TAMPER_STAGES:
+        return "security_tamper"
+    if prefix in _IDEMPOTENCY_STAGES:
+        return "idempotency_guard"
+    if prefix in _POLICY_BUDGET_STAGES:
+        return "policy_budget_gate"
+    return "protocol_or_transport"
+
+
 __all__ = [
     "CloudTransportResult",
     "GRAPH_API_BASE",
@@ -524,6 +579,7 @@ __all__ = [
     "MESSAGE_MAX_CHARS",
     "SERVICE_WINDOW_SECONDS",
     "WhatsAppCloudSendError",
+    "classify_audit_stage",
     "evaluate_outbound_approval",
     "is_within_free_service_window",
     "make_send_reply_handler",

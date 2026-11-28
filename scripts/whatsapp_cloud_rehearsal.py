@@ -61,6 +61,14 @@ class _MemorySheetView:
             self._rows[row_idx] = list(item["values"][0])
 
 
+def _scrub_live_messaging_env() -> None:
+    """Remove any live WhatsApp/Meta/WAAPI env vars inside the rehearsal scope."""
+    for name in list(os.environ):
+        upper = name.upper()
+        if upper.startswith(("WHATSAPP_", "WAAPI_", "META_")):
+            os.environ.pop(name, None)
+
+
 def run_rehearsal() -> Dict[str, Any]:
     """Execute the full offline WhatsApp Cloud + GovernedExecutor rehearsal."""
     wc = _load_by_path("whatsapp_cloud_rehearsal_wc", "src/connectors/whatsapp_cloud.py")
@@ -69,6 +77,7 @@ def run_rehearsal() -> Dict[str, Any]:
     saved_env = dict(os.environ)
     saved_transport = wc._transport
     try:
+        _scrub_live_messaging_env()
         os.environ["WHATSAPP_CLOUD_ACCESS_TOKEN"] = "fixture-" + "rehearsal-bearer"
         os.environ["WHATSAPP_CLOUD_PHONE_NUMBER_ID"] = "109876543210987"
         signing_material = b"fixture-rehearsal-signing-2027"
@@ -145,27 +154,40 @@ def run_rehearsal() -> Dict[str, Any]:
         appr_row[19] = "2026-11-28T16:00:00.000Z"
         appr_row[21] = "true"
 
+        appr_row_2 = list(appr_row)
+        appr_row_2[0] = "01APPR_REHEARSAL_CAP"
+
         grant_row = [""] * 23
         grant_row[0] = "01GRANT_REHEARSAL"
         grant_row[14] = "agent.write"
         grant_row[15] = "active"
         grant_row[17] = json.dumps(["whatsapp_cloud.send_reply"])
         grant_row[18] = json.dumps([])
-        grant_row[19] = json.dumps({"max_per_day": 25})
+        grant_row[19] = json.dumps({"max_per_day": 1})
         grant_row[21] = "owner"
 
         sheet = _MemorySheet(
             {
-                "pa_approvals": [["h"] * 22, appr_row],
+                "pa_approvals": [["h"] * 22, appr_row, appr_row_2],
                 "pa_delegation_grants": [["h"] * 23, grant_row],
                 "pa_audit_logs_202611": [["h"] * 25],
             }
         )
         audit_rows: List[Dict[str, Any]] = []
+
+        def _record_audit(**kw: Any) -> None:
+            audit_rows.append(kw)
+            row25 = [""] * 25
+            row25[14] = "2026-11-28T15:00:00.000Z"
+            row25[15] = str(kw.get("unit") or "")
+            row25[16] = str(kw.get("action") or "")
+            row25[18] = str(kw.get("outcome") or "")
+            sheet._tables["pa_audit_logs_202611"].append(row25)
+
         sent_outbound: set[str] = set()
         executor = ge.GovernedExecutor(
             sheet,
-            lambda **kw: audit_rows.append(kw),
+            _record_audit,
             now_fn=lambda: now_dt,
         )
         executor.register_tool(
@@ -182,6 +204,20 @@ def run_rehearsal() -> Dict[str, Any]:
         replay_exec = executor.execute(
             "01APPR_REHEARSAL", "whatsapp_cloud.send_reply", outbound_payload
         )
+        cap_exec = executor.execute(
+            "01APPR_REHEARSAL_CAP", "whatsapp_cloud.send_reply", outbound_payload
+        )
+
+        # Also verify explicit delegation denial (`denied_actions` wins over `allowed_actions`).
+        grant_denied = list(grant_row)
+        grant_denied[18] = json.dumps(["whatsapp_cloud.send_reply"])
+        sheet._tables["pa_delegation_grants"][1] = grant_denied
+        appr_row_3 = list(appr_row)
+        appr_row_3[0] = "01APPR_REHEARSAL_DENY"
+        sheet._tables["pa_approvals"].append(appr_row_3)
+        delegation_denied = executor.execute(
+            "01APPR_REHEARSAL_DENY", "whatsapp_cloud.send_reply", outbound_payload
+        )
 
         all_ok = bool(
             sig_ok
@@ -190,7 +226,11 @@ def run_rehearsal() -> Dict[str, Any]:
             and first_exec.ok
             and not replay_exec.ok
             and replay_exec.reason == "approval_already_consumed"
-            and len(audit_rows) == 2
+            and not cap_exec.ok
+            and cap_exec.reason.startswith("limits_exceeded:max_per_day")
+            and not delegation_denied.ok
+            and delegation_denied.reason.startswith("action_explicitly_denied")
+            and len(audit_rows) == 4
         )
         return {
             "ok": all_ok,
@@ -199,6 +239,8 @@ def run_rehearsal() -> Dict[str, Any]:
             "preflight_stage": pre_check["stage"],
             "execute_outcome": first_exec.outcome,
             "replay_denied_reason": replay_exec.reason,
+            "daily_cap_denied_reason": cap_exec.reason,
+            "delegation_denied_reason": delegation_denied.reason,
             "audit_rows_recorded": len(audit_rows),
         }
     finally:

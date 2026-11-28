@@ -532,6 +532,23 @@ class WhatsAppCloudTests(unittest.TestCase):
             {"ok": True, "stage": "ok"},
         )
 
+        # 4. Alert/audit stage classification separates tamper, idempotency, policy, and transport.
+        self.assertEqual(wc.classify_audit_stage("invalid_signature"), "security_tamper")
+        self.assertEqual(wc.classify_audit_stage("payload_hash_mismatch"), "security_tamper")
+        self.assertEqual(wc.classify_audit_stage("duplicate_outbound_reply"), "idempotency_guard")
+        self.assertEqual(
+            wc.classify_audit_stage("approval_already_consumed"), "idempotency_guard"
+        )
+        self.assertEqual(
+            wc.classify_audit_stage("tool_execution_error:whatsapp_cloud_outside_24h_service_window"),
+            "policy_budget_gate",
+        )
+        self.assertEqual(
+            wc.classify_audit_stage("limits_exceeded:max_per_day:50>=50"),
+            "policy_budget_gate",
+        )
+        self.assertEqual(wc.classify_audit_stage("http_error"), "protocol_or_transport")
+
 
 if __name__ == "__main__":
     unittest.main()
