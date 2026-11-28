@@ -422,3 +422,302 @@ class TestChatCheck(unittest.TestCase):
         self.assertNotIn("sayed_elazamey", text)
         self.assertNotIn(token.split(":")[1], text)
         self.assertTrue(all("offset" not in p for p in seen), "chatcheck must not consume updates")
+
+
+# ---------------------------------------------------------------------------
+# Channel assistant on the approval poll (docs/CHANNEL-ASSISTANT.md §11)
+# ---------------------------------------------------------------------------
+OWNER_CHAT = "5550001"
+OWNER = "777"
+
+
+def _text_update(update_id, text, *, chat=OWNER_CHAT, sender=OWNER, message_id=None):
+    return {"update_id": update_id, "message": {
+        "message_id": message_id if message_id is not None else update_id,
+        "chat": {"id": int(chat)}, "from": {"id": int(sender)},
+        "date": 1795878000, "text": text}}
+
+
+class TestTelegramAssistantBridge(unittest.TestCase):
+    def _bridge(self, allowed=(OWNER,), chat=OWNER_CHAT, seen=None, reply="replied"):
+        calls = []
+
+        def reply_fn(update):
+            calls.append(update["message"]["text"])
+            if isinstance(reply, Exception):
+                raise reply
+            return reply
+
+        return ci.TelegramAssistantBridge(
+            reply_fn, allowed_senders=list(allowed), chat_id=chat, seen=seen), calls
+
+    def test_owner_text_in_owner_chat_is_answered(self):
+        bridge, calls = self._bridge()
+        self.assertEqual(bridge(_text_update(1, "ما الجديد؟")), "replied")
+        self.assertEqual(calls, ["ما الجديد؟"])
+        self.assertEqual(bridge.seen, ["%s:1" % OWNER_CHAT])
+
+    def test_fail_closed_filters_never_reach_the_model(self):
+        bridge, calls = self._bridge()
+        cases = {
+            "ignored_sender_not_allowed": _text_update(2, "hi", sender="666"),
+            "ignored_other_chat": _text_update(3, "hi", chat="999"),
+            "ignored_command": _text_update(4, "/start"),
+            "ignored_not_text": {"update_id": 5, "message": {
+                "message_id": 5, "chat": {"id": int(OWNER_CHAT)},
+                "from": {"id": int(OWNER)}, "photo": [{}]}},
+            "ignored_not_message": {"update_id": 6, "callback_query": {"id": "cb"}},
+        }
+        for expected, update in cases.items():
+            with self.subTest(case=expected):
+                self.assertEqual(bridge(update), expected)
+        self.assertEqual(calls, [])
+
+    def test_empty_allowlist_answers_nobody(self):
+        bridge, calls = self._bridge(allowed=())
+        self.assertEqual(bridge(_text_update(1, "hi")), "ignored_sender_not_allowed")
+        self.assertEqual(calls, [])
+
+    def test_missing_chat_id_answers_nobody(self):
+        bridge, calls = self._bridge(chat="")
+        self.assertEqual(bridge(_text_update(1, "hi")), "ignored_other_chat")
+        self.assertEqual(calls, [])
+
+    def test_restored_seen_ids_prevent_a_second_answer(self):
+        bridge, calls = self._bridge(seen=["%s:1" % OWNER_CHAT])
+        self.assertEqual(bridge(_text_update(1, "again")), "duplicate")
+        self.assertEqual(calls, [])
+
+    def test_reply_errors_are_classified_and_still_marked_seen(self):
+        bridge, _ = self._bridge(reply=RuntimeError("boom"))
+        self.assertEqual(bridge(_text_update(1, "hi")), "error_RuntimeError")
+        self.assertEqual(bridge(_text_update(1, "hi")), "duplicate")  # at-most-once
+        self.assertEqual(bridge.stats, {"error_RuntimeError": 1, "duplicate": 1})
+
+    def test_seen_list_is_bounded(self):
+        bridge, _ = self._bridge(seen=["x:%d" % i for i in range(ci.ASSISTANT_SEEN_LIMIT + 50)])
+        self.assertEqual(len(bridge.seen), ci.ASSISTANT_SEEN_LIMIT)
+        bridge(_text_update(1, "hi"))
+        self.assertEqual(len(bridge.seen), ci.ASSISTANT_SEEN_LIMIT)
+        self.assertEqual(bridge.seen[-1], "%s:1" % OWNER_CHAT)
+
+    def test_flag_parsing(self):
+        with mock.patch.dict(os.environ, {ci.ASSISTANT_FLAG: ""}):
+            self.assertFalse(ci.assistant_enabled())
+        for value in ("1", "true", "On"):
+            with mock.patch.dict(os.environ, {ci.ASSISTANT_FLAG: value}):
+                self.assertTrue(ci.assistant_enabled())
+
+
+class TestAssistantState(unittest.TestCase):
+    def test_assistant_state_roundtrips_and_defaults_stay_exact(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "state.json"
+            ci.save_state(path, {"sent": ["A"], "offset": 3, "assistant": {
+                "seen": ["1:2"], "history": [{"channel": "telegram", "chat_id": "1",
+                                              "turns": [["user", "سؤال"]]}]}})
+            loaded = ci.load_state(path)
+            self.assertEqual(loaded["assistant"]["seen"], ["1:2"])
+            self.assertEqual(loaded["assistant"]["history"][0]["turns"], [["user", "سؤال"]])
+            ci.save_state(path, {"sent": [], "offset": None})
+            self.assertEqual(ci.load_state(path), {"sent": [], "offset": None})
+
+
+class TestRunOnceTextHandler(unittest.TestCase):
+    @staticmethod
+    def _bot(updates):
+        bot = ab.ApprovalBot.__new__(ab.ApprovalBot)
+        bot._sent_cards = set()
+        bot._offset = None
+        bot.transport = mock.Mock()
+        bot.transport.fetch_updates.return_value = list(updates)
+        bot.gate = mock.Mock()
+        bot.gate.send_pending_cards.return_value = []
+        bot.gate.handle_callback.return_value = {"ok": True, "state": ab.STATE_GRANTED}
+        return bot
+
+    UPDATES = [
+        _text_update(10, "سؤال"),
+        {"update_id": 11, "callback_query": {"id": "cb"}},
+        _text_update(12, "سؤال آخر"),
+    ]
+
+    def test_without_handler_behaviour_and_report_are_unchanged(self):
+        bot = self._bot(self.UPDATES)
+        report = bot.run_once()
+        self.assertEqual(report, {"cards_sent": 0, "callbacks_handled": 1,
+                                  "granted": 1, "denied": 0})
+        self.assertEqual(bot._offset, 13)
+
+    def test_handler_gets_texts_and_votes_still_apply(self):
+        bot = self._bot(self.UPDATES)
+        seen = []
+        bot.text_handler = lambda u: seen.append(u["update_id"])
+        report = bot.run_once()
+        self.assertEqual(seen, [10, 12])
+        self.assertEqual(report["callbacks_handled"], 1)
+        self.assertEqual(report["texts_handled"], 2)
+        self.assertEqual(report["text_errors"], 0)
+        bot.gate.handle_callback.assert_called_once()
+
+    def test_handler_failure_never_blocks_a_vote(self):
+        bot = self._bot(self.UPDATES)
+
+        def boom(update):
+            raise RuntimeError("model down")
+
+        bot.text_handler = boom
+        report = bot.run_once()
+        self.assertEqual(report["text_errors"], 2)
+        self.assertEqual(report["granted"], 1)
+        self.assertEqual(bot._offset, 13)
+
+
+class TestModeRunAssistantWiring(unittest.TestCase):
+    def _run(self, *, flag, build=None, updates=()):
+        fake_bot = TestRunOnceTextHandler._bot(updates)
+        fake_module = mock.Mock()
+        fake_module.ApprovalBot.return_value = fake_bot
+        env = {ci.ASSISTANT_FLAG: flag, "PA_APPROVAL_CHAT_ID": OWNER_CHAT,
+               "PA_APPROVAL_ALLOWED_SENDERS": OWNER}
+        with tempfile.TemporaryDirectory() as tmp, clean_env(), \
+                mock.patch.dict(os.environ, env), \
+                mock.patch.object(ci, "_import_bot_module", return_value=fake_module), \
+                mock.patch.object(ci, "build_sheet_credentials", return_value=object()), \
+                mock.patch.object(ci, "build_assistant_reply_fn", build or mock.Mock()) as b:
+            path = Path(tmp) / "state.json"
+            with contextlib.redirect_stdout(io.StringIO()) as out:
+                rc = ci.mode_run(path)
+            return rc, ci.load_state(path), out.getvalue(), fake_bot, b
+
+    def test_flag_off_never_builds_the_assistant(self):
+        rc, state, out, bot, build = self._run(flag="0", updates=[_text_update(1, "hi")])
+        self.assertEqual(rc, 0)
+        build.assert_not_called()
+        self.assertNotIn("stage=assistant", out)
+        self.assertFalse(getattr(bot, "text_handler", None))
+
+    def test_flag_on_replies_and_persists_seen_and_history(self):
+        answered = []
+
+        def build(history):
+            return (lambda u: answered.append(u["message"]["text"]) or "replied",
+                    lambda: [{"channel": "telegram", "chat_id": OWNER_CHAT,
+                              "turns": [["user", "hi"], ["assistant", "أهلاً"]]}])
+
+        rc, state, out, _, _ = self._run(flag="1", build=build,
+                                         updates=[_text_update(1, "hi"),
+                                                  _text_update(2, "x", sender="666")])
+        self.assertEqual(rc, 0)
+        self.assertEqual(answered, ["hi"])
+        self.assertEqual(state["assistant"]["seen"], ["%s:1" % OWNER_CHAT])
+        self.assertEqual(state["assistant"]["history"][0]["turns"][1], ["assistant", "أهلاً"])
+        self.assertIn("ignored_sender_not_allowed=1", out)
+        self.assertIn("replied=1", out)
+
+    def test_assistant_build_failure_keeps_approvals_running(self):
+        def build(history):
+            raise ImportError("python-2027 not installed")
+
+        rc, state, out, bot, _ = self._run(
+            flag="1", build=build,
+            updates=[{"update_id": 1, "callback_query": {"id": "cb"}}])
+        self.assertEqual(rc, 0)
+        self.assertIn("stage=assistant ok=false reason=ImportError", out)
+        self.assertIn("callbacks_handled=1", out)
+
+
+def _real_assistant():
+    try:
+        return ci._import_assistant_module()
+    except Exception:  # noqa: BLE001 — python-2027 not installed (e.g. py3.10)
+        return None
+
+
+@unittest.skipUnless(_real_assistant(), "python-2027 not installed")
+class TestRealAssistantOverTelegram(unittest.TestCase):
+    """Real channel_assistant + router; fake free model and fake Bot API."""
+
+    def _patches(self, providers):
+        ca = _real_assistant()
+        from ai2027_protocol.budget import BudgetPolicy
+        from ai2027_protocol.router import FreeFirstRouter
+
+        posts = []
+
+        async def fake_post(self_, url, payload):
+            posts.append((url.rsplit("/", 1)[-1], payload))
+            return {"ok": True}
+
+        def router(providers_=None, **_):
+            return FreeFirstRouter(providers=providers_ or providers,
+                                   budget_policy=BudgetPolicy(max_spend_usd=0.0))
+
+        return ca, posts, [
+            mock.patch.object(ca.TelegramReplySender, "_httpx_post", fake_post),
+            mock.patch.object(ca, "build_assistant_router", router),
+            mock.patch.dict(os.environ, {"PA_APPROVAL_BOT_TOKEN": "tok",
+                                         "PA_APPROVAL_CHAT_ID": OWNER_CHAT}),
+        ]
+
+    @staticmethod
+    def _free(text):
+        from ai2027_protocol.contracts import BillingTier, ProviderKind
+
+        class P:
+            kind = ProviderKind.GROQ
+            model = "groq-model"
+            is_remote = True
+            billing_tier = BillingTier.FREE_TIER
+
+            def is_configured(self):
+                return True
+
+            async def complete(self, request, *, timeout_s):
+                return text
+
+        return P()
+
+    def test_cycle_reply_fn_answers_in_the_sender_chat_with_history(self):
+        _, posts, patches = self._patches([self._free("أهلاً بك!")])
+        with contextlib.ExitStack() as stack:
+            for p in patches:
+                stack.enter_context(p)
+            reply_fn, snapshot = ci.build_assistant_reply_fn(None)
+            with contextlib.redirect_stdout(io.StringIO()) as out:
+                stage = reply_fn(_text_update(1, "مرحبا"))
+        self.assertEqual(stage, "replied")
+        self.assertEqual(posts, [("sendMessage", {"chat_id": OWNER_CHAT, "text": "أهلاً بك!"})])
+        self.assertNotIn("getUpdates", [m for m, _ in posts])
+        self.assertEqual(snapshot()[0]["turns"], [["user", "مرحبا"], ["assistant", "أهلاً بك!"]])
+        self.assertIn("provider=groq", out.getvalue())
+        self.assertNotIn("tok", out.getvalue())
+
+    def test_probe_mode_exit_codes(self):
+        from ai2027_protocol.ai_providers import DeterministicFallbackProvider
+
+        for providers, expected_rc, expected_text in (
+                ([self._free("أنا مساعد AI-2027.")], 0, "أنا مساعد AI-2027."),
+                ([DeterministicFallbackProvider()], 3, None)):
+            ca, posts, patches = self._patches(providers)
+            with self.subTest(rc=expected_rc), contextlib.ExitStack() as stack:
+                for p in patches:
+                    stack.enter_context(p)
+                stack.enter_context(mock.patch(
+                    "ai2027_protocol.ai_providers.build_default_providers",
+                    return_value=tuple(providers)))
+                with contextlib.redirect_stdout(io.StringIO()) as out:
+                    rc = ci.mode_assistant()
+                self.assertEqual(rc, expected_rc, out.getvalue())
+                sent = posts[0][1]["text"]
+                self.assertEqual(sent, expected_text or ca.ARABIC_NO_PROVIDER_FALLBACK)
+                self.assertIn("stage=assistant-probe", out.getvalue())
+
+
+class TestRedactionCoversModelKeys(unittest.TestCase):
+    def test_free_tier_model_keys_are_masked(self):
+        with mock.patch.dict(os.environ, {"GROQ_API_KEY": "plainvalue-groq-123456",
+                                          "OPENROUTER_API_KEY": "or-plain-987654321"}):
+            out = ci.redact("failed with plainvalue-groq-123456 and or-plain-987654321")
+        self.assertNotIn("plainvalue-groq-123456", out)
+        self.assertNotIn("or-plain-987654321", out)

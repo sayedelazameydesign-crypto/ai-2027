@@ -6,8 +6,11 @@ GitHub Actions, never on a developer machine. This script is the single
 runner the workflow calls.
 
 Modes:
-  test  send one plain proof message        (bot token + chat id)
-  run   one full cycle: cards + votes       (+ sheet id + service account)
+  test       send one plain proof message        (bot token + chat id)
+  run        one full cycle: cards + votes       (+ sheet id + service account)
+             + channel-assistant replies when AI2027_ASSISTANT_ENABLED=1
+  assistant  live probe: one free-model reply to PA_APPROVAL_CHAT_ID
+             (needs python-2027 installed; nothing else is touched)
 
 Fail-closed rules:
   * missing required secrets -> print the missing NAMES (never values),
@@ -28,7 +31,7 @@ import re
 import sys
 import urllib.error
 import urllib.request
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 _REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT / "kernel-2027") not in sys.path:
@@ -94,7 +97,12 @@ def preflight(mode: str) -> List[str]:
 
 
 def load_state(path: pathlib.Path) -> Dict[str, Any]:
-    """Persistent cross-process state: sent card ids + getUpdates offset."""
+    """Persistent cross-process state: sent card ids + getUpdates offset.
+
+    An ``assistant`` key (replied message ids + bounded transcript) is
+    returned only when the file carries one, so the safe defaults stay
+    exactly ``{"sent": [], "offset": None}``.
+    """
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -103,16 +111,131 @@ def load_state(path: pathlib.Path) -> Dict[str, Any]:
         return {"sent": [], "offset": None}
     sent = [str(i) for i in data.get("sent", []) if str(i).strip()]
     offset = data.get("offset")
-    return {"sent": sent, "offset": int(offset) if offset is not None else None}
+    state: Dict[str, Any] = {
+        "sent": sent, "offset": int(offset) if offset is not None else None}
+    if isinstance(data.get("assistant"), dict):
+        state["assistant"] = data["assistant"]
+    return state
 
 
 def save_state(path: pathlib.Path, state: Dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        json.dumps({"sent": list(state.get("sent", [])),
-                    "offset": state.get("offset")},
-                   indent=1, sort_keys=True),
-        encoding="utf-8")
+    payload: Dict[str, Any] = {"sent": list(state.get("sent", [])),
+                               "offset": state.get("offset")}
+    if isinstance(state.get("assistant"), dict):
+        payload["assistant"] = state["assistant"]
+    path.write_text(json.dumps(payload, indent=1, sort_keys=True,
+                               ensure_ascii=False),
+                    encoding="utf-8")
+
+
+# ---------------------------------------------------------------------------
+# Channel assistant on the approval bot's poll (docs/CHANNEL-ASSISTANT.md §11)
+# ---------------------------------------------------------------------------
+ASSISTANT_FLAG = "AI2027_ASSISTANT_ENABLED"
+ASSISTANT_SEEN_LIMIT = 500
+
+
+def assistant_enabled() -> bool:
+    """The assistant replies only when the flag is explicitly on."""
+    return os.getenv(ASSISTANT_FLAG, "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def allowed_sender_ids() -> List[str]:
+    raw, _ = resolve("PA_APPROVAL_ALLOWED_SENDERS", "TELEGRAM_ALLOWED_SENDERS")
+    return [item.strip() for item in raw.split(",") if item.strip()]
+
+
+class TelegramAssistantBridge:
+    """Fail-closed filter between the approval poll and the assistant.
+
+    It is the ``ApprovalBot.text_handler``. Only plain text from an allowed
+    sender (``PA_APPROVAL_ALLOWED_SENDERS``, empty = nobody) inside the
+    configured chat reaches ``reply_fn``; commands, other chats, strangers,
+    edits and media are ignored. Each ``chat:message_id`` is marked *before*
+    the reply is attempted and persisted in the bot state, so a retried
+    cycle (offset rolled back after a failure) never answers twice.
+    """
+
+    def __init__(self, reply_fn: Callable[[Dict[str, Any]], str], *,
+                 allowed_senders: List[str], chat_id: str,
+                 seen: Optional[List[str]] = None) -> None:
+        self._reply_fn = reply_fn
+        self._allowed = {str(s) for s in allowed_senders if str(s).strip()}
+        self._chat_id = str(chat_id).strip()
+        self.seen: List[str] = [str(s) for s in (seen or [])][-ASSISTANT_SEEN_LIMIT:]
+        self.stats: Dict[str, int] = {}
+
+    def _count(self, stage: str) -> str:
+        self.stats[stage] = self.stats.get(stage, 0) + 1
+        return stage
+
+    def __call__(self, update: Dict[str, Any]) -> str:
+        message = update.get("message") if isinstance(update, dict) else None
+        if not isinstance(message, dict):
+            return self._count("ignored_not_message")
+        text = message.get("text")
+        if not isinstance(text, str) or not text.strip():
+            return self._count("ignored_not_text")
+        if text.lstrip().startswith("/"):
+            return self._count("ignored_command")
+        chat = message.get("chat") if isinstance(message.get("chat"), dict) else {}
+        sender = message.get("from") if isinstance(message.get("from"), dict) else {}
+        if not self._chat_id or str(chat.get("id", "")) != self._chat_id:
+            return self._count("ignored_other_chat")
+        if str(sender.get("id", "")) not in self._allowed:
+            return self._count("ignored_sender_not_allowed")
+        key = "%s:%s" % (chat.get("id"), message.get("message_id"))
+        if key in self.seen:
+            return self._count("duplicate")
+        self.seen.append(key)
+        del self.seen[:-ASSISTANT_SEEN_LIMIT]
+        try:
+            stage = str(self._reply_fn(update) or "unknown")
+        except Exception as exc:  # noqa: BLE001 — classified, never leaked
+            stage = "error_%s" % type(exc).__name__
+        return self._count(stage)
+
+
+def _import_assistant_module() -> Any:
+    """Import the assistant from the checkout (``pip install -e ./python-2027``)."""
+    src = str(ROOT / "python-2027" / "src")
+    if src not in sys.path:
+        sys.path.insert(0, src)
+    from ai2027_protocol import channel_assistant_runtime  # noqa: PLC0415
+    return channel_assistant_runtime
+
+
+def build_assistant_reply_fn(history: Any = None) -> Tuple[Callable[[Dict[str, Any]], str],
+                                                             Callable[[], Any]]:
+    """(reply_fn, snapshot_fn) over one Free-First router for this cycle.
+
+    The router contains only local / declared free-tier providers with
+    ``MAX_SPEND=0``; the Telegram sender only calls ``sendMessage`` (never
+    ``getUpdates``), replying in the chat the message came from.
+    """
+    import asyncio  # noqa: PLC0415
+
+    ca = _import_assistant_module()
+    store = ca.SnapshotConversationStore(max_turns=ca.env_max_history_turns())
+    store.restore(history or [])
+    router = ca.build_assistant_router()
+
+    def reply_fn(update: Dict[str, Any]) -> str:
+        inbound = ca.parse_telegram_update(update)
+        if inbound is None:
+            return "ignored_unparsed"
+        assistant = ca.ChannelAssistant(
+            router=router,
+            sender=ca.TelegramReplySender(chat_id=inbound.chat_id),
+            store=store)
+        reply = asyncio.run(assistant.handle_inbound(inbound))
+        print("assistant stage=%s provider=%s tier=%s cost_usd=%.2f chunks=%d"
+              % (reply.stage, reply.provider or "-", reply.billing_tier,
+                 reply.cost_usd, reply.chunks_sent))
+        return str(reply.stage)
+
+    return reply_fn, store.snapshot
 
 
 def build_sheet_credentials() -> Any:
@@ -149,26 +272,103 @@ def mode_run(state_file: pathlib.Path) -> int:
     prior = load_state(state_file)
     bot.restore_state(sent_ids=prior["sent"], offset=prior["offset"])
     prior_offset = prior["offset"]
+    prior_assistant = prior.get("assistant") or {}
+
+    bridge: Optional[TelegramAssistantBridge] = None
+    snapshot_fn: Optional[Callable[[], Any]] = None
+    if assistant_enabled():
+        try:
+            reply_fn, snapshot_fn = build_assistant_reply_fn(
+                prior_assistant.get("history"))
+        except Exception as exc:  # noqa: BLE001 — votes must still run
+            print("stage=assistant ok=false reason=%s (approvals continue)"
+                  % type(exc).__name__)
+        else:
+            chat_id, _ = resolve("PA_APPROVAL_CHAT_ID", "TELEGRAM_CHAT_ID")
+            bridge = TelegramAssistantBridge(
+                reply_fn, allowed_senders=allowed_sender_ids(),
+                chat_id=chat_id, seen=prior_assistant.get("seen"))
+            bot.text_handler = bridge
+
+    def _assistant_state() -> Dict[str, Any]:
+        if bridge is None:
+            return prior_assistant
+        return {"seen": bridge.seen,
+                "history": snapshot_fn() if snapshot_fn else []}
 
     try:
         report = bot.run_once()
     except Exception as exc:  # noqa: BLE001 — CI must classify, not crash
         # Persist sent-card progress (cards may already be out) but keep the
         # OLD offset so an unapplied callback is retried next cycle — the
-        # same semantics as the long-running daemon.
+        # same semantics as the long-running daemon. Replied message ids are
+        # kept too, so the retried cycle does not answer a text twice.
         save_state(state_file,
                    {"sent": sorted(bot.state_snapshot()["sent"]),
-                    "offset": prior_offset})
+                    "offset": prior_offset,
+                    "assistant": _assistant_state()})
         print("stage=cycle ok=false reason=%s" % type(exc).__name__)
         print("error=%s" % str(exc)[:300])
         return 1
 
-    save_state(state_file, bot.state_snapshot())
+    snapshot = bot.state_snapshot()
+    snapshot["assistant"] = _assistant_state()
+    save_state(state_file, snapshot)
     print("stage=cycle ok=true cards_sent=%d callbacks_handled=%d"
           " granted=%d denied=%d"
           % (report.get("cards_sent", 0), report.get("callbacks_handled", 0),
              report.get("granted", 0), report.get("denied", 0)))
+    if bridge is not None:
+        stats = " ".join("%s=%d" % kv for kv in sorted(bridge.stats.items()))
+        print("stage=assistant enabled=true %s" % (stats or "idle"))
     return 0
+
+
+DEFAULT_ASSISTANT_PROBE = "مرحباً! عرّف بنفسك في سطرين، وقل لي ما الذي تستطيع مساعدتي فيه."
+
+
+def mode_assistant() -> int:
+    """Live probe: one assistant reply into PA_APPROVAL_CHAT_ID.
+
+    Proves end to end that the bot token works and which free provider
+    answers. Exit 0 only when a real free model replied and Telegram
+    accepted it; 3 when only the $0 fallback answered (no free provider
+    configured/reachable) — so the run page tells the two apart.
+    """
+    import asyncio  # noqa: PLC0415
+
+    ca = _import_assistant_module()
+    chat_id, _ = resolve("PA_APPROVAL_CHAT_ID", "TELEGRAM_CHAT_ID")
+    probe = os.getenv("AI2027_ASSISTANT_PROBE_TEXT", "").strip() or DEFAULT_ASSISTANT_PROBE
+    readiness = []
+    from ai2027_protocol.ai_providers import (  # noqa: PLC0415
+        build_default_providers,
+        describe_provider_readiness,
+    )
+    providers = build_default_providers()
+    for item in describe_provider_readiness(providers):
+        readiness.append("%s=%s" % (item.provider, item.credential_state))
+    print("assistant providers: %s" % " ".join(readiness))
+    assistant = ca.ChannelAssistant(
+        router=ca.build_assistant_router(providers=providers),
+        sender=ca.TelegramReplySender(chat_id=chat_id))
+    inbound = ca.ChannelInboundMessage(
+        channel=ca.Channel.TELEGRAM, chat_id=chat_id, sender_id=chat_id,
+        text=probe[:2000], message_id="probe-%d" % os.getpid())
+    reply = asyncio.run(assistant.handle_inbound(inbound))
+    print("stage=assistant-probe result=%s provider=%s model=%s tier=%s"
+          " cost_usd=%.2f chunks=%d spent_usd=%.2f"
+          % (reply.stage, reply.provider or "-", reply.model or "-",
+             reply.billing_tier, reply.cost_usd, reply.chunks_sent,
+             reply.budget.spent_usd if reply.budget else 0.0))
+    if reply.stage == "replied":
+        return 0
+    if reply.stage == "no_provider_available":
+        print("::warning title=assistant probe::no free provider answered —"
+              " the $0 Arabic notice was sent instead. Add GEMINI_API_KEY /"
+              " GROQ_API_KEY / OPENROUTER_API_KEY / NVIDIA_API_KEY secrets.")
+        return 3
+    return 1
 
 
 def mode_welcome() -> int:
@@ -285,13 +485,18 @@ def redact(text: str) -> str:
     """
     known = [os.getenv(name, "") for pair in ALIASES[:1] for name in pair]
     known.append(os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON", ""))
+    # Free-tier model keys the assistant mode receives through env.
+    known.extend(os.getenv(name, "") for name in (
+        "GEMINI_API_KEY", "GROQ_API_KEY", "OPENROUTER_API_KEY", "NVIDIA_API_KEY",
+        "AI2027_ASSISTANT_TELEGRAM_TOKEN"))
     return _TELEGRAM_TOKEN.sub("[redacted-token]", kernel_redact(text, secrets=known))
 
 
 def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(
         description="Telegram approval bot — CI runner (fail-closed)")
-    parser.add_argument("--mode", choices=("test", "run", "welcome", "chatcheck"),
+    parser.add_argument("--mode", choices=("test", "run", "welcome", "chatcheck",
+                                           "assistant"),
                         default="test",
                         help="test: proof message · run: cards + votes"
                              " cycle · welcome: auto-reply loop · chatcheck:"
@@ -327,6 +532,8 @@ def main(argv: Optional[List[str]] = None) -> int:
             return mode_welcome()
         if args.mode == "chatcheck":
             return mode_chatcheck(chat_source)
+        if args.mode == "assistant":
+            return mode_assistant()
         return mode_run(state_file)
     except Exception as exc:  # noqa: BLE001 — classified below, never leaked
         print("stage=runner ok=false reason=%s" % type(exc).__name__)

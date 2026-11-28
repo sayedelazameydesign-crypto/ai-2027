@@ -8,7 +8,12 @@ name: Approval bot · Telegram (free tier)
 # schedule : one cards+votes cycle every 5 min (same cadence as
 #            APPROVAL_BOT_INTERVAL_SEC); card dedup + getUpdates offset
 #            persist in actions/cache (.bot-state.json).
-# dispatch : manual "test" proves delivery with one plain message.
+# dispatch : manual "test" proves delivery with one plain message;
+#            "assistant" proves the channel assistant live: one free-model
+#            reply to PA_APPROVAL_CHAT_ID (docs/CHANNEL-ASSISTANT.md §11).
+# assistant: repository VARIABLE AI2027_ASSISTANT_ENABLED=1 makes every
+#            scheduled cycle also answer the owner's plain texts with a free
+#            model ($0, BudgetGuard). Unset/0 = exactly the old behaviour.
 
 on:
   schedule:
@@ -16,13 +21,19 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: "test = proof message · run = cards+votes · welcome = auto-reply"
+        description: "test = proof message · run = cards+votes · welcome = auto-reply · assistant = live free-model reply"
         type: choice
         options:
           - test
           - run
           - welcome
+          - assistant
         default: test
+      probe_text:
+        description: "assistant mode only: the message to send to the assistant (optional)"
+        type: string
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -52,6 +63,12 @@ jobs:
       - name: Install runtime deps
         run: python3 -m pip install --quiet gspread google-auth google-api-python-client
 
+      # Only when the assistant can run: the flag is on, or the live probe.
+      # Editable install so ai2027_protocol finds kernel-2027 in the checkout.
+      - name: Install channel assistant (python-2027)
+        if: vars.AI2027_ASSISTANT_ENABLED == '1' || inputs.mode == 'assistant'
+        run: python3 -m pip install --quiet -e ./python-2027
+
       - name: Run (fail-closed preflight; secrets stay in env only)
         env:
           # Either naming works: canonical .env.example keys or TELEGRAM_*.
@@ -63,6 +80,15 @@ jobs:
           PA_APPROVAL_API_BASE: https://api.telegram.org
           PA_WAAPI_NOTIFY: "0"  # WhatsApp companion stays off (paid tier)
           BOT_STATE_FILE: .bot-state.json
+          # Channel assistant: off unless the repo VARIABLE says 1. Free-tier
+          # keys only; BudgetGuard blocks anything paid/unknown ($0 ceiling).
+          AI2027_ASSISTANT_ENABLED: ${{ vars.AI2027_ASSISTANT_ENABLED }}
+          AI2027_MAX_SPEND_USD: "0"
+          AI2027_ASSISTANT_PROBE_TEXT: ${{ inputs.probe_text }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             python3 scripts/approval_bot_ci.py --mode "${{ inputs.mode }}"

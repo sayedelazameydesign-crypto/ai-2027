@@ -589,6 +589,13 @@ class ApprovalBot:
         self.gate = ApprovalGate(self.sheet, self.transport,
                                  allowed_senders=allowed_senders, now_fn=now_fn)
         self._offset: Optional[int] = None
+        #: Optional hook for plain (non-callback) updates — e.g. the channel
+        #: assistant. ``None`` (the default) keeps the historical behaviour:
+        #: text updates are skipped and only advance the offset. The hook
+        #: runs in the same cycle and never touches ``getUpdates`` itself, so
+        #: this process stays the single poller; its failures are isolated
+        #: and can never block an approval vote.
+        self.text_handler: Optional[Callable[[Dict[str, Any]], Any]] = None
 
     def restore_state(self, sent_ids: Optional[List[str]] = None,
                       offset: Optional[int] = None) -> None:
@@ -612,18 +619,31 @@ class ApprovalBot:
         sent = self.gate.send_pending_cards()
         updates = self.transport.fetch_updates(offset=self._offset)
         handled: List[Dict[str, Any]] = []
+        text_handler = getattr(self, "text_handler", None)
+        texts_handled = 0
+        text_errors = 0
         for update in updates:
             self._offset = int(update.get("update_id", 0)) + 1
             query = update.get("callback_query")
             if not query:
+                if text_handler is not None:
+                    try:
+                        text_handler(update)
+                        texts_handled += 1
+                    except Exception:  # noqa: BLE001 — a reply never blocks a vote
+                        text_errors += 1
                 continue
             handled.append(self.gate.handle_callback(query))
-        return {
+        report: Dict[str, Any] = {
             "cards_sent": len(sent),
             "callbacks_handled": len(handled),
             "granted": sum(1 for h in handled if h.get("state") == STATE_GRANTED),
             "denied": sum(1 for h in handled if not h.get("ok")),
         }
+        if text_handler is not None:
+            report["texts_handled"] = texts_handled
+            report["text_errors"] = text_errors
+        return report
 
 
 def start_daemon(creds: Any) -> None:

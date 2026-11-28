@@ -51,6 +51,7 @@ from .contracts import (
     BudgetSnapshot,
     CompletionResponse,
     PromptRequest,
+    ProviderKind,
     StrictModel,
 )
 from .router import AllProvidersFailedError, FreeFirstRouter
@@ -522,11 +523,22 @@ class ChannelAssistant:
         model = ""
         billing_tier = BillingTier.LOCAL
         used_fallback = False
+        response: CompletionResponse | None
         try:
-            response: CompletionResponse = await self._router.route(
+            response = await self._router.route(
                 self._build_request(message.chat_id, history, message.text)
             )
         except AllProvidersFailedError:
+            response = None
+        if (
+            response is None
+            or response.provider == ProviderKind.DETERMINISTIC
+            or not response.text.strip()
+        ):
+            # No free model answered. The default chain ends with the
+            # simulated DeterministicFallbackProvider, whose text is a debug
+            # echo ("[deterministic-offline-fallback | simulated=true ...]") —
+            # never deliver that to a person; send the Arabic $0 notice.
             reply_text = self._fallback_text
             provider = "deterministic-fallback"
             model = "offline-fallback-v1"
@@ -552,7 +564,10 @@ class ChannelAssistant:
             model = response.model
             billing_tier = response.billing_tier
 
-        self._store.append(message.channel, message.chat_id, "assistant", reply_text)
+        if not used_fallback:
+            # The "temporarily unavailable" notice is not part of the
+            # conversation; keeping it would teach the model to repeat it.
+            self._store.append(message.channel, message.chat_id, "assistant", reply_text)
         sender_result = await self._sender.send(message.chat_id, reply_text)
         if not sender_result.ok:
             stage = "send_failed"
