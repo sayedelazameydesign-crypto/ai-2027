@@ -1,0 +1,198 @@
+{
+  "version": "2027.1",
+  "product": "CELIA.SH 2027",
+  "assistant": "Celia",
+  "statuses": ["implemented", "partial", "planned", "unavailable", "blocked"],
+  "capabilities": [
+    {
+      "id": "agent-studio-sessions",
+      "name_ar": "جلسات Agent Studio",
+      "name_en": "Agent Studio sessions",
+      "status": "implemented",
+      "source": "studio-api",
+      "action": "open:tasks",
+      "notes_ar": "إنشاء جلسات حقيقية، إرسال مهام، بث أحداث حية (SSE)، إيقاف، وموافقات بشرية عبر واجهات Agent Studio الفعلية.",
+      "notes_en": "Real session creation, task dispatch, live SSE event streaming, stop, and human approvals through the actual Agent Studio APIs."
+    },
+    {
+      "id": "live-agent-kernel-ops",
+      "name_ar": "عمليات صندوق النواة المحلي",
+      "name_en": "Local kernel sandbox ops",
+      "status": "implemented",
+      "source": "live-agent",
+      "action": "open:tasks",
+      "notes_ar": "إنشاء/قائمة ملفات داخل صندوق معزول لكل جولة، مع حاجز سياسة صارم وحالة تنظيف (cleanup_status).",
+      "notes_en": "Create/list files inside a per-run isolated sandbox with a strict policy wall and a reported cleanup_status."
+    },
+    {
+      "id": "evidence-verification",
+      "name_ar": "التحقق والأدلة (SHA-256)",
+      "name_en": "Evidence verification (SHA-256)",
+      "status": "implemented",
+      "source": "studio-api",
+      "action": "open:library",
+      "notes_ar": "سجل قرار، بصمة SHA-256، ونتائج تحقق مستقلة لكل مخرج ومخرجات النواة.",
+      "notes_en": "Decision record, SHA-256 fingerprint, and independent verification results for every artifact and kernel run."
+    },
+    {
+      "id": "human-approvals",
+      "name_ar": "الموافقات البشرية",
+      "name_en": "Human-in-the-loop approvals",
+      "status": "implemented",
+      "source": "studio-api",
+      "action": "open:tasks",
+      "notes_ar": "مقترحات إجراءات الكتابة تبقى خلف موافقة محلية؛ التسجيل في Agent Studio لا ينفّذ تغييرًا خارجيًا.",
+      "notes_en": "Write-action proposals stay behind local approval; recording a decision in Agent Studio does not execute an external change."
+    },
+    {
+      "id": "connectors-hub",
+      "name_ar": "كتالوج الموصلات الحي",
+      "name_en": "Connectors Hub catalog",
+      "status": "partial",
+      "source": "studio-api",
+      "action": "open:connectors",
+      "notes_ar": "الكتالوج يعرض حالة التهيئة فقط (مهيّأ/غير مهيّأ/يحتاج موردًا) ولا يثبت اتصالًا حيًا للقراءة.",
+      "notes_en": "The catalog reports configuration state only (configured/unconfigured/needs-resource); it does not prove a verified live read."
+    },
+    {
+      "id": "celia-memory",
+      "name_ar": "ذاكرة Celia المُدارة بالأدلة",
+      "name_en": "Evidence-gated Celia memory",
+      "status": "partial",
+      "source": "studio-api",
+      "action": "open:library",
+      "notes_ar": "إحصاءات الذاكرة متاحة من StudioStatus.memory، لكن القبول محكوم بالأدلة ولم يُبلغ عن مزامنة شاملة بعد.",
+      "notes_en": "Memory stats are available from StudioStatus.memory, but admission is evidence-gated and broad sync is not yet reported."
+    },
+    {
+      "id": "local-gateway",
+      "name_ar": "البوابة المحلية المقيّدة",
+      "name_en": "Loopback-only local gateway",
+      "status": "implemented",
+      "source": "vite-config",
+      "action": "open:settings",
+      "notes_ar": "الوكيل محصور على 127.0.0.1 فقط؛ لا تُحقن أسرار في المتصفح ولا تُفتح بوابة الاعتمادات على 0.0.0.0.",
+      "notes_en": "The proxy is bound to 127.0.0.1 only; no secrets are injected into the browser bundle and the credential gateway never opens on 0.0.0.0."
+    },
+    {
+      "id": "multilingual-rtl",
+      "name_ar": "عربية RTL أولاً + إنجليزية",
+      "name_en": "Arabic RTL-first + English",
+      "status": "implemented",
+      "source": "ui",
+      "action": null,
+      "notes_ar": "تجربة عربية من اليمين لليسار أولاً مع تبديل كامل للإنجليزية (LTR).",
+      "notes_en": "Arabic right-to-left experience first, with a full English (LTR) toggle."
+    },
+    {
+      "id": "budget-guard",
+      "name_ar": "حارس الميزانية ($0 افتراضيًا)",
+      "name_en": "Budget guard ($0 by default)",
+      "status": "implemented",
+      "source": "kernel-2027",
+      "action": "open:settings",
+      "notes_ar": "الإنفاق الافتراضي صفر؛ أي مزوّد بعيد محجوب ما لم تُثبت تكلفته ضمن الحد المسموح.",
+      "notes_en": "Default spend is zero; any remote provider is blocked unless its cost is proven within the allowed cap."
+    },
+    {
+      "id": "persistent-projects",
+      "name_ar": "المشاريع الدائمة",
+      "name_en": "Persistent projects",
+      "status": "planned",
+      "source": "projects-archive",
+      "action": null,
+      "notes_ar": "الأرشيف projects/ مجمّد حاليًا؛ لا توجد طبقة مشاريع دائمة حية متصلة بالواجهة بعد.",
+      "notes_en": "The projects/ archive is currently frozen; no live persistent-project layer is wired into the UI yet."
+    },
+    {
+      "id": "cloud-browser",
+      "name_ar": "المتصفح السحابي",
+      "name_en": "Cloud browser",
+      "status": "partial",
+      "source": "browser-skill-adapter",
+      "action": null,
+      "notes_ar": "محوّل BrowserSkill في المرحلة الأولى موجود (يدوي/محلي) لكن لا يوجد متصفح سحابي عام متصل بعد.",
+      "notes_en": "A Stage-1 BrowserSkill adapter exists (read-only/local) but no general cloud browser is connected yet."
+    },
+    {
+      "id": "presentations-video-design",
+      "name_ar": "العروض والفيديو والتصميم",
+      "name_en": "Presentations / video / design",
+      "status": "planned",
+      "source": "roadmap",
+      "action": null,
+      "notes_ar": "قوالب عروض وتوليد فيديو وتصميم مخطّطة ضمن خارطة المراحل ولم تُنفّذ بعد.",
+      "notes_en": "Presentation templates, video generation and design are on the phase roadmap but not implemented yet."
+    },
+    {
+      "id": "scheduled-automation",
+      "name_ar": "الأتمتة المجدولة",
+      "name_en": "Scheduled automation",
+      "status": "planned",
+      "source": "roadmap",
+      "action": null,
+      "notes_ar": "المهام المجدولة/المتكررة مخطّطة ولم تُبنَ خدمة الجدولة بعد.",
+      "notes_en": "Scheduled/recurring tasks are planned; the scheduling service is not built yet."
+    }
+  ],
+  "skills": [
+    {
+      "id": "skill-factory",
+      "name_ar": "مصنع مهارات Celia",
+      "name_en": "Celia skill factory",
+      "status": "partial",
+      "notes_ar": "إطار تعريف المهارات موجود (celia-skill-factory) لكن لم تُسجّل مهارات جاهزة متصلة بالواجهة بعد.",
+      "notes_en": "The skill definition framework exists (celia-skill-factory) but no ready skills are wired into the UI yet."
+    },
+    {
+      "id": "file-proof",
+      "name_ar": "إثبات الملفات",
+      "name_en": "File proof skill",
+      "status": "implemented",
+      "notes_ar": "كتابة ملف داخل صندوق معزول مع سجل تحقق وبصمة — منفّذ فعليًا عبر النواة.",
+      "notes_en": "Writing a file inside an isolated sandbox with a verification record and hash — actually implemented via the kernel."
+    },
+    {
+      "id": "browser-probe",
+      "name_ar": "مسبار المتصفح للقراءة فقط",
+      "name_en": "Read-only browser probe",
+      "status": "partial",
+      "notes_ar": "مسبار BrowserSkill المحلي متاح للقراءة فقط؛ لا توجد تصفّح كتابي عام بعد.",
+      "notes_en": "A local read-only BrowserSkill probe is available; no general write-capable browsing yet."
+    },
+    {
+      "id": "deploy-pipeline",
+      "name_ar": "خط النشر",
+      "name_en": "Deploy pipeline",
+      "status": "blocked",
+      "notes_ar": "النشر العام محظور في هذه المرحلة؛ الواجهة لا تنشر ولا تدمج تلقائيًا.",
+      "notes_en": "Public deploy is blocked in this phase; the UI does not deploy or auto-merge."
+    }
+  ],
+  "projects": [
+    {
+      "id": "celia-sh-2027",
+      "name_ar": "CELIA.SH 2027",
+      "name_en": "CELIA.SH 2027",
+      "status": "implemented",
+      "notes_ar": "واجهة المنتج الموحّدة لهذه الجلسة (المرحلة الأولى).",
+      "notes_en": "The unified product UI for this session (Phase 1)."
+    },
+    {
+      "id": "cela-nimna",
+      "name_ar": "cela.nimna",
+      "name_en": "cela.nimna",
+      "status": "planned",
+      "notes_ar": "أرشيف مجمّد تحت projects/؛ يُستخدم كمرجع فجوة قدرات فقط، غير متصل حيًا.",
+      "notes_en": "Frozen archive under projects/; referenced only as a capability-gap source, not live-connected."
+    },
+    {
+      "id": "celia-sh-archive",
+      "name_ar": "celia.sh (الأرشيف)",
+      "name_en": "celia.sh (archive)",
+      "status": "planned",
+      "notes_ar": "أرشيف مجمّد تحت projects/؛ لا يُعدّ نسخة تشغيلية من الواجهة الحالية.",
+      "notes_en": "Frozen archive under projects/; not a running build of the current UI."
+    }
+  ]
+}
