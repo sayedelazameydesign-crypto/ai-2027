@@ -1,0 +1,11 @@
+# Nightly verified backup. Briefly stops Live Agent / HUD / Studio for a consistent
+# snapshot (seconds); the webhook keeps answering and is backed up online.
+[Unit]
+Description=AI-2027 nightly verified backup
+
+[Service]
+Type=oneshot
+EnvironmentFile=-/etc/ai2027/backup.env
+ExecStart=/usr/local/sbin/ai2027-backup
+Nice=10
+IOSchedulingClass=idle

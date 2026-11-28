@@ -525,6 +525,23 @@ def make_webhook_handler(orchestrator: ZeroCostOrchestrator) -> type[BaseHTTPReq
     class WebhookHandler(BaseHTTPRequestHandler):
         def do_GET(self) -> None:  # noqa: N802
             parsed = urlparse(self.path)
+            if parsed.path == "/healthz":
+                # Liveness for an external uptime monitor: proves the process
+                # answers AND the SQLite store is readable. Never reports a
+                # secret, a phone number, a message, or a count.
+                try:
+                    orchestrator.conn.execute("SELECT 1").fetchone()
+                    ok = True
+                except sqlite3.Error:
+                    ok = False
+                health = json.dumps({"ok": ok, "service": "free-stack-webhook"}).encode("utf-8")
+                self.send_response(200 if ok else 503)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Cache-Control", "no-store")
+                self.send_header("Content-Length", str(len(health)))
+                self.end_headers()
+                self.wfile.write(health)
+                return
             if parsed.path != "/webhook":
                 self.send_response(404)
                 self.end_headers()

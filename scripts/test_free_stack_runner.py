@@ -117,6 +117,33 @@ class FreeStackRunnerTests(unittest.TestCase):
             os.environ.clear()
             os.environ.update(saved_env)
 
+    def test_healthz_reports_liveness_without_data_and_fails_closed(self) -> None:
+        conn = free_stack_runner.init_db(":memory:")
+        orch = free_stack_runner.ZeroCostOrchestrator(conn)
+        server = free_stack_runner.ThreadingHTTPServer(
+            ("127.0.0.1", 0), free_stack_runner.make_webhook_handler(orch)
+        )
+        port = server.server_address[1]
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            with urllib.request.urlopen(f"http://127.0.0.1:{port}/healthz", timeout=5) as resp:
+                self.assertEqual(resp.status, 200)
+                self.assertEqual(resp.headers.get("Cache-Control"), "no-store")
+                body = json.loads(resp.read().decode("utf-8"))
+            # Exactly these two keys: no counts, numbers, or secrets leak.
+            self.assertEqual(body, {"ok": True, "service": "free-stack-webhook"})
+
+            # A broken store is reported as 503, never as healthy.
+            conn.close()
+            with self.assertRaises(urllib.error.HTTPError) as ctx:
+                urllib.request.urlopen(f"http://127.0.0.1:{port}/healthz", timeout=5)
+            self.assertEqual(ctx.exception.code, 503)
+            ctx.exception.close()
+        finally:
+            server.shutdown()
+            server.server_close()
+
 
 if __name__ == "__main__":
     unittest.main()
