@@ -215,7 +215,8 @@ test('manifest enforces minimal scopes and strict 3-endpoint urlFetchWhitelist',
 test('watcherPoll keeps read-only baseline behavior with zero writes', () => {
   const h = makeHarness({
     httpHandler: (url) => {
-      if (url.includes('gmail.googleapis.com')) {
+      const parsed = new URL(url);
+      if (parsed.hostname === 'gmail.googleapis.com') {
         return { status: 200, body: { messages: [{ id: 'm1' }, { id: 'm2' }] } };
       }
       return {
@@ -277,10 +278,11 @@ test('memoryWatcherCycle redacts sensitive data, deduplicates, chains SHA-256 au
   const h = makeHarness({
     props: { PA_MEMORY_SHEET_ID: '1LPceG_K9jPaGOEFVf5wymR4eYyc3Jh4Bpgg9VatNf2I' },
     httpHandler: (url) => {
-      if (url.includes('/messages?')) {
+      const parsed = new URL(url);
+      if (parsed.hostname === 'gmail.googleapis.com' && parsed.pathname.endsWith('/messages')) {
         return { status: 200, body: { messages: [{ id: 'msg-1' }] } };
       }
-      if (url.includes('/messages/msg-1')) {
+      if (parsed.hostname === 'gmail.googleapis.com' && parsed.pathname.endsWith('/messages/msg-1')) {
         return {
           status: 200,
           body: {
@@ -399,17 +401,18 @@ test('approvalBotCycle fails closed when unconfigured and enforces allowlist + g
       PA_APPROVAL_VOTE_BASE_URL: 'https://vote.example.workers.dev'
     },
     httpHandler: (url, opts) => {
-      if (url.endsWith('/sendMessage')) {
+      const parsed = new URL(url);
+      if (parsed.hostname === 'api.telegram.org' && parsed.pathname.endsWith('/sendMessage')) {
         const body = JSON.parse(opts.payload);
         sentMessages.push(body);
         return { status: 200, body: { ok: true, result: { message_id: 42 } } };
       }
-      if (url.includes('/getUpdates')) {
+      if (parsed.hostname === 'api.telegram.org' && parsed.pathname.endsWith('/getUpdates')) {
         const current = updatesBatch;
         updatesBatch = [];
         return { status: 200, body: { ok: true, result: current } };
       }
-      if (url.endsWith('/answerCallbackQuery')) {
+      if (parsed.hostname === 'api.telegram.org' && parsed.pathname.endsWith('/answerCallbackQuery')) {
         callbackAnswers.push(JSON.parse(opts.payload));
         return { status: 200, body: { ok: true, result: true } };
       }
@@ -426,7 +429,10 @@ test('approvalBotCycle fails closed when unconfigured and enforces allowlist + g
   assert.equal(sentMessages.length, 1);
   assert.ok(!sentMessages[0].text.includes('29901011234567'));
   assert.ok(sentMessages[0].text.includes('[REDACTED_SENSITIVE]'));
-  assert.ok(sentMessages[0].text.includes('https://vote.example.workers.dev?approval=01APPRTEST0000000000000001'));
+  assert.match(
+    sentMessages[0].text,
+    /https:\/\/vote\.example\.workers\.dev\?approval=01APPRTEST0000000000000001/
+  );
 
   assert.equal(callbackAnswers.length, 2);
   assert.equal(callbackAnswers[0].text, 'غير مصرح لك بالتصويت.');
