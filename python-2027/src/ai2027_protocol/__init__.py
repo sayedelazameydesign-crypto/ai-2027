@@ -153,6 +153,32 @@ from .provider_scoring import (
     ProviderScore,
     ProviderScorecard,
 )
+from .reflective_graph_memory import (
+    GraphEdgeRecord,
+    GraphEdgeSpec,
+    GraphNodeRecord,
+    GraphNodeSpec,
+    NodeKind,
+    RankedExperienceHit,
+    ReflectiveGraphMemory,
+    compute_utility_score,
+    extract_prospective_graph,
+)
+from .reflective_pipeline import (
+    ExecutionStrategy,
+    ReflectiveCognitivePipeline,
+    ReflectivePipelineResult,
+)
+from .reflective_tree import (
+    DEFAULT_TREE_POLICY_ID,
+    BoundedReflectiveTreeSearch,
+    ReflectiveTreeNode,
+    TreeAuditEntry,
+    TreeSearchOutcome,
+    TreeSearchPolicy,
+    TreeSearchResult,
+    verify_tree_audit_chain,
+)
 from .reflexion import (
     DEFAULT_REFLEXION_POLICY_ID,
     REFLEXION_ARXIV_ID,
@@ -388,4 +414,24 @@ __all__ = [
     "detect_trajectory_pathology",
     "filter_valid_python_tests",
     "verify_reflexion_chain",
+    "GraphEdgeRecord",
+    "GraphEdgeSpec",
+    "GraphNodeRecord",
+    "GraphNodeSpec",
+    "NodeKind",
+    "RankedExperienceHit",
+    "ReflectiveGraphMemory",
+    "compute_utility_score",
+    "extract_prospective_graph",
+    "DEFAULT_TREE_POLICY_ID",
+    "BoundedReflectiveTreeSearch",
+    "ReflectiveTreeNode",
+    "TreeAuditEntry",
+    "TreeSearchOutcome",
+    "TreeSearchPolicy",
+    "TreeSearchResult",
+    "verify_tree_audit_chain",
+    "ExecutionStrategy",
+    "ReflectiveCognitivePipeline",
+    "ReflectivePipelineResult",
 ]
