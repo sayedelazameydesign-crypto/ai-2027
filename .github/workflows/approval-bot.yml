@@ -8,7 +8,16 @@ name: Approval bot · Telegram (free tier)
 # schedule : one cards+votes cycle every 5 min (same cadence as
 #            APPROVAL_BOT_INTERVAL_SEC); card dedup + getUpdates offset
 #            persist in actions/cache (.bot-state.json).
-# dispatch : manual "test" proves delivery with one plain message.
+# dispatch : manual "test" proves delivery with one plain message;
+#            "assistant" proves the channel assistant live: one free-model
+#            reply to PA_APPROVAL_CHAT_ID (docs/CHANNEL-ASSISTANT.md §11).
+# one bot  : when @CeliaFashionBot's webhook points at the Supabase function
+#            celia-telegram, updates come from its relay queue instead of
+#            getUpdates and CELIA's memory is the Supabase table (auto-detected
+#            each cycle via getWebhookInfo; no new secret). docs/CELIA.md §2.2.
+# assistant: repository VARIABLE AI2027_ASSISTANT_ENABLED=1 makes every
+#            scheduled cycle also answer the owner's plain texts with a free
+#            model ($0, BudgetGuard). Unset/0 = exactly the old behaviour.
 
 on:
   schedule:
@@ -16,13 +25,19 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: "test = proof message · run = cards+votes · welcome = auto-reply"
+        description: "test = proof message · run = cards+votes · welcome = auto-reply · assistant = live free-model reply"
         type: choice
         options:
           - test
           - run
           - welcome
+          - assistant
         default: test
+      probe_text:
+        description: "assistant mode only: the message to send to the assistant (optional)"
+        type: string
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -41,8 +56,12 @@ jobs:
         with:
           persist-credentials: false
 
+      # Restore + save are explicit: actions/cache's implicit post-step saves
+      # only on success, which silently discarded what a FAILED cycle writes
+      # on purpose (sent-card progress, the old offset, and when a rollback's
+      # queue drain started — scripts/celia_relay.py select_source).
       - name: Restore bot state (sent cards + Telegram offset)
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: .bot-state.json
           key: approval-bot-state-${{ github.run_id }}
@@ -51,6 +70,12 @@ jobs:
 
       - name: Install runtime deps
         run: python3 -m pip install --quiet gspread google-auth google-api-python-client
+
+      # Only when the assistant can run: the flag is on, or the live probe.
+      # Editable install so ai2027_protocol finds kernel-2027 in the checkout.
+      - name: Install channel assistant (python-2027)
+        if: vars.AI2027_ASSISTANT_ENABLED == '1' || inputs.mode == 'assistant'
+        run: python3 -m pip install --quiet -e ./python-2027
 
       - name: Run (fail-closed preflight; secrets stay in env only)
         env:
@@ -63,6 +88,15 @@ jobs:
           PA_APPROVAL_API_BASE: https://api.telegram.org
           PA_WAAPI_NOTIFY: "0"  # WhatsApp companion stays off (paid tier)
           BOT_STATE_FILE: .bot-state.json
+          # Channel assistant: off unless the repo VARIABLE says 1. Free-tier
+          # keys only; BudgetGuard blocks anything paid/unknown ($0 ceiling).
+          AI2027_ASSISTANT_ENABLED: ${{ vars.AI2027_ASSISTANT_ENABLED }}
+          AI2027_MAX_SPEND_USD: "0"
+          AI2027_ASSISTANT_PROBE_TEXT: ${{ inputs.probe_text }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             python3 scripts/approval_bot_ci.py --mode "${{ inputs.mode }}"
@@ -70,38 +104,60 @@ jobs:
             python3 scripts/approval_bot_ci.py --mode run
           fi
 
+      - name: Save bot state (also after a failed cycle)
+        if: always() && hashFiles('.bot-state.json') != ''
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: .bot-state.json
+          key: approval-bot-state-${{ github.run_id }}
+
       # Failure-only diagnostics: identify the token's bot (getMe), report
       # which chat ids exist — chat ids are not credentials; the token
       # itself is never printed (redaction also guards the script output).
-      # Failure-only: a foreign webhook blocks getUpdates (409) and made
+      # Failure-only: a FOREIGN webhook blocks getUpdates (409) and made
       # earlier "no messages" readings unreliable — inspect + remove it,
       # keeping queued updates (no drop_pending_updates), then rediscover.
-      - name: Clear webhook + rediscover (diagnostic)
+      # One integrated bot: a webhook pointing at CELIA's own Supabase
+      # function (…/functions/v1/celia-telegram/telegram) is NOT foreign —
+      # it is how this runner receives updates (scripts/celia_relay.py), so
+      # it is kept. Rollback is explicit: CELIA_WEBHOOK=off + /setup.
+      - name: Clear foreign webhook + rediscover (diagnostic)
         if: failure()
         env:
           PA_APPROVAL_BOT_TOKEN: ${{ secrets.PA_APPROVAL_BOT_TOKEN || secrets.TELEGRAM_BOT_TOKEN }}
         run: |
           curl -sS --max-time 10 "https://api.telegram.org/bot${PA_APPROVAL_BOT_TOKEN}/getWebhookInfo" \
-            | python3 -c '
+            > /tmp/webhook-info.json || echo '{}' > /tmp/webhook-info.json
+          verdict=$(python3 - <<'PY'
           import json, sys, urllib.parse
-          d = json.load(sys.stdin)
-          if d.get("ok"):
-              r = d.get("result", {})
-              url = r.get("url") or ""
-              host = urllib.parse.urlparse(url).netloc if url else "-"
-              print("::notice title=webhook-info::url_host=%s has_url=%s pending=%s last_error=%s"
-                    % (host, bool(url), r.get("pending_update_count", 0),
-                       (r.get("last_error_date") or "-")))
-          else:
-              print("::notice title=webhook-info::getWebhookInfo failed: %s" % d.get("description"))
-          '
-          curl -sS --max-time 10 "https://api.telegram.org/bot${PA_APPROVAL_BOT_TOKEN}/deleteWebhook" \
-            | python3 -c '
+          sys.path.insert(0, "scripts")
+          import celia_relay
+          try:
+              d = json.load(open("/tmp/webhook-info.json"))
+          except ValueError:
+              d = {}
+          r = d.get("result") if isinstance(d.get("result"), dict) else {}
+          url = r.get("url") or ""
+          host = urllib.parse.urlparse(url).netloc if url else "-"
+          celia = celia_relay.relay_base_from_webhook(url) is not None
+          print("::notice title=webhook-info::url_host=%s has_url=%s celia=%s pending=%s last_error=%s"
+                % (host, bool(url), celia, r.get("pending_update_count", 0),
+                   (r.get("last_error_date") or "-")), file=sys.stderr)
+          print("keep" if (celia or not url) else "clear")
+          PY
+          )
+          rm -f /tmp/webhook-info.json
+          if [ "$verdict" = "clear" ]; then
+            curl -sS --max-time 10 "https://api.telegram.org/bot${PA_APPROVAL_BOT_TOKEN}/deleteWebhook" \
+              | python3 -c '
           import json, sys
           d = json.load(sys.stdin)
           print("::notice title=webhook-clear::delete ok=%s desc=%s"
                 % (d.get("ok"), d.get("description", "-")))
           '
+          else
+            echo "::notice title=webhook-clear::kept (none, or CELIA's integrated webhook)"
+          fi
 
       - name: Discover chat id (diagnostic)
         if: failure()

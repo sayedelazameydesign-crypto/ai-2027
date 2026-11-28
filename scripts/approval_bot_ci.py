@@ -6,8 +6,11 @@ GitHub Actions, never on a developer machine. This script is the single
 runner the workflow calls.
 
 Modes:
-  test  send one plain proof message        (bot token + chat id)
-  run   one full cycle: cards + votes       (+ sheet id + service account)
+  test       send one plain proof message        (bot token + chat id)
+  run        one full cycle: cards + votes       (+ sheet id + service account)
+             + channel-assistant replies when AI2027_ASSISTANT_ENABLED=1
+  assistant  live probe: one free-model reply to PA_APPROVAL_CHAT_ID
+             (needs python-2027 installed; nothing else is touched)
 
 Fail-closed rules:
   * missing required secrets -> print the missing NAMES (never values),
@@ -15,6 +18,13 @@ Fail-closed rules:
   * empty PA_APPROVAL_ALLOWED_SENDERS -> every vote will be denied
     (by design, AD-004) — loud notice, not a failure;
   * no secret value is ever printed, logged, or written to disk.
+
+One integrated bot (scripts/celia_relay.py): when the bot's webhook points at
+the Supabase function ``celia-telegram``, updates are read from its relay
+queue instead of ``getUpdates`` (discovered via getWebhookInfo every cycle;
+no new secret), and CELIA's memory is the Supabase ``celia_memory`` table —
+the Google Sheet tab is no longer written. No webhook => historical path,
+after the remembered queue is drained (celia_relay.select_source).
 
 Exit codes: 0 success · 1 runtime failure · 2 configuration/preflight.
 """
@@ -26,14 +36,19 @@ import os
 import pathlib
 import re
 import sys
+import time
 import urllib.error
 import urllib.request
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 _REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT / "kernel-2027") not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT / "kernel-2027"))
 from kernel2027 import redact as kernel_redact  # noqa: E402 — stdlib-only kernel, no install
+
+if str(_REPO_ROOT / "scripts") not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT / "scripts"))
+import celia_relay  # noqa: E402 — stdlib-only sibling module
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 
@@ -94,7 +109,12 @@ def preflight(mode: str) -> List[str]:
 
 
 def load_state(path: pathlib.Path) -> Dict[str, Any]:
-    """Persistent cross-process state: sent card ids + getUpdates offset."""
+    """Persistent cross-process state: sent card ids + getUpdates offset.
+
+    An ``assistant`` key (replied message ids + bounded transcript) is
+    returned only when the file carries one, so the safe defaults stay
+    exactly ``{"sent": [], "offset": None}``.
+    """
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -103,16 +123,305 @@ def load_state(path: pathlib.Path) -> Dict[str, Any]:
         return {"sent": [], "offset": None}
     sent = [str(i) for i in data.get("sent", []) if str(i).strip()]
     offset = data.get("offset")
-    return {"sent": sent, "offset": int(offset) if offset is not None else None}
+    state: Dict[str, Any] = {
+        "sent": sent, "offset": int(offset) if offset is not None else None}
+    if isinstance(data.get("assistant"), dict):
+        state["assistant"] = data["assistant"]
+    # The relay queue last read (public function URL) and since when its
+    # webhook is gone: a rollback drains that queue before polling again.
+    if isinstance(data.get("relay"), str) and data["relay"]:
+        state["relay"] = data["relay"]
+        if isinstance(data.get("relay_lost_at"), (int, float)):
+            state["relay_lost_at"] = data["relay_lost_at"]
+    return state
 
 
 def save_state(path: pathlib.Path, state: Dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        json.dumps({"sent": list(state.get("sent", [])),
-                    "offset": state.get("offset")},
-                   indent=1, sort_keys=True),
-        encoding="utf-8")
+    payload: Dict[str, Any] = {"sent": list(state.get("sent", [])),
+                               "offset": state.get("offset")}
+    if isinstance(state.get("assistant"), dict):
+        payload["assistant"] = state["assistant"]
+    if state.get("relay"):
+        payload["relay"] = state["relay"]
+        if state.get("relay_lost_at") is not None:
+            payload["relay_lost_at"] = state["relay_lost_at"]
+    path.write_text(json.dumps(payload, indent=1, sort_keys=True,
+                               ensure_ascii=False),
+                    encoding="utf-8")
+
+
+# ---------------------------------------------------------------------------
+# Channel assistant on the approval bot's poll (docs/CHANNEL-ASSISTANT.md §11)
+# ---------------------------------------------------------------------------
+ASSISTANT_FLAG = "AI2027_ASSISTANT_ENABLED"
+ASSISTANT_SEEN_LIMIT = 500
+
+
+def assistant_enabled() -> bool:
+    """The assistant replies only when the flag is explicitly on."""
+    return os.getenv(ASSISTANT_FLAG, "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def allowed_sender_ids() -> List[str]:
+    raw, _ = resolve("PA_APPROVAL_ALLOWED_SENDERS", "TELEGRAM_ALLOWED_SENDERS")
+    return [item.strip() for item in raw.split(",") if item.strip()]
+
+
+class TelegramAssistantBridge:
+    """Fail-closed filter between the approval poll and the assistant.
+
+    It is the ``ApprovalBot.text_handler``. Only plain text from an allowed
+    sender (``PA_APPROVAL_ALLOWED_SENDERS``, empty = nobody) inside the
+    configured chat reaches ``reply_fn``; commands, other chats, strangers,
+    edits and media are ignored. Each ``chat:message_id`` is marked *before*
+    the reply is attempted and persisted in the bot state, so a retried
+    cycle (offset rolled back after a failure) never answers twice.
+    """
+
+    def __init__(self, reply_fn: Callable[[Dict[str, Any]], str], *,
+                 allowed_senders: List[str], chat_id: str,
+                 seen: Optional[List[str]] = None) -> None:
+        self._reply_fn = reply_fn
+        self._allowed = {str(s) for s in allowed_senders if str(s).strip()}
+        self._chat_id = str(chat_id).strip()
+        self.seen: List[str] = [str(s) for s in (seen or [])][-ASSISTANT_SEEN_LIMIT:]
+        self.stats: Dict[str, int] = {}
+
+    def _count(self, stage: str) -> str:
+        self.stats[stage] = self.stats.get(stage, 0) + 1
+        return stage
+
+    def __call__(self, update: Dict[str, Any]) -> str:
+        message = update.get("message") if isinstance(update, dict) else None
+        if not isinstance(message, dict):
+            return self._count("ignored_not_message")
+        text = message.get("text")
+        if not isinstance(text, str) or not text.strip():
+            return self._count("ignored_not_text")
+        if text.lstrip().startswith("/"):
+            return self._count("ignored_command")
+        chat = message.get("chat") if isinstance(message.get("chat"), dict) else {}
+        sender = message.get("from") if isinstance(message.get("from"), dict) else {}
+        if not self._chat_id or str(chat.get("id", "")) != self._chat_id:
+            return self._count("ignored_other_chat")
+        if str(sender.get("id", "")) not in self._allowed:
+            return self._count("ignored_sender_not_allowed")
+        key = "%s:%s" % (chat.get("id"), message.get("message_id"))
+        if key in self.seen:
+            return self._count("duplicate")
+        self.seen.append(key)
+        del self.seen[:-ASSISTANT_SEEN_LIMIT]
+        try:
+            stage = str(self._reply_fn(update) or "unknown")
+        except Exception as exc:  # noqa: BLE001 — classified, never leaked
+            stage = "error_%s" % type(exc).__name__
+        return self._count(stage)
+
+
+# Log labels come only from these fixed tuples (CodeQL py/clear-text-logging):
+# the reply object is derived from the owner's message and chat id, so its
+# fields are never printed directly — only the matching constant, or "other".
+ASSISTANT_STAGES = ("replied", "no_provider_available", "duplicate_message",
+                    "invalid_message", "not_configured", "paid_not_allowed",
+                    "send_failed",
+                    # CELIA memory commands (run in code, never by a model)
+                    "memory_saved", "memory_forgotten", "memory_listed",
+                    "memory_duplicate", "memory_refused_sensitive",
+                    "memory_not_found", "memory_ambiguous", "memory_empty",
+                    "memory_too_long", "memory_full", "memory_store_failed",
+                    "memory_unavailable")
+ASSISTANT_MODES = ("companion", "intelligence", "developer", "executive",
+                   "creative")
+MEMORY_BACKENDS = ("supabase", "sheet", "state", "none")
+#: Where this cycle reads Telegram updates from (allowlisted log labels).
+UPDATE_SOURCES = ("relay", "drain", "abandoned", "getUpdates")
+CHAT_MODES = ("instant", "shadow")
+#: Why the probe has no sheet — allowlisted, safe for run-page annotations.
+SHEET_REASONS = ("ok", "no_credentials", "no_sheet_id", "gspread_missing",
+                 "bad_credentials", "open_failed",
+                 # integrated bot: memory lives in Supabase, the sheet is not used
+                 "not_used")
+#: Probe stages that prove the path works (a model replied, or a memory
+#: command ran and was confirmed from code).
+PROBE_OK_STAGES = frozenset((
+    "replied", "memory_saved", "memory_forgotten", "memory_listed",
+    "memory_duplicate", "memory_refused_sensitive", "memory_not_found",
+    "memory_ambiguous", "memory_empty", "memory_too_long", "memory_full"))
+ASSISTANT_PROVIDERS = ("ollama", "gemini", "nvidia", "groq", "openrouter",
+                       "omnirouters", "qwen", "deterministic")
+ASSISTANT_TIERS = ("local", "free_tier", "unknown_cost", "paid")
+
+
+def _label(value: Any, allowed: Tuple[str, ...]) -> str:
+    """Return the constant in ``allowed`` equal to ``value`` (enum-aware), else 'other'."""
+    text = str(getattr(value, "value", value) or "")
+    for item in allowed:
+        if item == text:
+            return item
+    return "other" if text else "-"
+
+
+def _reply_summary(reply: Any) -> str:
+    """One log line built from allowlisted constants and $0 / chunk buckets."""
+    cost = "0.00" if not float(getattr(reply, "cost_usd", 0.0) or 0.0) else "NONZERO"
+    chunks = int(getattr(reply, "chunks_sent", 0) or 0)
+    used = int(getattr(reply, "memories_used", 0) or 0)
+    return "mode=%s provider=%s tier=%s cost_usd=%s chunks=%s memories=%s" % (
+        _label(getattr(reply, "mode", None), ASSISTANT_MODES),
+        _label(getattr(reply, "provider", None), ASSISTANT_PROVIDERS),
+        _label(getattr(reply, "billing_tier", None), ASSISTANT_TIERS),
+        cost, "0" if chunks <= 0 else ("1" if chunks == 1 else "2+"),
+        "0" if used <= 0 else ("1-3" if used <= 3 else "4+"))
+
+
+CELIA_MEMORY_TAB = "celia_memory"
+
+
+class SheetMemoryBackend:
+    """CELIA's durable memory as the ``celia_memory`` tab of the memory sheet.
+
+    Same spreadsheet as ``pa_approvals`` (``PA_MEMORY_SHEET_ID``), so there
+    is no second memory database and the owner can read, correct or delete
+    any row by hand. The tab is created on the first write. Rows hold only
+    what the owner explicitly asked CELIA to remember.
+    """
+
+    def __init__(self, sheet: Any, headers: Tuple[str, ...]) -> None:
+        self._sheet = sheet
+        self._headers = tuple(headers)
+
+    def _worksheet(self, create: bool) -> Any:
+        try:
+            return self._sheet.worksheet(CELIA_MEMORY_TAB)
+        except Exception as exc:  # noqa: BLE001 — classified below
+            # Only a missing tab is normal. Quota / auth / network errors must
+            # propagate so the caller falls back instead of reading "empty".
+            if type(exc).__name__ != "WorksheetNotFound":
+                raise
+            if not create:
+                return None
+            return self._sheet.add_worksheet(title=CELIA_MEMORY_TAB, rows=400,
+                                             cols=len(self._headers))
+
+    def load(self) -> List[Dict[str, Any]]:
+        ws = self._worksheet(create=False)
+        if ws is None:
+            return []
+        values = ws.get_all_values()
+        if not values:
+            return []
+        header = [h.strip() for h in values[0]]
+        return [dict(zip(header, row)) for row in values[1:] if any(row)]
+
+    def save(self, rows: List[Dict[str, Any]]) -> None:
+        ws = self._worksheet(create=True)
+        matrix = [list(self._headers)] + [
+            [str(r.get(h, "")) for h in self._headers] for r in rows]
+        ws.clear()
+        ws.update(range_name="A1", values=matrix)
+
+
+def _import_assistant_module() -> Any:
+    """Import the assistant from the checkout (``pip install -e ./python-2027``)."""
+    src = str(ROOT / "python-2027" / "src")
+    if src not in sys.path:
+        sys.path.insert(0, src)
+    from ai2027_protocol import channel_assistant_runtime  # noqa: PLC0415
+    return channel_assistant_runtime
+
+
+def discover_relay() -> Optional["celia_relay.RelayClient"]:
+    """The relay client when the bot is integrated with CELIA's function."""
+    token, _ = resolve("PA_APPROVAL_BOT_TOKEN", "TELEGRAM_BOT_TOKEN")
+    api = os.getenv("PA_APPROVAL_API_BASE", "https://api.telegram.org")
+    return celia_relay.discover(token, api)
+
+
+def open_celia_memory(ca: Any, sheet: Any = None,
+                      fallback_rows: Any = None,
+                      relay: Any = None) -> Tuple[Any, str, Any]:
+    """(PersonalMemory | None, backend label, state-backend | None).
+
+    Integrated bot: the Supabase ``celia_memory`` table (the ONE memory; the
+    sheet is then never written). Otherwise the sheet tab first; if it cannot
+    be read, the bot state file (still durable across cycles via
+    actions/cache); ``none`` only when neither exists. A storage problem never
+    stops the cycle or the votes.
+    """
+    if relay is not None:
+        # One-time legacy copy: the Sheet tab is only READ here (never written
+        # again) plus the old state-file rows. A failed copy never blocks the
+        # memory itself; it is retried next cycle while Supabase is empty.
+        legacy_sheet: List[Dict[str, Any]] = []
+        if sheet is not None:
+            try:
+                legacy_sheet = SheetMemoryBackend(sheet, ca.SHEET_HEADERS).load()
+            except Exception as exc:  # noqa: BLE001 — legacy read is optional
+                print("stage=memory legacy_sheet=unreadable reason=%s" % type(exc).__name__)
+        try:
+            imported = celia_relay.import_legacy_rows(relay, legacy_sheet, fallback_rows)
+            if imported:
+                print("stage=memory imported_legacy_rows=%d" % imported)
+        except Exception as exc:  # noqa: BLE001 — retried next cycle
+            print("stage=memory import_failed reason=%s (retried next cycle)" % type(exc).__name__)
+        try:
+            return ca.PersonalMemory(celia_relay.RelayMemoryBackend(relay)), "supabase", None
+        except Exception as exc:  # noqa: BLE001 — never write the sheet instead
+            print("stage=memory backend=none reason=%s (supabase unavailable)"
+                  % type(exc).__name__)
+            return None, "none", None
+    if sheet is not None:
+        try:
+            return (ca.PersonalMemory(SheetMemoryBackend(sheet, ca.SHEET_HEADERS)),
+                    "sheet", None)
+        except Exception as exc:  # noqa: BLE001 — fall back, never crash
+            print("stage=memory backend=state reason=%s" % type(exc).__name__)
+    if fallback_rows is not None:
+        backend = ca.ListMemoryBackend(fallback_rows)
+        return ca.PersonalMemory(backend), "state", backend
+    return None, "none", None
+
+
+def build_assistant_reply_fn(history: Any = None, *, sheet: Any = None,
+                             memory_rows: Any = None, relay: Any = None,
+                             ) -> Tuple[Callable[[Dict[str, Any]], str],
+                                        Callable[[], Any]]:
+    """(reply_fn, snapshot_fn): CELIA (``CeliaBrain``) for this cycle.
+
+    One Free-First router (local / declared free-tier providers only,
+    ``MAX_SPEND=0``); the Telegram sender only calls ``sendMessage`` (never
+    ``getUpdates``). Memory: the ``celia_memory`` sheet tab, or the state
+    file — ``reply_fn.memory_rows()`` returns the rows to persist in the
+    state file (``None`` when the sheet holds them).
+    """
+    import asyncio  # noqa: PLC0415
+
+    ca = _import_assistant_module()
+    store = ca.SnapshotConversationStore(max_turns=ca.env_max_history_turns())
+    store.restore(history or [])
+    memory, backend_label, state_backend = open_celia_memory(
+        ca, sheet, memory_rows if memory_rows is not None else [], relay=relay)
+    brain = ca.CeliaBrain(
+        router=ca.build_assistant_router(),
+        sender_factory=lambda chat: ca.TelegramReplySender(chat_id=chat),
+        store=store, memory=memory, fallback_text=ca.CELIA_OWNER_FALLBACK)
+
+    def reply_fn(update: Dict[str, Any]) -> str:
+        inbound = ca.parse_telegram_update(update)
+        if inbound is None:
+            return "ignored_unparsed"
+        turn = asyncio.run(brain.handle(inbound))
+        stage = _label(turn.stage, ASSISTANT_STAGES)
+        print("assistant stage=%s %s memory=%s" % (
+            stage, _reply_summary(turn), _label(backend_label, MEMORY_BACKENDS)))
+        return stage
+
+    def memory_rows_fn() -> Any:
+        return state_backend.rows if state_backend is not None else None
+
+    reply_fn.memory_rows = memory_rows_fn  # type: ignore[attr-defined]
+    return reply_fn, store.snapshot
 
 
 def build_sheet_credentials() -> Any:
@@ -141,34 +450,181 @@ def mode_test() -> int:
     return 0
 
 
+def updates_transport(ab: Any, relay: Any) -> Any:
+    """The approval transport: relay queue when integrated, else getUpdates."""
+    transport = ab.TelegramTransport()
+    if relay is None:
+        return transport
+    return celia_relay.RelayTransport(transport, relay, owners=allowed_sender_ids())
+
+
 def mode_run(state_file: pathlib.Path) -> int:
     ab = _import_bot_module()
     creds = build_sheet_credentials()
-    bot = ab.ApprovalBot(creds)
-
     prior = load_state(state_file)
+    token, _ = resolve("PA_APPROVAL_BOT_TOKEN", "TELEGRAM_BOT_TOKEN")
+    # Cross-transport rule: queue first while non-empty, then poll.
+    pick = celia_relay.select_source(discover_relay(), prior.get("relay"),
+                                     prior.get("relay_lost_at"), token, time.time())
+    source = pick["source"] if pick["source"] in UPDATE_SOURCES else "getUpdates"
+    relay = pick["client"] if source == "relay" else None
+    drain: Optional[celia_relay.DrainThenPollTransport] = None
+    if source == "drain":
+        drain = celia_relay.DrainThenPollTransport(
+            ab.TelegramTransport(), pick["client"], owners=allowed_sender_ids())
+    bot = ab.ApprovalBot(creds, transport=drain or updates_transport(ab, relay))
+    print("stage=transport updates=%s" % source)
+    if source == "abandoned":
+        print("::warning title=relay-abandoned::the CELIA queue stayed unreadable for"
+              " %d h after the webhook was removed; polling getUpdates again. Presses"
+              " still queued there are discarded — their cards stay pending and can be"
+              " pressed again." % (celia_relay.DRAIN_DEADLINE_SECONDS // 3600))
+    source_state = {"relay": pick["relay"], "relay_lost_at": pick["lost_at"]}
+
     bot.restore_state(sent_ids=prior["sent"], offset=prior["offset"])
     prior_offset = prior["offset"]
+    prior_assistant = prior.get("assistant") or {}
+
+    bridge: Optional[TelegramAssistantBridge] = None
+    snapshot_fn: Optional[Callable[[], Any]] = None
+    if assistant_enabled():
+        try:
+            reply_fn, snapshot_fn = build_assistant_reply_fn(
+                prior_assistant.get("history"), sheet=getattr(bot, "sheet", None),
+                memory_rows=prior_assistant.get("memory"), relay=relay)
+        except Exception as exc:  # noqa: BLE001 — votes must still run
+            print("stage=assistant ok=false reason=%s (approvals continue)"
+                  % type(exc).__name__)
+        else:
+            chat_id, _ = resolve("PA_APPROVAL_CHAT_ID", "TELEGRAM_CHAT_ID")
+            bridge = TelegramAssistantBridge(
+                reply_fn, allowed_senders=allowed_sender_ids(),
+                chat_id=chat_id, seen=prior_assistant.get("seen"))
+            bot.text_handler = bridge
+
+    def _assistant_state() -> Dict[str, Any]:
+        if bridge is None:
+            return prior_assistant
+        state = {"seen": bridge.seen,
+                 "history": snapshot_fn() if snapshot_fn else []}
+        rows_fn = getattr(bridge._reply_fn, "memory_rows", None)
+        rows = rows_fn() if callable(rows_fn) else None
+        # Sheet-backed memory is not copied into the cache; fallback rows are.
+        state["memory"] = rows if rows is not None else prior_assistant.get("memory", [])
+        return state
 
     try:
         report = bot.run_once()
     except Exception as exc:  # noqa: BLE001 — CI must classify, not crash
         # Persist sent-card progress (cards may already be out) but keep the
         # OLD offset so an unapplied callback is retried next cycle — the
-        # same semantics as the long-running daemon.
+        # same semantics as the long-running daemon. Replied message ids are
+        # kept too, so the retried cycle does not answer a text twice.
         save_state(state_file,
                    {"sent": sorted(bot.state_snapshot()["sent"]),
-                    "offset": prior_offset})
+                    "offset": prior_offset,
+                    "assistant": _assistant_state(), **source_state})
+        if drain is not None:
+            # Not polled either: later presses must not overtake queued ones.
+            print("stage=drain blocked=true reason=%s" % type(exc).__name__)
         print("stage=cycle ok=false reason=%s" % type(exc).__name__)
         print("error=%s" % str(exc)[:300])
         return 1
 
-    save_state(state_file, bot.state_snapshot())
+    snapshot = bot.state_snapshot()
+    snapshot["assistant"] = _assistant_state()
+    if drain is not None and drain.drained:
+        source_state = {"relay": None, "relay_lost_at": None}  # empty: polling from now on
+    snapshot.update(source_state)
+    save_state(state_file, snapshot)
+    if drain is not None:
+        print("stage=drain applied=%d done=%s"
+              % (drain.drained_count, "true" if drain.drained else "false"))
     print("stage=cycle ok=true cards_sent=%d callbacks_handled=%d"
           " granted=%d denied=%d"
           % (report.get("cards_sent", 0), report.get("callbacks_handled", 0),
              report.get("granted", 0), report.get("denied", 0)))
+    if bridge is not None:
+        stats = " ".join("%s=%d" % kv for kv in sorted(bridge.stats.items()))
+        print("stage=assistant enabled=true %s" % (stats or "idle"))
     return 0
+
+
+DEFAULT_ASSISTANT_PROBE = "مرحباً! عرّف بنفسك في سطرين، وقل لي ما الذي تستطيع مساعدتي فيه."
+
+
+def _probe_sheet() -> Tuple[Any, str]:
+    """(memory sheet | None, reason from ``SHEET_REASONS``) for the live probe."""
+    raw, _ = resolve("GOOGLE_SERVICE_ACCOUNT_JSON", "GOOGLE_SERVICE_ACCOUNT")
+    if not raw:
+        return None, "no_credentials"
+    sheet_id = os.getenv("PA_MEMORY_SHEET_ID", "").strip()
+    if not sheet_id:
+        return None, "no_sheet_id"
+    try:
+        import gspread  # noqa: PLC0415
+    except ImportError:
+        return None, "gspread_missing"
+    try:
+        client = gspread.authorize(build_sheet_credentials())
+    except Exception:  # noqa: BLE001 — malformed JSON / key; never echo it
+        return None, "bad_credentials"
+    try:
+        return client.open_by_key(sheet_id), "ok"
+    except Exception:  # noqa: BLE001 — not shared with the SA, wrong id, API off
+        return None, "open_failed"
+
+
+def mode_assistant() -> int:
+    """Live probe: one assistant reply into PA_APPROVAL_CHAT_ID.
+
+    Proves end to end that the bot token works and which free provider
+    answers. Exit 0 only when a real free model replied and Telegram
+    accepted it; 3 when only the $0 fallback answered (no free provider
+    configured/reachable) — so the run page tells the two apart.
+    """
+    import asyncio  # noqa: PLC0415
+
+    ca = _import_assistant_module()
+    chat_id, _ = resolve("PA_APPROVAL_CHAT_ID", "TELEGRAM_CHAT_ID")
+    probe = os.getenv("AI2027_ASSISTANT_PROBE_TEXT", "").strip() or DEFAULT_ASSISTANT_PROBE
+    readiness = []
+    from ai2027_protocol.ai_providers import (  # noqa: PLC0415
+        build_default_providers,
+        describe_provider_readiness,
+    )
+    providers = build_default_providers()
+    for item in describe_provider_readiness(providers):
+        readiness.append("%s=%s" % (item.provider, item.credential_state))
+    print("assistant providers: %s" % " ".join(readiness))
+    relay = discover_relay()
+    sheet, sheet_reason = (None, "not_used") if relay is not None else _probe_sheet()
+    memory, backend_label, _ = open_celia_memory(ca, sheet, relay=relay)
+    brain = ca.CeliaBrain(
+        router=ca.build_assistant_router(providers=providers),
+        sender_factory=lambda chat: ca.TelegramReplySender(chat_id=chat),
+        store=ca.SnapshotConversationStore(), memory=memory,
+        fallback_text=ca.CELIA_OWNER_FALLBACK)
+    inbound = ca.ChannelInboundMessage(
+        channel=ca.Channel.TELEGRAM, chat_id=chat_id, sender_id=chat_id,
+        text=probe[:2000], message_id="probe-%d" % os.getpid())
+    turn = asyncio.run(brain.handle(inbound))
+    result = _label(turn.stage, ASSISTANT_STAGES)
+    summary = "result=%s %s memory=%s sheet=%s" % (
+        result, _reply_summary(turn), _label(backend_label, MEMORY_BACKENDS),
+        _label(sheet_reason, SHEET_REASONS))
+    print("stage=assistant-probe %s" % summary)
+    if os.getenv("GITHUB_ACTIONS") == "true":
+        # Run-page annotation: job logs may be unreachable. Allowlisted labels only.
+        print("::notice title=assistant probe::%s" % summary)
+    if result in PROBE_OK_STAGES:
+        return 0
+    if result == "no_provider_available":
+        print("::warning title=assistant probe::no free provider answered —"
+              " the $0 Arabic notice was sent instead. Add GEMINI_API_KEY /"
+              " GROQ_API_KEY / OPENROUTER_API_KEY / NVIDIA_API_KEY secrets.")
+        return 3
+    return 1
 
 
 def mode_welcome() -> int:
@@ -176,10 +632,17 @@ def mode_welcome() -> int:
     taken from the update itself — the stored PA_APPROVAL_CHAT_ID is only
     needed for preflight/configured(); replies never target it."""
     ab = _import_bot_module()
-    transport = ab.TelegramTransport()
+    transport = updates_transport(ab, discover_relay())
     updates = transport.fetch_updates() or []
     replied = 0
-    for upd in updates:
+    # Never consume what this mode does not handle: a button press is run
+    # mode's job (the gate). Stop at the first one and confirm only what came
+    # before it — confirming past an unapplied press silently drops the vote
+    # (Telegram/the relay would never deliver it again).
+    first_press = next((i for i, u in enumerate(updates) if u.get("callback_query")), len(updates))
+    held = len(updates) - first_press
+    handled = updates[:first_press]
+    for upd in handled:
         msg = upd.get("message") or {}
         chat = msg.get("chat") or {}
         cid = chat.get("id")
@@ -194,11 +657,11 @@ def mode_welcome() -> int:
                     "(اختبار الرد التلقائي).")
         transport.send_text(body, chat_id=str(cid))
         replied += 1
-    if updates:
-        offset = max(int(u.get("update_id", 0)) for u in updates) + 1
+    if handled:
+        offset = max(int(u.get("update_id", 0)) for u in handled) + 1
         transport.fetch_updates(offset=offset)  # confirm: don't reply twice
-    print("stage=welcome ok=true received=%d replied=%d"
-          % (len(updates), replied))
+    print("stage=welcome ok=true received=%d replied=%d%s"
+          % (len(updates), replied, " held=%d" % held if held else ""))
     return 0
 
 
@@ -261,7 +724,11 @@ def mode_chatcheck(source: str = "") -> int:
     api = os.getenv("PA_APPROVAL_API_BASE", "https://api.telegram.org")
     # getUpdates WITHOUT an offset only peeks: nothing is confirmed or consumed.
     me = _telegram_get(api, token, "getMe").get("result") or {}
-    updates = _telegram_get(api, token, "getUpdates").get("result") or []
+    relay = celia_relay.discover(token, api)
+    if relay is not None:  # webhook set: peek the relay queue (no offset = nothing consumed)
+        updates = relay.fetch_updates()
+    else:
+        updates = _telegram_get(api, token, "getUpdates").get("result") or []
     discovered: List[str] = []
     for upd in updates:
         for key in ("message", "edited_message", "channel_post"):
@@ -285,13 +752,18 @@ def redact(text: str) -> str:
     """
     known = [os.getenv(name, "") for pair in ALIASES[:1] for name in pair]
     known.append(os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON", ""))
+    # Free-tier model keys the assistant mode receives through env.
+    known.extend(os.getenv(name, "") for name in (
+        "GEMINI_API_KEY", "GROQ_API_KEY", "OPENROUTER_API_KEY", "NVIDIA_API_KEY",
+        "AI2027_ASSISTANT_TELEGRAM_TOKEN"))
     return _TELEGRAM_TOKEN.sub("[redacted-token]", kernel_redact(text, secrets=known))
 
 
 def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(
         description="Telegram approval bot — CI runner (fail-closed)")
-    parser.add_argument("--mode", choices=("test", "run", "welcome", "chatcheck"),
+    parser.add_argument("--mode", choices=("test", "run", "welcome", "chatcheck",
+                                           "assistant"),
                         default="test",
                         help="test: proof message · run: cards + votes"
                              " cycle · welcome: auto-reply loop · chatcheck:"
@@ -327,6 +799,8 @@ def main(argv: Optional[List[str]] = None) -> int:
             return mode_welcome()
         if args.mode == "chatcheck":
             return mode_chatcheck(chat_source)
+        if args.mode == "assistant":
+            return mode_assistant()
         return mode_run(state_file)
     except Exception as exc:  # noqa: BLE001 — classified below, never leaked
         print("stage=runner ok=false reason=%s" % type(exc).__name__)

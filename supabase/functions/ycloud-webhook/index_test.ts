@@ -2,9 +2,11 @@
 // Parity vectors come from the REFERENCE Python stack
 // (scripts/supabase_edge_parity_vectors.py), so this proves the port, not itself.
 import {
+  CELIA_SECRETS,
   computeSha256,
   configuredDailyCap,
   deriveCodeDigest,
+  IMPORTABLE,
   type InboundEvent,
   isWithinFreeServiceWindow,
   makeHandler,
@@ -15,6 +17,7 @@ import {
   type Store,
   verifyHubSignature,
   verifyYcloudSignature,
+  WEBHOOK_SECRETS,
 } from "./index.ts";
 
 const V = JSON.parse(await Deno.readTextFile(new URL("./parity_vectors.json", import.meta.url)));
@@ -413,8 +416,8 @@ Deno.test("import: every forged / foreign / stale token is refused and nothing i
 Deno.test("import: names allowlisted, values bounded, auth required, method enforced, no CORS", async () => {
   const store = new MemStore();
   const h = makeHandler(store, env({}), () => NOW, JWKS);
-  let r = await h(importReq(await jwt({ jti: "jti-name-01" }), { GEMINI_API_KEY: "aaaaaaaaaaaa" }));
-  eq([r.status, (await r.json()).reason], [400, "name_not_allowed:GEMINI_API_KEY"]);
+  let r = await h(importReq(await jwt({ jti: "jti-name-01" }), { SUPABASE_SERVICE_ROLE_KEY: "aaaaaaaaaaaa" }));
+  eq([r.status, (await r.json()).reason], [400, "name_not_allowed:SUPABASE_SERVICE_ROLE_KEY"]);
   r = await h(importReq(await jwt({ jti: "jti-short-01" }), { YCLOUD_WEBHOOK_SECRET: "short" }));
   eq(r.status, 400);
   r = await h(importReq(await jwt({ jti: "jti-empty-01" }), {}));
@@ -423,6 +426,19 @@ Deno.test("import: names allowlisted, values bounded, auth required, method enfo
   eq([r.status, r.headers.get("access-control-allow-origin")], [401, null]);
   eq((await h(new Request(`${BASE}/import-secrets`))).status, 405);
   eq(Object.keys(store.vault).length, 0);
+});
+
+Deno.test("import: CELIA's edge secrets ride the same OIDC door; nothing Supabase-internal is importable", async () => {
+  const store = new MemStore();
+  const h = makeHandler(store, env({}), () => NOW, JWKS);
+  const items = { CELIA_TELEGRAM_TOKEN: "123456:celia-token-fixture", GEMINI_API_KEY: "gemini-key-fixture" };
+  const r = await h(importReq(await jwt({ jti: "jti-celia-01" }), items));
+  const body = await r.json();
+  eq(r.status, 200);
+  eq(body.stored.map((d: { name: string }) => d.name).sort(), ["CELIA_TELEGRAM_TOKEN", "GEMINI_API_KEY"]);
+  eq(body.stored.find((d: { name: string }) => d.name === "GEMINI_API_KEY").sha256, await sha("gemini-key-fixture"));
+  eq(IMPORTABLE.filter((n) => n.startsWith("SUPABASE_")), []);
+  eq(IMPORTABLE.length, WEBHOOK_SECRETS.length + CELIA_SECRETS.length);
 });
 
 Deno.test("import: JWKS unreachable or Vault down -> 503 (retryable), never a silent fallback", async () => {

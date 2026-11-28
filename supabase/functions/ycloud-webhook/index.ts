@@ -15,7 +15,7 @@
 //                     ever sent from here (MAX_SPEND=0).
 //   GET  /status   -> PII-free watchdog status + hash-chain verification.
 //   POST /import-secrets -> GitHub Actions OIDC-authenticated one-shot import of
-//                     4 allowlisted webhook secrets into Supabase Vault (see
+//                     allowlisted secrets (4 webhook + 5 CELIA) into Supabase Vault (see
 //                     .github/workflows/supabase-secret-sync.yml). Returns digests.
 //
 // Deploy with verify_jwt=false: YCloud cannot send a Supabase JWT; the HMAC
@@ -383,13 +383,28 @@ export class PostgrestStore implements Store {
 // GitHub secrets are write-only: only a workflow run can read them. The run
 // proves who it is with a GitHub-signed OIDC token (no shared credential exists
 // anywhere), and the values travel once over TLS into Supabase Vault.
-export const IMPORTABLE = [
+/** This function's own secrets: imported AND read back here (ai2027_runtime_secrets). */
+export const WEBHOOK_SECRETS = [
   "YCLOUD_WEBHOOK_SECRET",
   "WHATSAPP_CLOUD_APP_SECRET",
   "WHATSAPP_CLOUD_VERIFY_TOKEN",
   "AI2027_WHATSAPP_WEBHOOK",
 ] as const;
+/**
+ * CELIA's edge secrets ride the same OIDC door (one import path, no second
+ * credential) but are never read by this function: only celia-telegram reads
+ * them, through celia_runtime_secrets().
+ */
+export const CELIA_SECRETS = [
+  "CELIA_TELEGRAM_TOKEN",
+  "GEMINI_API_KEY",
+  "GROQ_API_KEY",
+  "NVIDIA_API_KEY",
+  "OPENROUTER_API_KEY",
+] as const;
+export const IMPORTABLE = [...WEBHOOK_SECRETS, ...CELIA_SECRETS] as const;
 const IMPORTABLE_SET = new Set<string>(IMPORTABLE);
+const RUNTIME_SET = new Set<string>(WEBHOOK_SECRETS);
 export const OIDC_POLICY = {
   iss: "https://token.actions.githubusercontent.com",
   aud: "ai2027-supabase-import",
@@ -603,7 +618,7 @@ export function makeHandler(store: Store, env: Env = realEnv, now?: () => number
   // retries) — never a silent fallback to a possibly stale env secret.
   let vault: { at: number; v: Record<string, string> } = { at: -Infinity, v: {} };
   const clock = now ?? (() => Math.trunc(Date.now() / 1000));
-  const effEnv: Env = (n) => (IMPORTABLE_SET.has(n) && vault.v[n]) || env(n);
+  const effEnv: Env = (n) => (RUNTIME_SET.has(n) && vault.v[n]) || env(n);
   const loadVault = async () => {
     if (clock() - vault.at < 60) return;
     vault = { at: clock(), v: await store.runtimeSecrets() };

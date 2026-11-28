@@ -46,6 +46,13 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 MAX_WEBHOOK_BYTES = 1024 * 1024  # 1 MiB hard ceiling
 PBKDF2_ITERATIONS = 120_000
 MAX_VERIFY_ATTEMPTS = 5
+#: Words that make a message *transactional* (coupon / verification code).
+#: Those always take the deterministic path that issues a real code — a
+#: language model never invents a coupon or an OTP.
+COUPON_KEYWORDS = ("خصم", "coupon")
+VERIFY_KEYWORDS = ("تأكيد", "رمز", "verify")
+ASSISTANT_FLAG = "AI2027_ASSISTANT_ENABLED"
+ASSISTANT_DRAFT_TIMEOUT_S = 12.0
 
 
 def _load_repo_module(alias: str, rel_path: str) -> Any:
@@ -290,12 +297,18 @@ class ZeroCostOrchestrator:
                 )
         return False
 
+    @staticmethod
+    def is_transactional(event: Any) -> bool:
+        """True when the message asks for a coupon or a verification code."""
+        normalized = str(getattr(event, "text_body", "") or "").strip().lower()
+        return any(k in normalized for k in COUPON_KEYWORDS + VERIFY_KEYWORDS)
+
     def _default_reply(self, event: Any) -> str:
         normalized = str(event.text_body or "").strip().lower()
-        if "خصم" in normalized or "coupon" in normalized:
+        if any(k in normalized for k in COUPON_KEYWORDS):
             promo = self.issue_coupon(event.sender_wa_id, discount_pct=15)
             return f"تم إصدار كود الخصم المجاني الخاص بك: {promo} (صالح لمدة 48 ساعة)."
-        if "تأكيد" in normalized or "رمز" in normalized or "verify" in normalized:
+        if any(k in normalized for k in VERIFY_KEYWORDS):
             code_val = self.issue_verification_code(event.sender_wa_id)
             return f"رمز التحقق المجاني الخاص بك هو: {code_val} (صالح لمدة 5 دقائق)."
         return "أهلاً بك في Celia! تم تسجيل طلبك وسنخدمك فوراً ضمن نافذة الخدمة المجانية."
@@ -369,11 +382,14 @@ class ZeroCostOrchestrator:
                 )
             return {"wamid": event.wamid, "stage": gate.reason}
 
-        reply_text = (
-            self._reply_generator(event, self)
-            if self._reply_generator is not None
-            else self._default_reply(event)
-        ).strip()
+        reply_text = ""
+        if self._reply_generator is not None:
+            try:
+                reply_text = str(self._reply_generator(event, self) or "").strip()
+            except Exception:  # noqa: BLE001 — a draft failure never drops a message
+                reply_text = ""
+        if not reply_text:
+            reply_text = self._default_reply(event).strip()
         outbound_payload = {
             "recipient_phone": event.sender_wa_id,
             "message_text": reply_text,
@@ -613,6 +629,56 @@ def make_webhook_handler(orchestrator: ZeroCostOrchestrator) -> type[BaseHTTPReq
     return WebhookHandler
 
 
+def assistant_enabled() -> bool:
+    """The channel assistant drafts replies only when the flag is explicitly on."""
+    return (os.environ.get(ASSISTANT_FLAG) or "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def build_assistant_reply_generator(
+    orchestrator: "ZeroCostOrchestrator",
+    *,
+    timeout_s: float = ASSISTANT_DRAFT_TIMEOUT_S,
+    assistant_module: Any = None,
+) -> Optional[Callable[[Any, "ZeroCostOrchestrator"], str]]:
+    """Wire ``python-2027`` ``channel_assistant_runtime`` as the reply *drafter*.
+
+    Draft-only: the assistant's sender is a ``DraftCaptureSender``, so the text
+    is staged ``pending_approval`` exactly like the default reply and leaves
+    only through ``GovernedReplyBridge`` after a single-use approval.
+    Transactional messages (coupon / code) keep the deterministic path.
+    Returns ``None`` when the package is not importable (the stdlib runner
+    then keeps its default replies) — run the unit with
+    ``python-2027/.venv/bin/python`` to enable it.
+    """
+    ca = assistant_module
+    if ca is None:
+        src = str(REPO_ROOT / "python-2027" / "src")
+        if src not in sys.path:
+            sys.path.insert(0, src)
+        try:
+            from ai2027_protocol import channel_assistant_runtime as ca  # noqa: PLC0415
+        except Exception:  # noqa: BLE001 — missing deps => stay on defaults
+            return None
+    capture = ca.DraftCaptureSender()
+    # CELIA in customer scope: same voice, no owner context, no invented
+    # prices/stock/coupons (python-2027 celia_persona). Drafts only.
+    persona = getattr(ca, "CELIA_CUSTOMER_PROMPT", None)
+    extra = {"system_prompt": persona} if persona else {}
+    assistant = ca.ChannelAssistant(
+        router=ca.build_assistant_router(), sender=capture, **extra
+    )
+    draft = ca.make_whatsapp_draft_generator(
+        assistant, capture, timeout_s=timeout_s, on_error=lambda ev: ""
+    )
+
+    def generate(event: Any, orch: "ZeroCostOrchestrator") -> str:
+        if orch.is_transactional(event):
+            return ""  # empty => orchestrator's deterministic coupon/OTP reply
+        return draft(event, orch)
+
+    return generate
+
+
 def run_self_check() -> bool:
     """Offline hermetic verification of the $0 stack + GovernedReplyBridge."""
     from datetime import datetime, timezone
@@ -775,6 +841,16 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     db_path = (os.environ.get("AI2027_FREE_STACK_DB") or "free_stack.db").strip()
     conn = init_db(db_path)
     orch = ZeroCostOrchestrator(conn)
+    if assistant_enabled():
+        generator = build_assistant_reply_generator(orch)
+        if generator is None:
+            print(
+                "stage=assistant enabled=true loaded=false reason=import_failed"
+                " (run with python-2027/.venv/bin/python) — default replies stay on"
+            )
+        else:
+            orch._reply_generator = generator
+            print("stage=assistant enabled=true loaded=true mode=draft_pending_approval")
     server = ThreadingHTTPServer((args.host, args.port), make_webhook_handler(orch))
     try:
         server.serve_forever()

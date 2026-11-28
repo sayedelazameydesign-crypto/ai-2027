@@ -48,6 +48,12 @@ Telegram (poller)  ─┘                              │
 (`ARABIC_NO_PROVIDER_FALLBACK`) عبر نفس المرسل، ويرجع
 `stage="no_provider_available"`. هذا الرد يُنشأ محلياً ولا يمثل اتصالاً مدفوعاً.
 
+**نفس المعاملة** عندما يجيب المزوّد الحتمي `DeterministicFallbackProvider` (آخر
+السلسلة الافتراضية في `build_default_providers`) أو يعيد نموذج نصاً فارغاً: نصّ
+ذلك المزوّد صدى تشخيصي (`[deterministic-offline-fallback | simulated=true …]`)
+ولا يُرسَل لإنسان أبداً. (كان يُرسَل كـ`replied` قبل هذا الإصلاح.) ولا يُحفَظ
+إشعار «غير متاح» في سجل المحادثة حتى لا يكرره النموذج لاحقاً.
+
 ## 4. دعم العربية
 
 - `ARABIC_SYSTEM_PROMPT` هو توجيه النظام: يطلب الإجابة بالعربية الفصحى،
@@ -93,6 +99,8 @@ Telegram (poller)  ─┘                              │
 | `chunk_text` | تقسيم النص حسب حد القناة |
 | `parse_telegram_update` | جسر استقبال Telegram |
 | `build_assistant_router` | الـrouter الافتراضي Free-First |
+| `channel_assistant_runtime.SnapshotConversationStore` | حفظ السجل (محدود) بين دورات GitHub Actions عديمة الحالة |
+| `channel_assistant_runtime.DraftCaptureSender` + `make_whatsapp_draft_generator` | يحوّل المساعد إلى `reply_generator` لواتساب: **مسودة فقط** (`pending_approval`) — لا إرسال |
 
 ### الربط بالمتصّلين الحاليين
 
@@ -131,18 +139,68 @@ Telegram (poller)  ─┘                              │
 - `callback_query` لا يُوجَّه إلى المساعد (لا تداخل polling).
 - توجيه النظام العربي وتراكم تاريخ المحادثة.
 - الـrouter الافتراضي لا يحتوي مزوداً مدفوعاً.
+- الصدى الحتمي لا يُرسَل أبداً؛ النص الفارغ ⇒ الإشعار العربي.
+- حفظ/استرجاع السجل محدود ويتجاهل المدخلات المشوهة.
+- مولّد مسودات واتساب: لا إرسال، مهلة، لا استثناء، تكرار ⇒ الرد الافتراضي.
 
 ```bash
 cd python-2027
 PYTHONPATH=src .venv/bin/python -m pytest tests/test_channel_assistant.py -q
 ```
 
+## 9.1 الشخصية: سيليا (CELIA)
+
+المشغّلان الإنتاجيان يمرّران شخصية سيليا (`celia_persona.py`) بدل الـprompt العام:
+`CELIA_OWNER_PROMPT` + `CELIA_OWNER_FALLBACK` لك على Telegram، و`CELIA_CUSTOMER_PROMPT`
+لمسودات عملاء واتساب. التفاصيل وخريطة الطريق: [`docs/CELIA.md`](CELIA.md).
+
+على Telegram يمرّ كل رد عبر `CeliaBrain`: أوامر الذاكرة («تذكّري: …»، «انسي رقم N»،
+«ماذا تتذكرين؟») تُنفَّذ في الكود دون نموذج، وباقي الرسائل تحصل على الوضع المكتشف
+والذكريات ذات الصلة. الذاكرة في تبويب `celia_memory` من `PA_MEMORY_SHEET_ID`.
+
 ## 10. حدود الحالية
 
-- المساعد وحدة منطقية مُختبَرة؛ **لم** يُوصَل بمتصِّل تشغيلي (لا loop Telegram
-  ولا webhook WhatsApp ولا حلقّة موافقات) ولا نُشِر. إرسال رسائل حقيقية أو
-  `git push` يتطلب تصريحاً منفصلاً.
-- السجل داخل الذاكرة (`MemoryConversationStore`)؛ التخزين المستمر عبر
-  `SessionStore`/قاعدة الرسائل يبقى قراراً تشغيلياً مستقبلياً.
+- الربط التشغيلي موجود خلف مفتاح `AI2027_ASSISTANT_ENABLED` (مُطفأ افتراضياً) —
+  انظر §11. بدون المفتاح لا يتغير أي مسار إنتاجي.
+- Telegram يعمل عبر دورة `approval-bot.yml` المجدولة كل 5 دقائق، فزمن الرد بين
+  دقيقة و~10 دقائق (جدولة GitHub قد تتأخر). ليس محادثة لحظية.
+- مسار واتساب **المنشور فعلياً** هو Supabase Edge Function `ycloud-webhook`
+  (TypeScript/Deno)، ويصيغ ردوده بـ`defaultReply` الثابت؛ المساعد (Python) موصول
+  بـ`scripts/free_stack_runner.py` (مسار VM) فقط. نقله إلى Edge Function قرار
+  منفصل (منفذ TS أو مهمة تعيد صياغة المسودات قبل بطاقة الموافقة).
+- السجل يُحفَظ في ملف حالة البوت (`actions/cache`) محدوداً بـ50 محادثة؛ ليس
+  تخزيناً دائماً.
+
+## 11. التشغيل أونلاين (خطوات المالك)
+
+### Telegram — يعمل فور التفعيل
+1. **Secrets** (موجود بعضها): `PA_APPROVAL_BOT_TOKEN` · `PA_APPROVAL_CHAT_ID` ·
+   `PA_APPROVAL_ALLOWED_SENDERS` (معرّفك الرقمي — **فارغ ⇒ لا يرد على أحد**) ·
+   ومفتاح Free-Tier واحد على الأقل: `GEMINI_API_KEY` أو `GROQ_API_KEY` أو
+   `OPENROUTER_API_KEY` أو `NVIDIA_API_KEY`.
+2. **اختبار حي:** Actions → *Approval bot · Telegram* → Run workflow →
+   `mode = assistant` (اختيارياً `probe_text`). النتيجة في السجل:
+   `stage=assistant-probe result=replied provider=… cost_usd=0.00`.
+   رمز الخروج `0` = نموذج مجاني أجاب ووصلت الرسالة · `3` = لا مزود مجاني متاح
+   (أُرسل الإشعار العربي) · `1` = فشل الإرسال.
+3. **التفعيل الدائم:** Settings → Secrets and variables → Actions → **Variables**
+   → `AI2027_ASSISTANT_ENABLED = 1`. كل دورة بعدها ترد على نصوصك العادية في
+   المحادثة نفسها؛ الأوامر (`/…`) وأزرار الموافقة لا تمر عبر المساعد أبداً.
+4. **الإيقاف:** احذف المتغير أو اجعله `0` — الدورة التالية ترجع للسلوك القديم.
+
+ضمانات المسار (مُختبَرة في `tests/test_approval_bot_ci.py`): مرسل خارج القائمة أو
+محادثة أخرى ⇒ تجاهل · كل `chat:message_id` يُعلَّم قبل الرد ويُحفَظ ⇒ لا رد مكرر
+حتى لو أُعيدت الدورة · فشل المساعد لا يوقف أي تصويت · `getUpdates` يبقى بيد
+البوت وحده · المفاتيح لا تُطبع (`redact`).
+
+### WhatsApp — مسودات تنتظر الموافقة
+`scripts/free_stack_runner.py` مع `AI2027_ASSISTANT_ENABLED=1`: الرسالة الموقّعة
+(YCloud/Meta، نافذة 24 ساعة، بلا تكرار) ⇒ المساعد يكتب **مسودة** ⇒ `pending_approval`
+⇒ لا تُرسَل إلا عبر `GovernedReplyBridge` بموافقة أحادية الاستعمال. طلبات الكوبون
+ورمز التحقق تبقى على المسار الحتمي (النموذج لا يخترع كوبوناً ولا OTP). فشل أو
+بطء المساعد (> 12 ثانية) ⇒ الرد الافتراضي. على الـVM يجب تشغيل الوحدة بـ
+`/opt/ai2027/python-2027/.venv/bin/python` (انظر `deployment/vm/env/webhook.env.example`).
+الاختبارات: `python-2027/tests/test_channel_assistant_runtime.py` و`scripts/test_free_stack_assistant.py` (توقيع صحيح/خاطئ/منتهٍ/معدَّل،
+إعادة إرسال، خارج النافذة، كوبون/OTP، فشل المساعد، مزود مدفوع لا يُستدعى).
 
 </div>

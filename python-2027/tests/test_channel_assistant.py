@@ -558,3 +558,50 @@ def test_env_max_history_turns(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setenv("AI2027_ASSISTANT_MAX_HISTORY_TURNS", "-3")
     assert _env_max_history_turns() == DEFAULT_MAX_HISTORY_TURNS
+
+
+# ---------------------------------------------------------------------------
+# Production-wiring guarantees (deterministic echo, history state, drafts)
+# ---------------------------------------------------------------------------
+
+
+async def test_default_chain_deterministic_echo_is_never_delivered() -> None:
+    """With no free model answering, the default chain ends in the simulated
+    DeterministicFallbackProvider; its debug echo must never reach a person."""
+    from ai2027_protocol.ai_providers import DeterministicFallbackProvider
+
+    sender = _RecordingSender()
+    router = build_assistant_router(
+        providers=(_FakeProvider(configured=False), DeterministicFallbackProvider())
+    )
+    assistant = ChannelAssistant(router=router, sender=sender)
+
+    reply = await assistant.handle_inbound(_msg(text="ما هي عاصمة مصر؟"))
+
+    assert reply.stage == "no_provider_available"
+    assert sender.sent == [("42", ARABIC_NO_PROVIDER_FALLBACK)]
+    assert "deterministic-offline-fallback" not in sender.sent[0][1]
+    assert "simulated" not in sender.sent[0][1]
+
+
+async def test_blank_model_text_falls_back_instead_of_sending_empty() -> None:
+    sender = _RecordingSender()
+    assistant = ChannelAssistant(router=_router([_FakeProvider(text="   ")]), sender=sender)
+
+    reply = await assistant.handle_inbound(_msg())
+
+    assert reply.stage == "no_provider_available"
+    assert sender.sent == [("42", ARABIC_NO_PROVIDER_FALLBACK)]
+
+
+async def test_fallback_notice_is_not_kept_in_history() -> None:
+    store = MemoryConversationStore(max_turns=8)
+    assistant = ChannelAssistant(
+        router=_router([_FakeProvider(configured=False)]),
+        sender=_RecordingSender(),
+        store=store,
+    )
+
+    await assistant.handle_inbound(_msg(text="سؤال"))
+
+    assert store.history(Channel.TELEGRAM, "42") == [("user", "سؤال")]
