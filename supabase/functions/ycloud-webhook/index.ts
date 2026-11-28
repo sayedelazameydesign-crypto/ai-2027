@@ -35,6 +35,8 @@ const E164_DIGITS_RE = /^[1-9]\d{7,14}$/;
 const WAMID_RE = /^(?:wamid\.[A-Za-z0-9_+/=-]{4,240}|yim_[A-Za-z0-9_-]{4,120})$/;
 const CHALLENGE_RE = /^[A-Za-z0-9._-]{1,256}$/;
 const HEX64_RE = /^[0-9a-f]{64}$/;
+const ASCII_DIGITS_RE = /^[0-9]{1,12}$/;
+const MAX_YCLOUD_SIGNATURES = 8;
 const enc = new TextEncoder();
 
 type Env = (name: string) => string | undefined;
@@ -126,22 +128,32 @@ export async function verifyYcloudSignature(
 ): Promise<[boolean, string]> {
   if (!secret || secret.length === 0) return [false, "missing_signing_config"];
   if (!header) return [false, "missing_signature"];
-  const parts: Record<string, string> = {};
+  // YCloud: exactly one `t`; one or more `s` (several during a secret
+  // rotation) — accept when ANY `s` matches. A duplicate `t` is refused.
+  const tsValues: string[] = [];
+  const sigValues: string[] = [];
   for (const item of header.trim().split(",")) {
     const i = item.indexOf("=");
-    if (i >= 0) parts[item.slice(0, i).trim().toLowerCase()] = item.slice(i + 1).trim();
+    if (i < 0) continue;
+    const key = item.slice(0, i).trim().toLowerCase();
+    if (key === "t") tsValues.push(item.slice(i + 1).trim());
+    else if (key === "s") sigValues.push(item.slice(i + 1).trim().toLowerCase());
   }
-  const tsRaw = parts["t"] || "";
-  const sigHex = (parts["s"] || "").toLowerCase();
-  if (!/^\d+$/.test(tsRaw) || !HEX64_RE.test(sigHex)) return [false, "malformed_signature"];
-  const ts = parseInt(tsRaw, 10);
+  if (tsValues.length !== 1 || !ASCII_DIGITS_RE.test(tsValues[0])) return [false, "malformed_signature"];
+  const candidates = sigValues.filter((sig) => HEX64_RE.test(sig));
+  if (candidates.length === 0 || sigValues.length > MAX_YCLOUD_SIGNATURES) {
+    return [false, "malformed_signature"];
+  }
+  const ts = parseInt(tsValues[0], 10);
   if (Math.abs(nowS - ts) > Math.max(0, toleranceS)) return [false, "signature_timestamp_expired"];
   const prefix = enc.encode(`${ts}.`);
   const signed = new Uint8Array(prefix.length + raw.length);
   signed.set(prefix);
   signed.set(raw, prefix.length);
   const expected = await hmacSha256Hex(secret, signed);
-  if (!constantTimeEqual(sigHex, expected)) return [false, "invalid_signature"];
+  let matched = false;
+  for (const sig of candidates) matched = constantTimeEqual(sig, expected) || matched; // no early exit
+  if (!matched) return [false, "invalid_signature"];
   return [true, "ok"];
 }
 

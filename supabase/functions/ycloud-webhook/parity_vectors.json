@@ -101,6 +101,85 @@
    false,
    "signature_timestamp_expired"
   ],
+  "headers": {
+   "arabic_digits_t": [
+    "t=١٧٦٤٣٢٠٠٠٠,s=7065b021ddb6f12ff667be25e237745fc9c87903bae6df5ace673f03ebed0377",
+    [
+     false,
+     "malformed_signature"
+    ]
+   ],
+   "duplicate_t": [
+    "t=1764320000,t=1764320000,s=7065b021ddb6f12ff667be25e237745fc9c87903bae6df5ace673f03ebed0377",
+    [
+     false,
+     "malformed_signature"
+    ]
+   ],
+   "eight_s_ok": [
+    "t=1764320000,s=abababababababababababababababababababababababababababababababab,s=abababababababababababababababababababababababababababababababab,s=abababababababababababababababababababababababababababababababab,s=abababababababababababababababababababababababababababababababab,s=abababababababababababababababababababababababababababababababab,s=abababababababababababababababababababababababababababababababab,s=abababababababababababababababababababababababababababababababab,s=7065b021ddb6f12ff667be25e237745fc9c87903bae6df5ace673f03ebed0377",
+    [
+     true,
+     "ok"
+    ]
+   ],
+   "junk_plus_valid": [
+    "t=1764320000,s=zz,s=7065b021ddb6f12ff667be25e237745fc9c87903bae6df5ace673f03ebed0377",
+    [
+     true,
+     "ok"
+    ]
+   ],
+   "missing_t": [
+    "s=7065b021ddb6f12ff667be25e237745fc9c87903bae6df5ace673f03ebed0377",
+    [
+     false,
+     "malformed_signature"
+    ]
+   ],
+   "no_s": [
+    "t=1764320000",
+    [
+     false,
+     "malformed_signature"
+    ]
+   ],
+   "only_wrong": [
+    "t=1764320000,s=abababababababababababababababababababababababababababababababab,s=cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+    [
+     false,
+     "invalid_signature"
+    ]
+   ],
+   "rotation_new_first": [
+    "t=1764320000,s=7065b021ddb6f12ff667be25e237745fc9c87903bae6df5ace673f03ebed0377,s=abababababababababababababababababababababababababababababababab",
+    [
+     true,
+     "ok"
+    ]
+   ],
+   "rotation_new_last": [
+    "t=1764320000,s=abababababababababababababababababababababababababababababababab,s=7065b021ddb6f12ff667be25e237745fc9c87903bae6df5ace673f03ebed0377",
+    [
+     true,
+     "ok"
+    ]
+   ],
+   "spaced_upper": [
+    " t=1764320000 , s=7065B021DDB6F12FF667BE25E237745FC9C87903BAE6DF5ACE673F03EBED0377 ",
+    [
+     true,
+     "ok"
+    ]
+   ],
+   "too_many_s": [
+    "t=1764320000,s=abababababababababababababababababababababababababababababababab,s=abababababababababababababababababababababababababababababababab,s=abababababababababababababababababababababababababababababababab,s=abababababababababababababababababababababababababababababababab,s=abababababababababababababababababababababababababababababababab,s=abababababababababababababababababababababababababababababababab,s=abababababababababababababababababababababababababababababababab,s=abababababababababababababababababababababababababababababababab,s=7065b021ddb6f12ff667be25e237745fc9c87903bae6df5ace673f03ebed0377",
+    [
+     false,
+     "malformed_signature"
+    ]
+   ]
+  },
   "malformed": [
    false,
    "malformed_signature"

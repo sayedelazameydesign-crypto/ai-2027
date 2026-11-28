@@ -31,6 +31,24 @@ def events(payload):
     ]
 
 
+def ycloud_headers(ts: int, sig: str) -> dict:
+    other = "ab" * 32  # well-formed hex that is NOT the signature
+    arabic = str(ts).translate(str.maketrans("0123456789", "٠١٢٣٤٥٦٧٨٩"))
+    return {
+        "rotation_new_first": f"t={ts},s={sig},s={other}",
+        "rotation_new_last": f"t={ts},s={other},s={sig}",
+        "spaced_upper": f" t={ts} , s={sig.upper()} ",
+        "only_wrong": f"t={ts},s={other},s={'cd' * 32}",
+        "junk_plus_valid": f"t={ts},s=zz,s={sig}",
+        "duplicate_t": f"t={ts},t={ts},s={sig}",
+        "missing_t": f"s={sig}",
+        "no_s": f"t={ts}",
+        "arabic_digits_t": f"t={arabic},s={sig}",
+        "too_many_s": f"t={ts}," + ",".join([f"s={other}"] * 8 + [f"s={sig}"]),
+        "eight_s_ok": f"t={ts}," + ",".join([f"s={other}"] * 7 + [f"s={sig}"]),
+    }
+
+
 def main() -> int:
     reply = {
         "recipient_phone": "201012345678",
@@ -74,6 +92,9 @@ def main() -> int:
             "expired": list(wc.verify_ycloud_signature(body, f"t={ts},s={ysig}", secret, now_epoch_s=ts + 301)),
             "tampered": list(wc.verify_ycloud_signature(body + b" ", f"t={ts},s={ysig}", secret, now_epoch_s=ts)),
             "malformed": list(wc.verify_ycloud_signature(body, "t=abc,s=00", secret, now_epoch_s=ts)),
+            # secret rotation: several s= values, ANY match accepts; one t= only
+            "headers": {name: [hdr, list(wc.verify_ycloud_signature(body, hdr, secret, now_epoch_s=ts))]
+                        for name, hdr in ycloud_headers(ts, ysig).items()},
         },
         "hub": {"sig": hsig, "ok": list(wc.verify_hub_signature(body, f"sha256={hsig}", secret))},
         "pbkdf2": {

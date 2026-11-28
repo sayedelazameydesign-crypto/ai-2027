@@ -60,6 +60,8 @@ _E164_DIGITS_RE = re.compile(r"^[1-9]\d{7,14}$")
 _WAMID_RE = re.compile(r"^(?:wamid\.[A-Za-z0-9_+/=-]{4,240}|yim_[A-Za-z0-9_-]{4,120})$")
 _CHALLENGE_RE = re.compile(r"^[A-Za-z0-9._-]{1,256}$")
 _HEX64_RE = re.compile(r"^[0-9a-f]{64}$")
+_ASCII_DIGITS_RE = re.compile(r"^[0-9]{1,12}$")  # str.isdigit() would accept "١٧٦٤"
+_MAX_YCLOUD_SIGNATURES = 8
 
 
 class CloudTransportResult(NamedTuple):
@@ -251,22 +253,33 @@ def verify_ycloud_signature(
         return False, "missing_signing_config"
     if not signature_header or not isinstance(signature_header, str):
         return False, "missing_signature"
-    parts: Dict[str, str] = {}
+    # YCloud: exactly one ``t``; one or more ``s`` (several during a secret
+    # rotation) — accept when ANY ``s`` matches. A duplicate ``t`` is refused.
+    ts_values: List[str] = []
+    sig_values: List[str] = []
     for item in signature_header.strip().split(","):
         if "=" in item:
             k, v = item.split("=", 1)
-            parts[k.strip().lower()] = v.strip()
-    ts_raw = parts.get("t") or ""
-    sig_hex = (parts.get("s") or "").lower()
-    if not ts_raw.isdigit() or not _HEX64_RE.match(sig_hex):
+            key = k.strip().lower()
+            if key == "t":
+                ts_values.append(v.strip())
+            elif key == "s":
+                sig_values.append(v.strip().lower())
+    if len(ts_values) != 1 or not _ASCII_DIGITS_RE.match(ts_values[0]):
         return False, "malformed_signature"
-    ts_int = int(ts_raw)
+    candidates = [sig for sig in sig_values if _HEX64_RE.match(sig)]
+    if not candidates or len(sig_values) > _MAX_YCLOUD_SIGNATURES:
+        return False, "malformed_signature"
+    ts_int = int(ts_values[0])
     now_s = int(time.time()) if now_epoch_s is None else int(now_epoch_s)
     if abs(now_s - ts_int) > max(0, int(tolerance_s)):
         return False, "signature_timestamp_expired"
     signed_payload = (f"{ts_int}.").encode("utf-8") + bytes(raw_body)
     expected_hex = hmac.new(secret, signed_payload, hashlib.sha256).hexdigest()
-    if not hmac.compare_digest(sig_hex, expected_hex):
+    matched = False
+    for sig in candidates:  # no early exit: every candidate costs the same
+        matched |= hmac.compare_digest(sig, expected_hex)
+    if not matched:
         return False, "invalid_signature"
     return True, "ok"
 

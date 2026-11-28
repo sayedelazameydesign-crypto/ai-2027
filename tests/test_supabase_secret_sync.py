@@ -141,3 +141,147 @@ def test_workflow_is_manual_main_only_oidc_and_destination_is_constant():
     assert ".github/workflows/supabase-secret-sync.yml@refs/heads/main" in edge_src
     assert sss.AUDIENCE in edge_src
     assert all(n in edge_src for n in sss.NAMES)
+
+
+# ------------------------------------------------------------ --ycloud-api path
+FIXTURE_KEY = "ycloud_api_key_fixture_not_real"
+FIXTURE_WHSEC = "whsec_fixture_from_ycloud_api_9"
+
+
+class FakeYCloud:
+    """Mimics api.ycloud.com/v2/webhookEndpoints (list returns `secret`, per the OpenAPI schema)."""
+
+    def __init__(self, endpoints=None, list_code=200, list_has_secret=True):
+        self.endpoints = list(endpoints or [])
+        self.list_code = list_code
+        self.list_has_secret = list_has_secret
+        self.calls: list[tuple[str, str]] = []
+        self.created: list[dict] = []
+
+    def __call__(self, req):
+        assert req.get_header("X-api-key") == FIXTURE_KEY
+        path = req.full_url[len(sss.YCLOUD_API):]
+        self.calls.append((req.get_method(), path))
+        if req.get_method() == "GET" and path.startswith("/webhookEndpoints?"):
+            if self.list_code != 200:
+                return self.list_code, b'{"error":{"status":401,"code":"UNAUTHORIZED"}}'
+            items = [{k: v for k, v in e.items() if k != "secret" or self.list_has_secret} for e in self.endpoints]
+            return 200, json.dumps({"offset": 0, "limit": 100, "length": len(items), "items": items}).encode()
+        if req.get_method() == "GET" and path.startswith("/webhookEndpoints/"):
+            ep = next(e for e in self.endpoints if e["id"] == path.rsplit("/", 1)[1])
+            return 200, json.dumps(ep).encode()
+        if req.get_method() == "POST" and path == "/webhookEndpoints":
+            body = json.loads(req.data)
+            self.created.append(body)
+            ep = {"id": "wh_created_1", "status": "active", "secret": FIXTURE_WHSEC, **body}
+            self.endpoints.append(ep)
+            return 200, json.dumps(ep).encode()
+        return 404, b"{}"
+
+
+def ep(i, url=None, secret=FIXTURE_WHSEC, status="active", events=sss.YCLOUD_EVENTS):
+    return {"id": i, "url": url or sss.WEBHOOK_URL, "status": status, "secret": secret, "enabledEvents": list(events)}
+
+
+def combo(yc, edge):
+    return lambda req: yc(req) if req.full_url.startswith(sss.YCLOUD_API) else edge(req)
+
+
+def yrun(yc, edge=None, extra=None, **kw):
+    edge = edge or FakeEdge()
+    env = {**OIDC_ENV, "YCLOUD_API_KEY": FIXTURE_KEY, **(extra or {})}
+    rc, out = sss.run(env, http=combo(yc, edge), sleep=no_sleep, ycloud_api=True, **kw)
+    text = "\n".join(out)
+    assert FIXTURE_KEY not in text and FIXTURE_WHSEC not in text, "key or secret leaked into the report"
+    return rc, text, edge
+
+
+def test_ycloud_creates_endpoint_when_none_points_at_us_and_imports_its_secret():
+    yc = FakeYCloud(endpoints=[ep("wh_other", url="https://elsewhere.example/hook", secret="whsec_other_x")])
+    rc, text, edge = yrun(yc)
+    assert rc == 0, text
+    assert yc.created == [{"url": sss.WEBHOOK_URL, "enabledEvents": list(sss.YCLOUD_EVENTS),
+                           "description": sss.YCLOUD_DESCRIPTION}]
+    assert edge.vault == {"YCLOUD_WEBHOOK_SECRET": FIXTURE_WHSEC}
+    assert "endpoint created `wh_created_1`" in text and "signed 200 · forged 401" in text
+    assert "**PASS** 1 secret(s)" in text
+
+
+def test_ycloud_reuses_the_console_endpoint_without_creating_or_rotating():
+    yc = FakeYCloud(endpoints=[ep("wh_console", url=sss.WEBHOOK_URL + "/")])
+    rc, text, edge = yrun(yc)
+    assert rc == 0, text
+    assert yc.created == [] and all(m == "GET" for m, _ in yc.calls)
+    assert "existing endpoint reused `wh_console`" in text
+    assert edge.vault["YCLOUD_WEBHOOK_SECRET"] == FIXTURE_WHSEC
+
+
+def test_ycloud_fetches_endpoint_by_id_when_list_omits_secret():
+    yc = FakeYCloud(endpoints=[ep("wh_console")], list_has_secret=False)
+    rc, text, _ = yrun(yc)
+    assert rc == 0, text
+    assert ("GET", "/webhookEndpoints/wh_console") in yc.calls
+
+
+def test_ycloud_two_endpoints_for_our_url_is_a_hard_fail_and_imports_nothing():
+    yc = FakeYCloud(endpoints=[ep("wh_a"), ep("wh_b", secret="whsec_fixture_second_1")])
+    rc, text, edge = yrun(yc)
+    assert rc == 1 and "2 YCloud endpoints point at our URL (`wh_a`, `wh_b`)" in text
+    assert edge.calls == [] and edge.vault == {}
+
+
+def test_ycloud_bad_key_fails_with_hint_and_imports_nothing():
+    rc, text, edge = yrun(FakeYCloud(list_code=401))
+    assert rc == 1 and "HTTP 401 UNAUTHORIZED — YCLOUD_API_KEY is wrong or revoked" in text
+    assert edge.calls == []
+
+
+def test_ycloud_endpoint_without_inbound_event_fails():
+    rc, text, edge = yrun(FakeYCloud(endpoints=[ep("wh_c", events=["whatsapp.message.updated"])]))
+    assert rc == 1 and "not subscribed to `whatsapp.inbound_message.received`" in text
+    assert edge.vault == {}
+
+
+def test_ycloud_pending_endpoint_imports_but_warns():
+    rc, text, _ = yrun(FakeYCloud(endpoints=[ep("wh_p", status="pending")]))
+    assert rc == 0 and "**WARN** endpoint status is `pending`" in text
+
+
+def test_ycloud_value_wins_over_a_stale_github_copy():
+    rc, text, edge = yrun(FakeYCloud(endpoints=[ep("wh_s")]),
+                          extra={"YCLOUD_WEBHOOK_SECRET": "whsec_old_hand_copied_1"})
+    assert rc == 0 and "**GitHub copy is stale**" in text
+    assert edge.vault["YCLOUD_WEBHOOK_SECRET"] == FIXTURE_WHSEC
+    assert "whsec_old_hand_copied_1" not in text
+
+
+def test_ycloud_missing_key_fails_before_any_network():
+    yc, edge = FakeYCloud(), FakeEdge()
+    rc, out = sss.run(dict(OIDC_ENV), http=combo(yc, edge), sleep=no_sleep, ycloud_api=True)
+    assert rc == 1 and "YCLOUD_API_KEY Actions secret — not set" in "\n".join(out)
+    assert yc.calls == [] and edge.calls == []
+
+
+def test_ycloud_dry_run_never_calls_network():
+    yc, edge = FakeYCloud(), FakeEdge()
+    rc, out = sss.run({**OIDC_ENV, "YCLOUD_API_KEY": FIXTURE_KEY}, http=combo(yc, edge),
+                      ycloud_api=True, dry_run=True)
+    assert rc == 0 and yc.calls == [] and edge.calls == []
+    assert FIXTURE_KEY not in "\n".join(out)
+
+
+def test_ycloud_secret_and_key_never_reach_stdout_even_in_actions(capsys):
+    """Nothing is ever printed with a value in it — not even an ::add-mask:: command."""
+    for scenario in ([ep("wh_m")], [ep("wh_a"), ep("wh_b")], [ep("wh_c", events=["x.y"])]):
+        rc, text, _ = yrun(FakeYCloud(endpoints=scenario), extra={"GITHUB_ACTIONS": "true"})
+        out = capsys.readouterr().out
+        assert FIXTURE_WHSEC not in out and FIXTURE_KEY not in out and "::add-mask::" not in out
+    src = (ROOT / "scripts" / "supabase_secret_sync.py").read_text()
+    assert "add-mask" not in src, "values must never be written to the log stream, even for masking"
+
+
+def test_workflow_passes_ycloud_key_via_env_and_flag():
+    wf = (ROOT / ".github" / "workflows" / "supabase-secret-sync.yml").read_text()
+    assert "YCLOUD_API_KEY: ${{ secrets.YCLOUD_API_KEY }}" in wf and "--ycloud-api" in wf
+    assert "ycloud_api:" in wf and "secrets.YCLOUD_API_KEY }}\" " not in wf
+    assert sss.YCLOUD_API == "https://api.ycloud.com/v2" and sss.WEBHOOK_URL.startswith(sss.BASE)
