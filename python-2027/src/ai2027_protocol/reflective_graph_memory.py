@@ -175,47 +175,24 @@ class RankedExperienceHit(StrictModel):
 
 
 def extract_prospective_graph(
-    record: ExperienceRecord,
-    *,
-    max_concepts: int = 8,
+    record: ExperienceRecord, *, max_concepts: int = 8
 ) -> tuple[tuple[GraphNodeSpec, ...], tuple[GraphEdgeSpec, ...]]:
     """Deterministically extract graph nodes and edges from ``record`` ($0 cost)."""
-    cap_node = GraphNodeSpec(
-        node_kind="capability",
-        key=record.task_type,
-        label=record.task_type,
-    )
-    prov_node = GraphNodeSpec(
-        node_kind="provider",
-        key=f"{record.provider}/{record.model}",
-        label=f"{record.provider}/{record.model}",
-    )
-    nodes: dict[str, GraphNodeSpec] = {
-        cap_node.node_id: cap_node,
-        prov_node.node_id: prov_node,
-    }
+    cap_node = GraphNodeSpec(node_kind="capability", key=record.task_type, label=record.task_type)
+    prov_label = f"{record.provider}/{record.model}"
+    prov_node = GraphNodeSpec(node_kind="provider", key=prov_label, label=prov_label)
+    nodes: dict[str, GraphNodeSpec] = {cap_node.node_id: cap_node, prov_node.node_id: prov_node}
     edges: list[GraphEdgeSpec] = [
-        GraphEdgeSpec(
-            source_id=cap_node.node_id,
-            target_id=prov_node.node_id,
-            relation="served_by",
-        )
+        GraphEdgeSpec(source_id=cap_node.node_id, target_id=prov_node.node_id, relation="served_by")
     ]
 
     summary = record.task_summary or ""
-    artifacts = sorted(set(_ARTIFACT_RE.findall(summary)))[:6]
-    for path_token in artifacts:
-        art_node = GraphNodeSpec(
-            node_kind="artifact",
-            key=path_token,
-            label=path_token,
-        )
+    for path_token in sorted(set(_ARTIFACT_RE.findall(summary)))[:6]:
+        art_node = GraphNodeSpec(node_kind="artifact", key=path_token, label=path_token)
         nodes[art_node.node_id] = art_node
         edges.append(
             GraphEdgeSpec(
-                source_id=cap_node.node_id,
-                target_id=art_node.node_id,
-                relation="touches_artifact",
+                source_id=cap_node.node_id, target_id=art_node.node_id, relation="touches_artifact"
             )
         )
 
@@ -293,48 +270,73 @@ class ReflectiveGraphMemory:
         extra_nodes: Sequence[GraphNodeSpec] = (),
         extra_edges: Sequence[GraphEdgeSpec] = (),
     ) -> bool:
-        """Admit ``record`` if verified and index its graph nodes/edges idempotently.
+        """Admit ``record`` if verified and index its graph nodes/edges idempotently."""
+        admitted, _ = self.commit_pipeline_outcome(
+            record,
+            extra_nodes=extra_nodes,
+            extra_edges=extra_edges,
+        )
+        return admitted
 
-        Returns ``True`` when ``record`` satisfies the admissibility gate (either
-        newly admitted or re-indexed by matching ``output_fingerprint``), and
-        ``False`` when refused by the evidence gate.
+    def commit_pipeline_outcome(
+        self,
+        record: ExperienceRecord,
+        *,
+        retrieved_episode_ids: Sequence[str] = (),
+        extra_nodes: Sequence[GraphNodeSpec] = (),
+        extra_edges: Sequence[GraphEdgeSpec] = (),
+    ) -> tuple[bool, int]:
+        """Atomically persist graph indexing and RMM utility updates in one transaction.
+
+        ``verified_helpful_count`` advances **only** when ``record`` is admissible
+        and its graph nodes/edges commit cleanly alongside ``retrieval_utility``.
         """
         with self._lock:
             existing = self.experience_store.get(record.episode_id)
             if existing is None:
                 admitted = self.experience_store.record(record)
-                if not admitted:
-                    return False
-            elif (
-                not record.is_admissible or existing.output_fingerprint != record.output_fingerprint
-            ):
-                return False
-
-            auto_nodes, auto_edges = extract_prospective_graph(record)
-            all_nodes: dict[str, GraphNodeSpec] = {n.node_id: n for n in auto_nodes}
-            for node in extra_nodes:
-                all_nodes[node.node_id] = node
-
-            now = _utc_now()
-            fp = record.output_fingerprint
-            for node in all_nodes.values():
-                self._upsert_node_for_fingerprint(
-                    node=node,
-                    episode_id=record.episode_id,
-                    output_fingerprint=fp,
-                    now=now,
+            else:
+                admitted = bool(
+                    record.is_admissible
+                    and existing.output_fingerprint == record.output_fingerprint
                 )
 
-            combined_edges = list(auto_edges) + list(extra_edges)
-            for edge in combined_edges:
-                if edge.source_id in all_nodes and edge.target_id in all_nodes:
-                    self._upsert_edge_for_fingerprint(
-                        edge=edge,
-                        output_fingerprint=fp,
-                        now=now,
-                    )
-            self._conn.commit()
-            return True
+            valid_retrieved = [
+                ep_id
+                for ep_id in dict.fromkeys(retrieved_episode_ids)
+                if self.experience_store.get(ep_id) is not None
+            ]
+            if not admitted and not valid_retrieved:
+                return False, 0
+
+            now = _utc_now()
+            with self._conn:
+                if admitted:
+                    auto_nodes, auto_edges = extract_prospective_graph(record)
+                    all_nodes = {n.node_id: n for n in auto_nodes}
+                    for node in extra_nodes:
+                        all_nodes[node.node_id] = node
+                    fp = record.output_fingerprint
+                    for node in all_nodes.values():
+                        self._upsert_node_for_fingerprint(
+                            node=node,
+                            episode_id=record.episode_id,
+                            output_fingerprint=fp,
+                            now=now,
+                        )
+                    for edge in (*auto_edges, *extra_edges):
+                        if edge.source_id in all_nodes and edge.target_id in all_nodes:
+                            self._upsert_edge_for_fingerprint(
+                                edge=edge,
+                                output_fingerprint=fp,
+                                now=now,
+                            )
+                updated = self._stage_utility_updates(
+                    valid_retrieved,
+                    downstream_verified=admitted,
+                    now=now,
+                )
+            return admitted, updated
 
     def _upsert_node_for_fingerprint(
         self,
@@ -391,40 +393,55 @@ class ReflectiveGraphMemory:
             (edge.source_id, edge.target_id, edge.relation, output_fingerprint, now),
         )
 
+    def _stage_utility_updates(
+        self,
+        valid_episode_ids: Sequence[str],
+        *,
+        downstream_verified: bool,
+        now: str,
+    ) -> int:
+        helpful_inc = 1 if downstream_verified else 0
+        failed_inc = 0 if downstream_verified else 1
+        for episode_id in valid_episode_ids:
+            self._conn.execute(
+                """
+                INSERT INTO retrieval_utility (
+                    episode_id, retrieved_count, verified_helpful_count,
+                    unverified_or_failed_count, updated_at
+                ) VALUES (?, 1, ?, ?, ?)
+                ON CONFLICT(episode_id) DO UPDATE SET
+                    retrieved_count = retrieval_utility.retrieved_count + 1,
+                    verified_helpful_count = retrieval_utility.verified_helpful_count + ?,
+                    unverified_or_failed_count = (
+                        retrieval_utility.unverified_or_failed_count + ?
+                    ),
+                    updated_at = excluded.updated_at
+                """,
+                (episode_id, helpful_inc, failed_inc, now, helpful_inc, failed_inc),
+            )
+        return len(valid_episode_ids)
+
     def record_retrieval_outcome(
         self,
         episode_ids: Sequence[str],
         *,
         downstream_verified: bool,
     ) -> int:
-        """Update RMM retrospective utility counters for retrieved ``episode_ids``."""
-        now = _utc_now()
-        updated = 0
-        helpful_inc = 1 if downstream_verified else 0
-        failed_inc = 0 if downstream_verified else 1
+        """Update RMM retrospective utility counters atomically for ``episode_ids``."""
         with self._lock:
-            for episode_id in dict.fromkeys(episode_ids):
-                if self.experience_store.get(episode_id) is None:
-                    continue
-                self._conn.execute(
-                    """
-                    INSERT INTO retrieval_utility (
-                        episode_id, retrieved_count, verified_helpful_count,
-                        unverified_or_failed_count, updated_at
-                    ) VALUES (?, 1, ?, ?, ?)
-                    ON CONFLICT(episode_id) DO UPDATE SET
-                        retrieved_count = retrieval_utility.retrieved_count + 1,
-                        verified_helpful_count = retrieval_utility.verified_helpful_count + ?,
-                        unverified_or_failed_count = (
-                            retrieval_utility.unverified_or_failed_count + ?
-                        ),
-                        updated_at = excluded.updated_at
-                    """,
-                    (episode_id, helpful_inc, failed_inc, now, helpful_inc, failed_inc),
+            valid = [
+                ep_id
+                for ep_id in dict.fromkeys(episode_ids)
+                if self.experience_store.get(ep_id) is not None
+            ]
+            if not valid:
+                return 0
+            with self._conn:
+                return self._stage_utility_updates(
+                    valid,
+                    downstream_verified=downstream_verified,
+                    now=_utc_now(),
                 )
-                updated += 1
-            self._conn.commit()
-        return updated
 
     def utility_stats(self, episode_id: str) -> tuple[int, int, float]:
         """Return ``(retrieved_count, verified_helpful_count, smoothed_utility)``."""
@@ -579,14 +596,13 @@ class ReflectiveGraphMemory:
 
     def stats(self) -> dict[str, int]:
         """Return counts across experience, graph, and utility tables."""
-        base = self.experience_store.stats()
         nodes = int(self._conn.execute("SELECT COUNT(*) AS c FROM memory_nodes").fetchone()["c"])
         edges = int(self._conn.execute("SELECT COUNT(*) AS c FROM memory_edges").fetchone()["c"])
         tracked = int(
             self._conn.execute("SELECT COUNT(*) AS c FROM retrieval_utility").fetchone()["c"]
         )
         return {
-            **base,
+            **self.experience_store.stats(),
             "nodes": nodes,
             "edges": edges,
             "utility_tracked": tracked,

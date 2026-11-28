@@ -43,6 +43,7 @@ from kernel2027 import (  # noqa: E402
     ApprovalState,
     decide,
     effect_key,
+    sha256_text,
 )
 
 GRAPH_API_BASE = "https://graph.facebook.com/v21.0"
@@ -334,6 +335,42 @@ def evaluate_outbound_approval(
     return decide(req, granted=granted, decided_by=decided_by)
 
 
+def preflight_reply_payload(
+    payload: Any,
+    *,
+    now_epoch_s: Optional[int] = None,
+) -> Dict[str, Any]:
+    """Validate local credentials, payload shape, and 24h free window BEFORE approval consume.
+
+    Runners call this helper prior to ``GovernedExecutor.execute(...)`` so an
+    expired 24-hour customer-service window or malformed payload never burns a
+    single-use ``pa_approvals`` row.
+    """
+    pre = preflight()
+    if not pre["ok"]:
+        return {"ok": False, "stage": pre["stage"]}
+    if not isinstance(payload, dict):
+        return {"ok": False, "stage": "invalid_payload"}
+    recipient = normalize_recipient_digits(str(payload.get("recipient_phone") or ""))
+    if recipient is None:
+        return {"ok": False, "stage": "invalid_recipient"}
+    msg = payload.get("message_text")
+    if not isinstance(msg, str) or not msg.strip() or len(msg.strip()) > MESSAGE_MAX_CHARS:
+        return {"ok": False, "stage": "invalid_message"}
+    reply_wamid = str(payload.get("reply_to_wamid") or "")
+    if not _WAMID_RE.match(reply_wamid):
+        return {"ok": False, "stage": "invalid_reply_wamid"}
+    raw_ts = payload.get("inbound_timestamp_s")
+    if isinstance(raw_ts, bool) or not isinstance(raw_ts, int):
+        try:
+            raw_ts = int(str(raw_ts))
+        except (TypeError, ValueError):
+            return {"ok": False, "stage": "invalid_timestamp"}
+    if not is_within_free_service_window(int(raw_ts), now_epoch_s=now_epoch_s):
+        return {"ok": False, "stage": "outside_24h_service_window"}
+    return {"ok": True, "stage": "ok"}
+
+
 def send_reply(
     *,
     recipient_phone: str,
@@ -342,6 +379,7 @@ def send_reply(
     reply_to_wamid: str,
     approval: Optional[ApprovalDecision] = None,
     now_epoch_s: Optional[int] = None,
+    sent_effect_keys: Optional[MutableSet[str]] = None,
 ) -> Dict[str, Any]:
     """Send a free-window text reply fail-closed behind preflight, 24h guard, and approval."""
     pre = preflight()
@@ -378,7 +416,6 @@ def send_reply(
         return {"ok": False, "stage": stage}
 
     phone_id = pre["phone_number_id"]
-    bearer = (os.environ.get("WHATSAPP_CLOUD_ACCESS_TOKEN") or "").strip()
     outbound_idem = str(
         effect_key(
             namespace="whatsapp_cloud",
@@ -387,10 +424,18 @@ def send_reply(
                 "phone_number_id": phone_id,
                 "recipient": recipient,
                 "reply_to_wamid": reply_to_wamid,
-                "body_len": len(cleaned_msg),
+                "message_sha256": sha256_text(cleaned_msg),
             },
         )
     )
+    if sent_effect_keys is not None and outbound_idem in sent_effect_keys:
+        return {
+            "ok": False,
+            "stage": "duplicate_outbound_reply",
+            "idempotency_key": outbound_idem,
+        }
+
+    bearer = (os.environ.get("WHATSAPP_CLOUD_ACCESS_TOKEN") or "").strip()
     url = f"{GRAPH_API_BASE}/{int(phone_id)}/messages"
     body = {
         "messaging_product": "whatsapp",
@@ -409,6 +454,8 @@ def send_reply(
     outbound_id = str(first.get("id") or "") if isinstance(first, dict) else ""
     if not outbound_id:
         return {"ok": False, "stage": "shape_invalid", "status": res.status}
+    if sent_effect_keys is not None:
+        sent_effect_keys.add(outbound_idem)
     return {
         "ok": True,
         "stage": "ok",
@@ -421,6 +468,7 @@ def send_reply(
 def make_send_reply_handler(
     *,
     now_epoch_fn: Optional[Callable[[], int]] = None,
+    sent_effect_keys: Optional[MutableSet[str]] = None,
 ) -> Callable[[Dict[str, Any]], Dict[str, Any]]:
     """Build a ``GovernedExecutor`` tool handler for ``whatsapp_cloud.send_reply``.
 
@@ -454,6 +502,7 @@ def make_send_reply_handler(
             reply_to_wamid=reply_wamid,
             approval=approval,
             now_epoch_s=now_val,
+            sent_effect_keys=sent_effect_keys,
         )
         if not result.get("ok"):
             stage = str(result.get("stage") or "send_failed")
@@ -481,6 +530,7 @@ __all__ = [
     "normalize_recipient_digits",
     "parse_inbound_events",
     "preflight",
+    "preflight_reply_payload",
     "send_reply",
     "verify_hub_signature",
     "verify_webhook_challenge",

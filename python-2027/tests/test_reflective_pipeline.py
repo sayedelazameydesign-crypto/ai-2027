@@ -158,4 +158,8 @@ async def test_pipeline_tree_and_reflexion_close_rmm_utility_and_graph_loop(
         stats = mem.stats()
         assert stats["stored"] == 2
         assert stats["refused"] == 1
+        # Episode #1 was retrieved in failed task #3: helpful stayed 1, retrieved became 2.
+        r_after, h_after, _ = mem.utility_stats(first.episode.episode_id)
+        assert r_after == 2
+        assert h_after == 1
         assert mem.verify_durability() == []

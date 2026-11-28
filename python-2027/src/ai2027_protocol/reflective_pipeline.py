@@ -195,20 +195,12 @@ class ReflectiveCognitivePipeline:
             reflections = refl_res.reflections
 
         retrieved_ids = tuple(h.record.episode_id for h in hits)
-        utility_updated = (
-            self.memory.record_retrieval_outcome(
-                retrieved_ids,
-                downstream_verified=verified,
-            )
-            if retrieved_ids
-            else 0
-        )
-
         extra_nodes, extra_edges = (
             _extract_overcome_failure_graph(resolved_type, reflections) if verified else ((), ())
         )
-        admitted = self.memory.index_episode(
+        admitted, utility_updated = self.memory.commit_pipeline_outcome(
             episode,
+            retrieved_episode_ids=retrieved_ids,
             extra_nodes=extra_nodes,
             extra_edges=extra_edges,
         )

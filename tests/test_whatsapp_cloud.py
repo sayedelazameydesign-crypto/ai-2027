@@ -451,6 +451,87 @@ class WhatsAppCloudTests(unittest.TestCase):
         self.assertFalse(res2.ok)
         self.assertEqual(res2.reason, "approval_already_consumed")
 
+        # Even if caller mutates payload fields on a consumed approval, it stays blocked!
+        mutated_after_consume = dict(payload, message_text="نص مختلف تماماً")
+        res3 = executor.execute(
+            "01APPR_WA_01", "whatsapp_cloud.send_reply", mutated_after_consume
+        )
+        self.assertFalse(res3.ok)
+        self.assertEqual(res3.reason, "approval_already_consumed")
+
+    def test_audit_invariants_entry_time_vs_msg_ts_and_message_sha256_and_preconsume(self):
+        # 1. Fresh entry[].time must NEVER mask an expired messages[].timestamp (>86,400s).
+        delayed_webhook = _sample_webhook_payload(
+            wamid="wamid.HBgMMjAxMDEyMzQ1Njc4FQIAEhggDELAYED01==",
+            timestamp="1700000000",
+        )
+        delayed_webhook["entry"][0]["time"] = 1700090000  # fresh webhook arrival!
+        parsed = wc.parse_inbound_events(delayed_webhook, now_epoch_s=1700090000)
+        self.assertEqual(len(parsed), 1)
+        self.assertFalse(parsed[0].within_24h_window)
+        self.assertEqual(parsed[0].stage, "outside_24h_service_window")
+
+        # 2. Same-length messages produce distinct effect_keys; exact duplicate is blocked!
+        fake = FakeCloudTransport(
+            wc.CloudTransportResult("ok", 200, {"messages": [{"id": "wamid.OUT_DEDUP"}]})
+        )
+        wc._transport = fake
+        approved = wc.evaluate_outbound_approval(
+            recipient_wa_id="201012345678", reply_to_wamid=SAMPLE_WAMID, granted=True
+        )
+        sent_keys = set()
+        r_yes = wc.send_reply(
+            recipient_phone="01012345678",
+            message_text="نعم موافق",  # 9 chars
+            inbound_timestamp_s=1700000000,
+            reply_to_wamid=SAMPLE_WAMID,
+            approval=approved,
+            now_epoch_s=1700000100,
+            sent_effect_keys=sent_keys,
+        )
+        r_no = wc.send_reply(
+            recipient_phone="01012345678",
+            message_text="غير موافق",  # also 9 chars, different SHA-256!
+            inbound_timestamp_s=1700000000,
+            reply_to_wamid=SAMPLE_WAMID,
+            approval=approved,
+            now_epoch_s=1700000100,
+            sent_effect_keys=sent_keys,
+        )
+        self.assertTrue(r_yes["ok"])
+        self.assertTrue(r_no["ok"])
+        self.assertNotEqual(r_yes["idempotency_key"], r_no["idempotency_key"])
+
+        # Exact duplicate reply is blocked locally before touching HTTP transport!
+        r_dup = wc.send_reply(
+            recipient_phone="01012345678",
+            message_text="نعم موافق",
+            inbound_timestamp_s=1700000000,
+            reply_to_wamid=SAMPLE_WAMID,
+            approval=approved,
+            now_epoch_s=1700000100,
+            sent_effect_keys=sent_keys,
+        )
+        self.assertFalse(r_dup["ok"])
+        self.assertEqual(r_dup["stage"], "duplicate_outbound_reply")
+        self.assertEqual(len(fake.calls), 2)
+
+        # 3. preflight_reply_payload catches expired 24h window BEFORE burning single-use approval!
+        expired_payload = {
+            "recipient_phone": "01012345678",
+            "message_text": "رد متأخر",
+            "inbound_timestamp_s": 1700000000,
+            "reply_to_wamid": SAMPLE_WAMID,
+        }
+        self.assertEqual(
+            wc.preflight_reply_payload(expired_payload, now_epoch_s=1700090000),
+            {"ok": False, "stage": "outside_24h_service_window"},
+        )
+        self.assertEqual(
+            wc.preflight_reply_payload(expired_payload, now_epoch_s=1700001000),
+            {"ok": True, "stage": "ok"},
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
