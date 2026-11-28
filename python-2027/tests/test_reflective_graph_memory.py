@@ -252,3 +252,41 @@ def test_property_utility_score_is_strictly_bounded_and_monotonic(
     score_plus_win = compute_utility_score(retrieved + 1, clamped_helpful + 1)
     score_plus_loss = compute_utility_score(retrieved + 1, clamped_helpful)
     assert score_plus_win > score_plus_loss
+
+
+def test_concurrent_sqlite_wal_reads_and_writes_across_threads(tmp_path: Path) -> None:
+    """Concurrent multi-thread indexing, search, and RMM updates succeed without lock errors."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    db_file = tmp_path / "concurrent_wal.sqlite3"
+    with ReflectiveGraphMemory(db_file) as bootstrap:
+        assert bootstrap.index_episode(
+            _verified_record("ep_seed", "Seed sqlite wal concurrency check in store.py")
+        )
+
+    def _worker(worker_id: int) -> bool:
+        with ReflectiveGraphMemory(db_file) as local_mem:
+            for step in range(4):
+                ep_id = f"ep_w{worker_id}_s{step}"
+                ok = local_mem.index_episode(
+                    _verified_record(
+                        ep_id,
+                        f"Worker {worker_id} step {step} verified router_{worker_id}.py",
+                    )
+                )
+                if not ok:
+                    return False
+                hits = local_mem.search("sqlite wal router verified", k=3)
+                local_mem.record_retrieval_outcome(
+                    [h.record.episode_id for h in hits],
+                    downstream_verified=(step % 2 == 0),
+                )
+        return True
+
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        outcomes = list(pool.map(_worker, range(6)))
+
+    assert all(outcomes)
+    with ReflectiveGraphMemory(db_file) as check_mem:
+        assert check_mem.stats()["stored"] == 1 + (6 * 4)
+        assert check_mem.verify_durability() == []

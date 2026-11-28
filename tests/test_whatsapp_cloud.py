@@ -287,6 +287,170 @@ class WhatsAppCloudTests(unittest.TestCase):
         self.assertEqual(len(fake.calls), 1)
         self.assertEqual(fake.calls[0]["body"]["to"], "201012345678")
 
+    def test_clock_skew_window_boundaries_and_transport_failure_stages(self):
+        # Exact 86,400s boundary passes; 86,401s fails.
+        self.assertTrue(wc.is_within_free_service_window(1_700_000_000, now_epoch_s=1_700_086_400))
+        self.assertFalse(wc.is_within_free_service_window(1_700_000_000, now_epoch_s=1_700_086_401))
+        # Small clock skew up to 300s passes; -301s fails.
+        self.assertTrue(wc.is_within_free_service_window(1_700_000_300, now_epoch_s=1_700_000_000))
+        self.assertFalse(wc.is_within_free_service_window(1_700_000_301, now_epoch_s=1_700_000_000))
+
+        # Input validation edge cases.
+        approved = wc.evaluate_outbound_approval(
+            recipient_wa_id="201012345678", reply_to_wamid=SAMPLE_WAMID, granted=True
+        )
+        self.assertEqual(
+            wc.send_reply(
+                recipient_phone="bad-phone",
+                message_text="ok",
+                inbound_timestamp_s=1700000000,
+                reply_to_wamid=SAMPLE_WAMID,
+                approval=approved,
+                now_epoch_s=1700000100,
+            ),
+            {"ok": False, "stage": "invalid_recipient"},
+        )
+        self.assertEqual(
+            wc.send_reply(
+                recipient_phone="01012345678",
+                message_text="x" * (wc.MESSAGE_MAX_CHARS + 1),
+                inbound_timestamp_s=1700000000,
+                reply_to_wamid=SAMPLE_WAMID,
+                approval=approved,
+                now_epoch_s=1700000100,
+            ),
+            {"ok": False, "stage": "invalid_message"},
+        )
+        self.assertEqual(
+            wc.send_reply(
+                recipient_phone="01012345678",
+                message_text="ok",
+                inbound_timestamp_s=1700000000,
+                reply_to_wamid="not-a-wamid",
+                approval=approved,
+                now_epoch_s=1700000100,
+            ),
+            {"ok": False, "stage": "invalid_reply_wamid"},
+        )
+
+        # Transport refusal stages never leak payload or credentials.
+        for stage_name, code, data in [
+            ("redirect_refused", 302, None),
+            ("too_large", 200, None),
+            ("not_json", 502, None),
+            ("http_error", 401, None),
+            ("shape_invalid", 200, {"messages": [{}]}),
+        ]:
+            wc._transport = FakeCloudTransport(wc.CloudTransportResult(stage_name, code, data))
+            out = wc.send_reply(
+                recipient_phone="00201012345678",
+                message_text="اختبار حدود النقل",
+                inbound_timestamp_s=1700000000,
+                reply_to_wamid=SAMPLE_WAMID,
+                approval=approved,
+                now_epoch_s=1700000100,
+            )
+            expected_stage = "shape_invalid" if stage_name == "shape_invalid" else stage_name
+            self.assertFalse(out["ok"])
+            self.assertEqual(out["stage"], expected_stage)
+            self.assertNotIn(FIXTURE_ACCESS, json.dumps(out))
+
+        # Malformed webhook envelopes return empty event lists safely.
+        self.assertEqual(wc.parse_inbound_events("not-a-dict"), [])
+        self.assertEqual(wc.parse_inbound_events({"object": "page", "entry": []}), [])
+
+    def test_governed_executor_integration_consumes_single_use_approval_and_audits(self):
+        from datetime import datetime, timezone
+
+        exec_path = ROOT / "src" / "executors" / "governed_executor.py"
+        spec = importlib.util.spec_from_file_location("governed_executor_wc_test", exec_path)
+        assert spec and spec.loader
+        ge = importlib.util.module_from_spec(spec)
+        sys.modules["governed_executor_wc_test"] = ge
+        spec.loader.exec_module(ge)
+
+        class _Worksheet:
+            def __init__(self, rows):
+                self.rows = [list(r) for r in rows]
+
+            def get_all_values(self):
+                return [list(r) for r in self.rows]
+
+            def batch_update(self, items):
+                for item in items:
+                    idx = int(item["range"].split(":")[0][1:]) - 1
+                    self.rows[idx] = list(item["values"][0])
+
+        class _Sheet:
+            def __init__(self, mapping):
+                self._m = {k: _Worksheet(v) for k, v in mapping.items()}
+
+            def worksheet(self, name):
+                return self._m[name]
+
+        wc._transport = FakeCloudTransport(
+            wc.CloudTransportResult("ok", 200, {"messages": [{"id": "wamid.GOV_EXEC_01"}]})
+        )
+        now_dt = datetime(2026, 11, 28, 12, 0, 0, tzinfo=timezone.utc)
+        now_epoch = int(now_dt.timestamp())
+
+        payload = {
+            "recipient_phone": "01012345678",
+            "message_text": "تمت الموافقة عبر النواة",
+            "inbound_timestamp_s": now_epoch - 600,
+            "reply_to_wamid": SAMPLE_WAMID,
+        }
+        appr_row = [""] * 22
+        appr_row[0] = "01APPR_WA_01"
+        appr_row[1] = "2026-11-28T11:50:00.000Z"
+        appr_row[2] = "2026-11-28T11:50:00.000Z"
+        appr_row[3] = "1"
+        appr_row[13] = "ab" * 32
+        appr_row[14] = "whatsapp_cloud.send_reply"
+        appr_row[15] = ge.compute_sha256(payload)
+        appr_row[16] = "WhatsApp customer reply"
+        appr_row[17] = "granted"
+        appr_row[18] = "2026-11-28T11:50:00.000Z"
+        appr_row[19] = "2026-11-28T13:00:00.000Z"
+        appr_row[21] = "true"
+
+        grant_row = [""] * 23
+        grant_row[0] = "01GRANT_WA_01"
+        grant_row[14] = "agent.write"
+        grant_row[15] = "active"
+        grant_row[17] = json.dumps(["whatsapp_cloud.send_reply"])
+        grant_row[18] = json.dumps([])
+        grant_row[21] = "owner"
+
+        sheet = _Sheet(
+            {
+                "pa_approvals": [["h"] * 22, appr_row],
+                "pa_delegation_grants": [["h"] * 23, grant_row],
+                "pa_audit_logs_202611": [["h"] * 25],
+            }
+        )
+        audit_events = []
+        executor = ge.GovernedExecutor(
+            sheet,
+            lambda **kw: audit_events.append(kw),
+            now_fn=lambda: now_dt,
+        )
+        executor.register_tool(
+            "whatsapp_cloud.send_reply",
+            wc.make_send_reply_handler(now_epoch_fn=lambda: now_epoch),
+        )
+
+        # 1st execution succeeds and consumes single-use approval.
+        res1 = executor.execute("01APPR_WA_01", "whatsapp_cloud.send_reply", payload)
+        self.assertTrue(res1.ok)
+        self.assertEqual(res1.output["outbound_message_id"], "wamid.GOV_EXEC_01")
+        self.assertEqual(audit_events[-1]["outcome"], "allowed")
+
+        # 2nd execution on the same approval_id is denied fail-closed (single-use consumed).
+        res2 = executor.execute("01APPR_WA_01", "whatsapp_cloud.send_reply", payload)
+        self.assertFalse(res2.ok)
+        self.assertEqual(res2.reason, "approval_already_consumed")
+
 
 if __name__ == "__main__":
     unittest.main()

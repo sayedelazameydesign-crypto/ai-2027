@@ -51,6 +51,7 @@ decision the system can explain afterwards.
 | `reflexion.py` + `reflexion_contracts.py` | Bounded multi-trial verbal reinforcement (`arXiv:2303.11366v4`) under `MAX_SPEND=0`. | `GovernedReflexionLoop` |
 | `reflective_graph_memory.py` | Cognee-style relational graph + RMM retrospective utility reranking over SQLite. | `ReflectiveGraphMemory` |
 | `reflective_tree.py` | ReTreVal-style bounded reflective tree search (`max_branching<=3`, `max_depth<=3`, `max_expansions<=9`). | `BoundedReflectiveTreeSearch` |
+| `reflective_pipeline.py` | End-to-end RMM retrieval -> Reflexion/ReTreVal execution -> retrospective utility + graph indexing. | `ReflectiveCognitivePipeline` |
 | `reflexion.py` + `reflexion_contracts.py` | Bounded verbal reinforcement loop (`arXiv:2303.11366v4`): Actor, Evaluator, Self-Reflection over a sliding window `Omega`, AST self-test filtering, and false-positive interception under `POL-BOUNDED-REFLEXION-CAP`. | `GovernedReflexionLoop` / `ReflexionPolicy` |
 
 The modules are deliberately separate so each rule can be enforced in exactly
@@ -237,5 +238,18 @@ addresses linear ReAct trajectory traps under `POL-BOUNDED-REFLECTIVE-TREE`:
   cross-checked by `meta_router.verifier`, every expansion is linked in a
   SHA-256 `TreeAuditEntry` chain (`verify_tree_audit_chain`), and only an
   independently verified winning path emits `ExperienceRecord(verified=True)`.
+
+## 12. Closed-Loop Reflective Pipeline (`ReflectiveCognitivePipeline`)
+
+`ReflectiveCognitivePipeline` (`python-2027/src/ai2027_protocol/reflective_pipeline.py`)
+wires `ReflectiveGraphMemory` directly to `GovernedReflexionLoop` and
+`BoundedReflectiveTreeSearch`:
+
+1. Retrieves up to `k_lessons` utility-ranked verified episodes (`RMM` prior context).
+2. Executes via sequential `reflexion` or branching `tree` search under `MAX_SPEND = 0`.
+3. Automatically records `record_retrieval_outcome(..., downstream_verified=verified)`
+   so helpful retrieved episodes gain posterior utility and unhelpful ones decay.
+4. Admits the winning `ExperienceRecord` and overcome `failure_mode` graph nodes
+   only when `verified=True`, refusing unverified runs into `refusals`.
 
 

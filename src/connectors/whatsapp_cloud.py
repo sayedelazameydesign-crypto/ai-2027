@@ -31,7 +31,7 @@ import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, MutableSet, NamedTuple, Optional, Tuple
+from typing import Any, Callable, Dict, List, MutableSet, NamedTuple, Optional, Tuple
 
 _ROOT = Path(__file__).resolve().parents[2]
 if str(_ROOT / "kernel-2027") not in sys.path:
@@ -65,6 +65,10 @@ class CloudTransportResult(NamedTuple):
     stage: str
     status: Optional[int]
     data: Any
+
+
+class WhatsAppCloudSendError(RuntimeError):
+    """Raised inside GovernedExecutor dispatch — carries stage code only."""
 
 
 @dataclass(frozen=True)
@@ -387,7 +391,7 @@ def send_reply(
             },
         )
     )
-    url = f"{GRAPH_API_BASE}/{phone_id}/messages"
+    url = f"{GRAPH_API_BASE}/{int(phone_id)}/messages"
     body = {
         "messaging_product": "whatsapp",
         "recipient_type": "individual",
@@ -414,14 +418,66 @@ def send_reply(
     }
 
 
+def make_send_reply_handler(
+    *,
+    now_epoch_fn: Optional[Callable[[], int]] = None,
+) -> Callable[[Dict[str, Any]], Dict[str, Any]]:
+    """Build a ``GovernedExecutor`` tool handler for ``whatsapp_cloud.send_reply``.
+
+    ``GovernedExecutor`` invokes this handler only after passing all four write
+    gates (single-use ``pa_approvals`` row + ``payload_hash`` match + active
+    ``pa_delegation_grants`` + consume-before-dispatch). Any delivery or 24-hour
+    window refusal raises a stage-only :class:`WhatsAppCloudSendError` so the
+    chained audit log records a clean stage without leaking credentials.
+    """
+
+    def handler(payload: Dict[str, Any]) -> Dict[str, Any]:
+        raw_ts = payload.get("inbound_timestamp_s", -1)
+        try:
+            inbound_ts = int(raw_ts)
+        except (TypeError, ValueError) as exc:
+            raise WhatsAppCloudSendError("whatsapp_cloud_invalid_timestamp") from exc
+
+        recipient = str(payload.get("recipient_phone") or "")
+        reply_wamid = str(payload.get("reply_to_wamid") or "")
+        approval = evaluate_outbound_approval(
+            recipient_wa_id=normalize_recipient_digits(recipient) or "",
+            reply_to_wamid=reply_wamid,
+            granted=True,
+            decided_by="governed_executor",
+        )
+        now_val = now_epoch_fn() if now_epoch_fn is not None else None
+        result = send_reply(
+            recipient_phone=recipient,
+            message_text=str(payload.get("message_text") or ""),
+            inbound_timestamp_s=inbound_ts,
+            reply_to_wamid=reply_wamid,
+            approval=approval,
+            now_epoch_s=now_val,
+        )
+        if not result.get("ok"):
+            stage = str(result.get("stage") or "send_failed")
+            raise WhatsAppCloudSendError("whatsapp_cloud_" + stage)
+        return {
+            "delivered": True,
+            "stage": "ok",
+            "outbound_message_id": result["outbound_message_id"],
+            "idempotency_key": result["idempotency_key"],
+        }
+
+    return handler
+
+
 __all__ = [
     "CloudTransportResult",
     "GRAPH_API_BASE",
     "InboundWhatsAppEvent",
     "MESSAGE_MAX_CHARS",
     "SERVICE_WINDOW_SECONDS",
+    "WhatsAppCloudSendError",
     "evaluate_outbound_approval",
     "is_within_free_service_window",
+    "make_send_reply_handler",
     "normalize_recipient_digits",
     "parse_inbound_events",
     "preflight",

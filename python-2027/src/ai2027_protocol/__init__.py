@@ -164,6 +164,11 @@ from .reflective_graph_memory import (
     compute_utility_score,
     extract_prospective_graph,
 )
+from .reflective_pipeline import (
+    ExecutionStrategy,
+    ReflectiveCognitivePipeline,
+    ReflectivePipelineResult,
+)
 from .reflective_tree import (
     DEFAULT_TREE_POLICY_ID,
     BoundedReflectiveTreeSearch,
@@ -426,4 +431,7 @@ __all__ = [
     "TreeSearchPolicy",
     "TreeSearchResult",
     "verify_tree_audit_chain",
+    "ExecutionStrategy",
+    "ReflectiveCognitivePipeline",
+    "ReflectivePipelineResult",
 ]
