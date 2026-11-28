@@ -18,6 +18,7 @@ import {
   type Provider,
   renderOwnerPrompt,
   relaySecret,
+  VAULT_SECRETS,
   routeOf,
   SPEC,
   splitForTelegram,
@@ -195,6 +196,14 @@ class FakeStore extends MemStore implements CeliaStore {
   }
   healthz() {
     return Promise.resolve(true);
+  }
+  vault: Record<string, string> = {};
+  vaultFails = false;
+  vaultReads = 0;
+  runtimeSecrets() {
+    this.vaultReads++;
+    if (this.vaultFails) return Promise.reject(new Error("vault down"));
+    return Promise.resolve({ ...this.vault });
   }
 }
 
@@ -403,9 +412,52 @@ Deno.test("healthz reports booleans only", async () => {
   const t = setup();
   const body = await (await t.handler(new Request("https://x/functions/v1/celia-telegram/healthz"))).json();
   eq(body, {
-    ok: true, service: "celia-telegram", telegram: true, chat: "instant", webhook: "unset",
+    ok: true, service: "celia-telegram", telegram: true, token_source: "env", chat: "instant", webhook: "unset",
     webhook_actual: "none", owners: true, providers: 1, store: true,
   });
+});
+
+// ------------------------------------- secrets from GitHub Actions via Vault
+const VAULT_TOKEN = "456:FROM-GITHUB";
+const healthz = async (t: ReturnType<typeof setup>) =>
+  (await t.handler(new Request("https://x/functions/v1/celia-telegram/healthz"))).json();
+
+Deno.test("vault: the token imported from GitHub Actions is enough on its own", async () => {
+  const t = setup({ CELIA_TELEGRAM_TOKEN: "" });
+  t.store.vault = { CELIA_TELEGRAM_TOKEN: VAULT_TOKEN };
+  const body = await healthz(t);
+  eq([body.telegram, body.token_source], [true, "vault"]);
+  const r = await relayCall(t.handler, { op: "updates", limit: 1 }, await relaySecret(VAULT_TOKEN));
+  eq(r.status, 200, "the runner's secret, derived from the same GitHub token, is accepted");
+});
+
+Deno.test("vault: wins over Edge env, so a stale hand-copied token stops working", async () => {
+  const t = setup(); // env holds TOKEN
+  t.store.vault = { CELIA_TELEGRAM_TOKEN: VAULT_TOKEN };
+  eq((await relayCall(t.handler, { op: "updates", limit: 1 })).status, 401);
+  eq((await relayCall(t.handler, { op: "updates", limit: 1 }, await relaySecret(VAULT_TOKEN))).status, 200);
+  eq((await post(t.handler, msg(1, "hi"))).status, 401, "webhook secret follows the effective token");
+});
+
+Deno.test("vault: the gates never come from Vault", async () => {
+  const t = setup({ CELIA_CHAT: "", CELIA_WEBHOOK: "" });
+  t.store.vault = { CELIA_TELEGRAM_TOKEN: TOKEN, CELIA_CHAT: "instant", CELIA_WEBHOOK: "on" };
+  const body = await healthz(t);
+  eq([body.chat, body.webhook], ["shadow", "unset"]);
+  eq(VAULT_SECRETS.includes("CELIA_CHAT" as never) || VAULT_SECRETS.includes("CELIA_WEBHOOK" as never), false);
+});
+
+Deno.test("vault: a failed read falls back to Edge env and is retried, cached otherwise", async () => {
+  const t = setup();
+  t.store.vaultFails = true;
+  eq((await healthz(t)).token_source, "env");
+  eq((await relayCall(t.handler, { op: "updates", limit: 1 })).status, 200);
+  const reads = t.store.vaultReads;
+  t.store.vaultFails = false;
+  t.store.vault = { CELIA_TELEGRAM_TOKEN: VAULT_TOKEN };
+  eq((await healthz(t)).token_source, "vault", "retried on the next request");
+  await healthz(t);
+  eq(t.store.vaultReads, reads + 1, "then cached (<= one read per 60 s)");
 });
 
 Deno.test("long replies are split under Telegram's limit", () => {

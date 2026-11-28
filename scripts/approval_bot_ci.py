@@ -23,7 +23,8 @@ One integrated bot (scripts/celia_relay.py): when the bot's webhook points at
 the Supabase function ``celia-telegram``, updates are read from its relay
 queue instead of ``getUpdates`` (discovered via getWebhookInfo every cycle;
 no new secret), and CELIA's memory is the Supabase ``celia_memory`` table —
-the Google Sheet tab is no longer written. No webhook => historical path.
+the Google Sheet tab is no longer written. No webhook => historical path,
+after the remembered queue is drained (celia_relay.select_source).
 
 Exit codes: 0 success · 1 runtime failure · 2 configuration/preflight.
 """
@@ -35,6 +36,7 @@ import os
 import pathlib
 import re
 import sys
+import time
 import urllib.error
 import urllib.request
 from typing import Any, Callable, Dict, List, Optional, Tuple
@@ -125,6 +127,12 @@ def load_state(path: pathlib.Path) -> Dict[str, Any]:
         "sent": sent, "offset": int(offset) if offset is not None else None}
     if isinstance(data.get("assistant"), dict):
         state["assistant"] = data["assistant"]
+    # The relay queue last read (public function URL) and since when its
+    # webhook is gone: a rollback drains that queue before polling again.
+    if isinstance(data.get("relay"), str) and data["relay"]:
+        state["relay"] = data["relay"]
+        if isinstance(data.get("relay_lost_at"), (int, float)):
+            state["relay_lost_at"] = data["relay_lost_at"]
     return state
 
 
@@ -134,6 +142,10 @@ def save_state(path: pathlib.Path, state: Dict[str, Any]) -> None:
                                "offset": state.get("offset")}
     if isinstance(state.get("assistant"), dict):
         payload["assistant"] = state["assistant"]
+    if state.get("relay"):
+        payload["relay"] = state["relay"]
+        if state.get("relay_lost_at") is not None:
+            payload["relay_lost_at"] = state["relay_lost_at"]
     path.write_text(json.dumps(payload, indent=1, sort_keys=True,
                                ensure_ascii=False),
                     encoding="utf-8")
@@ -223,7 +235,7 @@ ASSISTANT_MODES = ("companion", "intelligence", "developer", "executive",
                    "creative")
 MEMORY_BACKENDS = ("supabase", "sheet", "state", "none")
 #: Where this cycle reads Telegram updates from (allowlisted log labels).
-UPDATE_SOURCES = ("relay", "getUpdates")
+UPDATE_SOURCES = ("relay", "drain", "abandoned", "getUpdates")
 CHAT_MODES = ("instant", "shadow")
 #: Why the probe has no sheet — allowlisted, safe for run-page annotations.
 SHEET_REASONS = ("ok", "no_credentials", "no_sheet_id", "gspread_missing",
@@ -449,11 +461,26 @@ def updates_transport(ab: Any, relay: Any) -> Any:
 def mode_run(state_file: pathlib.Path) -> int:
     ab = _import_bot_module()
     creds = build_sheet_credentials()
-    relay = discover_relay()
-    bot = ab.ApprovalBot(creds, transport=updates_transport(ab, relay))
-    print("stage=transport updates=%s" % ("relay" if relay is not None else "getUpdates"))
-
     prior = load_state(state_file)
+    token, _ = resolve("PA_APPROVAL_BOT_TOKEN", "TELEGRAM_BOT_TOKEN")
+    # Cross-transport rule: queue first while non-empty, then poll.
+    pick = celia_relay.select_source(discover_relay(), prior.get("relay"),
+                                     prior.get("relay_lost_at"), token, time.time())
+    source = pick["source"] if pick["source"] in UPDATE_SOURCES else "getUpdates"
+    relay = pick["client"] if source == "relay" else None
+    drain: Optional[celia_relay.DrainThenPollTransport] = None
+    if source == "drain":
+        drain = celia_relay.DrainThenPollTransport(
+            ab.TelegramTransport(), pick["client"], owners=allowed_sender_ids())
+    bot = ab.ApprovalBot(creds, transport=drain or updates_transport(ab, relay))
+    print("stage=transport updates=%s" % source)
+    if source == "abandoned":
+        print("::warning title=relay-abandoned::the CELIA queue stayed unreadable for"
+              " %d h after the webhook was removed; polling getUpdates again. Presses"
+              " still queued there are discarded — their cards stay pending and can be"
+              " pressed again." % (celia_relay.DRAIN_DEADLINE_SECONDS // 3600))
+    source_state = {"relay": pick["relay"], "relay_lost_at": pick["lost_at"]}
+
     bot.restore_state(sent_ids=prior["sent"], offset=prior["offset"])
     prior_offset = prior["offset"]
     prior_assistant = prior.get("assistant") or {}
@@ -496,14 +523,23 @@ def mode_run(state_file: pathlib.Path) -> int:
         save_state(state_file,
                    {"sent": sorted(bot.state_snapshot()["sent"]),
                     "offset": prior_offset,
-                    "assistant": _assistant_state()})
+                    "assistant": _assistant_state(), **source_state})
+        if drain is not None:
+            # Not polled either: later presses must not overtake queued ones.
+            print("stage=drain blocked=true reason=%s" % type(exc).__name__)
         print("stage=cycle ok=false reason=%s" % type(exc).__name__)
         print("error=%s" % str(exc)[:300])
         return 1
 
     snapshot = bot.state_snapshot()
     snapshot["assistant"] = _assistant_state()
+    if drain is not None and drain.drained:
+        source_state = {"relay": None, "relay_lost_at": None}  # empty: polling from now on
+    snapshot.update(source_state)
     save_state(state_file, snapshot)
+    if drain is not None:
+        print("stage=drain applied=%d done=%s"
+              % (drain.drained_count, "true" if drain.drained else "false"))
     print("stage=cycle ok=true cards_sent=%d callbacks_handled=%d"
           " granted=%d denied=%d"
           % (report.get("cards_sent", 0), report.get("callbacks_handled", 0),

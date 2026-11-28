@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Move the webhook secrets that live in GitHub Actions into Supabase Vault.
+"""Move the webhook and CELIA secrets that live in GitHub Actions into Supabase Vault.
 
 GitHub Actions secrets are write-only: no API, connector or person can read a
 value back — only a workflow run sees it. So the run itself carries them over:
@@ -26,6 +26,14 @@ masks them in logs. Stdlib only.
 webhook endpoint whose URL is exactly ``WEBHOOK_URL`` — or creates it, subscribed
 to inbound messages — and imports THAT endpoint's signing secret, so nobody ever
 copies it by hand. Exactly one endpoint may point at us; extras are a hard fail.
+
+CELIA's edge secrets travel through the same door (``CELIA_NAMES``): the
+workflow passes ``CELIA_TELEGRAM_TOKEN`` from the SAME secret the approval
+runner uses, so both sides derive identical webhook/relay secrets. They are
+proven live through ``celia-telegram``'s ``/healthz`` (labels only): the token
+must now come from Vault and be accepted by Telegram; imported model keys must
+show as configured providers. The gates ``CELIA_WEBHOOK`` / ``CELIA_CHAT`` are
+not importable — a human sets them.
 """
 from __future__ import annotations
 
@@ -49,12 +57,20 @@ from kernel2027 import sha256_text  # noqa: E402 — stdlib-only kernel, no inst
 
 BASE = "https://ziaedqqhvsmcwcmlbcpi.supabase.co/functions/v1/ycloud-webhook"
 AUDIENCE = "ai2027-supabase-import"
+CELIA_NAMES = (
+    "CELIA_TELEGRAM_TOKEN",
+    "GEMINI_API_KEY",
+    "GROQ_API_KEY",
+    "NVIDIA_API_KEY",
+    "OPENROUTER_API_KEY",
+)
 NAMES = (
     "YCLOUD_WEBHOOK_SECRET",
     "WHATSAPP_CLOUD_APP_SECRET",
     "WHATSAPP_CLOUD_VERIFY_TOKEN",
     "AI2027_WHATSAPP_WEBHOOK",
-)
+) + CELIA_NAMES
+CELIA_HEALTHZ = "https://ziaedqqhvsmcwcmlbcpi.supabase.co/functions/v1/celia-telegram/healthz"
 PROBE_BODY = b'{"object":"ai2027.secret-sync.probe"}'  # parses to zero events: nothing staged
 PROBE_ATTEMPTS = 6
 WEBHOOK_URL = f"{BASE}/webhook"
@@ -200,6 +216,23 @@ def verify_token_probe(token: str, http: Http) -> int:
     return code if body == b"ai2027probe" else -code
 
 
+def celia_health(http: Http) -> dict:
+    """celia-telegram /healthz (booleans, counts and labels only — never a value)."""
+    code, body = http(urllib.request.Request(CELIA_HEALTHZ, method="GET"))
+    try:
+        data = json.loads(body or b"{}")
+    except ValueError:
+        return {"http": code}
+    return {**data, "http": code} if isinstance(data, dict) else {"http": code}
+
+
+def celia_live(health: dict, want_token: bool, want_models: bool) -> bool:
+    token_ok = (health.get("token_source") == "vault"
+                and health.get("webhook_actual") in ("none", "celia", "other"))
+    models_ok = int(health.get("providers") or 0) >= 1
+    return (token_ok or not want_token) and (models_ok or not want_models)
+
+
 def retry(fn: Callable[[], bool], sleep: Callable[[float], None]) -> bool:
     for i in range(PROBE_ATTEMPTS):
         if fn():
@@ -238,7 +271,7 @@ def run(env: Mapping[str, str], http: Http = default_http, sleep: Callable[[floa
             " (**GitHub copy is stale** — YCloud value used)")
 
     if not values:
-        return 1, table() + ["", "**FAIL** none of the four names holds a usable value — nothing imported."]
+        return 1, table() + ["", "**FAIL** none of the names holds a usable value — nothing imported."]
     if dry_run:
         return 0, table() + ["", f"dry run: {len(values)} value(s) would be imported."]
 
@@ -279,6 +312,26 @@ def run(env: Mapping[str, str], http: Http = default_http, sleep: Callable[[floa
         rows["WHATSAPP_CLOUD_VERIFY_TOKEN"][2] = "challenge echoed 200" if ok else f"**FAIL** {res3['r']}"
         failed |= not ok
 
+    celia = [n for n in CELIA_NAMES if n in values]
+    if celia:
+        want_token = "CELIA_TELEGRAM_TOKEN" in values
+        want_models = any(n != "CELIA_TELEGRAM_TOKEN" for n in celia)
+        res4: dict[str, dict] = {}
+        ok = retry(lambda: (res4.__setitem__("h", celia_health(http))
+                            or celia_live(res4["h"], want_token, want_models)), sleep)
+        h = res4["h"]
+        if want_token:
+            accepted = h.get("webhook_actual") in ("none", "celia", "other")
+            rows["CELIA_TELEGRAM_TOKEN"][2] = (
+                ("" if ok else "**FAIL** ") + "celia-telegram uses %s · Telegram %s"
+                % ("Vault" if h.get("token_source") == "vault" else "**%s**" % (h.get("token_source") or "no token"),
+                   "accepted it" if accepted else "**did not accept it**"))
+        for n in celia:
+            if n != "CELIA_TELEGRAM_TOKEN":
+                rows[n][2] = "%s%d free provider(s) configured" % ("" if ok else "**FAIL** ",
+                                                                   int(h.get("providers") or 0))
+        failed |= not ok
+
     verdict = "**FAIL** see table" if failed else f"**PASS** {len(values)} secret(s) in Vault and live"
     return (1 if failed else 0), table() + ["", verdict]
 
@@ -295,7 +348,7 @@ def main(argv: list[str] | None = None) -> int:
         rc, out = 1, [f"**FAIL** {exc}"]
     except Exception as exc:  # report the class only: messages may carry URLs/tokens
         rc, out = 1, [f"**FAIL** {type(exc).__name__}"]
-    text = "\n".join(["## Webhook secrets → Supabase Vault", "", *out])
+    text = "\n".join(["## Webhook + CELIA secrets → Supabase Vault", "", *out])
     print(text)
     summary = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary:

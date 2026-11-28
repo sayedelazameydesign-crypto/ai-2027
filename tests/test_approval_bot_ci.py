@@ -1005,6 +1005,120 @@ class TestIntegratedBotCycle(unittest.TestCase):
         self.assertEqual(ci.updates_transport(fake_module, None), "ORIGINAL")
 
 
+class TestRollbackDrainsTheQueue(unittest.TestCase):
+    """CELIA_WEBHOOK=off + /setup with a press still queued: drain, then poll."""
+
+    def _cycle(self, edge, state, *, polled=(), now=1_800_000_000.0):
+        from tests import test_approval_bot as tab
+
+        sheet = tab.FakeSheet()
+        tab.seed_approval(sheet.worksheet("pa_approvals"), approval_id="A1")
+        original = tab.FakeTransport()
+        original.updates = list(polled)
+        original.polls = []
+        fetch = original.fetch_updates
+
+        def recording_fetch(offset=None, timeout=0):
+            original.polls.append(offset)
+            return fetch(offset=offset, timeout=timeout)
+
+        original.fetch_updates = recording_fetch
+
+        def approval_bot(creds, transport=None):
+            bot = ab.ApprovalBot.__new__(ab.ApprovalBot)
+            bot._sent_cards, bot._offset, bot.text_handler = set(), None, None
+            bot.transport = transport
+            bot.gate = ab.ApprovalGate(sheet, transport, allowed_senders=[OWNER],
+                                       now_fn=lambda: tab.NOW)
+            return bot
+
+        fake_module = types.SimpleNamespace(ApprovalBot=approval_bot,
+                                            TelegramTransport=lambda: original)
+        real_client = ci.celia_relay.RelayClient
+
+        env = {"PA_APPROVAL_CHAT_ID": OWNER_CHAT, "PA_APPROVAL_ALLOWED_SENDERS": OWNER,
+               "PA_APPROVAL_BOT_TOKEN": TOKEN}
+        with tempfile.TemporaryDirectory() as tmp, clean_env(), \
+                mock.patch.dict(os.environ, env), \
+                mock.patch.object(ci, "_import_bot_module", return_value=fake_module), \
+                mock.patch.object(ci, "build_sheet_credentials", return_value=object()), \
+                mock.patch.object(ci, "discover_relay", return_value=None), \
+                mock.patch.object(ci.time, "time", return_value=now), \
+                mock.patch.object(ci.celia_relay, "RelayClient",
+                                  lambda base, token, post=None: real_client(base, token, edge.post)):
+            path = Path(tmp) / "state.json"
+            ci.save_state(path, state)
+            with contextlib.redirect_stdout(io.StringIO()) as out:
+                rc = ci.mode_run(path)
+            return rc, ci.load_state(path), out.getvalue(), sheet, original
+
+    def _press(self, uid, verb):
+        return {"update_id": uid, "callback_query": {
+            "id": "q%d" % uid, "data": "appr:A1:%s" % verb, "from": {"id": int(OWNER)}}}
+
+    def test_a_queued_press_is_applied_before_polling_resumes(self):
+        from tests import test_approval_bot as tab
+        edge = FakeEdge()
+        edge.queue = {41: self._press(41, "deny")}
+        # A LATER press arrived via getUpdates after the rollback.
+        later = [self._press(42, "grant")]
+        rc, state, out, sheet, original = self._cycle(
+            edge, {"sent": [], "offset": 41, "relay": FUNCTION}, polled=later)
+        self.assertEqual(rc, 0)
+        self.assertIn("stage=transport updates=drain", out)
+        self.assertIn("stage=drain applied=1 done=false", out)
+        self.assertEqual(original.polls, [], "Telegram not polled while the queue held a press")
+        self.assertEqual(sheet.worksheet("pa_approvals").rows[1][tab.ab.COL_STATUS], "denied")
+        self.assertEqual(state["offset"], 42)
+        self.assertEqual(state["relay"], FUNCTION, "still draining until the queue answers empty")
+
+    def test_once_the_queue_is_empty_polling_resumes_and_the_relay_is_forgotten(self):
+        edge = FakeEdge()
+        edge.queue = {41: self._press(41, "deny")}  # already applied (offset 42)
+        rc, state, out, _, original = self._cycle(
+            edge, {"sent": [], "offset": 42, "relay": FUNCTION, "relay_lost_at": 1_800_000_000.0},
+            polled=[self._press(42, "grant")])
+        self.assertEqual(rc, 0)
+        self.assertEqual(edge.queue, {}, "confirmed on the way out")
+        self.assertEqual(original.polls, [42], "same offset, same sequence")
+        self.assertIn("stage=drain applied=0 done=true", out)
+        self.assertNotIn("relay", state)
+        self.assertNotIn("relay_lost_at", state)
+
+    def test_an_unreadable_queue_blocks_polling_and_keeps_the_offset(self):
+        edge = FakeEdge()
+        edge.down = True
+        rc, state, out, _, original = self._cycle(
+            edge, {"sent": [], "offset": 41, "relay": FUNCTION}, polled=[self._press(42, "grant")])
+        self.assertEqual(rc, 1)
+        self.assertIn("stage=drain blocked=true reason=OSError", out)
+        self.assertEqual(original.polls, [])
+        self.assertEqual(state["offset"], 41)
+        self.assertEqual(state["relay"], FUNCTION)
+        self.assertEqual(state["relay_lost_at"], 1_800_000_000.0, "deadline clock persisted")
+
+    def test_past_the_deadline_polling_resumes_with_a_warning(self):
+        edge = FakeEdge()
+        edge.down = True
+        start = 1_800_000_000.0
+        rc, state, out, _, original = self._cycle(
+            edge, {"sent": [], "offset": 41, "relay": FUNCTION, "relay_lost_at": start},
+            polled=[], now=start + ci.celia_relay.DRAIN_DEADLINE_SECONDS + 60)
+        self.assertEqual(rc, 0)
+        self.assertIn("stage=transport updates=abandoned", out)
+        self.assertIn("::warning title=relay-abandoned::", out)
+        self.assertEqual(original.polls, [41])
+        self.assertEqual(edge.calls, [], "the dead queue is not touched again")
+        self.assertNotIn("relay", state)
+
+    def test_the_live_relay_is_remembered_for_a_future_rollback(self):
+        path_state = {}
+        rc, state, out, *_ = TestIntegratedBotCycle()._cycle(FakeEdge())
+        path_state.update(state)
+        self.assertEqual(rc, 0)
+        self.assertEqual(path_state.get("relay"), FUNCTION)
+
+
 class TestCeliaMemoryInSupabase(TestRealAssistantOverTelegram):
     """Integrated bot: CELIA's memory is the Supabase table; the sheet is never written."""
 

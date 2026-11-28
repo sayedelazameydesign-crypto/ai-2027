@@ -799,6 +799,8 @@ export interface CeliaStore extends MemoryStore {
   loadOwners(): Promise<string[]>;
   saveOwners(owners: string[]): Promise<void>;
   memoryReplace(rows: MemoryRecord[]): Promise<number>;
+  /** CELIA's secrets imported from GitHub Actions into Vault ({} if none). */
+  runtimeSecrets(): Promise<Record<string, string>>;
 }
 
 /** PostgREST with the server-side service_role key (never sent to clients). */
@@ -870,6 +872,10 @@ export class PostgrestCeliaStore implements CeliaStore {
   async memoryReplace(rows: MemoryRecord[]) {
     return Number(await this.rpc("celia_memory_replace", { p_rows: rows }));
   }
+  async runtimeSecrets() {
+    const out = await this.rpc("celia_runtime_secrets", {});
+    return out && typeof out === "object" && !Array.isArray(out) ? (out as Record<string, string>) : {};
+  }
 }
 
 // ------------------------------------------------------------------ handler
@@ -923,6 +929,16 @@ type TgMessage = {
 };
 
 const OWNER_ID = /^\d{1,20}$/;
+/**
+ * Secrets that may come from Supabase Vault — imported from GitHub Actions by
+ * .github/workflows/supabase-secret-sync.yml over GitHub OIDC (no shared
+ * credential). Vault wins over Edge env; the gates CELIA_WEBHOOK/CELIA_CHAT
+ * are never in Vault.
+ */
+export const VAULT_SECRETS = [
+  "CELIA_TELEGRAM_TOKEN", "GEMINI_API_KEY", "GROQ_API_KEY", "NVIDIA_API_KEY", "OPENROUTER_API_KEY",
+] as const;
+const VAULT_SET = new Set<string>(VAULT_SECRETS);
 /** Updates Telegram should deliver: chat + the approval buttons. */
 export const ALLOWED_UPDATES = ["message", "edited_message", "callback_query"];
 
@@ -945,7 +961,25 @@ export interface Deps {
  * function is transport only and queues EVERY update (shadow mode).
  */
 export function makeHandler(deps: Deps) {
-  const { env, store } = deps;
+  const { store } = deps;
+  // Vault values (re-read at most every 60 s) win over Edge env for VAULT_SECRETS.
+  // A failed read keeps the last good values and retries on the next request;
+  // with nothing ever loaded, Edge env alone applies (and no token => 503s).
+  let vault: { at: number; v: Record<string, string> } = { at: -Infinity, v: {} };
+  const env: Env = (n) => (VAULT_SET.has(n) && typeof vault.v[n] === "string" && vault.v[n].trim()) || deps.env(n);
+  async function loadVault(): Promise<void> {
+    const now = Date.now() / 1000;
+    if (now - vault.at < 60) return;
+    try {
+      vault = { at: now, v: await store.runtimeSecrets() };
+    } catch {
+      // keep the last good values; next request retries
+    }
+  }
+  const tokenSource = () =>
+    typeof vault.v.CELIA_TELEGRAM_TOKEN === "string" && vault.v.CELIA_TELEGRAM_TOKEN.trim()
+      ? "vault"
+      : (deps.env("CELIA_TELEGRAM_TOKEN") || "").trim() ? "env" : "none";
   const fetchFn = deps.fetchFn ?? fetch;
   const log = deps.log ?? ((l: string) => console.log(l));
   const token = () => (env("CELIA_TELEGRAM_TOKEN") || "").trim();
@@ -1157,6 +1191,7 @@ export function makeHandler(deps: Deps) {
   }
 
   return async (req: Request): Promise<Response> => {
+    await loadVault();
     const url = new URL(req.url);
     const route = routeOf(url.pathname);
     if (req.method === "GET" && route === "/healthz") {
@@ -1170,6 +1205,7 @@ export function makeHandler(deps: Deps) {
         ok: db && !!token(),
         service: "celia-telegram",
         telegram: !!token(),
+        token_source: tokenSource(),
         chat: chatMode(),
         webhook: desired(),
         webhook_actual: token() ? await actualWebhook(new TelegramApi(token(), fetchFn)) : "unknown",

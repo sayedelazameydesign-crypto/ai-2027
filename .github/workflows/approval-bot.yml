@@ -56,8 +56,12 @@ jobs:
         with:
           persist-credentials: false
 
+      # Restore + save are explicit: actions/cache's implicit post-step saves
+      # only on success, which silently discarded what a FAILED cycle writes
+      # on purpose (sent-card progress, the old offset, and when a rollback's
+      # queue drain started — scripts/celia_relay.py select_source).
       - name: Restore bot state (sent cards + Telegram offset)
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: .bot-state.json
           key: approval-bot-state-${{ github.run_id }}
@@ -99,6 +103,13 @@ jobs:
           else
             python3 scripts/approval_bot_ci.py --mode run
           fi
+
+      - name: Save bot state (also after a failed cycle)
+        if: always() && hashFiles('.bot-state.json') != ''
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: .bot-state.json
+          key: approval-bot-state-${{ github.run_id }}
 
       # Failure-only diagnostics: identify the token's bot (getMe), report
       # which chat ids exist — chat ids are not credentials; the token

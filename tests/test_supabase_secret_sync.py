@@ -20,8 +20,11 @@ OIDC_ENV = {"ACTIONS_ID_TOKEN_REQUEST_URL": "https://oidc.example/token?x=1",
 class FakeEdge:
     """Mimics the deployed function: OIDC gate, Vault, signature checks."""
 
-    def __init__(self, stale_probes: int = 0, lie_digest: bool = False, refuse: int | None = None):
+    def __init__(self, stale_probes: int = 0, lie_digest: bool = False, refuse: int | None = None,
+                 telegram_tokens: tuple[str, ...] = ("123456:celia-fixture-token",), celia_stale: int = 0):
         self.vault: dict[str, str] = {}
+        self.telegram_tokens = telegram_tokens  # tokens Telegram accepts
+        self.celia_stale = celia_stale
         self.stale = stale_probes
         self.lie = lie_digest
         self.refuse = refuse
@@ -35,6 +38,17 @@ class FakeEdge:
             assert req.get_header("Authorization") == "bearer runner-bearer"
             self.audience = urllib.parse.parse_qs(urllib.parse.urlparse(url).query)["audience"][0]
             return 200, json.dumps({"value": "gh.oidc.jwt"}).encode()
+        if url == sss.CELIA_HEALTHZ:  # labels only; carries no secret
+            assert req.get_method() == "GET" and req.data is None
+            if self.celia_stale > 0:
+                self.celia_stale -= 1
+                return 200, json.dumps({"token_source": "env", "webhook_actual": "none", "providers": 0}).encode()
+            tok = self.vault.get("CELIA_TELEGRAM_TOKEN")
+            models = sum(1 for n in sss.CELIA_NAMES[1:] if n in self.vault)
+            return 200, json.dumps({
+                "telegram": bool(tok), "token_source": "vault" if tok else "none",
+                "webhook_actual": ("none" if tok in self.telegram_tokens else "unknown") if tok else "unknown",
+                "providers": models, "chat": "shadow", "webhook": "unset"}).encode()
         assert url.startswith(sss.BASE), f"secrets must only go to the constant BASE, got {url}"
         if url.endswith("/import-secrets"):
             assert req.get_header("Authorization") == "Bearer gh.oidc.jwt"
@@ -285,3 +299,42 @@ def test_workflow_passes_ycloud_key_via_env_and_flag():
     assert "YCLOUD_API_KEY: ${{ secrets.YCLOUD_API_KEY }}" in wf and "--ycloud-api" in wf
     assert "ycloud_api:" in wf and "secrets.YCLOUD_API_KEY }}\" " not in wf
     assert sss.YCLOUD_API == "https://api.ycloud.com/v2" and sss.WEBHOOK_URL.startswith(sss.BASE)
+
+
+# ------------------------------------------------- CELIA through the same door
+CELIA_TOKEN = "123456:celia-fixture-token"
+
+
+def test_celia_secrets_ride_the_same_oidc_import_and_are_proven_live():
+    edge = FakeEdge(celia_stale=2)  # isolates cache Vault: first reads are stale
+    env = {**OIDC_ENV, "CELIA_TELEGRAM_TOKEN": CELIA_TOKEN, "GEMINI_API_KEY": "gemini_fixture_key_1"}
+    rc, out = sss.run(env, http=edge, sleep=no_sleep)
+    text = "\n".join(out)
+    assert rc == 0, text
+    assert edge.vault["CELIA_TELEGRAM_TOKEN"] == CELIA_TOKEN
+    assert "celia-telegram uses Vault · Telegram accepted it" in text
+    assert "1 free provider(s) configured" in text
+    assert "**PASS** 2 secret(s)" in text
+    for v in (CELIA_TOKEN, "gemini_fixture_key_1"):
+        assert v not in text, "a secret value leaked into the report"
+
+
+def test_a_token_telegram_rejects_fails_the_run():
+    edge = FakeEdge(telegram_tokens=())
+    rc, out = sss.run({**OIDC_ENV, "CELIA_TELEGRAM_TOKEN": CELIA_TOKEN}, http=edge, sleep=no_sleep)
+    text = "\n".join(out)
+    assert rc == 1 and "**did not accept it**" in text, text
+
+
+def test_workflow_passes_the_runner_token_as_celia_token_and_never_the_gates():
+    wf = (ROOT / ".github" / "workflows" / "supabase-secret-sync.yml").read_text()
+    assert "CELIA_TELEGRAM_TOKEN: ${{ secrets.PA_APPROVAL_BOT_TOKEN || secrets.TELEGRAM_BOT_TOKEN }}" in wf
+    for name in sss.CELIA_NAMES[1:]:
+        assert "%s: ${{ secrets.%s }}" % (name, name) in wf
+    code = "\n".join(line for line in wf.splitlines() if not line.lstrip().startswith("#"))
+    assert "CELIA_WEBHOOK" not in code and "CELIA_CHAT" not in code
+    assert "CELIA_WEBHOOK" not in sss.NAMES and "CELIA_CHAT" not in sss.NAMES
+    sql = (ROOT / "supabase" / "migrations" / "20261128000500_celia_vault_secrets.sql").read_text()
+    assert all("'%s'" % n in sql for n in sss.NAMES), "SQL allowlist == script NAMES"
+    celia_src = (ROOT / "supabase" / "functions" / "celia-telegram" / "index.ts").read_text()
+    assert all('"%s"' % n in celia_src for n in sss.CELIA_NAMES)

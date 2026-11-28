@@ -16,8 +16,19 @@ Discovery is automatic and needs NO new GitHub secret or variable:
 * The runner authenticates with ``X-Celia-Relay-Secret =
   sha256("celia-telegram-relay:" + bot token)`` — it already holds the token,
   and so does the function. The secret is never logged.
-* Rollback = delete the webhook (``CELIA_WEBHOOK=off`` + ``/setup``): the next
-  cycle sees no webhook and polls ``getUpdates`` again by itself.
+* Rollback = delete the webhook (``CELIA_WEBHOOK=off`` + ``/setup``). Rule:
+  **queue first while non-empty, then poll** (:func:`select_source`). The
+  runner remembers the relay it last used; a cycle without a webhook first
+  drains that queue (presses the function already acknowledged to Telegram,
+  which Telegram will never redeliver) and only polls ``getUpdates`` once the
+  queue answers empty. If the queue cannot be read, the cycle does NOT poll
+  (that would apply later presses before earlier ones) — until
+  :data:`DRAIN_DEADLINE_SECONDS`, after which the remaining queued presses are
+  declared orphaned (loud warning; their cards stay ``pending`` and can be
+  pressed again) and polling resumes inside Telegram's 24 h retention.
+* The opposite switch (poll -> queue) loses nothing: ``setWebhook`` is called
+  with ``drop_pending_updates=false``, so Telegram hands every unconfirmed
+  update to the webhook, and the queue drops ids below the stored offset.
 
 The same channel carries CELIA's ONE memory: :class:`RelayMemoryBackend` makes
 ``PersonalMemory`` read and replace the Supabase ``celia_memory`` table, so the
@@ -155,6 +166,72 @@ class RelayTransport:
     def fetch_updates(self, offset: Optional[int] = None, timeout: int = 0) -> List[Dict[str, Any]]:
         del timeout  # the queue answers at once
         return self._client.fetch_updates(offset=offset, owners=self._owners)
+
+
+#: How long a rollback keeps waiting for an unreadable queue before polling.
+#: Well inside Telegram's 24 h retention of updates for ``getUpdates``.
+DRAIN_DEADLINE_SECONDS = 6 * 3600
+
+
+class DrainThenPollTransport(RelayTransport):
+    """After a rollback: the relay queue first, ``getUpdates`` once it is empty.
+
+    ``run_once`` fetches once per cycle with the stored offset. That fetch
+    confirms (deletes) queued rows below the offset and returns the rest; if
+    any remain, they are this cycle's updates and Telegram is not polled. Only
+    an EMPTY answer falls through to ``getUpdates`` with the same offset —
+    Telegram's update ids continue the same sequence, so order is preserved.
+    A failed queue read raises: the cycle keeps its old offset and does not
+    poll, exactly like any other failed fetch.
+    """
+
+    def __init__(self, transport: Any, client: RelayClient, owners: Iterable[str] = ()) -> None:
+        super().__init__(transport, client, owners)
+        #: ``None`` until fetched; then ``True`` once the queue answered empty.
+        self.drained: Optional[bool] = None
+        self.drained_count = 0
+
+    def fetch_updates(self, offset: Optional[int] = None, timeout: int = 0) -> List[Dict[str, Any]]:
+        pending = self._client.fetch_updates(offset=offset, owners=self._owners)
+        if pending:
+            self.drained = False
+            self.drained_count = len(pending)
+            return pending
+        self.drained = True
+        return self._transport.fetch_updates(offset=offset, timeout=timeout)
+
+
+def stored_relay_base(value: Any) -> Optional[str]:
+    """A relay base remembered in the runner state, re-validated like discovery."""
+    if not isinstance(value, str) or not value:
+        return None
+    return relay_base_from_webhook(value.rstrip("/") + "/telegram")
+
+
+def select_source(live: Optional[RelayClient], remembered: Any, lost_at: Any,
+                  token: str, now: float,
+                  http_post: Optional[HttpPost] = None) -> Dict[str, Any]:
+    """Which queue this cycle reads — the cross-transport delivery rule.
+
+    Returns ``{"source", "client", "relay", "lost_at"}`` where ``source`` is
+    one of ``relay`` (webhook on CELIA), ``drain`` (webhook gone, remembered
+    queue drained before polling), ``abandoned`` (queue unreadable past the
+    deadline: poll, warn) or ``getUpdates``; ``relay``/``lost_at`` are what to
+    persist for the next cycle.
+    """
+    if live is not None:
+        return {"source": "relay", "client": live, "relay": live.base, "lost_at": None}
+    base = stored_relay_base(remembered)
+    if base is None or not token:
+        return {"source": "getUpdates", "client": None, "relay": None, "lost_at": None}
+    try:
+        since = float(lost_at)
+    except (TypeError, ValueError):
+        since = now
+    if now - since > DRAIN_DEADLINE_SECONDS:
+        return {"source": "abandoned", "client": None, "relay": None, "lost_at": None}
+    return {"source": "drain", "client": RelayClient(base, token, http_post),
+            "relay": base, "lost_at": since}
 
 
 class RelayMemoryBackend:

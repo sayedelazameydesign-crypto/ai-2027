@@ -298,6 +298,19 @@ class TestDecisions(unittest.TestCase):
         self.assertEqual(third["reason"], "not_pending")
         self.assertEqual(sheet.worksheet("pa_approvals").rows[1][ab.COL_STATUS], "granted")
 
+    def test_first_decision_wins_in_both_directions(self):
+        # One rule, not one direction: whichever press is applied first is
+        # final. A later grant cannot overturn a deny (mirror of the above).
+        gate, sheet, _ = make_gate(allowed=["777"])
+        seed_approval(sheet.worksheet("pa_approvals"), approval_id="A1")
+        first = gate.handle_callback(callback("A1", verb="deny"))
+        later = gate.handle_callback(callback("A1", verb="grant", query_id="q-2"))
+        self.assertEqual((first["state"], first["reason"]), ("denied", "user_decision"))
+        self.assertEqual(later["reason"], "not_pending")
+        row = sheet.worksheet("pa_approvals").rows[1]
+        self.assertEqual(row[ab.COL_STATUS], "denied")
+        self.assertEqual(row[ab.COL_VERSION], "2", "version bumped exactly once")
+
     def test_refused_toast_never_blocks_the_decision_or_the_queue(self):
         class LateTransport(FakeTransport):
             def answer_callback(self, callback_query_id, text, show_alert=False):

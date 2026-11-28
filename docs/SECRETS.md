@@ -92,7 +92,7 @@
 
 ### أسرار Supabase Edge — سيليا الفورية على Telegram (`supabase/functions/celia-telegram`)
 
-تُضبط في **Supabase → Project Settings → Edge Functions → Secrets** (لا في GitHub). لا يمرّرها أي workflow؛ الدالة تقرأها من `Deno.env` فقط، ولا تطبع أي قيمة أو نص رسالة (السجل = تسميات مرحلة من قائمة ثابتة + اسم المزوّد).
+**المصدر: أسرار GitHub Actions الموجودة — لا نسخ يدوي.** `CELIA_TELEGRAM_TOKEN` (من `PA_APPROVAL_BOT_TOKEN` | `TELEGRAM_BOT_TOKEN`) و`GEMINI_API_KEY` · `GROQ_API_KEY` · `NVIDIA_API_KEY` · `OPENROUTER_API_KEY` تُنقل إلى **Supabase Vault** بتشغيل `.github/workflows/supabase-secret-sync.yml` يدوياً على `main` (OIDC من GitHub عبر باب `ycloud-webhook/import-secrets` نفسه — لا بيانات اعتماد مشتركة، لا مفتاح Supabase في GitHub)، والدالة تقرؤها بـ`celia_runtime_secrets()` (قيمة Vault تتقدم على أسرار الدالة؛ إعادة قراءة كل ≤ 60 ث؛ `healthz.token_source` = `vault|env|none`). ضبطها يدوياً في **Supabase → Edge Functions → Secrets** يبقى بديلاً. البوابتان `CELIA_WEBHOOK` و`CELIA_CHAT` **ليستا قابلتين للاستيراد**: تُضبطان يدوياً في أسرار Supabase فقط. الدالة لا تطبع أي قيمة أو نص رسالة (السجل = تسميات مرحلة من قائمة ثابتة + اسم المزوّد).
 
 | السرّ | ما يفعله | عند الغياب |
 |---|---|---|

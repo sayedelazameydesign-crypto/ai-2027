@@ -214,5 +214,77 @@ class TestLegacyCopy(unittest.TestCase):
         self.assertEqual(relay.import_legacy_rows(client, self.SHEET, self.STATE), 0, "only once")
 
 
+class _Polling:
+    """The historical getUpdates transport, recording every poll."""
+
+    def __init__(self, updates=()):
+        self.updates = list(updates)
+        self.polls: List[Any] = []
+
+    def fetch_updates(self, offset=None, timeout=0):
+        self.polls.append(offset)
+        return list(self.updates)
+
+
+class TestDrainThenPoll(unittest.TestCase):
+    """Rollback: presses already acknowledged by the queue are never abandoned."""
+
+    def _press(self, uid):
+        return {"update_id": uid, "callback_query": {"id": "q%d" % uid, "data": "appr:A1:grant"}}
+
+    def test_queued_presses_come_first_and_telegram_is_not_polled(self):
+        edge, polling = FakeEdge(), _Polling([{"update_id": 90}])
+        edge.queue = {41: self._press(41), 42: self._press(42)}
+        t = relay.DrainThenPollTransport(polling, relay.RelayClient(FUNCTION, TOKEN, edge.post))
+        self.assertEqual([u["update_id"] for u in t.fetch_updates(offset=41)], [41, 42])
+        self.assertEqual(polling.polls, [], "no poll while the queue holds presses")
+        self.assertIs(t.drained, False)
+
+    def test_an_empty_queue_falls_through_to_getupdates_with_the_same_offset(self):
+        edge, polling = FakeEdge(), _Polling([{"update_id": 90}])
+        edge.queue = {41: self._press(41)}
+        t = relay.DrainThenPollTransport(polling, relay.RelayClient(FUNCTION, TOKEN, edge.post))
+        self.assertEqual(t.fetch_updates(offset=42), [{"update_id": 90}])
+        self.assertEqual(edge.queue, {}, "processed rows confirmed on the way out")
+        self.assertEqual(polling.polls, [42])
+        self.assertIs(t.drained, True)
+
+    def test_an_unreadable_queue_raises_and_never_polls(self):
+        edge, polling = FakeEdge(), _Polling([{"update_id": 90}])
+        edge.down = True
+        t = relay.DrainThenPollTransport(polling, relay.RelayClient(FUNCTION, TOKEN, edge.post))
+        with self.assertRaises(OSError):
+            t.fetch_updates(offset=42)
+        self.assertEqual(polling.polls, [], "later presses must not overtake queued ones")
+
+
+class TestSelectSource(unittest.TestCase):
+    NOW = 1_800_000_000.0
+
+    def test_live_webhook_reads_the_relay_and_remembers_it(self):
+        live = relay.RelayClient(FUNCTION, TOKEN)
+        pick = relay.select_source(live, None, None, TOKEN, self.NOW)
+        self.assertEqual((pick["source"], pick["relay"], pick["lost_at"]), ("relay", FUNCTION, None))
+
+    def test_webhook_gone_with_a_remembered_queue_drains_first(self):
+        pick = relay.select_source(None, FUNCTION, None, TOKEN, self.NOW)
+        self.assertEqual(pick["source"], "drain")
+        self.assertEqual(pick["client"].base, FUNCTION)
+        self.assertEqual(pick["lost_at"], self.NOW, "the drain clock starts now")
+        again = relay.select_source(None, FUNCTION, self.NOW, TOKEN, self.NOW + 600)
+        self.assertEqual((again["source"], again["lost_at"]), ("drain", self.NOW))
+
+    def test_past_the_deadline_the_queue_is_abandoned_loudly(self):
+        late = self.NOW + relay.DRAIN_DEADLINE_SECONDS + 1
+        pick = relay.select_source(None, FUNCTION, self.NOW, TOKEN, late)
+        self.assertEqual((pick["source"], pick["client"], pick["relay"]), ("abandoned", None, None))
+        self.assertLess(relay.DRAIN_DEADLINE_SECONDS, 24 * 3600, "inside Telegram's retention")
+
+    def test_nothing_remembered_or_a_foreign_url_is_plain_polling(self):
+        for remembered in (None, "", "https://evil.example.com/functions/v1/celia-telegram", 7):
+            pick = relay.select_source(None, remembered, None, TOKEN, self.NOW)
+            self.assertEqual(pick["source"], "getUpdates", remembered)
+
+
 if __name__ == "__main__":
     unittest.main()

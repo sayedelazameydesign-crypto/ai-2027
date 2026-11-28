@@ -51,7 +51,7 @@
 | الهوية والشخصية | **PROVEN** (offline) | `tests/test_celia_persona.py` |
 | Telegram — محادثة | **PROVEN live** | تشغيل `mode=assistant`: `result=replied provider=gemini tier=free_tier cost_usd=0.00` |
 | Telegram — دائم | جاهز، ينتظر دمج #204 + `AI2027_ASSISTANT_ENABLED=1` | `docs/CHANNEL-ASSISTANT.md` §11 |
-| Telegram — **بوت واحد متكامل، فوري + أنيميشن** (Supabase Edge) | @CeliaFashionBot نفسه عبر `celia-telegram` (v2: relay + علم `CELIA_CHAT`)؛ ينتظر `CELIA_TELEGRAM_TOKEN` | `index_test.ts` (34) · `tests/test_celia_relay.py` · `TestIntegratedBotCycle` · §2.2 |
+| Telegram — **بوت واحد متكامل، فوري + أنيميشن** (Supabase Edge) | @CeliaFashionBot نفسه عبر `celia-telegram` (v4: relay + ظل افتراضي + أسرار من Vault)؛ ينتظر تشغيل مزامنة الأسرار بعد الدمج | `index_test.ts` (44) · `tests/test_celia_relay.py` · `TestIntegratedBotCycle` · `TestRollbackDrainsTheQueue` · §2.2 |
 | WhatsApp — مسودات | **PROVEN** offline (مسار VM) | `scripts/test_free_stack_assistant.py` |
 | WhatsApp — إرسال بعد الموافقة | **غير موجود** في أي مسار (VM أو Supabase) | — |
 | الذاكرة قصيرة المدى | آخر 8 دورات من المحادثة (ملف حالة البوت) | `channel_assistant_runtime.SnapshotConversationStore` |
@@ -93,19 +93,43 @@ approval-bot (كل 5 د) ──POST /relay {updates, offset, owners}──▶ ا
 `sha256("celia-telegram-webhook:"+token)` لـTelegram و`sha256("celia-telegram-relay:"+token)` للدورة؛ كلاهما
 يُقارن بزمن ثابت، وسرّ الـwebhook مرفوض على `/relay`. التوكن لا يظهر في رابط الدالة ولا في أي سجل أو جسم رد
 (اختبار صريح في `index_test.ts`)؛ سجل الدالة تسميات مراحل فقط، وسجل الدورة اسم صنف الخطأ فقط.
+**لا يُخزَّن أي سرّ مشتق:** الطرفان يحسبانه من التوكن عند كل طلب (الدالة) وكل دورة (الدورة). تدوير التوكن =
+تحديث سرّ GitHub ← تشغيل «Sync webhook secrets to Supabase Vault» ← إعادة فتح `/setup` (يعيد `setWebhook` بالسرّ الجديد).
+بين الخطوات: Telegram يتلقى 401 فيعيد المحاولة، والدورة تتلقى 401 فتفشل بلا تقدّم للـoffset — أنجز الثلاث في جلسة واحدة.
+
+**الأسرار من GitHub (بلا نسخ يدوي):** المفاتيح موجودة في أسرار GitHub Actions، والدالة لا تقرؤها. لذلك تمرّ عبر باب
+الاستيراد الموجود أصلاً (`supabase-secret-sync.yml` + OIDC من GitHub — **لا بيانات اعتماد مشتركة**، لا مفتاح Supabase
+في GitHub) إلى Supabase Vault، والدالة تقرأ `celia_runtime_secrets()` (قيم Vault تتقدم على أسرار الدالة، تُعاد قراءتها كل ≤ 60 ث).
+`CELIA_TELEGRAM_TOKEN` يُؤخذ من **نفس** سرّ دورة الموافقات (`PA_APPROVAL_BOT_TOKEN`)، فلا يمكن أن يختلف الطرفان.
+البوابتان `CELIA_WEBHOOK` و`CELIA_CHAT` **لا تُستوردان أبداً** — قرار بشري في أسرار Supabase.
 
 **التسليم: مرة واحدة على الأقل، والقرار متساوي الأثر (idempotent).**
 - الدالة تحفظ التحديث في الطابور **قبل** أن ترد 200 (تكرار نفس `update_id` لا يُدرج مرتين).
 - الدورة: تقرأ ← تطبّق ← تحفظ الـoffset الجديد في نهاية الدورة؛ الحذف يحدث فقط عند القراءة التالية بـoffset أكبر.
   تعطّل في المنتصف ⇒ يبقى الـoffset القديم ⇒ يُعاد التسليم.
-- الإعادة آمنة: ضغطة مكررة (أو نقرتان) على موافقة محسومة ⇒ `not_pending`، لا يُلمس الصف ولا يزيد `version`،
-  ولا يمكن لضغطة «رفض» لاحقة أن تقلب موافقة ممنوحة (`test_duplicate_press_is_a_no_op`).
+- **قاعدة واحدة: أول قرار يُطبَّق هو النهائي — في الاتجاهين.** أي ضغطة على موافقة لم تعد `pending` (ممنوحة أو مرفوضة
+  أو منتهية) ⇒ `not_pending`، لا يُلمس الصف ولا يزيد `version`. «رفض» لاحق لا يقلب منحاً، و«منح» لاحق لا يقلب رفضاً؛
+  المنح ليس له أي امتياز (`test_duplicate_press_is_a_no_op` · `test_first_decision_wins_in_both_directions`).
 - **إصلاح مُكتشف:** الإشعار (`answerCallbackQuery`) كان يرمي استثناءً إن رفضه تيليجرام (متأخر/مكرر) **بعد**
   حفظ القرار، فتُعاد نفس الضغطة كل دورة إلى الأبد وتعلق كل التحديثات خلفها. صار الإشعار تجميلياً
   (`answered: false`)، والسجل هو المرجع. والدالة تُرسل فوراً إشعاراً محايداً «⏳ وصلت ضغطتك» بعد حفظها في الطابور
   (لا يذكر قراراً).
 - إصلاح سابق: البوابة كانت تقرأ `callback_data` بينما Telegram يرسل `data` — فكل ضغطة حقيقية رُفضت `invalid_callback`.
   **لم تعمل ضغطة زر حقيقية قبل هذا الإصلاح**؛ فحص الخطوة 3 هو أول تحقق حي لمسار الأزرار، لا إعادة تحقق.
+
+**التسليم عبر التبديل (التراجع) — «الطابور أولاً ما دام غير فارغ، ثم الاستطلاع»:**
+الطابور يردّ 200 لتيليجرام، فتيليجرام **لن يعيد** ما فيه. لذلك تتذكر الدورة عنوان الطابور الذي قرأت منه (ملف الحالة).
+دورة بلا webhook تبدأ بقراءة ذلك الطابور بالـoffset المخزّن: إن بقي فيه شيء ⇒ هو تحديثات هذه الدورة و**لا** يُستطلع
+`getUpdates`؛ فقط حين يردّ فارغاً تنتقل الدورة نفسها إلى `getUpdates` بنفس الـoffset (أرقام التحديثات تستمر بالتسلسل
+نفسه، فالترتيب محفوظ) وتنسى الطابور. إن تعذّرت قراءة الطابور: **لا استطلاع** (وإلا طُبّقت ضغطة لاحقة قبل سابقة)،
+تفشل الدورة ويبقى الـoffset — حتى **6 ساعات** من اختفاء الـwebhook؛ بعدها تُعلَن الضغطات الباقية «يتيمة» بتحذير صريح
+(`relay-abandoned`؛ بطاقاتها تبقى `pending` ويمكن الضغط مجدداً) ويُستأنف الاستطلاع داخل مهلة احتفاظ تيليجرام (24 ساعة).
+الاتجاه المعاكس (استطلاع ⇒ طابور) لا يُضيّع شيئاً: `setWebhook` بـ`drop_pending_updates=false` يسلّم كل تحديث غير مؤكَّد
+للـwebhook، والطابور يحذف ما دون الـoffset المخزّن. سجل الدورة: `stage=transport updates=relay|drain|abandoned|getUpdates`
+و`stage=drain applied=N done=true|false` أو `stage=drain blocked=true`.
+**إصلاح مُكتشف:** `actions/cache` يحفظ الحالة في خطوته اللاحقة **عند النجاح فقط**، فكل ما تكتبه دورة فاشلة عمداً (الـoffset
+القديم، تقدّم البطاقات، بداية مهلة التصريف) كان يضيع؛ صار الحفظ خطوة صريحة تعمل بعد الفشل أيضاً.
+عند التراجع: لا تحذف التوكن من Supabase قبل `done=true` (الطابور يحتاجه).
 
 **الاحتفاظ:** صفوف `celia_relay` تُحذف عند تأكيدها بالـoffset، وأي صف أقدم من **7 أيام** يُحذف في كل قراءة
 (كل 5 دقائق)؛ الحد الأقصى لحجم التحديث 1 MB. إن توقفت الدورة كلياً فالنمو = معدل رسائل البوت الخام (بضعة KB/يوم لبوت شخصي).
@@ -123,15 +147,16 @@ approval-bot (كل 5 د) ──POST /relay {updates, offset, owners}──▶ ا
 
 | نقطة تفتيش | الفعل | التحقق | التراجع (وزمنه) |
 |---|---|---|---|
-| 0 ✅ | الهجرة `20261128000400` + نشر الدالة | `healthz`: `chat: shadow`, `store: true` | لا أثر على البوت |
-| 1 | دمج #204 · أسرار Google · `CELIA_TELEGRAM_TOKEN` + `GEMINI_API_KEY` (الأسرار آمنة قبل الدمج: بلا webhook لا تصل الدالة أي رسالة) | `healthz`: `telegram: true`, `providers ≥ 1`, `webhook_actual: none` | حذف السرّ — فوري |
+| 0 ✅ | الهجرات `…0400` و`…0500` + نشر الدالتين | `healthz`: `chat: shadow`, `store: true`, `token_source: none` | لا أثر على البوت |
+| 1 | دمج #204 · أسرار Google · تشغيل **«Sync webhook secrets to Supabase Vault»** على `main` (يعمل من `main` فقط) | جدول التشغيل: `celia-telegram uses Vault · Telegram accepted it` و`free provider(s) configured`؛ `healthz`: `token_source: vault`, `webhook_actual: none` | لا شيء لتراجعه: بلا webhook لا تصل الدالة أي رسالة |
 | 2 | **الظل:** `CELIA_WEBHOOK=on` ثم `/setup` (**بعد الدمج حصراً**) | `webhook_actual: celia`؛ سجل الدورة `stage=transport updates=relay`؛ لا 409 في مسار الدورة | `CELIA_WEBHOOK=off` + `/setup` — **الدورة التالية (≤ 5 دقائق)** |
 | 3 | فحص الموافقات الحي — **ضغطة حقيقية** | إشعار «وصلت» فوري ← الصف `granted` + `granted=1` في سجل الدورة | نفسه (≤ 5 دقائق) |
 | 4 | **القطع:** `CELIA_CHAT=instant` (بعد نجاح 3 فقط) | رد فوري بالأنيميشن؛ `/memory` يعرض ما حفظته الدورة | حذف `CELIA_CHAT` — **فوري** (الطلب التالي) |
 | 5 | تجميد الورقة | لا كتابة على تبويب `celia_memory` (مضمون بالكود) | إزالة الـwebhook يعيد مسار الورقة القديم |
 
 **409 أثناء الـwebhook:** فقط في خطوة التشخيص «Discover chat id» (تعمل عند الفشل فقط، وتطبع معرّفات المحادثات لإعداد
-`PA_APPROVAL_CHAT_ID` أول مرة). ليست حمولة لأي شيء: الدورة تستعمل `PA_APPROVAL_CHAT_ID` المخزّن، و`--mode chatcheck`
+`PA_APPROVAL_CHAT_ID` أول مرة). ليست حمولة لأي شيء: معرّف المحادثة **محفوظ** في سرّ GitHub `PA_APPROVAL_CHAT_ID`
+(بديله `TELEGRAM_CHAT_ID`) ولا يُكتشف وقت التشغيل أبداً — غيابه يُفشل الفحص المسبق قبل أي اتصال. و`--mode chatcheck`
 و`--mode welcome` يقرآن من الطابور. إن تعذّر `getWebhookInfo` نفسه تعود الدورة إلى `getUpdates` فتفشل تلك الدورة بـ409
 بلا ضرر (الـoffset لا يتقدم، وخطوة التشخيص تُبقي webhook سيليا).
 
