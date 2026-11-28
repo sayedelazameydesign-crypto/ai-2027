@@ -228,8 +228,8 @@ def diagnose_chat_id(raw: str, discovered: List[str], bot_id: str) -> List[str]:
         hints.append("it is a @username — Telegram needs the numeric chat id")
     if "t.me" in raw or "://" in raw:
         hints.append("it is a link — store only the numeric chat id")
-    if ":" in raw:
-        hints.append("it contains ':' — that looks like a BOT TOKEN, not a chat id (rotate it if it was pasted anywhere public)")
+    if _TELEGRAM_TOKEN.search(raw):  # the token SHAPE — a bare ':' is also in every https:// link
+        hints.append("it has the shape of a BOT TOKEN, not a chat id (rotate it if it was pasted anywhere public)")
     if bot_id and raw == bot_id:
         hints.append("it is the BOT's own id — a bot cannot message itself; use YOUR chat id")
     if discovered:
