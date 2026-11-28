@@ -75,6 +75,8 @@
 | `WHATSAPP_PROVIDER` | يحدد مزوّد `whatsapp_cloud.send_reply` صراحةً (`ycloud` أو `meta`)؛ عند تركه فارغاً يُكتشف تلقائياً من المفتاح المتاح | فارغ ⇒ اكتشاف تلقائي |
 | `YCLOUD_WHATSAPP_FROM` | رقم هاتف واتساب للأعمال المسجّل في YCloud بصيغة E.164 (مثل `+201...`) المستخدم في حقل `from` عند الإرسال المجاني داخل نافذة الـ24 ساعة | فارغ ⇒ يفشل الفحص المسبق بـ`invalid_phone_number_id` |
 | `WHATSAPP_CLOUD_PHONE_NUMBER_ID` | معرّف الرقم الرقمي (`Phone Number ID`) في Meta Graph API عند استخدام مسار Meta المباشر | فارغ ⇒ يفشل الفحص المسبق بـ`invalid_phone_number_id` |
+| `AI2027_FREE_STACK_DB` | مسار قاعدة بيانات `SQLite (WAL)` المحلية لصندوق الوارد والتذاكر والكوبونات ورموز التحقق المجانية في `scripts/free_stack_runner.py` | `:memory:` في الاختبارات أو `free_stack.db` محلياً |
+| `AI2027_MAX_FREE_REPLIES_PER_DAY` | السقف اليومي الإضافي لعدد الردود الخدمية المجانية المجهزة/المرسلة في `scripts/free_stack_runner.py` | `50` (`<= 0` يغلق الإرسال fail-closed) |
 | `DASHSCOPE_WORKSPACE_ID` | معرّف مساحة Model Studio — يُبنى منه base_url: `https://{WorkspaceId}.{region}.maas.aliyuncs.com/compatible-mode/v1` | فارغ ⇒ لا يُبنى المزوّد (يرفض `MissingProviderConfigError`) |
 | `DASHSCOPE_REGION` | منطقة نقطة النهاية (وثائق رسمية: `ap-southeast-1` و`cn-beijing` وغيرهما) | `ap-southeast-1` |
 | `QWEN_MODEL` | معرّف نموذج Qwen **مطلوب** (لا قيمة افتراضية): المعرّفات تدور — التوثيق الرسمي أظهر `qwen3.8-max` بينما الحسابات قد تخدم `qwen4-max`؛ يُختار من قائمة نماذج حسابك | **لا شيء** — غيابه يمنع بناء المزوّد ويمنع أي طلب شبكة |

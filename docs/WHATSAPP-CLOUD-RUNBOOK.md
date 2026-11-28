@@ -92,4 +92,7 @@
 
 ```bash
 python3 scripts/whatsapp_cloud_rehearsal.py --assert
+python3 scripts/free_stack_runner.py --self-check
 ```
+
+* **`scripts/free_stack_runner.py` (`ZeroCostOrchestrator` + `GovernedReplyBridge`):** يستبدل إضافات المنصات المدفوعة (صندوق الوارد CRM مثل `SaleSmartly/Freshdesk`، والأتمتة مثل `Zapier`، ورموز التحقق `OTP` المدفوعة، وإدارة الكوبونات) بمحرك `SQLite (WAL)` محلي بمكتبة بايثون القياسية (`stdlib`) مع اشتقاق `PBKDF2-HMAC-SHA256` لرموز التحقق وسقف `5` محاولات، مربوطاً مباشرةً ببوابات `GovernedExecutor` و`ReflectiveCognitivePipeline` بتكلفة `$0`.

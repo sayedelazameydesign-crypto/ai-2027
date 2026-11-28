@@ -135,6 +135,8 @@ NON_SECRET_SETTINGS: tuple[tuple[str, str], ...] = (
     ("WHATSAPP_PROVIDER", "whatsapp_cloud provider selector (ycloud or meta)"),
     ("YCLOUD_WHATSAPP_FROM", "YCloud registered WABA sender phone in E.164"),
     ("WHATSAPP_CLOUD_PHONE_NUMBER_ID", "Meta Graph API numeric phone_number_id"),
+    ("AI2027_FREE_STACK_DB", "Local SQLite WAL path for $0 CRM/Inbox/Coupon/OTP engine"),
+    ("AI2027_MAX_FREE_REPLIES_PER_DAY", "Daily cap for $0 24h customer-care replies (default 50)"),
     ("DASHSCOPE_WORKSPACE_ID", "Model Studio workspace id (builds the Qwen base_url)"),
     ("DASHSCOPE_REGION", "Model Studio endpoint region (default ap-southeast-1)"),
     ("QWEN_MODEL", "Qwen model id (required, no default — ids rotate)"),
