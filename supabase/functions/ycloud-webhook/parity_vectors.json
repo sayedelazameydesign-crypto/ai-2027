@@ -1,0 +1,120 @@
+{
+ "events": {
+  "meta": [
+   [
+    "wamid.META0001",
+    "201012345678",
+    "1234567890",
+    1795856400,
+    "accepted_text",
+    "hi"
+   ],
+   [
+    "wamid.META0001",
+    "201012345678",
+    "1234567890",
+    1795856400,
+    "duplicate_event",
+    "hi"
+   ],
+   [
+    "wamid.META0002",
+    "201012345678",
+    "1234567890",
+    1795700000,
+    "outside_24h_service_window",
+    "old"
+   ],
+   [
+    "wamid.META0003",
+    "201012345678",
+    "1234567890",
+    1795856400,
+    "non_text_ignored",
+    ""
+   ]
+  ],
+  "ycloud": [
+   [
+    "wamid.HBgMYC01",
+    "201012345678",
+    "15550109999",
+    1795856400,
+    "accepted_text",
+    "عايز خصم"
+   ]
+  ],
+  "ycloud_naive": [
+   [
+    "wamid.HBgMYC01",
+    "201012345678",
+    "15550109999",
+    1795856400,
+    "accepted_text",
+    "عايز خصم"
+   ]
+  ]
+ },
+ "hub": {
+  "ok": [
+   true,
+   "ok"
+  ],
+  "sig": "b01fdeaa01b11af78ad15d10a7b7de6922cb22f3bef2bee5d517eeea1d58d7dd"
+ },
+ "normalize": {
+  "+1 (555) 010-9999": "15550109999",
+  "+20 101 234 5678": "201012345678",
+  "0020-1012345678": "201012345678",
+  "01012345678": "201012345678",
+  "01312345678": null,
+  "123": null
+ },
+ "now": 1795860000,
+ "pbkdf2": {
+  "args": [
+   "201012345678",
+   "123456",
+   "00112233445566778899aabbccddeeff"
+  ],
+  "expected": "2ed3ddb2c1843339023cb2ae09822588746e22d19d590d542d033b0ee00b3702"
+ },
+ "sha256": {
+  "expected": "ae364e8e23fe2bf1f5bed82e52b3fd97e57cd388142ed559d7b386f292531b54",
+  "payload": {
+   "inbound_timestamp_s": 1764320000,
+   "message_text": "أهلاً بك في Celia! \"q\" \n\t\u0001 ✓ / \\",
+   "recipient_phone": "201012345678",
+   "reply_to_wamid": "wamid.ABCD1234"
+  }
+ },
+ "window": {
+  "-300": true,
+  "-301": false,
+  "0": true,
+  "86400": true,
+  "86401": false
+ },
+ "ycloud": {
+  "body": "{\"type\":\"x\",\"n\":1}",
+  "expired": [
+   false,
+   "signature_timestamp_expired"
+  ],
+  "malformed": [
+   false,
+   "malformed_signature"
+  ],
+  "ok": [
+   true,
+   "ok"
+  ],
+  "secret": "whsec_fixture_vector",
+  "sig": "7065b021ddb6f12ff667be25e237745fc9c87903bae6df5ace673f03ebed0377",
+  "tampered": [
+   false,
+   "invalid_signature"
+  ],
+  "ts": 1764320000
+ }
+}

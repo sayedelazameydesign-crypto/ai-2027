@@ -360,6 +360,15 @@ class TestChatCheck(unittest.TestCase):
                 self.assertTrue(any(expected in h for h in hints), hints)
                 self.assertFalse(any(raw in h for h in hints), "stored value echoed")
 
+    def test_a_link_is_not_misreported_as_a_token(self):
+        # Measured in Actions 2026-11-28: a 44-char https:// link tripped the old
+        # bare-':' rule and told the owner to rotate a token that was never leaked.
+        for raw in ("https://t.me/sayed_elazamey", "https://web.telegram.org/k/#722947046"):
+            with self.subTest(raw=raw):
+                hints = ci.diagnose_chat_id(raw, [self.MINE], self.BOT_ID)
+                self.assertTrue(any("link" in h for h in hints), hints)
+                self.assertFalse(any("TOKEN" in h for h in hints), hints)
+
     def test_match_means_the_token_belongs_to_another_bot(self):
         hints = ci.diagnose_chat_id(self.MINE, [self.MINE], self.BOT_ID)
         self.assertTrue(any("different bot" in h for h in hints))

@@ -6,7 +6,9 @@ name: Watchdog · 24x7
 #   1. built-in self-checks   free_stack_runner --self-check · whatsapp_cloud_rehearsal --assert
 #   2. public webhook         GET /healthz == 200 ok:true  AND  unsigned POST /webhook == 401
 #                             (no secret is sent — the repo and its logs are public)
-#                             SKIP until vars.AI2027_WEBHOOK_PUBLIC_URL exists
+#                             vars.AI2027_WEBHOOK_PUBLIC_URL overrides; otherwise the live
+#                             $0 Supabase Edge deployment (docs/DEPLOY-FREE-NO-CARD.md).
+#                             The URL is public by design — never a secret.
 #   3. audit chain            read-only prev_hash linkage of pa_audit_logs_202611
 #                             SKIP until PA_MEMORY_SHEET_ID + GOOGLE_SERVICE_ACCOUNT_JSON exist
 #   4. Telegram               first failure, recovery, and a reminder every 36 failed runs
@@ -14,7 +16,7 @@ name: Watchdog · 24x7
 #
 # GitHub cron is best-effort: */10 is a request, not a guarantee (this repo's
 # scheduled runs have shown multi-hour gaps). It complements, not replaces,
-# UptimeRobot on /healthz + systemd Restart=always on the VM.
+# the in-database pg_cron watchdog (hash-linked public.watchdog_runs, every 5 min).
 
 on:
   schedule:
@@ -54,7 +56,7 @@ jobs:
       - name: Public webhook · /healthz + fail-closed signature gate
         if: ${{ !cancelled() }}
         env:
-          AI2027_WEBHOOK_PUBLIC_URL: ${{ vars.AI2027_WEBHOOK_PUBLIC_URL }}
+          AI2027_WEBHOOK_PUBLIC_URL: ${{ vars.AI2027_WEBHOOK_PUBLIC_URL || 'https://ziaedqqhvsmcwcmlbcpi.supabase.co/functions/v1/ycloud-webhook' }}
         run: python3 scripts/watchdog_probe.py probe
 
       - name: Audit chain · pa_audit_logs prev_hash linkage (read-only)

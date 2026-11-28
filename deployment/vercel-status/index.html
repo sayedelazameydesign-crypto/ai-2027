@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AI-2027 · حالة التشغيل 24/7</title>
+<style>
+  :root { --bg:#0b1020; --card:#131a33; --fg:#e8ecff; --mut:#9aa4c7; --ok:#22c55e; --warn:#f59e0b; --bad:#ef4444; }
+  * { box-sizing:border-box } body { margin:0; font:15px/1.6 system-ui,"Segoe UI",Tahoma,sans-serif; background:var(--bg); color:var(--fg) }
+  main { max-width:880px; margin:0 auto; padding:24px 16px }
+  h1 { font-size:22px; margin:0 0 4px } .mut { color:var(--mut) }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:12px; margin:18px 0 }
+  .card { background:var(--card); border-radius:12px; padding:14px 16px }
+  .big { font-size:24px; font-weight:700 } .pill { display:inline-block; padding:2px 10px; border-radius:999px; font-weight:600 }
+  .pass{background:#14532d;color:#bbf7d0} .degraded{background:#78350f;color:#fde68a} .fail{background:#7f1d1d;color:#fecaca}
+  table { width:100%; border-collapse:collapse } td,th { text-align:right; padding:8px; border-bottom:1px solid #222b4d }
+  code { font-family:ui-monospace,monospace; font-size:12px; color:var(--mut); word-break:break-all }
+  a { color:#93c5fd }
+</style>
+</head>
+<body>
+<main>
+  <h1>AI-2027 · حالة التشغيل 24/7</h1>
+  <div class="mut">Supabase Free (بدون كارت) · مراقبة pg_cron كل 5 دقائق · سجل مُسلسل بالـ hash لا يقبل التعديل</div>
+  <div class="grid">
+    <div class="card"><div class="mut">الخدمة الآن</div><div class="big" id="live">…</div><div class="mut" id="lat"></div></div>
+    <div class="card"><div class="mut">آخر فحص</div><div class="big" id="verdict">…</div><div class="mut" id="cov"></div></div>
+    <div class="card"><div class="mut">سلسلة الـ hash</div><div class="big" id="chain">…</div><div class="mut" id="rows"></div></div>
+    <div class="card"><div class="mut">آخر 24 ساعة</div><div class="big" id="day">…</div><div class="mut" id="daydet"></div></div>
+  </div>
+  <div class="card">
+    <div class="mut" id="ran"></div>
+    <table><thead><tr><th>الفحص</th><th>النتيجة</th><th>التفاصيل</th></tr></thead><tbody id="checks"></tbody></table>
+    <div style="margin-top:10px"><span class="mut">row_hash:</span> <code id="hash"></code></div>
+  </div>
+  <p class="mut">تتحدّث تلقائياً كل 30 ثانية · المصدر:
+    <a href="/api/status">/api/status</a> ·
+    <a href="https://ziaedqqhvsmcwcmlbcpi.supabase.co/functions/v1/ycloud-webhook/status">Supabase /status</a> ·
+    «skip» لا يُحسب نجاحاً أبداً.</p>
+</main>
+<script>
+const AR = { pass:"ناجح", degraded:"ناقص", fail:"فشل", skip:"تخطّى" };
+const $ = (id) => document.getElementById(id);
+const pill = (v) => `<span class="pill ${v === "skip" ? "degraded" : v}">${AR[v] || v}</span>`;
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
+async function load() {
+  try {
+    const d = await (await fetch("/api/status", { cache: "no-store" })).json();
+    const up = d.healthz && d.healthz.http === 200 && d.healthz.body && d.healthz.body.ok === true;
+    $("live").innerHTML = up ? pill("pass").replace("ناجح", "يعمل") : pill("fail").replace("فشل", "متوقف");
+    $("lat").textContent = `healthz HTTP ${d.healthz.http} · ${d.healthz.ms} ms · فحص Vercel ${new Date(d.checked_at).toLocaleTimeString("ar-EG")}`;
+    const s = d.status || {}, lr = s.last_run || {};
+    $("verdict").innerHTML = lr.verdict ? pill(lr.verdict) : "—";
+    $("cov").textContent = lr.coverage ? lr.coverage.replace(" of ", " من ").replace(" executed", " نُفّذ") : "";
+    $("chain").innerHTML = s.chain ? pill(s.chain.ok ? "pass" : "fail").replace("ناجح", "سليمة").replace("فشل", "مكسورة") : "—";
+    $("rows").textContent = s.chain ? `${s.chain.rows_checked} صف متحقَّق` + (s.chain.first_bad_id ? ` · أول صف تالف ${s.chain.first_bad_id}` : "") : "";
+    const day = s.last_24h || {};
+    $("day").textContent = `${day.pass ?? 0} / ${day.runs ?? 0}`;
+    $("daydet").textContent = `ناجح ${day.pass ?? 0} · ناقص ${day.degraded ?? 0} · فشل ${day.fail ?? 0}`;
+    $("ran").textContent = lr.ran_at ? `آخر تشغيلة #${lr.id} · ${new Date(lr.ran_at).toLocaleString("ar-EG")} · المصدر: ${lr.source}` : "";
+    $("checks").innerHTML = (lr.checks || []).map((c) => `<tr><td>${esc(c.name)}</td><td>${pill(c.status)}</td><td class="mut">${esc(c.detail)}</td></tr>`).join("");
+    $("hash").textContent = lr.row_hash || "";
+  } catch (e) {
+    $("live").innerHTML = pill("fail").replace("فشل", "تعذّر القراءة");
+  }
+}
+load(); setInterval(load, 30000);
+</script>
+</body>
+</html>
