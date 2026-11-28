@@ -25,6 +25,7 @@ _FAST_CFG = RouterConfig(
     max_retries_per_provider=0,
     base_backoff_s=0.0,
 )
+_REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 class PipelineProvider:
@@ -163,3 +164,169 @@ async def test_pipeline_tree_and_reflexion_close_rmm_utility_and_graph_loop(
         assert r_after == 2
         assert h_after == 1
         assert mem.verify_durability() == []
+
+
+async def test_end_to_end_whatsapp_webhook_to_reflective_pipeline_to_governed_executor(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Full $0 customer loop: Webhook -> ReflectiveCognitivePipeline -> Preflight -> Executor."""
+    import hashlib
+    import hmac
+    import importlib.util
+    import json
+    import sys
+    from datetime import UTC, datetime
+
+    wc_spec = importlib.util.spec_from_file_location(
+        "wc_e2e_mod", _REPO_ROOT / "src" / "connectors" / "whatsapp_cloud.py"
+    )
+    ge_spec = importlib.util.spec_from_file_location(
+        "ge_e2e_mod", _REPO_ROOT / "src" / "executors" / "governed_executor.py"
+    )
+    assert wc_spec is not None and wc_spec.loader is not None
+    assert ge_spec is not None and ge_spec.loader is not None
+    wc = importlib.util.module_from_spec(wc_spec)
+    sys.modules["wc_e2e_mod"] = wc
+    wc_spec.loader.exec_module(wc)
+    ge = importlib.util.module_from_spec(ge_spec)
+    sys.modules["ge_e2e_mod"] = ge
+    ge_spec.loader.exec_module(ge)
+
+    monkeypatch.setenv("WHATSAPP_CLOUD_ACCESS_TOKEN", "fixture-" + "e2e-bearer")
+    monkeypatch.setenv("WHATSAPP_CLOUD_PHONE_NUMBER_ID", "109876543210987")
+    monkeypatch.setattr(
+        wc,
+        "_transport",
+        lambda _m, _u, _b, _tok: wc.CloudTransportResult(
+            "ok", 200, {"messages": [{"id": "wamid.E2E_REPLY_OK"}]}
+        ),
+    )
+
+    now_dt = datetime(2026, 11, 28, 16, 0, 0, tzinfo=UTC)
+    now_epoch = int(now_dt.timestamp())
+    wamid_in = "wamid.HBgMMjAxMDEyMzQ1Njc4FQIAEhggRTJFX0lO=="
+    signing_bytes = b"fixture-e2e-signing-2027"
+    webhook_payload = {
+        "object": "whatsapp_business_account",
+        "entry": [
+            {
+                "id": "waba_e2e",
+                "changes": [
+                    {
+                        "field": "messages",
+                        "value": {
+                            "metadata": {"phone_number_id": "109876543210987"},
+                            "messages": [
+                                {
+                                    "from": "201012345678",
+                                    "id": wamid_in,
+                                    "timestamp": str(now_epoch - 90),
+                                    "type": "text",
+                                    "text": {"body": "ما حالة طلب التطريز رقم 402؟"},
+                                }
+                            ],
+                        },
+                    }
+                ],
+            }
+        ],
+    }
+    raw_bytes = json.dumps(webhook_payload, ensure_ascii=False).encode("utf-8")
+    sig = "sha256=" + hmac.new(signing_bytes, raw_bytes, hashlib.sha256).hexdigest()
+    assert wc.verify_hub_signature(raw_bytes, sig, signing_bytes) == (True, "ok")
+
+    events = wc.parse_inbound_events(webhook_payload, now_epoch_s=now_epoch)
+    assert len(events) == 1 and events[0].stage == "accepted_text"
+
+    provider = PipelineProvider(
+        ["DRAFT_MISSING_VALIDATION", "VERIFIED_WIN :: الطلب رقم 402 جاهز للتسليم غداً"]
+    )
+    meta = _make_meta([provider])
+    db_file = tmp_path / "e2e_whatsapp_memory.sqlite3"
+    with ReflectiveGraphMemory(db_file) as mem:
+        pipeline = ReflectiveCognitivePipeline(
+            meta,
+            mem,
+            tree_policy=TreeSearchPolicy(max_branching=2, max_depth=1, max_expansions=2),
+            evaluator=ExactTokenEvaluator(),
+        )
+        cog_res = await pipeline.execute(
+            events[0].text_body,
+            mode="tree",
+            task_type="coding",
+        )
+        assert cog_res.verified is True
+        assert cog_res.admitted_to_graph is True
+
+    reply_payload = {
+        "recipient_phone": events[0].sender_wa_id,
+        "message_text": cog_res.final_output,
+        "inbound_timestamp_s": events[0].timestamp_s,
+        "reply_to_wamid": events[0].wamid,
+    }
+    assert wc.preflight_reply_payload(reply_payload, now_epoch_s=now_epoch) == {
+        "ok": True,
+        "stage": "ok",
+    }
+
+    class _MemRows:
+        def __init__(self, rows: list[list[str]]) -> None:
+            self.rows = rows
+
+        def get_all_values(self) -> list[list[str]]:
+            return [list(r) for r in self.rows]
+
+        def batch_update(self, items: list[dict[str, object]]) -> None:
+            for item in items:
+                idx = int(str(item["range"]).split(":")[0][1:]) - 1
+                vals = item["values"]
+                assert isinstance(vals, list)
+                self.rows[idx] = [str(c) for c in vals[0]]
+
+    class _MemBook:
+        def __init__(self, mapping: dict[str, list[list[str]]]) -> None:
+            self._m = {k: _MemRows(v) for k, v in mapping.items()}
+
+        def worksheet(self, name: str) -> _MemRows:
+            return self._m[name]
+
+    appr = [""] * 22
+    appr[0] = "01APPR_E2E"
+    appr[1] = "2026-11-28T15:59:00.000Z"
+    appr[2] = "2026-11-28T15:59:00.000Z"
+    appr[3] = "1"
+    appr[13] = "ef" * 32
+    appr[14] = "whatsapp_cloud.send_reply"
+    appr[15] = ge.compute_sha256(reply_payload)
+    appr[16] = "Customer reply 402"
+    appr[17] = "granted"
+    appr[18] = "2026-11-28T15:59:00.000Z"
+    appr[19] = "2026-11-28T17:00:00.000Z"
+    appr[21] = "true"
+
+    grant = [""] * 23
+    grant[0] = "01GRANT_E2E"
+    grant[14] = "agent.write"
+    grant[15] = "active"
+    grant[17] = json.dumps(["whatsapp_cloud.send_reply"])
+    grant[18] = json.dumps([])
+    grant[21] = "owner"
+
+    book = _MemBook(
+        {
+            "pa_approvals": [["h"] * 22, appr],
+            "pa_delegation_grants": [["h"] * 23, grant],
+            "pa_audit_logs_202611": [["h"] * 25],
+        }
+    )
+    audits: list[dict[str, object]] = []
+    executor = ge.GovernedExecutor(book, lambda **kw: audits.append(kw), now_fn=lambda: now_dt)
+    executor.register_tool(
+        "whatsapp_cloud.send_reply",
+        wc.make_send_reply_handler(now_epoch_fn=lambda: now_epoch),
+    )
+    exec_res = executor.execute("01APPR_E2E", "whatsapp_cloud.send_reply", reply_payload)
+    assert exec_res.ok is True
+    assert exec_res.output["outbound_message_id"] == "wamid.E2E_REPLY_OK"
+    assert audits[-1]["outcome"] == "allowed"
