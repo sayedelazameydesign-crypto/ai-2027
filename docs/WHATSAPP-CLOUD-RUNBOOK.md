@@ -7,21 +7,37 @@
 ## 1. قائمة التحقق قبل التفعيل الحي (Pre-Flight Checklist)
 
 ### 1.1 متغيرات البيئة على خادم الاستقبال فقط (لا تُرفع إلى Git أبداً)
-يُحظر وضع أي سر داخل الكود أو ملفات الإعداد المتتبَّعة؛ تُضبط المتغيرات التالية حصراً في مخزن أسرار المنصة أو ملف `.env` المحلي المعزول:
+يُحظر وضع أي سر داخل الكود أو ملفات الإعداد المتتبَّعة؛ يدعم `src/connectors/whatsapp_cloud.py` مسارين رسميين بصفر تكلفة (`MAX_SPEND = 0.0` — ردود نصية `type="text"` فقط داخل نافذة خدمة العملاء المجانية 24 ساعة، فلا يُخصم أي سنت من محفظة `0.5 USD` في YCloud لأن قوالب `template` المدفوعة غير مدعومة بنيوياً):
+
+#### المسار (أ) — عبر **YCloud v2** (حساب `cela` · `Company ID: 6b0a424cf8fb394c5baafb2d`)
+
+| المتغير | الغرض | قواعد التحقق المغلقة (`Fail-Closed`) |
+|---|---|---|
+| `WHATSAPP_PROVIDER` | تثبيت المزود على `ycloud` (أو يُكتشف تلقائياً عند وجود `YCLOUD_API_KEY`) | يسقط للاكتشاف التلقائي عند تركه فارغاً. |
+| `AI2027_WHATSAPP_WEBHOOK` | سر مسجّل في GitHub Actions Secrets — يقبل إما رابط الـWebhook الآمن (`https://...`) أو سر توقيع مشترك | `resolve_webhook_binding()` يرفض أي رابط `http://` غير مشفر (`insecure_http_refused`) ولا يطبع القيمة أبداً. |
+| `YCLOUD_WEBHOOK_SECRET` | سر توقيع ترويسة `YCloud-Signature: t=<unix>,s=<hex>` لنقطة الاستقبال في YCloud | `verify_ycloud_signature` يتحقق بزمن ثابت (`hmac.compare_digest`) على `"{t}.{raw_body}"` مع نافذة `300s` (ويسقط إلى `AI2027_WHATSAPP_WEBHOOK` إن وُضع السر فيه). |
+| `YCLOUD_API_KEY` | مفتاح `X-API-Key` للإرسال المباشر عبر `POST https://api.ycloud.com/v2/whatsapp/messages/sendDirectly` | غيابه يوقف `preflight()` بـ `missing_access_credential` قبل استهلاك أي موافقة. |
+| `YCLOUD_WHATSAPP_FROM` | رقم هاتف واتساب للأعمال المسجّل بعد ربط WABA في YCloud بصيغة E.164 (`+201...`) | غيابه أو عدم صلاحيته يوقف `preflight()` بـ `invalid_phone_number_id`. |
+
+#### المسار (ب) — عبر **Meta WhatsApp Cloud API** المباشر (`Graph API v21.0`)
 
 | المتغير | الغرض | قواعد التحقق المغلقة (`Fail-Closed`) |
 |---|---|---|
 | `WHATSAPP_CLOUD_ACCESS_TOKEN` | رمز وصول Graph API لحساب واتساب للأعمال | غيابه يوقف `preflight()` محلياً بمرحلة `missing_access_credential` قبل استهلاك أي موافقة. |
 | `WHATSAPP_CLOUD_PHONE_NUMBER_ID` | المعرّف الرقمي لرقم الأعمال في Meta (`6..25` رقماً) | يُفحص بالتعبير `^[1-9]\d{5,24}$`؛ أي قيمة مخالفة تُرفض بـ `invalid_phone_number_id`. |
-| سر توقيع التطبيق (`App Secret`) | يُمرَّر كبايتات إلى `verify_hub_signature(raw_body, header, signing_bytes)` | يتحقق بزمن ثابت (`hmac.compare_digest`) من الترويسة `X-Hub-Signature-256: sha256=<hex>`. |
-| رمز تحدي الاشتراك (`Verify Token`) | يُمرَّر إلى `verify_webhook_challenge(mode, provided, expected, challenge)` | يتحقق بزمن ثابت عند `hub.mode == "subscribe"` ويرفض أي `challenge` غير قياسي. |
+| `WHATSAPP_CLOUD_APP_SECRET` | يُمرَّر كبايتات إلى `verify_hub_signature(raw_body, header, signing_bytes)` | يتحقق بزمن ثابت (`hmac.compare_digest`) من الترويسة `X-Hub-Signature-256: sha256=<hex>`. |
+| `WHATSAPP_CLOUD_VERIFY_TOKEN` | يُمرَّر إلى `verify_webhook_challenge(mode, provided, expected, challenge)` | يتحقق بزمن ثابت عند `hub.mode == "subscribe"` ويرفض أي `challenge` غير قياسي. |
 
 ---
 
-### 1.2 إعداد نقطة نهاية Webhook في Meta for Developers
-1. اربط مسار `GET /webhook` بدالة `verify_webhook_challenge(...)` وأعد نص `challenge` فقط عندما تكون النتيجة `ok == True` (`HTTP 200`)، وإلا أعد `HTTP 403` بلا أي تفاصيل داخلية.
-2. اربط مسار `POST /webhook` بقراءة الجسم الخام (`raw_body: bytes` بحد أقصى `1 MiB`) وفحصه عبر `verify_hub_signature(...)` **قبل** فك ترميز JSON؛ عند فشل التوقيع أعد `HTTP 401` فوراً.
-3. مرّر الحمولة المفحوصة إلى `parse_inbound_events(payload, seen_effect_keys=...)`؛ لا تُعالج سوى الأحداث ذات المرحلة `stage == "accepted_text"` (نصية، غير مكررة بـ `wamid`، وداخل نافذة الـ 24 ساعة من `messages[].timestamp`).
+### 1.2 إعداد نقطة نهاية Webhook في لوحة **YCloud** أو **Meta for Developers**
+* **في YCloud (`https://www.ycloud.com/console/#/app/getStarted`):**
+  1. أكمل **Create your WhatsApp Business Accounts (WABA)** واربط رقم الإرسال ثم ضع الرقم في `YCLOUD_WHATSAPP_FROM`.
+  2. من **Developers → Webhooks → Add Endpoint** سجّل عنوان `HTTPS` لنقطة الاستقبال واشترك في الحدث **`whatsapp.inbound_message.received`**، وضع `Signing Secret` في `YCLOUD_WEBHOOK_SECRET` (أو في `AI2027_WHATSAPP_WEBHOOK`).
+  3. على الخادم: افحص `verify_ycloud_signature(raw_body, headers.get("YCloud-Signature"))` **قبل** `json.loads`، ثم مرّر الحمولة إلى `parse_inbound_events(payload, seen_effect_keys=...)`.
+* **في Meta for Developers المباشر:**
+  1. اربط مسار `GET /webhook` بدالة `verify_webhook_challenge(...)` وأعد نص `challenge` فقط عند `ok == True` (`HTTP 200`)، وإلا `HTTP 403`.
+  2. اربط مسار `POST /webhook` بفحص `verify_hub_signature(...)` قبل فك ترميز JSON، ثم مرّر الحمولة إلى `parse_inbound_events(payload, seen_effect_keys=...)`.
 
 ---
 

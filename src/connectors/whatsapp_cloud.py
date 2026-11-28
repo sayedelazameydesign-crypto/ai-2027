@@ -30,6 +30,7 @@ import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, List, MutableSet, NamedTuple, Optional, Tuple
 
@@ -47,6 +48,7 @@ from kernel2027 import (  # noqa: E402
 )
 
 GRAPH_API_BASE = "https://graph.facebook.com/v21.0"
+YCLOUD_API_BASE = "https://api.ycloud.com/v2"
 SERVICE_WINDOW_SECONDS = 86_400
 CLOCK_SKEW_TOLERANCE_SECONDS = 300
 TIMEOUT_SEC = 15
@@ -55,7 +57,7 @@ MESSAGE_MAX_CHARS = 4096
 
 _PHONE_ID_RE = re.compile(r"^[1-9]\d{5,24}$")
 _E164_DIGITS_RE = re.compile(r"^[1-9]\d{7,14}$")
-_WAMID_RE = re.compile(r"^wamid\.[A-Za-z0-9_+/=-]{4,240}$")
+_WAMID_RE = re.compile(r"^(?:wamid\.[A-Za-z0-9_+/=-]{4,240}|yim_[A-Za-z0-9_-]{4,120})$")
 _CHALLENGE_RE = re.compile(r"^[A-Za-z0-9._-]{1,256}$")
 _HEX64_RE = re.compile(r"^[0-9a-f]{64}$")
 
@@ -100,10 +102,11 @@ def _urllib_transport(
     body: Optional[Dict[str, Any]],
     bearer_value: str,
 ) -> CloudTransportResult:
-    headers = {
-        "Authorization": "Bearer " + bearer_value,
-        "Accept": "application/json",
-    }
+    headers: Dict[str, str] = {"Accept": "application/json"}
+    if url.startswith(YCLOUD_API_BASE):
+        headers["X-API-Key"] = bearer_value
+    else:
+        headers["Authorization"] = "Bearer " + bearer_value
     encoded: Optional[bytes] = None
     if body is not None:
         headers["Content-Type"] = "application/json"
@@ -202,6 +205,89 @@ def verify_hub_signature(
     return True, "ok"
 
 
+def resolve_webhook_binding() -> Dict[str, Any]:
+    """Inspect ``AI2027_WHATSAPP_WEBHOOK`` without ever exposing its value.
+
+    Operators may store either the HTTPS callback endpoint URL
+    (``https://...``) or a shared webhook signing/verify token in
+    ``AI2027_WHATSAPP_WEBHOOK``. Plain ``http://`` URLs are refused fail-closed.
+    """
+    raw = (os.environ.get("AI2027_WHATSAPP_WEBHOOK") or "").strip()
+    if not raw:
+        return {"configured": False, "mode": "absent"}
+    lower = raw.lower()
+    if lower.startswith("http://"):
+        return {"configured": False, "mode": "insecure_http_refused"}
+    if lower.startswith("https://"):
+        return {"configured": True, "mode": "endpoint_url"}
+    return {"configured": True, "mode": "signing_secret"}
+
+
+def _resolve_ycloud_signing_bytes(explicit: Optional[bytes]) -> Optional[bytes]:
+    if explicit:
+        return bytes(explicit)
+    dedicated = (os.environ.get("YCLOUD_WEBHOOK_SECRET") or "").strip()
+    if dedicated:
+        return dedicated.encode("utf-8")
+    fallback = (os.environ.get("AI2027_WHATSAPP_WEBHOOK") or "").strip()
+    if fallback and not fallback.lower().startswith(("http://", "https://")):
+        return fallback.encode("utf-8")
+    return None
+
+
+def verify_ycloud_signature(
+    raw_body: bytes,
+    signature_header: Optional[str],
+    signing_bytes: Optional[bytes] = None,
+    *,
+    now_epoch_s: Optional[int] = None,
+    tolerance_s: int = CLOCK_SKEW_TOLERANCE_SECONDS,
+) -> Tuple[bool, str]:
+    """Verify ``YCloud-Signature: t=<unix_s>,s=<hex_sha256>`` in constant time."""
+    if not isinstance(raw_body, (bytes, bytearray)):
+        return False, "invalid_body_type"
+    secret = _resolve_ycloud_signing_bytes(signing_bytes)
+    if not secret:
+        return False, "missing_signing_config"
+    if not signature_header or not isinstance(signature_header, str):
+        return False, "missing_signature"
+    parts: Dict[str, str] = {}
+    for item in signature_header.strip().split(","):
+        if "=" in item:
+            k, v = item.split("=", 1)
+            parts[k.strip().lower()] = v.strip()
+    ts_raw = parts.get("t") or ""
+    sig_hex = (parts.get("s") or "").lower()
+    if not ts_raw.isdigit() or not _HEX64_RE.match(sig_hex):
+        return False, "malformed_signature"
+    ts_int = int(ts_raw)
+    now_s = int(time.time()) if now_epoch_s is None else int(now_epoch_s)
+    if abs(now_s - ts_int) > max(0, int(tolerance_s)):
+        return False, "signature_timestamp_expired"
+    signed_payload = (f"{ts_int}.").encode("utf-8") + bytes(raw_body)
+    expected_hex = hmac.new(secret, signed_payload, hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(sig_hex, expected_hex):
+        return False, "invalid_signature"
+    return True, "ok"
+
+
+def _parse_iso_or_epoch_s(msg: Dict[str, Any]) -> Optional[int]:
+    raw_ts = str(msg.get("timestamp") or "").strip()
+    if raw_ts.isdigit():
+        return int(raw_ts)
+    send_time = str(msg.get("sendTime") or "").strip()
+    if not send_time:
+        return None
+    cleaned = send_time.replace("Z", "+00:00")
+    try:
+        dt = datetime.fromisoformat(cleaned)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return int(dt.timestamp())
+    except ValueError:
+        return None
+
+
 def is_within_free_service_window(
     inbound_timestamp_s: int,
     *,
@@ -215,23 +301,94 @@ def is_within_free_service_window(
     return elapsed <= SERVICE_WINDOW_SECONDS
 
 
+def _build_inbound_event(
+    *,
+    wamid: str,
+    sender: str,
+    phone_number_id: str,
+    ts_int: int,
+    msg: Dict[str, Any],
+    now_s: int,
+    seen: MutableSet[str],
+) -> InboundWhatsAppEvent:
+    msg_type = str(msg.get("type") or "unknown").strip().lower()
+    idem = str(
+        effect_key(
+            namespace="whatsapp_cloud",
+            operation="inbound_message",
+            scope={"phone_number_id": phone_number_id, "wamid": wamid},
+        )
+    )
+    in_window = is_within_free_service_window(ts_int, now_epoch_s=now_s)
+    text_body = ""
+    if msg_type == "text":
+        text_obj = msg.get("text")
+        if isinstance(text_obj, dict):
+            text_body = str(text_obj.get("body") or "").strip()[:MESSAGE_MAX_CHARS]
+    if idem in seen:
+        stage = "duplicate_event"
+    else:
+        seen.add(idem)
+        if msg_type != "text" or not text_body:
+            stage = "non_text_ignored"
+        elif not in_window:
+            stage = "outside_24h_service_window"
+        else:
+            stage = "accepted_text"
+    return InboundWhatsAppEvent(
+        wamid=wamid,
+        sender_wa_id=sender,
+        phone_number_id=phone_number_id,
+        timestamp_s=ts_int,
+        message_type=msg_type,
+        text_body=text_body,
+        idempotency_key=idem,
+        within_24h_window=in_window,
+        stage=stage,
+    )
+
+
 def parse_inbound_events(
     payload: Any,
     *,
     now_epoch_s: Optional[int] = None,
     seen_effect_keys: Optional[MutableSet[str]] = None,
 ) -> List[InboundWhatsAppEvent]:
-    """Extract normalized inbound events from a verified Cloud API webhook payload."""
-    if not isinstance(payload, dict) or payload.get("object") != "whatsapp_business_account":
+    """Extract normalized inbound events from Meta Cloud API or YCloud v2 webhooks."""
+    if not isinstance(payload, dict):
+        return []
+    seen = seen_effect_keys if seen_effect_keys is not None else set()
+    now_s = int(time.time()) if now_epoch_s is None else int(now_epoch_s)
+
+    if payload.get("type") == "whatsapp.inbound_message.received":
+        ymsg = payload.get("whatsappInboundMessage")
+        if not isinstance(ymsg, dict):
+            return []
+        wamid = str(ymsg.get("id") or ymsg.get("wamid") or "").strip()
+        sender = normalize_recipient_digits(str(ymsg.get("from") or ""))
+        to_digits = normalize_recipient_digits(str(ymsg.get("to") or ""))
+        ts_opt = _parse_iso_or_epoch_s(ymsg)
+        if not _WAMID_RE.match(wamid) or sender is None or to_digits is None or ts_opt is None:
+            return []
+        return [
+            _build_inbound_event(
+                wamid=wamid,
+                sender=sender,
+                phone_number_id=to_digits,
+                ts_int=ts_opt,
+                msg=ymsg,
+                now_s=now_s,
+                seen=seen,
+            )
+        ]
+
+    if payload.get("object") != "whatsapp_business_account":
         return []
     entries = payload.get("entry")
     if not isinstance(entries, list):
         return []
 
-    seen = seen_effect_keys if seen_effect_keys is not None else set()
-    now_s = int(time.time()) if now_epoch_s is None else int(now_epoch_s)
     events: List[InboundWhatsAppEvent] = []
-
     for entry in entries:
         if not isinstance(entry, dict):
             continue
@@ -256,62 +413,57 @@ def parse_inbound_events(
                     continue
                 wamid = str(msg.get("id") or "").strip()
                 sender = normalize_recipient_digits(str(msg.get("from") or ""))
-                raw_ts = str(msg.get("timestamp") or "").strip()
-                if not _WAMID_RE.match(wamid) or sender is None or not raw_ts.isdigit():
+                ts_opt = _parse_iso_or_epoch_s(msg)
+                if not _WAMID_RE.match(wamid) or sender is None or ts_opt is None:
                     continue
-                ts_int = int(raw_ts)
-                msg_type = str(msg.get("type") or "unknown").strip().lower()
-                idem = str(
-                    effect_key(
-                        namespace="whatsapp_cloud",
-                        operation="inbound_message",
-                        scope={"phone_number_id": phone_number_id, "wamid": wamid},
-                    )
-                )
-                in_window = is_within_free_service_window(ts_int, now_epoch_s=now_s)
-
-                text_body = ""
-                if msg_type == "text":
-                    text_obj = msg.get("text")
-                    if isinstance(text_obj, dict):
-                        text_body = str(text_obj.get("body") or "").strip()[:MESSAGE_MAX_CHARS]
-
-                if idem in seen:
-                    stage = "duplicate_event"
-                else:
-                    seen.add(idem)
-                    if msg_type != "text" or not text_body:
-                        stage = "non_text_ignored"
-                    elif not in_window:
-                        stage = "outside_24h_service_window"
-                    else:
-                        stage = "accepted_text"
-
                 events.append(
-                    InboundWhatsAppEvent(
+                    _build_inbound_event(
                         wamid=wamid,
-                        sender_wa_id=sender,
+                        sender=sender,
                         phone_number_id=phone_number_id,
-                        timestamp_s=ts_int,
-                        message_type=msg_type,
-                        text_body=text_body,
-                        idempotency_key=idem,
-                        within_24h_window=in_window,
-                        stage=stage,
+                        ts_int=ts_opt,
+                        msg=msg,
+                        now_s=now_s,
+                        seen=seen,
                     )
                 )
     return events
 
 
+def _select_provider() -> str:
+    explicit = (os.environ.get("WHATSAPP_PROVIDER") or "").strip().lower()
+    if explicit in ("meta", "ycloud"):
+        return explicit
+    meta_cred = (os.environ.get("WHATSAPP_CLOUD_ACCESS_TOKEN") or "").strip()
+    ycloud_cred = (os.environ.get("YCLOUD_API_KEY") or "").strip()
+    if ycloud_cred and not meta_cred:
+        return "ycloud"
+    return "meta"
+
+
 def preflight() -> Dict[str, Any]:
-    """Local-only check that bearer credential and phone_number_id exist before approval."""
+    """Local-only check that credentials and sender id exist before approval."""
+    provider = _select_provider()
+    if provider == "ycloud":
+        ycred = (os.environ.get("YCLOUD_API_KEY") or "").strip()
+        from_digits = normalize_recipient_digits(os.environ.get("YCLOUD_WHATSAPP_FROM") or "")
+        if not ycred:
+            return {"ok": False, "stage": "missing_access_credential"}
+        if from_digits is None:
+            return {"ok": False, "stage": "invalid_phone_number_id"}
+        return {
+            "ok": True,
+            "stage": "ok",
+            "provider": "ycloud",
+            "phone_number_id": from_digits,
+        }
     bearer = (os.environ.get("WHATSAPP_CLOUD_ACCESS_TOKEN") or "").strip()
     phone_id = (os.environ.get("WHATSAPP_CLOUD_PHONE_NUMBER_ID") or "").strip()
     if not bearer:
         return {"ok": False, "stage": "missing_access_credential"}
     if not _PHONE_ID_RE.match(phone_id):
         return {"ok": False, "stage": "invalid_phone_number_id"}
-    return {"ok": True, "stage": "ok", "phone_number_id": phone_id}
+    return {"ok": True, "stage": "ok", "provider": "meta", "phone_number_id": phone_id}
 
 
 def evaluate_outbound_approval(
@@ -435,23 +587,41 @@ def send_reply(
             "idempotency_key": outbound_idem,
         }
 
-    bearer = (os.environ.get("WHATSAPP_CLOUD_ACCESS_TOKEN") or "").strip()
-    url = f"{GRAPH_API_BASE}/{int(phone_id)}/messages"
-    body = {
-        "messaging_product": "whatsapp",
-        "recipient_type": "individual",
-        "to": recipient,
-        "context": {"message_id": reply_to_wamid},
-        "type": "text",
-        "text": {"preview_url": False, "body": cleaned_msg},
-    }
-    res = _transport("POST", url, body, bearer)
-    if res.stage != "ok":
-        return {"ok": False, "stage": res.stage, "status": res.status}
-    if not isinstance(res.data, dict) or not isinstance(res.data.get("messages"), list):
-        return {"ok": False, "stage": "shape_invalid", "status": res.status}
-    first = res.data["messages"][0] if res.data["messages"] else {}
-    outbound_id = str(first.get("id") or "") if isinstance(first, dict) else ""
+    provider = str(pre.get("provider") or "meta")
+    if provider == "ycloud":
+        ycred = (os.environ.get("YCLOUD_API_KEY") or "").strip()
+        url = f"{YCLOUD_API_BASE}/whatsapp/messages/sendDirectly"
+        body: Dict[str, Any] = {
+            "from": "+" + str(phone_id),
+            "to": "+" + recipient,
+            "type": "text",
+            "context": {"message_id": reply_to_wamid},
+            "text": {"preview_url": False, "body": cleaned_msg},
+        }
+        res = _transport("POST", url, body, ycred)
+        if res.stage != "ok":
+            return {"ok": False, "stage": res.stage, "status": res.status}
+        if not isinstance(res.data, dict):
+            return {"ok": False, "stage": "shape_invalid", "status": res.status}
+        outbound_id = str(res.data.get("id") or res.data.get("wamid") or "")
+    else:
+        bearer = (os.environ.get("WHATSAPP_CLOUD_ACCESS_TOKEN") or "").strip()
+        url = f"{GRAPH_API_BASE}/{int(phone_id)}/messages"
+        body = {
+            "messaging_product": "whatsapp",
+            "recipient_type": "individual",
+            "to": recipient,
+            "context": {"message_id": reply_to_wamid},
+            "type": "text",
+            "text": {"preview_url": False, "body": cleaned_msg},
+        }
+        res = _transport("POST", url, body, bearer)
+        if res.stage != "ok":
+            return {"ok": False, "stage": res.stage, "status": res.status}
+        if not isinstance(res.data, dict) or not isinstance(res.data.get("messages"), list):
+            return {"ok": False, "stage": "shape_invalid", "status": res.status}
+        first = res.data["messages"][0] if res.data["messages"] else {}
+        outbound_id = str(first.get("id") or "") if isinstance(first, dict) else ""
     if not outbound_id:
         return {"ok": False, "stage": "shape_invalid", "status": res.status}
     if sent_effect_keys is not None:
@@ -522,6 +692,7 @@ _SECURITY_TAMPER_STAGES = frozenset(
         "invalid_signature",
         "malformed_signature",
         "missing_signature",
+        "signature_timestamp_expired",
         "payload_hash_mismatch",
         "challenge_mismatch",
         "invalid_challenge",
@@ -579,6 +750,7 @@ __all__ = [
     "MESSAGE_MAX_CHARS",
     "SERVICE_WINDOW_SECONDS",
     "WhatsAppCloudSendError",
+    "YCLOUD_API_BASE",
     "classify_audit_stage",
     "evaluate_outbound_approval",
     "is_within_free_service_window",
@@ -587,7 +759,9 @@ __all__ = [
     "parse_inbound_events",
     "preflight",
     "preflight_reply_payload",
+    "resolve_webhook_binding",
     "send_reply",
     "verify_hub_signature",
     "verify_webhook_challenge",
+    "verify_ycloud_signature",
 ]

@@ -549,6 +549,120 @@ class WhatsAppCloudTests(unittest.TestCase):
         )
         self.assertEqual(wc.classify_audit_stage("http_error"), "protocol_or_transport")
 
+    def test_ycloud_v2_webhook_signature_inbound_and_send_directly_zero_cost(self) -> None:
+        """YCloud v2 (`cela`) + AI2027_WHATSAPP_WEBHOOK full $0 24h-window flow."""
+        saved_env = dict(os.environ)
+        saved_transport = wc._transport
+        fake = FakeCloudTransport(
+            wc.CloudTransportResult(
+                "ok",
+                200,
+                {"id": "yim_out_2027_0001", "status": "accepted"},
+            )
+        )
+        try:
+            for k in list(os.environ):
+                if k.startswith(("WHATSAPP_", "YCLOUD_", "AI2027_WHATSAPP_")):
+                    os.environ.pop(k, None)
+
+            # 1. AI2027_WHATSAPP_WEBHOOK mode classification without leaking value
+            self.assertEqual(
+                wc.resolve_webhook_binding(),
+                {"configured": False, "mode": "absent"},
+            )
+            os.environ["AI2027_WHATSAPP_WEBHOOK"] = "http://insecure.example/webhook"
+            self.assertEqual(
+                wc.resolve_webhook_binding(),
+                {"configured": False, "mode": "insecure_http_refused"},
+            )
+            os.environ["AI2027_WHATSAPP_WEBHOOK"] = "https://agent.example/v1/whatsapp/webhook"
+            self.assertEqual(
+                wc.resolve_webhook_binding(),
+                {"configured": True, "mode": "endpoint_url"},
+            )
+            shared_hook_secret = "whsec_ycloud_cela_2027_fixture"
+            os.environ["AI2027_WHATSAPP_WEBHOOK"] = shared_hook_secret
+            self.assertEqual(
+                wc.resolve_webhook_binding(),
+                {"configured": True, "mode": "signing_secret"},
+            )
+
+            # 2. YCloud-Signature: t=<unix>,s=<hmac_sha256(secret, f"{t}.{raw_body}")>
+            ycloud_event = {
+                "id": "evt_ycloud_01",
+                "type": "whatsapp.inbound_message.received",
+                "apiVersion": "v2",
+                "whatsappInboundMessage": {
+                    "id": "yim_in_2027_0001",
+                    "from": "+201012345678",
+                    "to": "+15550109999",
+                    "sendTime": "2026-11-28T15:00:00.000Z",
+                    "type": "text",
+                    "text": {"body": "هل فستان السهرة متاح اليوم؟"},
+                },
+            }
+            raw_body = json.dumps(ycloud_event, ensure_ascii=False).encode("utf-8")
+            event_ts = 1795878000  # 2026-11-28T15:00:00Z
+            sig_hex = hmac.new(
+                shared_hook_secret.encode("utf-8"),
+                (f"{event_ts}.").encode("utf-8") + raw_body,
+                hashlib.sha256,
+            ).hexdigest()
+            sig_header = f"t={event_ts},s={sig_hex}"
+
+            self.assertEqual(
+                wc.verify_ycloud_signature(raw_body, sig_header, now_epoch_s=event_ts + 30),
+                (True, "ok"),
+            )
+            self.assertEqual(
+                wc.verify_ycloud_signature(raw_body, sig_header, now_epoch_s=event_ts + 600),
+                (False, "signature_timestamp_expired"),
+            )
+            self.assertEqual(
+                wc.classify_audit_stage("signature_timestamp_expired"),
+                "security_tamper",
+            )
+
+            # 3. Parse YCloud inbound event & enforce 24h free customer-care window
+            events = wc.parse_inbound_events(ycloud_event, now_epoch_s=event_ts + 60)
+            self.assertEqual(len(events), 1)
+            self.assertEqual(events[0].stage, "accepted_text")
+            self.assertEqual(events[0].wamid, "yim_in_2027_0001")
+            self.assertEqual(events[0].sender_wa_id, "201012345678")
+
+            # 4. Auto-select YCloud provider when YCLOUD_API_KEY + YCLOUD_WHATSAPP_FROM are set
+            os.environ["YCLOUD_API_KEY"] = "yc_fixture_secret_key_never_logged"
+            os.environ["YCLOUD_WHATSAPP_FROM"] = "+15550109999"
+            wc._transport = fake
+            decision = wc.evaluate_outbound_approval(
+                recipient_wa_id="201012345678",
+                reply_to_wamid="yim_in_2027_0001",
+                granted=True,
+            )
+            sent = wc.send_reply(
+                recipient_phone="01012345678",
+                message_text="نعم، الفستان متاح في أتيليه Celia اليوم.",
+                inbound_timestamp_s=events[0].timestamp_s,
+                reply_to_wamid=events[0].wamid,
+                approval=decision,
+                now_epoch_s=event_ts + 120,
+            )
+            self.assertTrue(sent["ok"])
+            self.assertEqual(sent["outbound_message_id"], "yim_out_2027_0001")
+            self.assertEqual(len(fake.calls), 1)
+            self.assertEqual(
+                fake.calls[0]["url"],
+                "https://api.ycloud.com/v2/whatsapp/messages/sendDirectly",
+            )
+            self.assertEqual(fake.calls[0]["body"]["type"], "text")
+            self.assertEqual(fake.calls[0]["body"]["from"], "+15550109999")
+            self.assertEqual(fake.calls[0]["body"]["to"], "+201012345678")
+            self.assertNotIn("yc_fixture_secret_key_never_logged", json.dumps(sent))
+        finally:
+            wc._transport = saved_transport
+            os.environ.clear()
+            os.environ.update(saved_env)
+
 
 if __name__ == "__main__":
     unittest.main()

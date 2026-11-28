@@ -62,10 +62,10 @@ class _MemorySheetView:
 
 
 def _scrub_live_messaging_env() -> None:
-    """Remove any live WhatsApp/Meta/WAAPI env vars inside the rehearsal scope."""
+    """Remove any live WhatsApp/Meta/YCloud/WAAPI env vars inside the rehearsal scope."""
     for name in list(os.environ):
         upper = name.upper()
-        if upper.startswith(("WHATSAPP_", "WAAPI_", "META_")):
+        if upper.startswith(("WHATSAPP_", "WAAPI_", "META_", "YCLOUD_", "AI2027_WHATSAPP_")):
             os.environ.pop(name, None)
 
 
