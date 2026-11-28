@@ -154,6 +154,7 @@ jobs:
           tests.test_ed25519
           tests.test_passkey_interop
           tests.test_waapi_connector
+          tests.test_whatsapp_cloud
           -v
 
       # ADR-0006 worker: the pure signing core runs on node builtins only —

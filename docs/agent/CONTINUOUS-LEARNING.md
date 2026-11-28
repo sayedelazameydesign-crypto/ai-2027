@@ -48,6 +48,9 @@ decision the system can explain afterwards.
 | `learning/experience_store.py` | Durable, evidence-gated ledger of verified experiences (SQLite). | `ExperienceStore` / `ExperienceRecord` |
 | `learning/feedback_engine.py` | Apply user accept/reject and test verdicts to **verified** episodes only. | `FeedbackEngine` |
 | `evaluation/benchmark_suite.py` | Run a fixed case set, score it, persist a baseline, detect regression. | `BenchmarkSuite` / `BenchmarkReport` |
+| `reflexion.py` + `reflexion_contracts.py` | Bounded multi-trial verbal reinforcement (`arXiv:2303.11366v4`) under `MAX_SPEND=0`. | `GovernedReflexionLoop` |
+| `reflective_graph_memory.py` | Cognee-style relational graph + RMM retrospective utility reranking over SQLite. | `ReflectiveGraphMemory` |
+| `reflective_tree.py` | ReTreVal-style bounded reflective tree search (`max_branching<=3`, `max_depth<=3`, `max_expansions<=9`). | `BoundedReflectiveTreeSearch` |
 | `reflexion.py` + `reflexion_contracts.py` | Bounded verbal reinforcement loop (`arXiv:2303.11366v4`): Actor, Evaluator, Self-Reflection over a sliding window `Omega`, AST self-test filtering, and false-positive interception under `POL-BOUNDED-REFLEXION-CAP`. | `GovernedReflexionLoop` / `ReflexionPolicy` |
 
 The modules are deliberately separate so each rule can be enforced in exactly
@@ -199,4 +202,40 @@ with Verbal Reinforcement Learning*, to the platform's hard governance gates:
   `ExperienceRecord(verified=False)` and a SHA-256 `audit_chain` under
   `POL-BOUNDED-REFLEXION-CAP`, so `ExperienceStore.record(...)` refuses them into
   `refusals` and durable memory is never polluted by failed trials.
+
+## 10. Relational & Reflective Utility Memory (`Cognee + RMM`)
+
+`ReflectiveGraphMemory` (`python-2027/src/ai2027_protocol/reflective_graph_memory.py`)
+extends `ExperienceStore` with standard-library SQLite relational and utility
+tables (`memory_nodes`, `memory_edges`, `episode_node_links`,
+`edge_fingerprint_links`, `retrieval_utility`):
+
+- **Strict admissibility gate:** `index_episode(...)` delegates admission to
+  `ExperienceStore.record(...)` and refuses unverified or non-zero-cost episodes
+  without creating graph nodes or edges.
+- **Fingerprint-idempotent indexing:** nodes and edges are linked to
+  `output_fingerprint` via composite primary keys so re-indexing the same
+  verified artifact never inflates `fingerprint_count` or edge `weight`.
+- **Retrospective utility reranking (RMM):** `record_retrieval_outcome(...)`
+  tracks whether retrieved episodes contributed to an independently verified
+  downstream task, and `search(..., rerank_by_utility=True)` re-ranks candidates
+  with Laplace-smoothed Beta(1, 1) utility `(helpful + 1) / (retrieved + 2)`
+  without deleting historical audit records.
+
+## 11. Bounded Reflective Tree Search (`ReTreVal` / `ToT + Reflexion`)
+
+`BoundedReflectiveTreeSearch` (`python-2027/src/ai2027_protocol/reflective_tree.py`)
+addresses linear ReAct trajectory traps under `POL-BOUNDED-REFLECTIVE-TREE`:
+
+- **Hard combinatorial caps:** `TreeSearchPolicy` enforces `max_branching <= 3`,
+  `max_depth <= 3`, `max_expansions <= 9`, and `MAX_SPEND = 0` via
+  `MetaRouter.assert_free_first()` before every branch expansion.
+- **Cross-branch verbal reflection:** `VerbalReflection` cues emitted from failed
+  branches are passed into subsequent sibling and child expansions so sibling
+  paths avoid repeating prior failure modes.
+- **Independent verification & hash chain:** non-independent passing scores are
+  cross-checked by `meta_router.verifier`, every expansion is linked in a
+  SHA-256 `TreeAuditEntry` chain (`verify_tree_audit_chain`), and only an
+  independently verified winning path emits `ExperienceRecord(verified=True)`.
+
 
