@@ -12,6 +12,7 @@ import io
 import json
 import os
 import tempfile
+import types
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -721,3 +722,21 @@ class TestRedactionCoversModelKeys(unittest.TestCase):
             out = ci.redact("failed with plainvalue-groq-123456 and or-plain-987654321")
         self.assertNotIn("plainvalue-groq-123456", out)
         self.assertNotIn("or-plain-987654321", out)
+
+
+class TestAssistantLogAllowlist(unittest.TestCase):
+    """Only allowlisted constants reach the log (CodeQL clear-text logging)."""
+
+    def test_unknown_values_never_printed(self):
+        reply = types.SimpleNamespace(
+            stage="replied", provider="chat-1234567890-secret", billing_tier="free_tier",
+            cost_usd=0.0, chunks_sent=3)
+        line = ci._reply_summary(reply)
+        self.assertEqual(line, "provider=other tier=free_tier cost_usd=0.00 chunks=2+")
+        self.assertEqual(ci._label("weird private text", ci.ASSISTANT_STAGES), "other")
+        self.assertEqual(ci._label(None, ci.ASSISTANT_STAGES), "-")
+
+    def test_enum_values_are_recognised(self):
+        enum_like = types.SimpleNamespace(value="groq")
+        self.assertEqual(ci._label(enum_like, ci.ASSISTANT_PROVIDERS), "groq")
+        self.assertIn("cost_usd=NONZERO", ci._reply_summary(types.SimpleNamespace(cost_usd=0.5)))

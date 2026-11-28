@@ -197,6 +197,36 @@ class TelegramAssistantBridge:
         return self._count(stage)
 
 
+# Log labels come only from these fixed tuples (CodeQL py/clear-text-logging):
+# the reply object is derived from the owner's message and chat id, so its
+# fields are never printed directly — only the matching constant, or "other".
+ASSISTANT_STAGES = ("replied", "no_provider_available", "duplicate_message",
+                    "invalid_message", "not_configured", "paid_not_allowed",
+                    "send_failed")
+ASSISTANT_PROVIDERS = ("ollama", "gemini", "nvidia", "groq", "openrouter",
+                       "omnirouters", "qwen", "deterministic")
+ASSISTANT_TIERS = ("local", "free_tier", "unknown_cost", "paid")
+
+
+def _label(value: Any, allowed: Tuple[str, ...]) -> str:
+    """Return the constant in ``allowed`` equal to ``value`` (enum-aware), else 'other'."""
+    text = str(getattr(value, "value", value) or "")
+    for item in allowed:
+        if item == text:
+            return item
+    return "other" if text else "-"
+
+
+def _reply_summary(reply: Any) -> str:
+    """One log line built from allowlisted constants and $0 / chunk buckets."""
+    cost = "0.00" if not float(getattr(reply, "cost_usd", 0.0) or 0.0) else "NONZERO"
+    chunks = int(getattr(reply, "chunks_sent", 0) or 0)
+    return "provider=%s tier=%s cost_usd=%s chunks=%s" % (
+        _label(getattr(reply, "provider", None), ASSISTANT_PROVIDERS),
+        _label(getattr(reply, "billing_tier", None), ASSISTANT_TIERS),
+        cost, "0" if chunks <= 0 else ("1" if chunks == 1 else "2+"))
+
+
 def _import_assistant_module() -> Any:
     """Import the assistant from the checkout (``pip install -e ./python-2027``)."""
     src = str(ROOT / "python-2027" / "src")
@@ -230,10 +260,9 @@ def build_assistant_reply_fn(history: Any = None) -> Tuple[Callable[[Dict[str, A
             sender=ca.TelegramReplySender(chat_id=inbound.chat_id),
             store=store)
         reply = asyncio.run(assistant.handle_inbound(inbound))
-        print("assistant stage=%s provider=%s tier=%s cost_usd=%.2f chunks=%d"
-              % (reply.stage, reply.provider or "-", reply.billing_tier,
-                 reply.cost_usd, reply.chunks_sent))
-        return str(reply.stage)
+        stage = _label(reply.stage, ASSISTANT_STAGES)
+        print("assistant stage=%s %s" % (stage, _reply_summary(reply)))
+        return stage
 
     return reply_fn, store.snapshot
 
@@ -356,14 +385,11 @@ def mode_assistant() -> int:
         channel=ca.Channel.TELEGRAM, chat_id=chat_id, sender_id=chat_id,
         text=probe[:2000], message_id="probe-%d" % os.getpid())
     reply = asyncio.run(assistant.handle_inbound(inbound))
-    print("stage=assistant-probe result=%s provider=%s model=%s tier=%s"
-          " cost_usd=%.2f chunks=%d spent_usd=%.2f"
-          % (reply.stage, reply.provider or "-", reply.model or "-",
-             reply.billing_tier, reply.cost_usd, reply.chunks_sent,
-             reply.budget.spent_usd if reply.budget else 0.0))
-    if reply.stage == "replied":
+    result = _label(reply.stage, ASSISTANT_STAGES)
+    print("stage=assistant-probe result=%s %s" % (result, _reply_summary(reply)))
+    if result == "replied":
         return 0
-    if reply.stage == "no_provider_available":
+    if result == "no_provider_available":
         print("::warning title=assistant probe::no free provider answered —"
               " the $0 Arabic notice was sent instead. Add GEMINI_API_KEY /"
               " GROQ_API_KEY / OPENROUTER_API_KEY / NVIDIA_API_KEY secrets.")
