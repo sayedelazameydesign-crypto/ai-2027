@@ -39,6 +39,15 @@ Deno.test("YCloud v2 signature: ok / expired / tampered / malformed match Python
   eq(await verifyYcloudSignature(b, `t=${y.ts},s=${y.sig}`, null, y.ts), [false, "missing_signing_config"]);
 });
 
+Deno.test("YCloud rotation headers (several s=, one t=) match Python case by case", async () => {
+  const y = V.ycloud, s = enc.encode(y.secret), b = enc.encode(y.body);
+  const cases = Object.entries(y.headers as Record<string, [string, [boolean, string]]>);
+  if (cases.length < 11) throw new Error(`expected >= 11 header vectors, got ${cases.length}`);
+  for (const [name, [header, expected]] of cases) {
+    eq(await verifyYcloudSignature(b, header, s, y.ts), expected, name);
+  }
+});
+
 Deno.test("Meta X-Hub-Signature-256 matches Python", async () => {
   eq(await verifyHubSignature(enc.encode(V.ycloud.body), `sha256=${V.hub.sig}`, enc.encode(V.ycloud.secret)), V.hub.ok);
 });

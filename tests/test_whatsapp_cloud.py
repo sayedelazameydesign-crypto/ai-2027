@@ -664,5 +664,46 @@ class WhatsAppCloudTests(unittest.TestCase):
             os.environ.update(saved_env)
 
 
+class YCloudSignatureHeaderTests(unittest.TestCase):
+    """YCloud docs: one ``t``, one or more ``s`` (secret rotation) — ANY ``s`` may match."""
+
+    TS = 1764320000
+    BODY = b'{"id":"evt_rot","type":"whatsapp.inbound_message.received"}'
+
+    def _sig(self, secret: bytes = FIXTURE_SIGNING) -> str:
+        return hmac.new(secret, f"{self.TS}.".encode() + self.BODY, hashlib.sha256).hexdigest()
+
+    def _verify(self, header: str):
+        return wc.verify_ycloud_signature(self.BODY, header, FIXTURE_SIGNING, now_epoch_s=self.TS)
+
+    def test_rotation_accepts_matching_signature_in_any_position(self) -> None:
+        good, old = self._sig(), self._sig(b"fixture-previous-secret")
+        self.assertEqual(self._verify(f"t={self.TS},s={good},s={old}"), (True, "ok"))
+        self.assertEqual(self._verify(f"t={self.TS},s={old},s={good}"), (True, "ok"))
+        self.assertEqual(self._verify(f"t={self.TS},s=zz,s={good}"), (True, "ok"))
+
+    def test_rotation_rejects_when_no_signature_matches(self) -> None:
+        old = self._sig(b"fixture-previous-secret")
+        self.assertEqual(self._verify(f"t={self.TS},s={old},s={'cd' * 32}"), (False, "invalid_signature"))
+
+    def test_duplicate_or_missing_timestamp_is_malformed(self) -> None:
+        good = self._sig()
+        self.assertEqual(self._verify(f"t={self.TS},t={self.TS},s={good}"), (False, "malformed_signature"))
+        self.assertEqual(self._verify(f"t={self.TS - 1},t={self.TS},s={good}"), (False, "malformed_signature"))
+        self.assertEqual(self._verify(f"s={good}"), (False, "malformed_signature"))
+        self.assertEqual(self._verify(f"t={self.TS}"), (False, "malformed_signature"))
+
+    def test_non_ascii_digits_in_timestamp_are_malformed(self) -> None:
+        arabic = str(self.TS).translate(str.maketrans("0123456789", "٠١٢٣٤٥٦٧٨٩"))
+        self.assertTrue(arabic.isdigit())  # the trap the old parser fell into
+        self.assertEqual(self._verify(f"t={arabic},s={self._sig()}"), (False, "malformed_signature"))
+
+    def test_signature_count_is_capped(self) -> None:
+        good, other = self._sig(), "ab" * 32
+        self.assertEqual(self._verify(f"t={self.TS}," + ",".join([f"s={other}"] * 7 + [f"s={good}"])), (True, "ok"))
+        self.assertEqual(self._verify(f"t={self.TS}," + ",".join([f"s={other}"] * 8 + [f"s={good}"])),
+                         (False, "malformed_signature"))
+
+
 if __name__ == "__main__":
     unittest.main()

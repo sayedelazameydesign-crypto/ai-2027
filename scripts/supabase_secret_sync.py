@@ -20,6 +20,12 @@ masks them in logs. Stdlib only.
 
     python3 scripts/supabase_secret_sync.py              # in the workflow
     python3 scripts/supabase_secret_sync.py --dry-run    # presence report only
+    python3 scripts/supabase_secret_sync.py --ycloud-api # take YCLOUD_WEBHOOK_SECRET from YCloud
+
+``--ycloud-api`` (needs the ``YCLOUD_API_KEY`` Actions secret) finds the YCloud
+webhook endpoint whose URL is exactly ``WEBHOOK_URL`` — or creates it, subscribed
+to inbound messages — and imports THAT endpoint's signing secret, so nobody ever
+copies it by hand. Exactly one endpoint may point at us; extras are a hard fail.
 """
 from __future__ import annotations
 
@@ -51,6 +57,10 @@ NAMES = (
 )
 PROBE_BODY = b'{"object":"ai2027.secret-sync.probe"}'  # parses to zero events: nothing staged
 PROBE_ATTEMPTS = 6
+WEBHOOK_URL = f"{BASE}/webhook"
+YCLOUD_API = "https://api.ycloud.com/v2"
+YCLOUD_EVENTS = ("whatsapp.inbound_message.received", "whatsapp.message.updated")
+YCLOUD_DESCRIPTION = "ai-2027 · Supabase Edge (free 24/7) · managed by supabase-secret-sync.yml"
 PROBE_WAIT_S = 15  # edge isolates cache Vault for <=60 s
 
 Http = Callable[[urllib.request.Request], tuple[int, bytes]]
@@ -100,6 +110,83 @@ def _post(url: str, body: bytes, headers: dict[str, str], http: Http) -> tuple[i
                                        headers={"Content-Type": "application/json", **headers}))
 
 
+class StepFailed(Exception):
+    """A failure whose message is safe to print: it never carries a secret or key."""
+
+
+def _ycloud(method: str, path: str, api_key: str, http: Http, body: dict | None = None) -> tuple[int, dict]:
+    data = None if body is None else json.dumps(body).encode()
+    req = urllib.request.Request(f"{YCLOUD_API}{path}", data=data, method=method,
+                                 headers={"X-API-Key": api_key, "Accept": "application/json",
+                                          **({"Content-Type": "application/json"} if data else {})})
+    code, raw = http(req)
+    try:
+        parsed = json.loads(raw or b"{}")
+    except ValueError:
+        parsed = {}
+    return code, parsed if isinstance(parsed, dict) else {}
+
+
+def _ycloud_error(what: str, code: int, payload: dict) -> StepFailed:
+    err = payload.get("error") if isinstance(payload.get("error"), dict) else {}
+    hint = {401: " — YCLOUD_API_KEY is wrong or revoked", 403: " — the API key lacks webhook permission"}.get(code, "")
+    return StepFailed(f"YCloud {what}: HTTP {code} {str(err.get('code') or '')[:40]}{hint}".rstrip())
+
+
+def mask(value: str, env: Mapping[str, str]) -> None:
+    """Register a value with the Actions log masker before anything else can print it."""
+    if env.get("GITHUB_ACTIONS") == "true":
+        print(f"::add-mask::{value}", flush=True)
+
+
+def ycloud_endpoint_secret(env: Mapping[str, str], http: Http) -> tuple[str, list[str]]:
+    """(signing secret, safe report lines). Finds or creates THE endpoint for WEBHOOK_URL."""
+    api_key = (env.get("YCLOUD_API_KEY") or "").strip()
+    if not api_key:
+        raise StepFailed("--ycloud-api needs the YCLOUD_API_KEY Actions secret — not set")
+    mask(api_key, env)
+    code, page = _ycloud("GET", "/webhookEndpoints?limit=100", api_key, http)
+    if code != 200:
+        raise _ycloud_error("list endpoints", code, page)
+    items = [e for e in page.get("items") or [] if isinstance(e, dict)]
+    ours = [e for e in items if str(e.get("url") or "").rstrip("/") == WEBHOOK_URL]
+    if len(ours) > 1:
+        ids = ", ".join(f"`{str(e.get('id'))[:40]}`" for e in ours)
+        raise StepFailed(f"{len(ours)} YCloud endpoints point at our URL ({ids}); each has its own "
+                         "secret — delete the extras in YCloud → Developers → Webhook, keep one")
+    if ours:
+        ep, action = ours[0], "existing endpoint reused"
+    else:
+        code, ep = _ycloud("POST", "/webhookEndpoints", api_key, http,
+                           {"url": WEBHOOK_URL, "enabledEvents": list(YCLOUD_EVENTS),
+                            "description": YCLOUD_DESCRIPTION})
+        if code not in (200, 201):
+            raise _ycloud_error("create endpoint", code, ep)
+        action = "endpoint created"
+    ep_id = str(ep.get("id") or "")
+    secret = str(ep.get("secret") or "").strip()
+    if not secret and ep_id:
+        code, full = _ycloud("GET", f"/webhookEndpoints/{urllib.parse.quote(ep_id, safe='')}", api_key, http)
+        secret = str(full.get("secret") or "").strip() if code == 200 else ""
+        ep = full if code == 200 else ep
+    if secret:
+        mask(secret, env)
+    events = [str(x) for x in ep.get("enabledEvents") or []]
+    status = str(ep.get("status") or "unknown")
+    report = [f"YCloud: {action} `{ep_id[:40]}` · status `{status[:20]}` · {len(events)} event(s)"]
+    if not secret:
+        raise StepFailed(f"YCloud endpoint `{ep_id[:40]}` returned no signing secret")
+    if not 8 <= len(secret) <= 4096:
+        raise StepFailed(f"YCloud signing secret length {len(secret)} outside 8..4096")
+    if YCLOUD_EVENTS[0] not in events:
+        raise StepFailed(f"YCloud endpoint `{ep_id[:40]}` is not subscribed to `{YCLOUD_EVENTS[0]}` — "
+                         "enable it in YCloud → Developers → Webhook")
+    if status != "active":
+        report.append(f"**WARN** endpoint status is `{status[:20]}` — YCloud delivers only to `active`; "
+                      "re-enable it in YCloud → Developers → Webhook")
+    return secret, report
+
+
 def ycloud_probe(secret: str, http: Http, now: Callable[[], float] = time.time) -> tuple[int, int]:
     ts = str(int(now()))
     good = hmac.new(secret.encode(), ts.encode() + b"." + PROBE_BODY, hashlib.sha256).hexdigest()
@@ -132,13 +219,32 @@ def retry(fn: Callable[[], bool], sleep: Callable[[float], None]) -> bool:
 
 
 def run(env: Mapping[str, str], http: Http = default_http, sleep: Callable[[float], None] = time.sleep,
-        dry_run: bool = False) -> tuple[int, list[str]]:
-    lines = ["| name | GitHub | Vault digest | live probe |", "|---|---|---|---|"]
+        dry_run: bool = False, ycloud_api: bool = False) -> tuple[int, list[str]]:
+    lines = ["| name | source | Vault digest | live probe |", "|---|---|---|---|"]
     values, status = collect(env)
     rows = {n: [status[n], "—", "—"] for n in NAMES}
+    notes: list[str] = []
 
     def table() -> list[str]:
-        return lines + [f"| `{n}` | {r[0]} | {r[1]} | {r[2]} |" for n, r in rows.items()]
+        return lines + [f"| `{n}` | {r[0]} | {r[1]} | {r[2]} |" for n, r in rows.items()] + (
+            ["", *notes] if notes else [])
+
+    if ycloud_api:
+        if dry_run:
+            has_key = bool((env.get("YCLOUD_API_KEY") or "").strip())
+            rows["YCLOUD_WEBHOOK_SECRET"][0] = ("YCloud API (key present)" if has_key
+                                                else "YCloud API — **YCLOUD_API_KEY not set**")
+            return (0 if has_key else 1), table() + ["", "dry run: YCloud API not called, nothing imported."]
+        try:
+            secret, notes = ycloud_endpoint_secret(env, http)
+        except StepFailed as exc:
+            return 1, table() + ["", f"**FAIL** {exc}"]
+        github_value = values.get("YCLOUD_WEBHOOK_SECRET")
+        values["YCLOUD_WEBHOOK_SECRET"] = secret
+        rows["YCLOUD_WEBHOOK_SECRET"][0] = "YCloud API" + (
+            "" if github_value is None else
+            " (GitHub copy identical)" if hmac.compare_digest(github_value, secret) else
+            " (**GitHub copy is stale** — YCloud value used)")
 
     if not values:
         return 1, table() + ["", "**FAIL** none of the four names holds a usable value — nothing imported."]
@@ -189,9 +295,13 @@ def run(env: Mapping[str, str], http: Http = default_http, sleep: Callable[[floa
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--dry-run", action="store_true", help="presence report only; no network")
+    ap.add_argument("--ycloud-api", action="store_true",
+                    help="find/create the YCloud endpoint and import its signing secret (needs YCLOUD_API_KEY)")
     args = ap.parse_args(argv)
     try:
-        rc, out = run(os.environ, dry_run=args.dry_run)
+        rc, out = run(os.environ, dry_run=args.dry_run, ycloud_api=args.ycloud_api)
+    except StepFailed as exc:  # composed by us from non-secret parts only
+        rc, out = 1, [f"**FAIL** {exc}"]
     except Exception as exc:  # report the class only: messages may carry URLs/tokens
         rc, out = 1, [f"**FAIL** {type(exc).__name__}"]
     text = "\n".join(["## Webhook secrets → Supabase Vault", "", *out])
