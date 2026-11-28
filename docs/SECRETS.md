@@ -90,6 +90,18 @@
 | `AI2027_ASSISTANT_ENABLED` | **مفتاح التشغيل** (`docs/CHANNEL-ASSISTANT.md` §11). في GitHub يُضبط **Repository Variable** (`Settings → Secrets and variables → Actions → Variables`) لا Secret. `1` ⇒ دورة `approval-bot.yml` كل 5 دقائق ترد على نصوص المالك في Telegram (`scripts/approval_bot_ci.py`)، و`scripts/free_stack_runner.py` يصيغ مسودات واتساب بنموذج مجاني تبقى `pending_approval` | فارغ/`0` ⇒ السلوك القديم حرفياً، لا يُثبَّت `python-2027` ولا يُستدعى أي نموذج |
 | `AI2027_ASSISTANT_PROBE_TEXT` | `scripts/approval_bot_ci.py --mode assistant` — نص رسالة الاختبار الحي (مدخل `probe_text` في التشغيل اليدوي) | فارغ ⇒ رسالة تعريفية ثابتة |
 
+### أسرار Supabase Edge — سيليا الفورية على Telegram (`supabase/functions/celia-telegram`)
+
+تُضبط في **Supabase → Project Settings → Edge Functions → Secrets** (لا في GitHub). لا يمرّرها أي workflow؛ الدالة تقرأها من `Deno.env` فقط، ولا تطبع أي قيمة أو نص رسالة (السجل = تسميات مرحلة من قائمة ثابتة + اسم المزوّد).
+
+| السرّ | ما يفعله | عند الغياب |
+|---|---|---|
+| `CELIA_TELEGRAM_TOKEN` | توكن **بوت مستقل** لسيليا (BotFather → /newbot). يُربط بـwebhook عبر `GET …/celia-telegram/setup`، ومنه يُشتقّ سرّ الـwebhook: `sha256("celia-telegram-webhook:"+token)` ويُقارن بزمن ثابت مع ترويسة `X-Telegram-Bot-Api-Secret-Token`. **لا تستعمل توكن `PA_APPROVAL_BOT_TOKEN`**: تفعيل webhook يوقف `getUpdates` الذي تعتمد عليه بوابة الموافقات | كل طلب webhook ⇒ `503`، و`/setup` يرفض |
+| `CELIA_OWNER_IDS` | معرّفات Telegram الرقمية المسموح لها (مفصولة بفواصل). غير المدرجين لا يتلقّون شيئاً؛ المجموعات والرسائل غير النصية تُتجاهل | قبل ضبطه: المحادثة الخاصة تتلقى معرّفها فقط (للإعداد)، بلا نموذج ولا ذاكرة |
+| `GEMINI_API_KEY` · `GROQ_API_KEY` · `NVIDIA_API_KEY` · `OPENROUTER_API_KEY` | نسخ مستقلة من مفاتيح Free-Tier نفسها (الجدول أعلاه). الترتيب `CELIA_PROVIDER_ORDER` (افتراضي `gemini,groq,nvidia,openrouter`). Gemini بنماذج `flash` فقط؛ OpenRouter بـ`openrouter/free` أو `:free` فقط — غير ذلك يُرفض (تكلفة مجهولة = رفض) | المزوّد يُتخطّى؛ بلا أي مزوّد ⇒ ردّ سيليا الصادق «لا يتوفر نموذج مجاني الآن» |
+
+متغيّرات اختيارية (ليست أسراراً): `GEMINI_MODEL` · `GROQ_MODEL` · `NVIDIA_MODEL` · `OPENROUTER_MODEL` · `CELIA_PROVIDER_ORDER` · `CELIA_ANIMATION=0` (يوقف رسالة «التفكير» المتحركة ويُبقي «يكتب…»). `SUPABASE_URL` و`SUPABASE_SERVICE_ROLE_KEY` يوفّرهما Supabase تلقائياً؛ الجداول `celia_*` مغلقة أمام `anon`/`authenticated` (RLS + REVOKE).
+
 ### أسرار Cloudflare / R2 المعرَّفة وغير المستعملة بعد
 
 هذه الأسرار موجودة في `Settings → Secrets and variables → Actions` **ولا يقرأها أي workflow في المستودع حاليًا** — لا كود Python ولا Worker ولا سكربت نشر. وجودها لا يعني أن التخزين أو النشر إلى Cloudflare مدعوم.

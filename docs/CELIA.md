@@ -51,11 +51,24 @@
 | الهوية والشخصية | **PROVEN** (offline) | `tests/test_celia_persona.py` |
 | Telegram — محادثة | **PROVEN live** | تشغيل `mode=assistant`: `result=replied provider=gemini tier=free_tier cost_usd=0.00` |
 | Telegram — دائم | جاهز، ينتظر دمج #204 + `AI2027_ASSISTANT_ENABLED=1` | `docs/CHANNEL-ASSISTANT.md` §11 |
+| Telegram — **فوري + أنيميشن** (Supabase Edge) | **منشور** على `ziaedqqhvsmcwcmlbcpi` (`celia-telegram` v1، الجداول `celia_*`)، `healthz: store=true`؛ ينتظر `CELIA_TELEGRAM_TOKEN` | `supabase/functions/celia-telegram/index_test.ts` (23 اختبار) · §2.1 |
 | WhatsApp — مسودات | **PROVEN** offline (مسار VM) | `scripts/test_free_stack_assistant.py` |
 | WhatsApp — إرسال بعد الموافقة | **غير موجود** في أي مسار (VM أو Supabase) | — |
 | الذاكرة قصيرة المدى | آخر 8 دورات من المحادثة (ملف حالة البوت) | `channel_assistant_runtime.SnapshotConversationStore` |
 | الذاكرة الدائمة بإذنك | **PROVEN offline** (تنتظر أول أمر حي) | `test_celia_personal_memory.py` · `test_celia_brain.py` · `TestCeliaMemoryOverTelegram` |
 | الأوضاع الخمسة | **PROVEN offline** | `test_celia_persona.py` |
+
+### 2.1 الرد الفوري — `supabase/functions/celia-telegram`
+
+دورة GitHub كل 5 دقائق تعني تأخيراً من دقيقة إلى عشر. المسار الفوري: Telegram يستدعي دالة Supabase لحظة الإرسال (webhook)، والدالة ترد على Telegram فوراً وتكمل العمل في الخلفية (`EdgeRuntime.waitUntil`).
+
+**الأنيميشن أثناء التفكير:** تفاعل 👀 على رسالتك ← «يكتب…» ← رسالة «🧭 سيليا · مديرة المهام والمشروعات ●○○» تتحرك نقاطها ← يظهر الرد تدريجياً (▍) داخل نفس الرسالة ← النص النهائي. بعد الحفظ في الذاكرة ✍، وبعد الحذف 👌. شارة الرسالة تتغير حسب الوضع (🌿 🔎 💻 🧭 🎨).
+
+**نفس سيليا لا نسخة منها:** نصوص الشخصية والأوضاع والذاكرة مولَّدة من `python-2027` بـ`scripts/celia_edge_parity_vectors.py --write`، واختبارات Deno تثبت تطابق الـprompt حرفاً بحرف وأوامر الذاكرة وردودها وأرقامها مع Python؛ و`tests/test_celia_edge_sync.py` يفشل إذا عُدّلت الشخصية دون إعادة التوليد. الفرق الوحيد المقصود: الاسترجاع يستعمل تشابهاً معجمياً غير مُجزّأ (hash) بدل blake2b.
+
+**الذاكرة:** جدول `celia_memory` في Postgres (تبقى بعد إعادة التشغيل)، آخر 16 رسالة من `celia_turns` (يُحتفظ بـ40)، و`celia_updates` يمنع تكرار الرد عند إعادة Telegram المحاولة.
+
+**التشغيل (مرة واحدة):** بوت جديد من BotFather ← سرّ `CELIA_TELEGRAM_TOKEN` + مفتاح مجاني واحد على الأقل في Supabase ← افتح `https://ziaedqqhvsmcwcmlbcpi.supabase.co/functions/v1/celia-telegram/setup` ← أرسل /start للبوت فيرد بمعرّفك ← ضعه في `CELIA_OWNER_IDS`. الأسرار: `docs/SECRETS.md`.
 
 ### الذاكرة الدائمة — `celia_personal_memory.py` + `celia_brain.py`
 
