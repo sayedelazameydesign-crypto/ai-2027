@@ -69,6 +69,21 @@ def main() -> int:
     }
     yc_naive = json.loads(json.dumps(yc))
     yc_naive["whatsappInboundMessage"]["sendTime"] = "2026-11-28T09:00:00"
+    # Exact shape of a real YCloud delivery (docs.ycloud.com webhook examples):
+    # ``id`` is YCloud's 24-hex record id, the WhatsApp id is in ``wamid``.
+    yc_docs = {
+        "id": "evt_eEkn26qar3nOB8md", "type": "whatsapp.inbound_message.received",
+        "apiVersion": "v2", "createTime": "2026-11-28T09:00:00.000Z",
+        "whatsappInboundMessage": {
+            "id": "63f872f6741c165b4342a751", "wamid": "wamid.HBgNODi1MjAxMDEyMzQ1Njc4",
+            "wabaId": "WABA-ID", "from": "+201012345678", "fromUserId": "US.13491208655302741918",
+            "customerProfile": {"name": "Joe"}, "to": "+15550109999",
+            "sendTime": "2026-11-28T09:00:00.000Z", "type": "text", "text": {"body": "OK"},
+            "context": {"from": "447901614024", "id": "wamid.HBgNODr"},
+        },
+    }
+    yc_docs_no_wamid = json.loads(json.dumps(yc_docs))
+    del yc_docs_no_wamid["whatsappInboundMessage"]["wamid"]
     msg = lambda i, t, **kw: {"id": i, "from": "201012345678", "timestamp": t, **kw}  # noqa: E731
     meta = {
         "object": "whatsapp_business_account",
@@ -107,7 +122,8 @@ def main() -> int:
         },
         "window": {str(d): wc.is_within_free_service_window(NOW - d, now_epoch_s=NOW)
                    for d in [0, 86400, 86401, -300, -301]},
-        "events": {"ycloud": events(yc), "ycloud_naive": events(yc_naive), "meta": events(meta)},
+        "events": {"ycloud": events(yc), "ycloud_naive": events(yc_naive), "meta": events(meta),
+                   "ycloud_docs": events(yc_docs), "ycloud_docs_no_wamid": events(yc_docs_no_wamid)},
     }
     json.dump(vectors, sys.stdout, ensure_ascii=False, indent=1, sort_keys=True)
     sys.stdout.write("\n")

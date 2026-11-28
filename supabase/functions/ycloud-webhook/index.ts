@@ -256,7 +256,9 @@ export function parseInboundEvents(payload: unknown, nowS: number, seen = new Se
   if (payload["type"] === "whatsapp.inbound_message.received") {
     const y = payload["whatsappInboundMessage"];
     if (!isObj(y)) return [];
-    const wamid = String(y["id"] || y["wamid"] || "").trim();
+    // YCloud: `id` is YCloud's own 24-hex record id; the WhatsApp message id
+    // lives in `wamid`. Taking `id` first silently dropped every real event.
+    const wamid = String(y["wamid"] || y["id"] || "").trim();
     const sender = normalizeRecipientDigits(String(y["from"] ?? ""));
     const to = normalizeRecipientDigits(String(y["to"] ?? ""));
     const ts = parseIsoOrEpochS(y);
