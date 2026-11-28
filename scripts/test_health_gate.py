@@ -112,10 +112,43 @@ class TransientTests(unittest.TestCase):
 
 
 class FreshnessTests(unittest.TestCase):
-    def test_09_a_stale_beat_is_a_silent_outage_and_fails(self):
-        old = make_history(spacing_h=14.0)
-        res = hg.evaluate(make_status(), old, now=NOW)
+    def test_09_a_late_beat_that_passes_everything_is_a_visible_warning(self):
+        # Each beat boots its own servers in the runner: a 14h gap proves GitHub
+        # ran the schedule late, not that anything was down. Visible, not paged.
+        res = hg.evaluate(make_status(), make_history(spacing_h=14.0), now=NOW)
+        freshness = next(c for c in res["checks"] if c["id"] == "beat_freshness")
+        self.assertFalse(freshness["ok"])
+        self.assertEqual(freshness["severity"], hg.WARNING)
+        self.assertIn("scheduler late", freshness["detail"])
         self.assertIn("beat_freshness", res["failures"])
+        self.assertEqual((res["verdict"], res["exit_code"]), ("healthy-with-warnings", 0))
+        self.assertFalse(res["healthy"], "a late beat must never read as a clean healthy")
+
+    def test_09b_a_full_day_of_silence_means_the_schedule_stopped_and_fails(self):
+        res = hg.evaluate(make_status(), make_history(spacing_h=25.0), now=NOW)
+        freshness = next(c for c in res["checks"] if c["id"] == "beat_freshness")
+        self.assertEqual(freshness["severity"], hg.CRITICAL)
+        self.assertIn("schedule itself has stopped", freshness["detail"])
+        self.assertEqual((res["verdict"], res["exit_code"]), ("degraded", 1))
+
+    def test_09c_a_late_beat_does_not_hide_a_real_failure(self):
+        res = hg.evaluate(make_status(passed=16), make_history(spacing_h=14.0), now=NOW)
+        self.assertEqual(res["exit_code"], 1)
+        self.assertIn("smoke_complete", res["failures"])
+
+    def test_09d_the_measured_week_no_longer_escalates(self):
+        # Real gaps from the heartbeat branch, 2026-11-23..27: every beat was
+        # 17/17 and every one was degraded at stage 3 under the old rule.
+        gaps = [8.0, 13.8, 12.5, 12.5, 10.1, 10.7, 8.3, 13.3, 8.8, 10.6, 11.1]
+        for gap in gaps:
+            with self.subTest(gap_h=gap):
+                res = hg.evaluate(make_status(), make_history(spacing_h=gap), now=NOW)
+                self.assertEqual(res["exit_code"], 0)
+                self.assertEqual(res["stage"], 0)
+
+    def test_09e_the_dead_schedule_threshold_is_configurable(self):
+        res = hg.evaluate(make_status(), make_history(spacing_h=14.0), now=NOW,
+                          scheduler_dead_h=12.0)
         self.assertEqual(res["exit_code"], 1)
 
     def test_10_six_hour_cadence_inside_tolerance_is_fresh(self):
@@ -211,6 +244,28 @@ class InvariantTests(unittest.TestCase):
 
 
 class CliTests(unittest.TestCase):
+    def test_19b_cli_scheduler_dead_hours_flag_reaches_the_gate(self):
+        # The CLI judges against the real clock, so build a 14h-old history now.
+        import time as _time
+        now = _time.time()
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            (td / "status.json").write_text(json.dumps(make_status(beat_ts=now)))
+            (td / "history.jsonl").write_text("\n".join(json.dumps(
+                {"ts": now - h * 3600, "ok": True, "passed": 17, "total": 17,
+                 "memories": 1, "heat": 0.8}) for h in (28.0, 14.0)) + "\n")
+            base = [sys.executable, str(HERE / "health_gate.py"),
+                    "--status", str(td / "status.json"), "--history", str(td / "history.jsonl"),
+                    "--gate-log", str(td / "gate.jsonl"), "--json"]
+            late = subprocess.run(base, capture_output=True, text=True)
+            self.assertEqual(late.returncode, 0, late.stdout[-400:])
+            self.assertEqual(json.loads(late.stdout.strip().splitlines()[-1])["verdict"],
+                             "healthy-with-warnings")
+            # attempt 2: on attempt 1 every critical first asks for a retry (test_07)
+            dead = subprocess.run(base + ["--scheduler-dead-hours", "12", "--attempt", "2"],
+                                  capture_output=True, text=True)
+            self.assertEqual(dead.returncode, 1, dead.stdout[-400:])
+
     def test_19_cli_writes_the_gate_log_and_returns_the_stage_exit_code(self):
         with tempfile.TemporaryDirectory() as td:
             td = Path(td)

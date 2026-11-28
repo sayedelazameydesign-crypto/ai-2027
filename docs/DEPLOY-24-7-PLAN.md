@@ -72,7 +72,7 @@
 1. **Approval bot:** Settings → Secrets and variables → Actions → New secret
    `PA_APPROVAL_CHAT_ID` = `722947046` ← ثم شغّل الـ workflow يدوياً. **القبول:** دورة `scheduled cycle` خضراء.
 2. **قواعد الحماية:** نفّذ الأمر الموجود في محادثة 2026-11-28 (يحذف الفحوصات السبعة الوهمية + `update` + `required_linear_history`)، أو من الواجهة: Settings → Rules → **Protect main branch**. **القبول:** PR جديد يظهر `MERGEABLE` و`CLEAN` دون `--admin`.
-3. **Ember beat:** بعد م6 يصبح المراقب الخارجي هو مصدر الحقيقة للتوفر. خيار لاحق: رفع `--tolerance-hours` في `ember.yml` ليعكس سلوك cron المقاس (فجوات حتى ~14 ساعة)، بدل إعلان `degraded` دائم.
+3. **Ember beat:** ✅ تم (2026-11-28). النبضة المتأخرة التي تنجح في كل فحوصها صارت **تحذيراً ظاهراً** (`healthy-with-warnings`) لا `degraded`، والصمت الأطول من 24 ساعة يبقى **حرجاً** لأنه يعني أن الجدول نفسه توقف. لم تُرفع `--tolerance-hours`. التفاصيل في ADR-0004 (Amendment). بعد م6 يصبح المراقب الخارجي هو مصدر الحقيقة للتوفر.
 
 ### م2 — تجهيز الخادم على Oracle 👤 (45–90 دقيقة؛ قد يتكرر بسبب نفاد السعة)
 1. أنشئ حساب Oracle Cloud واختر **منطقة رئيسية** قريبة (مثل `eu-frankfurt-1` أو `me-jeddah-1`). لا يمكن تغييرها لاحقاً، وموارد Always Free تُنشأ فيها فقط.
@@ -142,7 +142,7 @@ sudo sqlite3 /var/lib/ai2027/webhook/free_stack.db \
   ```
 - 👤 **خارج الخادم (إلزامي):** [UptimeRobot](https://uptimerobot.com) المجاني، فحص HTTP(s) كل 5 دقائق على `https://ai2027-cela.duckdns.org/healthz`، مع تنبيه بريد أو Telegram.
   هذا ما يضمن أن تعرف بأي انقطاع قبل أن تنفد محاولات YCloud (~6 ساعات).
-- 🤖 **طبقة ثانية مجانية (اختيارية): `.github/workflows/watchdog-24x7.yml`** — كل 10 دقائق (طلب لا ضمان: cron في GitHub يتأخر أحياناً ساعات، لذا لا يغني عن UptimeRobot)، والمنطق كله في `scripts/watchdog_probe.py` مع اختباراته:
+- 🤖 **طبقة ثانية مجانية (اختيارية): `.github/workflows/watchdog-24x7.yml`** — كل 10 دقائق (طلب لا ضمان: المقاس على هذا المستودع 2026-11-23..27 أن `*/3` في Ember لم يُنفَّذ إلا نحو مرتين يومياً، فتوقّع الأمر نفسه هنا؛ لذا لا يغني عن UptimeRobot)، والمنطق كله في `scripts/watchdog_probe.py` مع اختباراته:
   1. الفحوص الذاتية: `free_stack_runner.py --self-check` و`whatsapp_cloud_rehearsal.py --assert`.
   2. الـWebhook العام: `GET /healthz` يجب أن يعيد 200 مع `ok:true`، و`POST /webhook` **بلا توقيع** يجب أن يُرفض بـ401 (يثبت أن بوابة التوقيع مغلقة). لا يُرسَل أي سر، لأن المستودع وسجلاته علنية.
   3. سلسلة التدقيق: قراءة فقط لورقة `pa_audit_logs_202611` والتحقق من ربط `prev_hash`، وتطبع أرقام الصفوف فقط.

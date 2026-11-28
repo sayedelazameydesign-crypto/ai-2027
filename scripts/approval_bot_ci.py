@@ -27,6 +27,7 @@ import pathlib
 import re
 import sys
 import urllib.error
+import urllib.request
 from typing import Any, Dict, List, Optional, Tuple
 
 _REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -71,7 +72,7 @@ def preflight(mode: str) -> List[str]:
     if not token:
         missing.append("PA_APPROVAL_BOT_TOKEN (or TELEGRAM_BOT_TOKEN)")
     chat, _ = resolve("PA_APPROVAL_CHAT_ID", "TELEGRAM_CHAT_ID")
-    if not chat:
+    if not chat and mode != "chatcheck":  # chatcheck diagnoses a missing id itself
         missing.append("PA_APPROVAL_CHAT_ID (or TELEGRAM_CHAT_ID)")
     if mode == "run":
         if not os.getenv("PA_MEMORY_SHEET_ID", "").strip():
@@ -207,6 +208,75 @@ def mode_welcome() -> int:
 _TELEGRAM_TOKEN = re.compile(r"bot\d+:[A-Za-z0-9_-]{8,}|\b\d{5,}:[A-Za-z0-9_-]{30,}")
 
 
+def diagnose_chat_id(raw: str, discovered: List[str], bot_id: str) -> List[str]:
+    """Explain why Telegram may answer "chat not found" — WITHOUT echoing raw.
+
+    Chat ids are not credentials (docs/SECRETS.md), but the stored value is
+    still never printed: only its shape, its relation to the bot's own id, and
+    whether it equals a chat that actually messaged this bot. The discovered
+    ids are printed — the diagnostic step already publishes them.
+    """
+    raw = raw.strip()
+    if not raw:
+        return ["the stored chat id is EMPTY"]
+    hints: List[str] = []
+    shape = "digits-only" if re.fullmatch(r"-?\d+", raw) else "NOT digits-only"
+    hints.append("stored value: %d chars, %s" % (len(raw), shape))
+    if raw[:1] in "\"'" or raw[-1:] in "\"'":
+        hints.append("it is wrapped in quotes — store the bare digits, no quotes")
+    if raw.startswith("@"):
+        hints.append("it is a @username — Telegram needs the numeric chat id")
+    if "t.me" in raw or "://" in raw:
+        hints.append("it is a link — store only the numeric chat id")
+    if ":" in raw:
+        hints.append("it contains ':' — that looks like a BOT TOKEN, not a chat id (rotate it if it was pasted anywhere public)")
+    if bot_id and raw == bot_id:
+        hints.append("it is the BOT's own id — a bot cannot message itself; use YOUR chat id")
+    if discovered:
+        if raw in discovered:
+            hints.append("it MATCHES a chat that messaged this bot — so the token in use belongs to a different bot")
+        else:
+            hints.append("it matches none of the chats that messaged this bot: %s — store %s"
+                         % (", ".join(discovered), discovered[0]))
+    else:
+        hints.append("no chat has messaged this bot yet — open the bot in Telegram, press Start, send any message")
+    return hints
+
+
+def _telegram_get(api: str, token: str, method: str) -> Dict[str, Any]:
+    url = "%s/bot%s/%s" % (api.rstrip("/"), token, method)
+    req = urllib.request.Request(url, headers={"User-Agent": "ai2027-approval-bot-ci"})
+    with urllib.request.urlopen(req, timeout=15) as resp:  # noqa: S310 — fixed https base
+        return json.loads(resp.read().decode("utf-8"))
+
+
+def mode_chatcheck(source: str = "") -> int:
+    """Failure-only diagnostic: compare the stored chat id with real chats.
+
+    ``source`` is the secret name the id came from, captured by main() BEFORE
+    apply_aliases() copies TELEGRAM_* onto the canonical keys.
+    """
+    token, _ = resolve("PA_APPROVAL_BOT_TOKEN", "TELEGRAM_BOT_TOKEN")
+    raw, _ = resolve("PA_APPROVAL_CHAT_ID", "TELEGRAM_CHAT_ID")
+    api = os.getenv("PA_APPROVAL_API_BASE", "https://api.telegram.org")
+    # getUpdates WITHOUT an offset only peeks: nothing is confirmed or consumed.
+    me = _telegram_get(api, token, "getMe").get("result") or {}
+    updates = _telegram_get(api, token, "getUpdates").get("result") or []
+    discovered: List[str] = []
+    for upd in updates:
+        for key in ("message", "edited_message", "channel_post"):
+            cid = ((upd.get(key) or {}).get("chat") or {}).get("id")
+            if cid is not None and str(cid) not in discovered:
+                discovered.append(str(cid))
+    hints = diagnose_chat_id(raw, discovered, str(me.get("id") or ""))
+    lines = ["source secret: %s" % (source or "none")] + hints
+    for line in lines:
+        print("chat-check: %s" % line)
+        if os.getenv("GITHUB_ACTIONS") == "true":
+            print("::notice title=chat-check::%s" % redact(line))
+    return 0
+
+
 def redact(text: str) -> str:
     """Strip anything token-shaped before it can reach a log or annotation.
 
@@ -221,12 +291,14 @@ def redact(text: str) -> str:
 def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(
         description="Telegram approval bot — CI runner (fail-closed)")
-    parser.add_argument("--mode", choices=("test", "run", "welcome"),
+    parser.add_argument("--mode", choices=("test", "run", "welcome", "chatcheck"),
                         default="test",
                         help="test: proof message · run: cards + votes"
-                             " cycle · welcome: auto-reply loop")
+                             " cycle · welcome: auto-reply loop · chatcheck:"
+                             " why 'chat not found' (never prints the id)")
     args = parser.parse_args(argv)
 
+    _, chat_source = resolve("PA_APPROVAL_CHAT_ID", "TELEGRAM_CHAT_ID")
     apply_aliases()
     missing = preflight(args.mode)
     if missing:
@@ -253,6 +325,8 @@ def main(argv: Optional[List[str]] = None) -> int:
             return mode_test()
         if args.mode == "welcome":
             return mode_welcome()
+        if args.mode == "chatcheck":
+            return mode_chatcheck(chat_source)
         return mode_run(state_file)
     except Exception as exc:  # noqa: BLE001 — classified below, never leaked
         print("stage=runner ok=false reason=%s" % type(exc).__name__)
