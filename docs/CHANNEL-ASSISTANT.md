@@ -154,6 +154,10 @@ PYTHONPATH=src .venv/bin/python -m pytest tests/test_channel_assistant.py -q
 `CELIA_OWNER_PROMPT` + `CELIA_OWNER_FALLBACK` لك على Telegram، و`CELIA_CUSTOMER_PROMPT`
 لمسودات عملاء واتساب. التفاصيل وخريطة الطريق: [`docs/CELIA.md`](CELIA.md).
 
+على Telegram يمرّ كل رد عبر `CeliaBrain`: أوامر الذاكرة («تذكّري: …»، «انسي رقم N»،
+«ماذا تتذكرين؟») تُنفَّذ في الكود دون نموذج، وباقي الرسائل تحصل على الوضع المكتشف
+والذكريات ذات الصلة. الذاكرة في تبويب `celia_memory` من `PA_MEMORY_SHEET_ID`.
+
 ## 10. حدود الحالية
 
 - الربط التشغيلي موجود خلف مفتاح `AI2027_ASSISTANT_ENABLED` (مُطفأ افتراضياً) —
