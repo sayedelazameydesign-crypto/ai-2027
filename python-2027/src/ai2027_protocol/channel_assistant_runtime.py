@@ -24,11 +24,14 @@ import asyncio
 from collections.abc import Callable
 from typing import Any
 
+from .celia_brain import CeliaBrain, CeliaTurn
 from .celia_persona import (
     CELIA_CUSTOMER_PROMPT,
     CELIA_OWNER_FALLBACK,
     CELIA_OWNER_PROMPT,
+    CeliaMode,
 )
+from .celia_personal_memory import SHEET_HEADERS, ListMemoryBackend, PersonalMemory
 from .channel_assistant import (
     ARABIC_NO_PROVIDER_FALLBACK,
     AssistantReply,
@@ -181,6 +184,12 @@ def make_whatsapp_draft_generator(
 
 
 __all__ = [
+    "SHEET_HEADERS",
+    "CeliaBrain",
+    "CeliaMode",
+    "CeliaTurn",
+    "ListMemoryBackend",
+    "PersonalMemory",
     "CELIA_CUSTOMER_PROMPT",
     "CELIA_OWNER_FALLBACK",
     "CELIA_OWNER_PROMPT",

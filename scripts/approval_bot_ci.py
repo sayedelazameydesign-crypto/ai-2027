@@ -202,7 +202,22 @@ class TelegramAssistantBridge:
 # fields are never printed directly — only the matching constant, or "other".
 ASSISTANT_STAGES = ("replied", "no_provider_available", "duplicate_message",
                     "invalid_message", "not_configured", "paid_not_allowed",
-                    "send_failed")
+                    "send_failed",
+                    # CELIA memory commands (run in code, never by a model)
+                    "memory_saved", "memory_forgotten", "memory_listed",
+                    "memory_duplicate", "memory_refused_sensitive",
+                    "memory_not_found", "memory_ambiguous", "memory_empty",
+                    "memory_too_long", "memory_full", "memory_store_failed",
+                    "memory_unavailable")
+ASSISTANT_MODES = ("companion", "intelligence", "developer", "executive",
+                   "creative")
+MEMORY_BACKENDS = ("sheet", "state", "none")
+#: Probe stages that prove the path works (a model replied, or a memory
+#: command ran and was confirmed from code).
+PROBE_OK_STAGES = frozenset((
+    "replied", "memory_saved", "memory_forgotten", "memory_listed",
+    "memory_duplicate", "memory_refused_sensitive", "memory_not_found",
+    "memory_ambiguous", "memory_empty", "memory_too_long", "memory_full"))
 ASSISTANT_PROVIDERS = ("ollama", "gemini", "nvidia", "groq", "openrouter",
                        "omnirouters", "qwen", "deterministic")
 ASSISTANT_TIERS = ("local", "free_tier", "unknown_cost", "paid")
@@ -221,10 +236,60 @@ def _reply_summary(reply: Any) -> str:
     """One log line built from allowlisted constants and $0 / chunk buckets."""
     cost = "0.00" if not float(getattr(reply, "cost_usd", 0.0) or 0.0) else "NONZERO"
     chunks = int(getattr(reply, "chunks_sent", 0) or 0)
-    return "provider=%s tier=%s cost_usd=%s chunks=%s" % (
+    used = int(getattr(reply, "memories_used", 0) or 0)
+    return "mode=%s provider=%s tier=%s cost_usd=%s chunks=%s memories=%s" % (
+        _label(getattr(reply, "mode", None), ASSISTANT_MODES),
         _label(getattr(reply, "provider", None), ASSISTANT_PROVIDERS),
         _label(getattr(reply, "billing_tier", None), ASSISTANT_TIERS),
-        cost, "0" if chunks <= 0 else ("1" if chunks == 1 else "2+"))
+        cost, "0" if chunks <= 0 else ("1" if chunks == 1 else "2+"),
+        "0" if used <= 0 else ("1-3" if used <= 3 else "4+"))
+
+
+CELIA_MEMORY_TAB = "celia_memory"
+
+
+class SheetMemoryBackend:
+    """CELIA's durable memory as the ``celia_memory`` tab of the memory sheet.
+
+    Same spreadsheet as ``pa_approvals`` (``PA_MEMORY_SHEET_ID``), so there
+    is no second memory database and the owner can read, correct or delete
+    any row by hand. The tab is created on the first write. Rows hold only
+    what the owner explicitly asked CELIA to remember.
+    """
+
+    def __init__(self, sheet: Any, headers: Tuple[str, ...]) -> None:
+        self._sheet = sheet
+        self._headers = tuple(headers)
+
+    def _worksheet(self, create: bool) -> Any:
+        try:
+            return self._sheet.worksheet(CELIA_MEMORY_TAB)
+        except Exception as exc:  # noqa: BLE001 — classified below
+            # Only a missing tab is normal. Quota / auth / network errors must
+            # propagate so the caller falls back instead of reading "empty".
+            if type(exc).__name__ != "WorksheetNotFound":
+                raise
+            if not create:
+                return None
+            return self._sheet.add_worksheet(title=CELIA_MEMORY_TAB, rows=400,
+                                             cols=len(self._headers))
+
+    def load(self) -> List[Dict[str, Any]]:
+        ws = self._worksheet(create=False)
+        if ws is None:
+            return []
+        values = ws.get_all_values()
+        if not values:
+            return []
+        header = [h.strip() for h in values[0]]
+        return [dict(zip(header, row)) for row in values[1:] if any(row)]
+
+    def save(self, rows: List[Dict[str, Any]]) -> None:
+        ws = self._worksheet(create=True)
+        matrix = [list(self._headers)] + [
+            [str(r.get(h, "")) for h in self._headers] for r in rows]
+        ws.clear()
+        ws.update(range_name="A1", values=matrix)
 
 
 def _import_assistant_module() -> Any:
@@ -236,36 +301,64 @@ def _import_assistant_module() -> Any:
     return channel_assistant_runtime
 
 
-def build_assistant_reply_fn(history: Any = None) -> Tuple[Callable[[Dict[str, Any]], str],
-                                                             Callable[[], Any]]:
-    """(reply_fn, snapshot_fn) over one Free-First router for this cycle.
+def open_celia_memory(ca: Any, sheet: Any = None,
+                      fallback_rows: Any = None) -> Tuple[Any, str, Any]:
+    """(PersonalMemory | None, backend label, state-backend | None).
 
-    The router contains only local / declared free-tier providers with
-    ``MAX_SPEND=0``; the Telegram sender only calls ``sendMessage`` (never
-    ``getUpdates``), replying in the chat the message came from.
+    The sheet tab first; if it cannot be read, the bot state file (still
+    durable across cycles via actions/cache); ``none`` only when neither
+    exists. A storage problem never stops the cycle or the votes.
+    """
+    if sheet is not None:
+        try:
+            return (ca.PersonalMemory(SheetMemoryBackend(sheet, ca.SHEET_HEADERS)),
+                    "sheet", None)
+        except Exception as exc:  # noqa: BLE001 — fall back, never crash
+            print("stage=memory backend=state reason=%s" % type(exc).__name__)
+    if fallback_rows is not None:
+        backend = ca.ListMemoryBackend(fallback_rows)
+        return ca.PersonalMemory(backend), "state", backend
+    return None, "none", None
+
+
+def build_assistant_reply_fn(history: Any = None, *, sheet: Any = None,
+                             memory_rows: Any = None,
+                             ) -> Tuple[Callable[[Dict[str, Any]], str],
+                                        Callable[[], Any]]:
+    """(reply_fn, snapshot_fn): CELIA (``CeliaBrain``) for this cycle.
+
+    One Free-First router (local / declared free-tier providers only,
+    ``MAX_SPEND=0``); the Telegram sender only calls ``sendMessage`` (never
+    ``getUpdates``). Memory: the ``celia_memory`` sheet tab, or the state
+    file — ``reply_fn.memory_rows()`` returns the rows to persist in the
+    state file (``None`` when the sheet holds them).
     """
     import asyncio  # noqa: PLC0415
 
     ca = _import_assistant_module()
     store = ca.SnapshotConversationStore(max_turns=ca.env_max_history_turns())
     store.restore(history or [])
-    router = ca.build_assistant_router()
+    memory, backend_label, state_backend = open_celia_memory(
+        ca, sheet, memory_rows if memory_rows is not None else [])
+    brain = ca.CeliaBrain(
+        router=ca.build_assistant_router(),
+        sender_factory=lambda chat: ca.TelegramReplySender(chat_id=chat),
+        store=store, memory=memory, fallback_text=ca.CELIA_OWNER_FALLBACK)
 
     def reply_fn(update: Dict[str, Any]) -> str:
         inbound = ca.parse_telegram_update(update)
         if inbound is None:
             return "ignored_unparsed"
-        assistant = ca.ChannelAssistant(
-            router=router,
-            sender=ca.TelegramReplySender(chat_id=inbound.chat_id),
-            store=store,
-            system_prompt=ca.CELIA_OWNER_PROMPT,
-            fallback_text=ca.CELIA_OWNER_FALLBACK)
-        reply = asyncio.run(assistant.handle_inbound(inbound))
-        stage = _label(reply.stage, ASSISTANT_STAGES)
-        print("assistant stage=%s %s" % (stage, _reply_summary(reply)))
+        turn = asyncio.run(brain.handle(inbound))
+        stage = _label(turn.stage, ASSISTANT_STAGES)
+        print("assistant stage=%s %s memory=%s" % (
+            stage, _reply_summary(turn), _label(backend_label, MEMORY_BACKENDS)))
         return stage
 
+    def memory_rows_fn() -> Any:
+        return state_backend.rows if state_backend is not None else None
+
+    reply_fn.memory_rows = memory_rows_fn  # type: ignore[attr-defined]
     return reply_fn, store.snapshot
 
 
@@ -310,7 +403,8 @@ def mode_run(state_file: pathlib.Path) -> int:
     if assistant_enabled():
         try:
             reply_fn, snapshot_fn = build_assistant_reply_fn(
-                prior_assistant.get("history"))
+                prior_assistant.get("history"), sheet=getattr(bot, "sheet", None),
+                memory_rows=prior_assistant.get("memory"))
         except Exception as exc:  # noqa: BLE001 — votes must still run
             print("stage=assistant ok=false reason=%s (approvals continue)"
                   % type(exc).__name__)
@@ -324,8 +418,13 @@ def mode_run(state_file: pathlib.Path) -> int:
     def _assistant_state() -> Dict[str, Any]:
         if bridge is None:
             return prior_assistant
-        return {"seen": bridge.seen,
-                "history": snapshot_fn() if snapshot_fn else []}
+        state = {"seen": bridge.seen,
+                 "history": snapshot_fn() if snapshot_fn else []}
+        rows_fn = getattr(bridge._reply_fn, "memory_rows", None)
+        rows = rows_fn() if callable(rows_fn) else None
+        # Sheet-backed memory is not copied into the cache; fallback rows are.
+        state["memory"] = rows if rows is not None else prior_assistant.get("memory", [])
+        return state
 
     try:
         report = bot.run_once()
@@ -358,6 +457,21 @@ def mode_run(state_file: pathlib.Path) -> int:
 DEFAULT_ASSISTANT_PROBE = "مرحباً! عرّف بنفسك في سطرين، وقل لي ما الذي تستطيع مساعدتي فيه."
 
 
+def _probe_sheet() -> Any:
+    """The memory sheet for the live probe, or ``None`` if not configured."""
+    raw, _ = resolve("GOOGLE_SERVICE_ACCOUNT_JSON", "GOOGLE_SERVICE_ACCOUNT")
+    if not raw or not os.getenv("PA_MEMORY_SHEET_ID", "").strip():
+        return None
+    try:
+        import gspread  # noqa: PLC0415
+
+        return gspread.authorize(build_sheet_credentials()).open_by_key(
+            os.environ["PA_MEMORY_SHEET_ID"].strip())
+    except Exception as exc:  # noqa: BLE001 — probe still answers, memory off
+        print("stage=memory backend=none reason=%s" % type(exc).__name__)
+        return None
+
+
 def mode_assistant() -> int:
     """Live probe: one assistant reply into PA_APPROVAL_CHAT_ID.
 
@@ -380,22 +494,24 @@ def mode_assistant() -> int:
     for item in describe_provider_readiness(providers):
         readiness.append("%s=%s" % (item.provider, item.credential_state))
     print("assistant providers: %s" % " ".join(readiness))
-    assistant = ca.ChannelAssistant(
+    memory, backend_label, _ = open_celia_memory(ca, _probe_sheet())
+    brain = ca.CeliaBrain(
         router=ca.build_assistant_router(providers=providers),
-        sender=ca.TelegramReplySender(chat_id=chat_id),
-        system_prompt=ca.CELIA_OWNER_PROMPT,
+        sender_factory=lambda chat: ca.TelegramReplySender(chat_id=chat),
+        store=ca.SnapshotConversationStore(), memory=memory,
         fallback_text=ca.CELIA_OWNER_FALLBACK)
     inbound = ca.ChannelInboundMessage(
         channel=ca.Channel.TELEGRAM, chat_id=chat_id, sender_id=chat_id,
         text=probe[:2000], message_id="probe-%d" % os.getpid())
-    reply = asyncio.run(assistant.handle_inbound(inbound))
-    result = _label(reply.stage, ASSISTANT_STAGES)
-    summary = "result=%s %s" % (result, _reply_summary(reply))
+    turn = asyncio.run(brain.handle(inbound))
+    result = _label(turn.stage, ASSISTANT_STAGES)
+    summary = "result=%s %s memory=%s" % (
+        result, _reply_summary(turn), _label(backend_label, MEMORY_BACKENDS))
     print("stage=assistant-probe %s" % summary)
     if os.getenv("GITHUB_ACTIONS") == "true":
         # Run-page annotation: job logs may be unreachable. Allowlisted labels only.
         print("::notice title=assistant probe::%s" % summary)
-    if result == "replied":
+    if result in PROBE_OK_STAGES:
         return 0
     if result == "no_provider_available":
         print("::warning title=assistant probe::no free provider answered —"

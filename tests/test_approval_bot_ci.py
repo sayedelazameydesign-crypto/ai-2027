@@ -600,8 +600,10 @@ class TestModeRunAssistantWiring(unittest.TestCase):
 
     def test_flag_on_replies_and_persists_seen_and_history(self):
         answered = []
+        seen_kwargs = {}
 
-        def build(history):
+        def build(history, **kwargs):
+            seen_kwargs.update(kwargs)
             return (lambda u: answered.append(u["message"]["text"]) or "replied",
                     lambda: [{"channel": "telegram", "chat_id": OWNER_CHAT,
                               "turns": [["user", "hi"], ["assistant", "أهلاً"]]}])
@@ -615,9 +617,12 @@ class TestModeRunAssistantWiring(unittest.TestCase):
         self.assertEqual(state["assistant"]["history"][0]["turns"][1], ["assistant", "أهلاً"])
         self.assertIn("ignored_sender_not_allowed=1", out)
         self.assertIn("replied=1", out)
+        # CELIA's durable memory is offered the bot's own sheet handle.
+        self.assertIn("sheet", seen_kwargs)
+        self.assertIn("memory_rows", seen_kwargs)
 
     def test_assistant_build_failure_keeps_approvals_running(self):
-        def build(history):
+        def build(history, **kwargs):
             raise ImportError("python-2027 not installed")
 
         rc, state, out, bot, _ = self._run(
@@ -742,7 +747,8 @@ class TestAssistantLogAllowlist(unittest.TestCase):
             stage="replied", provider="chat-1234567890-secret", billing_tier="free_tier",
             cost_usd=0.0, chunks_sent=3)
         line = ci._reply_summary(reply)
-        self.assertEqual(line, "provider=other tier=free_tier cost_usd=0.00 chunks=2+")
+        self.assertEqual(
+            line, "mode=- provider=other tier=free_tier cost_usd=0.00 chunks=2+ memories=0")
         self.assertEqual(ci._label("weird private text", ci.ASSISTANT_STAGES), "other")
         self.assertEqual(ci._label(None, ci.ASSISTANT_STAGES), "-")
 
@@ -750,3 +756,136 @@ class TestAssistantLogAllowlist(unittest.TestCase):
         enum_like = types.SimpleNamespace(value="groq")
         self.assertEqual(ci._label(enum_like, ci.ASSISTANT_PROVIDERS), "groq")
         self.assertIn("cost_usd=NONZERO", ci._reply_summary(types.SimpleNamespace(cost_usd=0.5)))
+
+
+class _FakeWorksheet:
+    def __init__(self):
+        self.values = []
+
+    def get_all_values(self):
+        return [list(r) for r in self.values]
+
+    def clear(self):
+        self.values = []
+
+    def update(self, range_name=None, values=None):
+        assert range_name == "A1"
+        self.values = [list(r) for r in values]
+
+
+class WorksheetNotFound(Exception):
+    """Same class name as ``gspread.WorksheetNotFound``."""
+
+
+class _FakeSheet:
+    def __init__(self, broken=False):
+        self.tabs = {}
+        self.broken = broken
+
+    def worksheet(self, title):
+        if self.broken:
+            raise OSError("quota")
+        if title not in self.tabs:
+            raise WorksheetNotFound(title)
+        return self.tabs[title]
+
+    def add_worksheet(self, title, rows, cols):
+        self.tabs[title] = _FakeWorksheet()
+        return self.tabs[title]
+
+
+class TestSheetMemoryBackend(unittest.TestCase):
+    HEADERS = ("id", "kind", "text", "source", "created_at", "confidence")
+
+    def test_tab_is_created_on_first_write_and_round_trips(self):
+        sheet = _FakeSheet()
+        backend = ci.SheetMemoryBackend(sheet, self.HEADERS)
+        self.assertEqual(backend.load(), [])
+        self.assertEqual(sheet.tabs, {})  # reading never creates the tab
+        backend.save([{"id": 1, "kind": "personal", "text": "أحب الشاي",
+                       "source": "telegram:1", "created_at": "2026-11-28T10:00:00Z",
+                       "confidence": 1.0}])
+        ws = sheet.tabs[ci.CELIA_MEMORY_TAB]
+        self.assertEqual(ws.values[0], list(self.HEADERS))
+        self.assertEqual(backend.load()[0]["text"], "أحب الشاي")
+        self.assertEqual(backend.load()[0]["id"], "1")  # sheet cells are text
+
+    def test_a_broken_sheet_raises_instead_of_reading_empty(self):
+        backend = ci.SheetMemoryBackend(_FakeSheet(broken=True), self.HEADERS)
+        with self.assertRaises(OSError):
+            backend.load()
+
+
+@unittest.skipUnless(_real_assistant(), "python-2027 not installed")
+class TestCeliaMemoryOverTelegram(TestRealAssistantOverTelegram):
+    """CELIA end to end: commands, durable sheet memory, restart, fallback."""
+
+    def _cycle(self, sheet, texts, *, memory_rows=None, model_text="تمام."):
+        free = self._free(model_text)
+        ca, posts, patches = self._patches([free])
+        with contextlib.ExitStack() as stack:
+            for p in patches:
+                stack.enter_context(p)
+            reply_fn, _ = ci.build_assistant_reply_fn(
+                None, sheet=sheet, memory_rows=memory_rows)
+            with contextlib.redirect_stdout(io.StringIO()) as out:
+                stages = [reply_fn(_text_update(i + 1, t)) for i, t in enumerate(texts)]
+        return stages, [p["text"] for _, p in posts], free, out.getvalue(), reply_fn
+
+    def test_remember_survives_the_next_cycle_and_feeds_the_model(self):
+        sheet = _FakeSheet()
+        stages, sent, free, out, _ = self._cycle(
+            sheet, ["تذكّري: مشروع CELIA يستعمل ورقة الذاكرة نفسها"])
+        self.assertEqual(stages, ["memory_saved"])
+        self.assertTrue(sent[0].startswith("حفظتُ ✅ رقم 1"))
+        self.assertEqual(free.system_prompts, [])  # no model call for a command
+        self.assertIn("memory=sheet", out)
+        self.assertNotIn("ورقة الذاكرة", out)  # memory text is never logged
+
+        # Next cycle = a brand-new process: the fact comes back from the sheet.
+        stages, sent, free, out, _ = self._cycle(
+            sheet, ["ماذا تتذكرين؟", "ما خطة مشروع CELIA اليوم؟"])
+        self.assertEqual(stages, ["memory_listed", "replied"])
+        self.assertIn("مشروع CELIA يستعمل ورقة الذاكرة نفسها", sent[0])
+        self.assertIn("مشروع CELIA يستعمل ورقة الذاكرة نفسها", free.system_prompts[0])
+        self.assertIn("mode=executive", out)
+        self.assertIn("memories=1-3", out)
+
+    def test_secret_is_refused_and_nothing_reaches_the_sheet(self):
+        sheet = _FakeSheet()
+        stages, sent, _, _, _ = self._cycle(sheet, ["احفظي: كلمة السر hunter2"])
+        self.assertEqual(stages, ["memory_refused_sensitive"])
+        self.assertEqual(sheet.tabs, {})
+        self.assertNotIn("hunter2", sent[0])
+
+    def test_broken_sheet_falls_back_to_the_state_file(self):
+        stages, _, _, out, reply_fn = self._cycle(
+            _FakeSheet(broken=True), ["تذكّري: أفضّل الردود القصيرة"], memory_rows=[])
+        self.assertEqual(stages, ["memory_saved"])
+        self.assertIn("memory=state", out)
+        rows = reply_fn.memory_rows()
+        self.assertEqual(rows[0]["text"], "أفضّل الردود القصيرة")
+        # ...and the next cycle reads them back from the state file.
+        stages, sent, _, _, _ = self._cycle(None, ["ماذا تتذكرين؟"], memory_rows=rows)
+        self.assertIn("أفضّل الردود القصيرة", sent[0])
+
+    def test_probe_runs_memory_commands_with_the_sheet(self):
+        sheet = _FakeSheet()
+        free = self._free("unused")
+        _, posts, patches = self._patches([free])
+        with contextlib.ExitStack() as stack:
+            for p in patches:
+                stack.enter_context(p)
+            stack.enter_context(mock.patch.object(ci, "_probe_sheet", return_value=sheet))
+            stack.enter_context(mock.patch(
+                "ai2027_protocol.ai_providers.build_default_providers",
+                return_value=(free,)))
+            stack.enter_context(mock.patch.dict(os.environ, {
+                "GITHUB_ACTIONS": "true",
+                "AI2027_ASSISTANT_PROBE_TEXT": "تذكّري: اختبار الذاكرة الحي"}))
+            with contextlib.redirect_stdout(io.StringIO()) as out:
+                rc = ci.mode_assistant()
+        self.assertEqual(rc, 0, out.getvalue())
+        self.assertIn("result=memory_saved", out.getvalue())
+        self.assertIn("memory=sheet", out.getvalue())
+        self.assertEqual(sheet.tabs[ci.CELIA_MEMORY_TAB].values[1][2], "اختبار الذاكرة الحي")
