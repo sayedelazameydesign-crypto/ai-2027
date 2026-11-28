@@ -19,13 +19,16 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import sys
 from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parent.parent
+if str(ROOT / "kernel-2027") not in sys.path:
+    sys.path.insert(0, str(ROOT / "kernel-2027"))
+from kernel2027 import sha256_text  # noqa: E402
+
 DEFAULT_BRIDGE_DIR = ROOT / "integrations" / "apps-script" / "memory-p0-bridge"
 
 EXPECTED_SCOPES = frozenset({
@@ -48,10 +51,6 @@ FORBIDDEN_SCOPE_SUBSTRINGS = (
     "mail.google.com",
     "drive",
 )
-
-
-def sha256_text(text: str) -> str:
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
 def validate_manifest(manifest: dict[str, Any]) -> list[str]:

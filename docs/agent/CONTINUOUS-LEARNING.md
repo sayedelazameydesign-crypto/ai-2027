@@ -48,6 +48,7 @@ decision the system can explain afterwards.
 | `learning/experience_store.py` | Durable, evidence-gated ledger of verified experiences (SQLite). | `ExperienceStore` / `ExperienceRecord` |
 | `learning/feedback_engine.py` | Apply user accept/reject and test verdicts to **verified** episodes only. | `FeedbackEngine` |
 | `evaluation/benchmark_suite.py` | Run a fixed case set, score it, persist a baseline, detect regression. | `BenchmarkSuite` / `BenchmarkReport` |
+| `reflexion.py` + `reflexion_contracts.py` | Bounded verbal reinforcement loop (`arXiv:2303.11366v4`): Actor, Evaluator, Self-Reflection over a sliding window `Omega`, AST self-test filtering, and false-positive interception under `POL-BOUNDED-REFLEXION-CAP`. | `GovernedReflexionLoop` / `ReflexionPolicy` |
 
 The modules are deliberately separate so each rule can be enforced in exactly
 one place:
@@ -164,3 +165,38 @@ execution, data persistence, and reproducible measurements. The test suite
 exercises each rule directly (refusal of unverified records, the zero-spend
 guard, durability across reopen, regression detection), so the rules are
 enforced by running code, not by documentation.
+
+## 9. Bounded Verbal Reinforcement — Governed Reflexion (`arXiv:2303.11366v4`)
+
+`GovernedReflexionLoop` (`python-2027/src/ai2027_protocol/reflexion.py` and
+`reflexion_contracts.py`) adapts Shinn et al. (2023), *Reflexion: Language Agents
+with Verbal Reinforcement Learning*, to the platform's hard governance gates:
+
+- **Three replaceable roles (`M_a`, `M_e`, `M_sr`):** the Actor executes via
+  `MetaRouter` (`MAX_SPEND = 0` asserted before every generation), `EvaluatorProtocol`
+  scores trajectories and checks §4.1 pathologies (`repeated_action_cycle`,
+  `step_cap_exceeded`), and `SelfReflectorProtocol` (`DeterministicSelfReflector`
+  or free-first `RouterSelfReflector`) emits structured cues matching
+  `prompts/agent/REFLECTION.md` (`claim`, `observation`, `gap`, `next_action`,
+  `correction`).
+- **Sliding-window episodic buffer (`Omega`):** `ReflexionMemoryBuffer` caps
+  in-context verbal reflections to `1 <= memory_window <= 5` (default `3`; `1`
+  for programming) so prompt windows never grow unboundedly, and halts early on
+  repeated identical reflections (`halted_stagnation`) instead of spinning in a
+  WebShop-style local minimum.
+- **AST unit-test filter (`§4.3`):** `filter_valid_python_tests` parses proposed
+  Python unit tests with `ast.parse`, rejects syntax errors, side-effecting
+  imports/builtins (`os`, `subprocess`, `open`, `eval`, `exec`, etc.),
+  deduplicates AST-identical assertions, and caps the suite at `max_self_tests`
+  (default `6`).
+- **False-positive interception & zero memory poisoning:** Shinn et al. (§4.3,
+  Table 2) reported MBPP Python regression (`80.1% -> 77.1%`) caused by internal
+  unit-test false positives (`FP = 0.16`). When
+  `require_independent_verification=True`, any non-independent passing
+  self-evaluation is cross-checked by the independent verifier; false positives
+  are intercepted and verbal reflection continues. Unverified or halted runs
+  (`halted_max_retries`, `halted_stagnation`, `halted_stop`) emit
+  `ExperienceRecord(verified=False)` and a SHA-256 `audit_chain` under
+  `POL-BOUNDED-REFLEXION-CAP`, so `ExperienceStore.record(...)` refuses them into
+  `refusals` and durable memory is never polluted by failed trials.
+
