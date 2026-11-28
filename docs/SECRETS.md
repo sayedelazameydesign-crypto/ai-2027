@@ -101,6 +101,19 @@
 
 **إذا أردت تفعيل R2 فعليًا:** أضف كودًا يقرأ `R2_ENDPOINT` و`R2_BUCKET_NAME` و`R2_REGION` (ليست أسرارًا)، ثم أضف صفًا لهذه الأسرار في الجدول أعلاه وحدّث `scripts/workflow_secret_audit.py` قبل تمريرها إلى أي وظيفة. حتى ذلك الحين، إضافتها إلى `env:` بلا مستهلك تُعدّ سطح هجوم بلا فائدة.
 
+### أسرار أخرى معرَّفة في GitHub ولا يقرأها أي workflow
+
+فُحصت بـ`git grep -w` على كامل المستودع (2026-11-28). لا يمرّرها أي workflow، ولا يقرأها `python-2027` ولا `src/`. وجودها في `Settings → Secrets` لا يُفعّل شيئًا.
+
+| السرّ | الحالة الفعلية | التوصية |
+|---|---|---|
+| `HF_TOKEN` | يُقرأ **فقط** من بيئة تشغيل مشاريع `projects/*` المستقلة (`new.pro` على Vercel · `celia-pro-deployment` على Render · `ELAZAMET1/ml-backend`) — كل منصة تحفظ نسختها في لوحتها، لا من GitHub Actions | أبقِه إن كنت ستضيف workflow يحتاجه؛ وإلا فهو غير ضروري هنا. توكن **Read** يكفي لكل الاستعمالات |
+| `DIT_API_KEY` | لا مرجع له في أي ملف | احذفه، أو وثّق مستهلكه هنا قبل استعماله |
+| `AGENT_SUBSTRATE_PREFLIGHT_KUBECONFIG` | لا مرجع له في أي ملف أو workflow | احذفه؛ ملف kubeconfig يمنح وصولاً إلى الـcluster ولا يجب أن يبقى بلا مستهلك |
+| `MYAPP_LOCAL_DEV` | ليس اسمًا يقرأه الكود (انظر `RUNBOOK.md`) — غالبًا اسم في لوحة المفاتيح لمفتاح OpenRouter | احذفه؛ المستودع يقرأ `OPENROUTER_API_KEY` |
+
+**ملفات `.env.example`:** قيمها فارغة دائمًا (`KEY=`). البادئات الجزئية التي كانت في `projects/ELAZAMET1/{backend,ml-backend}/.env.example` (`hf_…` و`xai-…`) أُزيلت؛ تاريخ هذا المستودع لا يحتوي القيم الكاملة، لكن الملفين جُمِعا من مستودع آخر (`36ba694`) — إن كانت البادئتان لمفتاحين حقيقيين فطبّق قائمة التدوير أدناه.
+
 ### التشغيل الآمن لدورة الحياة
 
 1. من **Actions → AI-2027 Project Lifecycle → Run workflow** اختر `main`.
@@ -146,7 +159,7 @@
 
 ## 4️⃣ قائمة التدوير عند الشك في تسريب
 
-1. **أبطِل** المفتاح من لوحة المزوّد (AI Studio · NVIDIA Build · Groq · OpenRouter · Ollama · E2B · Render).
+1. **أبطِل** المفتاح من لوحة المزوّد (AI Studio · NVIDIA Build · Groq · OpenRouter · Ollama · E2B · Render · Hugging Face · xAI).
 2. أنشئ مفتاحًا جديدًا وأضفه إلى `Settings → Secrets and variables → Actions`.
 3. شغّل `python3 scripts/workflow_secret_audit.py --assert` للتأكد أن كل مرجع ما زال مسنَدًا إلى `env:`.
 4. شغّل الوظيفة المعنية يدويًا (`live-gemini` أو `NVIDIA NIM live smoke check` أو `E2B sandbox live smoke check` · `Deploy to Render` مع `confirm` فارغ = dry run) لتأكيد أن المفتاح الجديد يعمل.
