@@ -38,6 +38,8 @@
 | `WHATSAPP_CLOUD_ACCESS_TOKEN` · `WHATSAPP_CLOUD_APP_SECRET` · `WHATSAPP_CLOUD_VERIFY_TOKEN` | `src/connectors/whatsapp_cloud.py` — بيانات اعتماد Meta WhatsApp Cloud API المباشر (`Bearer` + `X-Hub-Signature-256` + تحدي `hub.verify_token`) عند استخدام Graph API مباشرةً دون وسيط BSP. `APP_SECRET` و`VERIFY_TOKEN` (لا `ACCESS_TOKEN`) يمرّان أيضاً و`.github/workflows/supabase-secret-sync.yml` (تشغيل يدوي على `main` فقط عبر `env:`) — ينقل القيمة مرة واحدة إلى **Supabase Vault** عبر OIDC من GitHub، بلا أي بيانات اعتماد مشتركة | مصادقة وتوقيع مسار Meta المباشر ضمن نافذة الـ24 ساعة المجانية فقط (`MAX_SPEND=0`) | غيابها يوقف مسار Meta المباشر بـ`missing_access_credential` / `missing_signing_config` | Meta for Developers → WhatsApp → API Setup |
 | `DASHSCOPE_API_KEY` | `python-2027/src/ai2027_protocol/ai_providers.py` — `create_qwen_model_studio_provider()` فقط. **غير مستعمل في أي Workflow ولا في CI تلقائي**؛ يُقرأ من بيئة التشغيل فقط | مفتاح Alibaba Cloud Model Studio (Qwen) للواجهة المتوافقة مع OpenAI. **المزوّد ليس مجانياً مضموناً**: رصيد مجاني ثم اشتراك مدفوع، لذلك يُصنَّف **`UNKNOWN_COST`** ويُحجب تحت `AI2027_MAX_SPEND_USD=0`. الحماية مركزية: `ProviderKind.QWEN` في `NON_RECLASSIFIABLE_PROVIDERS` (`budget.py`) — لا إعادة تصنيف عبر `billing_tier` صريح ولا عبر `AI2027_FREE_MODELS` | لا يُبنى المزوّد أصلاً بلا `QWEN_MODEL` و`DASHSCOPE_WORKSPACE_ID`؛ وحتى مع المفتاح، الحارس يرفض قبل أي شبكة (`unknown_cost_blocked`) | Alibaba Cloud → Model Studio → API Key |
 
+| `AI2027_ASSISTANT_TELEGRAM_TOKEN` | `python-2027/src/ai2027_protocol/channel_assistant.py` — `TelegramReplySender` (مساعد المحادثة العام للقناتين). **لا يُستعمل في أي Workflow ولا في CI تلقائي**؛ يُقرأ من بيئة التشغيل فقط. يُرسل ردود المساعد النصية عبر `sendMessage` فقط (لا `getUpdates`)، ويرجع إلى `PA_APPROVAL_BOT_TOKEN` إن غاب. المسار يعتمد حصرياً على `FreeFirstRouter`/`BudgetGuard` (`FREE_TIER`/`LOCAL`، `MAX_SPEND=0`) فلا يتصل بأي مزود مدفوع | توكن بوت Telegram لإرسال ردود المحادثة العام باللغة العربية (مقسّمة إلى ≤ 4096 حرفاً). لا يُطبع ولا يُسجَّل ولا يدخل استثناءات خام | لا إرسال: المرسل يرفض `not_configured` قبل أي شبكة (fail-closed) | Telegram @BotFather → /newbot |
+
 ### متغيّرات (ليست أسرارًا، ولا تحتاج تشفيرًا)
 
 | المتغيّر | الاستعمال | الافتراضي |
@@ -82,6 +84,9 @@
 | `QWEN_MODEL` | معرّف نموذج Qwen **مطلوب** (لا قيمة افتراضية): المعرّفات تدور — التوثيق الرسمي أظهر `qwen3.8-max` بينما الحسابات قد تخدم `qwen4-max`؛ يُختار من قائمة نماذج حسابك | **لا شيء** — غيابه يمنع بناء المزوّد ويمنع أي طلب شبكة |
 | `PA_APPROVAL_VOTE_BASE_URL` | `src/watchers/approval_bot.py` و`scripts/live_smoke_runner.py` — عنوان صفحة التصويت بـ Passkey التي يبنيها Worker في `worker/approval-worker/` (ADR-0006). يُضاف إلى البطاقة رابط `…?approval=<id>` | فارغ ⇒ البطاقة بلا رابط (الأزرار تبقى وحدها) |
 | `PA_APPROVAL_SIGNING_PUBKEY` | `src/executors/governed_executor.py` — المفتاح العام Ed25519 (hex،64 حرفاً) للتحقق من توقيع الـWorker على قرار الموافقة (ADR-0006) | فارغ ⇒ مسار الـassertion يفشل بـ`assertion_verification_key_missing` (fail-closed) ويعمل المسار البديل فقط |
+
+| `AI2027_ASSISTANT_TELEGRAM_CHAT_ID` | `python-2027/src/ai2027_protocol/channel_assistant.py` — محادثة Telegram التي يُرسل إليها ردود المساعد العام. يرجع إلى `PA_APPROVAL_CHAT_ID` إن غاب | فارغ ⇒ لا إرسال (`not_configured`) |
+| `AI2027_ASSISTANT_MAX_HISTORY_TURNS` | `python-2027/src/ai2027_protocol/channel_assistant.py` — عدد دورات (user, assistant) المحتفظ بها في سجل المحادثة لكل محادثة. قيمة غير رقمية أو سالبة ترجع إلى الافتراضي (fail-closed) | `8` |
 
 ### أسرار Cloudflare / R2 المعرَّفة وغير المستعملة بعد
 
