@@ -270,13 +270,14 @@ def test_ycloud_dry_run_never_calls_network():
     assert FIXTURE_KEY not in "\n".join(out)
 
 
-def test_ycloud_secret_and_key_are_masked_first_in_actions(capsys):
-    yc = FakeYCloud(endpoints=[ep("wh_m")])
-    rc, _, _ = yrun(yc, extra={"GITHUB_ACTIONS": "true"})
-    printed = capsys.readouterr().out.splitlines()
-    assert rc == 0
-    assert printed[:2] == [f"::add-mask::{FIXTURE_KEY}", f"::add-mask::{FIXTURE_WHSEC}"]
-    assert not any(FIXTURE_WHSEC in line for line in printed[2:])
+def test_ycloud_secret_and_key_never_reach_stdout_even_in_actions(capsys):
+    """Nothing is ever printed with a value in it — not even an ::add-mask:: command."""
+    for scenario in ([ep("wh_m")], [ep("wh_a"), ep("wh_b")], [ep("wh_c", events=["x.y"])]):
+        rc, text, _ = yrun(FakeYCloud(endpoints=scenario), extra={"GITHUB_ACTIONS": "true"})
+        out = capsys.readouterr().out
+        assert FIXTURE_WHSEC not in out and FIXTURE_KEY not in out and "::add-mask::" not in out
+    src = (ROOT / "scripts" / "supabase_secret_sync.py").read_text()
+    assert "add-mask" not in src, "values must never be written to the log stream, even for masking"
 
 
 def test_workflow_passes_ycloud_key_via_env_and_flag():

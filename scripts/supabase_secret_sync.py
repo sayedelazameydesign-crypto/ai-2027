@@ -133,18 +133,11 @@ def _ycloud_error(what: str, code: int, payload: dict) -> StepFailed:
     return StepFailed(f"YCloud {what}: HTTP {code} {str(err.get('code') or '')[:40]}{hint}".rstrip())
 
 
-def mask(value: str, env: Mapping[str, str]) -> None:
-    """Register a value with the Actions log masker before anything else can print it."""
-    if env.get("GITHUB_ACTIONS") == "true":
-        print(f"::add-mask::{value}", flush=True)
-
-
 def ycloud_endpoint_secret(env: Mapping[str, str], http: Http) -> tuple[str, list[str]]:
     """(signing secret, safe report lines). Finds or creates THE endpoint for WEBHOOK_URL."""
     api_key = (env.get("YCLOUD_API_KEY") or "").strip()
     if not api_key:
         raise StepFailed("--ycloud-api needs the YCLOUD_API_KEY Actions secret — not set")
-    mask(api_key, env)
     code, page = _ycloud("GET", "/webhookEndpoints?limit=100", api_key, http)
     if code != 200:
         raise _ycloud_error("list endpoints", code, page)
@@ -169,8 +162,6 @@ def ycloud_endpoint_secret(env: Mapping[str, str], http: Http) -> tuple[str, lis
         code, full = _ycloud("GET", f"/webhookEndpoints/{urllib.parse.quote(ep_id, safe='')}", api_key, http)
         secret = str(full.get("secret") or "").strip() if code == 200 else ""
         ep = full if code == 200 else ep
-    if secret:
-        mask(secret, env)
     events = [str(x) for x in ep.get("enabledEvents") or []]
     status = str(ep.get("status") or "unknown")
     report = [f"YCloud: {action} `{ep_id[:40]}` · status `{status[:20]}` · {len(events)} event(s)"]
