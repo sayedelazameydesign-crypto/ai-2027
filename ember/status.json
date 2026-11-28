@@ -1,0 +1,184 @@
+{
+  "beat_ts": 1795887188.1197352,
+  "beat_at_iso": "2026-11-28T17:33:08Z",
+  "duration_ms": 1255.2,
+  "smoke": {
+    "ok": true,
+    "passed": 17,
+    "total": 17,
+    "checks": [
+      {
+        "name": "live-agent: minimal public health",
+        "ok": true,
+        "note": "ai-2027-live-agent"
+      },
+      {
+        "name": "live-agent: reader-protected capabilities contract",
+        "ok": true,
+        "note": "goals=6"
+      },
+      {
+        "name": "live-agent: create_file -> VERIFIED (5/5 checks)",
+        "ok": true,
+        "note": "run_1795887186_7bdc5fd4"
+      },
+      {
+        "name": "live-agent: cleanup contract is explicit",
+        "ok": true,
+        "note": "not_applicable"
+      },
+      {
+        "name": "live-agent: artifact download matches byte-for-byte",
+        "ok": true,
+        "note": "26 bytes"
+      },
+      {
+        "name": "live-agent: evidence retrievable by run_id",
+        "ok": true,
+        "note": "run_1795887186_7bdc5fd4"
+      },
+      {
+        "name": "live-agent: POSIX traversal -> DENIED",
+        "ok": true,
+        "note": "path escapes the sandbox: '../../etc/pwned' resolves to /hom…"
+      },
+      {
+        "name": "live-agent: Windows-style traversal -> DENIED",
+        "ok": true,
+        "note": "path '..\\\\..\\\\pwned.txt' contains a backslash, which is a pa…"
+      },
+      {
+        "name": "live-agent: VERIFIED run admitted to memory, DENIED run refused",
+        "ok": true,
+        "note": "memories=1 refused=2"
+      },
+      {
+        "name": "live-agent: memory search returns the real run above noise",
+        "ok": true,
+        "note": "score=1.0 threshold=0.15"
+      },
+      {
+        "name": "live-agent: unrelated query -> no confident hit (honest recall)",
+        "ok": true,
+        "note": "top_score=0.0"
+      },
+      {
+        "name": "live-agent: agent card is valid + declares its limits",
+        "ok": true,
+        "note": "10 endpoints · 4 limits"
+      },
+      {
+        "name": "live-agent: metrics expose real counters (Prometheus text)",
+        "ok": true,
+        "note": "verified_runs=1"
+      },
+      {
+        "name": "hud: health (stdlib, no LLM)",
+        "ok": true,
+        "note": "ok"
+      },
+      {
+        "name": "hud: plan + VERIFIED artifact/hash + history and persisted record restore",
+        "ok": true,
+        "note": "run_1795887186_e4ca0f87"
+      },
+      {
+        "name": "hud: built-in escape test -> DENIED",
+        "ok": true,
+        "note": "ok"
+      },
+      {
+        "name": "hud: 100-attack gate (0 breaches, all gates)",
+        "ok": true,
+        "note": "denied=91 contained=9"
+      }
+    ],
+    "error": null
+  },
+  "memory": {
+    "memories": 1,
+    "refusals": 2
+  },
+  "public_paths": [
+    {
+      "url": "https://sayedelazameydesign-crypto.github.io/ai-2027/demo.html",
+      "status": 200,
+      "live": true,
+      "verdict": "live"
+    },
+    {
+      "url": "https://cdn.jsdelivr.net/gh/sayedelazameydesign-crypto/ai-2027@main/website/demo.html",
+      "status": 200,
+      "live": true,
+      "verdict": "live"
+    }
+  ],
+  "public_paths_blocked": 0,
+  "egress": {
+    "egress": "OPEN",
+    "general_egress": true,
+    "can_judge_public_urls": true,
+    "probes": [
+      {
+        "url": "https://example.com/",
+        "host": "example.com",
+        "reachable": true,
+        "status": 200,
+        "ms": 28.2,
+        "error": null,
+        "allowlisted": false
+      },
+      {
+        "url": "https://www.wikipedia.org/",
+        "host": "www.wikipedia.org",
+        "reachable": true,
+        "status": 200,
+        "ms": 62.4,
+        "error": null,
+        "allowlisted": false
+      },
+      {
+        "url": "https://www.cloudflare.com/",
+        "host": "www.cloudflare.com",
+        "reachable": true,
+        "status": 200,
+        "ms": 104.9,
+        "error": null,
+        "allowlisted": false
+      },
+      {
+        "url": "https://api.github.com/",
+        "host": "api.github.com",
+        "reachable": true,
+        "status": 200,
+        "ms": 62.1,
+        "error": null,
+        "allowlisted": true
+      }
+    ]
+  },
+  "heat": {
+    "heat": 0.6873,
+    "verdict": "hot-without-flame",
+    "beats_7d": 19,
+    "success_rate_7d": 1.0,
+    "longest_gap_h": 13.77,
+    "since_last_beat_h": 0.0,
+    "memories": 1,
+    "embers_live": 3,
+    "embers_measured": true,
+    "weights": {
+      "success": 0.4,
+      "recency": 0.2,
+      "fuel": 0.2,
+      "embers": 0.2
+    },
+    "components": {
+      "success": 0.4,
+      "recency": 0.0853,
+      "fuel": 0.002,
+      "embers": 0.2
+    }
+  },
+  "degraded": false
+}
