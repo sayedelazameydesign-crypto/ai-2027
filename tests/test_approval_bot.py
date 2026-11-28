@@ -280,6 +280,50 @@ class TestDecisions(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertEqual(sheet.worksheet("pa_approvals").rows[1][ab.COL_STATUS], "pending")
 
+    def test_duplicate_press_is_a_no_op(self):
+        # At-least-once delivery: the same press (or a second tap) arrives
+        # again. The second one must not touch the row a second time.
+        gate, sheet, transport = make_gate(allowed=["777"])
+        seed_approval(sheet.worksheet("pa_approvals"), approval_id="A1")
+        first = gate.handle_callback(callback("A1"))
+        row_after_first = list(sheet.worksheet("pa_approvals").rows[1])
+        second = gate.handle_callback(callback("A1", query_id="q-2"))
+        self.assertTrue(first["ok"])
+        self.assertFalse(second["ok"])
+        self.assertEqual(second["reason"], "not_pending")
+        self.assertEqual(sheet.worksheet("pa_approvals").rows[1], row_after_first)
+        self.assertEqual(row_after_first[ab.COL_VERSION], "2", "version bumped exactly once")
+        # ...and a later "deny" press cannot flip a granted approval either.
+        third = gate.handle_callback(callback("A1", verb="deny", query_id="q-3"))
+        self.assertEqual(third["reason"], "not_pending")
+        self.assertEqual(sheet.worksheet("pa_approvals").rows[1][ab.COL_STATUS], "granted")
+
+    def test_refused_toast_never_blocks_the_decision_or_the_queue(self):
+        class LateTransport(FakeTransport):
+            def answer_callback(self, callback_query_id, text, show_alert=False):
+                raise RuntimeError("telegram answerCallbackQuery failed: query is too old")
+
+        transport = LateTransport()
+        gate, sheet, _ = make_gate(allowed=["777"], transport=transport)
+        seed_approval(sheet.worksheet("pa_approvals"), approval_id="A1")
+        result = gate.handle_callback(callback("A1"))
+        self.assertTrue(result["ok"])
+        self.assertFalse(result["answered"])
+        self.assertEqual(sheet.worksheet("pa_approvals").rows[1][ab.COL_STATUS], "granted")
+        # The redelivered press is denied quietly instead of raising forever.
+        again = gate.handle_callback(callback("A1", query_id="q-2"))
+        self.assertEqual(again["reason"], "not_pending")
+
+        bot = ab.ApprovalBot.__new__(ab.ApprovalBot)
+        bot._sent_cards, bot._offset, bot.gate = set(), None, gate
+        bot.transport = transport
+        bot.gate.send_pending_cards = lambda: []
+        transport.updates = [{"update_id": 9, "callback_query": callback("A1", query_id="q-9")},
+                             {"update_id": 10, "message": {"text": "x"}}]
+        report = bot.run_once()
+        self.assertEqual(report["callbacks_handled"], 1)
+        self.assertEqual(bot._offset, 11, "the queue moves past the press")
+
     def test_deny_sets_denied_state(self):
         gate, sheet, transport = make_gate(allowed=["777"])
         seed_approval(sheet.worksheet("pa_approvals"), approval_id="A1")

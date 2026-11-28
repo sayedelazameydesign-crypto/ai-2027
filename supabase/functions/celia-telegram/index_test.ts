@@ -166,6 +166,7 @@ class FakeStore extends MemStore implements CeliaStore {
     return Promise.resolve();
   }
   relayFetch(offset: number | null, limit: number) {
+    if (this.relayFails) return Promise.reject(new Error("db down"));
     if (offset !== null) for (const id of [...this.relay.keys()]) if (id < offset) this.relay.delete(id);
     return Promise.resolve([...this.relay.entries()].sort((a, b) => a[0] - b[0]).slice(0, limit).map((e) => e[1]));
   }
@@ -200,11 +201,24 @@ class FakeStore extends MemStore implements CeliaStore {
 function setup(envExtra: Record<string, string> = {}, providerReply: string | null = "رد سيليا") {
   const tgCalls: { method: string; body: Record<string, unknown> }[] = [];
   let nextId = 500;
+  // A stateful fake Telegram: where the webhook points, and failure switches.
+  const tg = { url: "", rejectSet: false, misroute: false, rejectDelete: false };
   const fetchFn = ((url: string | URL | Request, init?: RequestInit) => {
     const method = String(url).split("/").pop()!;
     const body = JSON.parse(String(init?.body ?? "{}"));
     tgCalls.push({ method, body });
-    const result = method === "sendMessage" ? { message_id: nextId++ } : method === "getMe" ? { username: "CeliaBot" } : true;
+    if (method === "setWebhook") {
+      if (tg.rejectSet) return Promise.resolve(new Response(JSON.stringify({ ok: false, description: "Bad Request" })));
+      tg.url = tg.misroute ? "https://elsewhere.example/hook" : String(body.url);
+    }
+    if (method === "deleteWebhook" && !tg.rejectDelete) tg.url = "";
+    const result = method === "sendMessage"
+      ? { message_id: nextId++ }
+      : method === "getMe"
+      ? { username: "CeliaBot" }
+      : method === "getWebhookInfo"
+      ? { url: tg.url, pending_update_count: 0 }
+      : true;
     return Promise.resolve(new Response(JSON.stringify({ ok: true, result })));
   }) as typeof fetch;
   const systems: string[] = [];
@@ -226,7 +240,7 @@ function setup(envExtra: Record<string, string> = {}, providerReply: string | nu
     env: (n) => env[n], store, fetchFn, providers: [provider],
     sleep: () => Promise.resolve(), clock: () => V.now, log: (l) => logs.push(l),
   });
-  return { handler, tgCalls, store, systems, logs };
+  return { handler, tgCalls, store, systems, logs, tg };
 }
 
 async function post(handler: (r: Request) => Promise<Response>, update: unknown, secret?: string) {
@@ -320,9 +334,12 @@ Deno.test("no free model => CELIA's honest fallback, no history written", async 
   eq(t.store.turns.length, 0);
 });
 
+const SETUP = "https://x/functions/v1/celia-telegram/setup";
+const HOOK = "https://ref.supabase.co/functions/v1/celia-telegram/telegram";
+
 Deno.test("/setup points the webhook at this function with the derived secret", async () => {
-  const t = setup();
-  const res = await t.handler(new Request("https://x/functions/v1/celia-telegram/setup"));
+  const t = setup({ CELIA_WEBHOOK: "on" });
+  const res = await t.handler(new Request(SETUP));
   eq(res.status, 200);
   const hook = t.tgCalls.find((c) => c.method === "setWebhook")!;
   eq(hook.body.url, "https://ref.supabase.co/functions/v1/celia-telegram/telegram");
@@ -330,15 +347,64 @@ Deno.test("/setup points the webhook at this function with the derived secret", 
   ok(ALLOWED_UPDATES.includes("callback_query"), "approval buttons must reach the bot");
   eq(hook.body.allowed_updates, ALLOWED_UPDATES);
   eq(hook.body.drop_pending_updates, false);
-  ok(!JSON.stringify(await res.json()).includes(TOKEN));
+  const body = await res.json();
+  ok(!JSON.stringify(body).includes(TOKEN));
+  eq([body.ok, body.webhook_actual, body.chat], [true, "celia", "instant"]);
+  eq(t.tg.url, HOOK);
+});
+
+Deno.test("/setup without CELIA_WEBHOOK changes nothing (strangers, link previews)", async () => {
+  const t = setup();
+  const body = await (await t.handler(new Request(SETUP))).json();
+  eq([body.changed, body.webhook, body.webhook_actual], [false, "unset", "none"]);
+  eq(t.tgCalls.map((c) => c.method), ["getWebhookInfo"]);
+});
+
+Deno.test("/setup is idempotent: twice = same single webhook", async () => {
+  const t = setup({ CELIA_WEBHOOK: "on" });
+  eq((await t.handler(new Request(SETUP))).status, 200);
+  eq((await t.handler(new Request(SETUP))).status, 200);
+  eq(t.tg.url, HOOK);
+});
+
+Deno.test("/setup refuses BEFORE touching Telegram when the queue cannot serve", async () => {
+  const t = setup({ CELIA_WEBHOOK: "on" });
+  t.store.relayFails = true;
+  const res = await t.handler(new Request(SETUP));
+  eq(res.status, 503);
+  eq((await res.json()).checks, { store: true, relay: false });
+  ok(!t.tgCalls.some((c) => c.method === "setWebhook"));
+  eq(t.tg.url, "");
+});
+
+Deno.test("/setup: Telegram rejects setWebhook => nothing set, 502, safe to re-run", async () => {
+  const t = setup({ CELIA_WEBHOOK: "on" });
+  t.tg.rejectSet = true;
+  const res = await t.handler(new Request(SETUP));
+  eq(res.status, 502);
+  const body = await res.json();
+  eq([body.ok, body.webhook_actual, body.rolled_back], [false, "none", true]);
+  t.tg.rejectSet = false;
+  eq((await t.handler(new Request(SETUP))).status, 200);
+  eq(t.tg.url, HOOK);
+});
+
+Deno.test("/setup: webhook not verifiably ours => rolled back, never left half-configured", async () => {
+  const t = setup({ CELIA_WEBHOOK: "on" });
+  t.tg.misroute = true;
+  const res = await t.handler(new Request(SETUP));
+  eq(res.status, 502);
+  eq((await res.json()).rolled_back, true);
+  eq(t.tg.url, "");
+  ok(!t.tgCalls.some((c) => c.method === "setMyCommands"), "no success side-effects after a failed verify");
 });
 
 Deno.test("healthz reports booleans only", async () => {
   const t = setup();
   const body = await (await t.handler(new Request("https://x/functions/v1/celia-telegram/healthz"))).json();
   eq(body, {
-    ok: true, service: "celia-telegram", telegram: true, chat: "instant", webhook: "on",
-    owners: true, providers: 1, store: true,
+    ok: true, service: "celia-telegram", telegram: true, chat: "instant", webhook: "unset",
+    webhook_actual: "none", owners: true, providers: 1, store: true,
   });
 });
 
@@ -366,7 +432,9 @@ Deno.test("shadow mode (default): every update is queued, CELIA stays silent", a
   const t = setup({ CELIA_CHAT: "" });
   eq((await post(t.handler, msg(1, "ازيك"))).status, 200);
   await post(t.handler, press(2, "appr:A1:grant"));
-  eq(t.tgCalls.length, 0);
+  eq(t.tgCalls.map((c) => c.method), ["answerCallbackQuery"], "only the neutral ack, never a reply");
+  eq(t.tgCalls[0].body.callback_query_id, "q2");
+  ok(!/موافق|granted/.test(String(t.tgCalls[0].body.text)), "the ack must not claim a decision");
   eq(t.systems.length, 0);
   eq([...t.store.relay.keys()], [1, 2]);
 });
@@ -374,7 +442,7 @@ Deno.test("shadow mode (default): every update is queued, CELIA stays silent", a
 Deno.test("instant mode: approval buttons still go to the runner untouched", async () => {
   const t = setup();
   await post(t.handler, press(3, "appr:A1:grant"));
-  eq(t.tgCalls.length, 0, "the function never answers a vote itself");
+  eq(t.tgCalls.map((c) => c.method), ["answerCallbackQuery"], "ack only — the vote is decided by the runner");
   eq(t.store.relay.get(3), press(3, "appr:A1:grant"));
 });
 
@@ -396,6 +464,7 @@ Deno.test("a failed queue write returns 503 so Telegram retries (no lost vote)",
   const t = setup();
   t.store.relayFails = true;
   eq((await post(t.handler, press(6, "appr:A1:deny"))).status, 503);
+  eq(t.tgCalls.length, 0, "no ack for a press that is not safely queued");
 });
 
 Deno.test("relay secret is byte-identical to the python runner's (tests/test_celia_relay.py)", async () => {
@@ -414,7 +483,7 @@ Deno.test("relay endpoint behaves like getUpdates (offset confirms) and stores t
   for (const id of [10, 11, 12]) await post(t.handler, msg(id, "x"));
   let r = await (await relayCall(t.handler, { op: "updates", owners: ["777", "bad id", "778"] })).json();
   eq(r.result.map((u: { update_id: number }) => u.update_id), [10, 11, 12], "no offset = peek");
-  eq(r.chat, "relay");
+  eq(r.chat, "shadow");
   eq(t.store.ownersSaved, ["777", "778"]);
   r = await (await relayCall(t.handler, { op: "updates", offset: 12 })).json();
   eq(r.result.map((u: { update_id: number }) => u.update_id), [12]);
@@ -434,8 +503,31 @@ Deno.test("one memory: the runner reads and replaces the same Supabase rows CELI
 
 Deno.test("rollback: CELIA_WEBHOOK=off makes /setup delete the webhook (and never set it)", async () => {
   const t = setup({ CELIA_WEBHOOK: "off" });
-  const res = await t.handler(new Request("https://x/functions/v1/celia-telegram/setup"));
+  t.tg.url = HOOK;
+  const res = await t.handler(new Request(SETUP));
   eq(res.status, 200);
-  eq(t.tgCalls.map((c) => c.method), ["deleteWebhook"]);
+  eq(t.tgCalls.map((c) => c.method), ["deleteWebhook", "getWebhookInfo"]);
   eq(t.tgCalls[0].body.drop_pending_updates, false);
+  eq((await res.json()).webhook_actual, "none");
+  t.tg.rejectDelete = true;
+  t.tg.url = HOOK;
+  eq((await t.handler(new Request(SETUP))).status, 502, "an unconfirmed rollback is reported, not assumed");
+});
+
+Deno.test("the bot token and both derived secrets never appear in logs or response bodies", async () => {
+  const t = setup({ CELIA_WEBHOOK: "on", CELIA_CHAT: "" });
+  const bodies: string[] = [];
+  const keep = async (r: Response) => bodies.push(await r.text());
+  await keep(await t.handler(new Request(SETUP)));
+  await keep(await t.handler(new Request("https://x/functions/v1/celia-telegram/healthz")));
+  await keep(await post(t.handler, press(1, "appr:A1:grant")));
+  await keep(await post(t.handler, msg(2, "x"), "forged"));
+  await keep(await relayCall(t.handler, { op: "updates", owners: [String(OWNER)] }));
+  await keep(await relayCall(t.handler, { op: "updates" }, "forged"));
+  t.store.relayFails = true;
+  await keep(await relayCall(t.handler, { op: "updates" }));
+  const all = [...bodies, ...t.logs].join("\n");
+  for (const secret of [TOKEN, await webhookSecret(TOKEN), await relaySecret(TOKEN)]) {
+    ok(!all.includes(secret), "secret material leaked");
+  }
 });

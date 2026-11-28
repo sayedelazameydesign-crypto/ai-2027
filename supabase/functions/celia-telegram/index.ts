@@ -23,9 +23,12 @@
 //   POST /relay    -> the approval runner (X-Celia-Relay-Secret =
 //                     sha256("celia-telegram-relay:" + token)): queued updates,
 //                     owner allowlist, shared memory.
-//   GET  /setup    -> points the bot's webhook here (or, with CELIA_WEBHOOK=off,
-//                     deletes it: instant rollback to getUpdates). Idempotent.
-//   GET  /healthz  -> booleans/counts only; never a secret, id or message.
+//   GET  /setup    -> reconciles Telegram with the DECLARED state CELIA_WEBHOOK:
+//                     on = webhook here (after preflight; verified; rolled back
+//                     if verification fails), off = no webhook (rollback),
+//                     unset = report only, change nothing. Idempotent: any
+//                     number of calls (or link-preview fetches) converge.
+//   GET  /healthz  -> booleans/counts/labels only; never a secret, id or message.
 //
 // Policy (L0): conversation only. Memory is written ONLY on the owner's explicit
 // command, executed in code (no model). Free-tier providers only. Strangers get
@@ -870,6 +873,7 @@ export class PostgrestCeliaStore implements CeliaStore {
 }
 
 // ------------------------------------------------------------------ handler
+const ACK_TEXT = "⏳ وصلت ضغطتك — يُطبَّق القرار ويُسجَّل خلال دقائق.";
 const STAGES = new Set([
   "replied", "no_provider_available", "onboarding", "greeted", "relayed", "duplicate_update",
   "memory_saved", "memory_forgotten", "memory_listed",
@@ -946,7 +950,20 @@ export function makeHandler(deps: Deps) {
   const log = deps.log ?? ((l: string) => console.log(l));
   const token = () => (env("CELIA_TELEGRAM_TOKEN") || "").trim();
   const instant = () => (env("CELIA_CHAT") || "").trim().toLowerCase() === "instant";
-  const webhookOff = () => (env("CELIA_WEBHOOK") || "").trim().toLowerCase() === "off";
+  /** Declared webhook state: "on" | "off" | "unset" (unset => /setup changes nothing). */
+  const desired = (): "on" | "off" | "unset" => {
+    const v = (env("CELIA_WEBHOOK") || "").trim().toLowerCase();
+    return v === "on" || v === "off" ? v : "unset";
+  };
+  const chatMode = () => (instant() ? "instant" : "shadow");
+  const hookUrl = () => `${(env("SUPABASE_URL") || "").replace(/\/+$/, "")}/functions/v1/celia-telegram/telegram`;
+  /** Where the bot's webhook really points (labels only, never the URL). */
+  async function actualWebhook(tg: TelegramApi): Promise<"celia" | "none" | "other" | "unknown"> {
+    const info = await tg.call("getWebhookInfo", {});
+    if (!info) return "unknown";
+    const url = typeof info.url === "string" ? info.url : "";
+    return !url ? "none" : url === hookUrl() ? "celia" : "other";
+  }
   const envOwners = () => (env("CELIA_OWNER_IDS") || "").split(/[\s,]+/).filter((s) => OWNER_ID.test(s));
   async function owners(): Promise<Set<string>> {
     let pushed: string[] = [];
@@ -1052,7 +1069,7 @@ export function makeHandler(deps: Deps) {
         }
         const offset = Number.isSafeInteger(body.offset) ? (body.offset as number) : null;
         const limit = Number.isSafeInteger(body.limit) ? (body.limit as number) : 100;
-        return json({ ok: true, result: await store.relayFetch(offset, limit), chat: instant() ? "instant" : "relay" });
+        return json({ ok: true, result: await store.relayFetch(offset, limit), chat: chatMode() });
       }
       if (body.op === "memory_load") return json({ ok: true, rows: await store.loadMemory() });
       if (body.op === "memory_replace" && Array.isArray(body.rows)) {
@@ -1063,6 +1080,80 @@ export function makeHandler(deps: Deps) {
       return json({ ok: false }, 503);
     }
     return new Response(null, { status: 400 });
+  }
+
+  /**
+   * GET /setup — reconcile Telegram with CELIA_WEBHOOK. Unauthenticated by
+   * design (a browser opens it), so it can only ever move Telegram TOWARD the
+   * state the owner declared in Supabase secrets; a stranger or a link
+   * preview calling it changes nothing new.
+   */
+  async function setup(): Promise<Response> {
+    const want = desired();
+    if (!token()) return json({ ok: false, message: "أضف CELIA_TELEGRAM_TOKEN في أسرار Supabase أولاً." }, 503);
+    const tg = new TelegramApi(token(), fetchFn);
+    if (want === "unset") {
+      return json({
+        ok: true, changed: false, webhook: want, webhook_actual: await actualWebhook(tg),
+        message: "لم يتغير شيء. لربط البوت: أضف CELIA_WEBHOOK=on في أسرار Supabase ثم افتح هذا الرابط مرة أخرى.",
+      });
+    }
+    if (want === "off") {
+      // Rollback: Telegram queues updates again; the runner's getUpdates resumes next cycle.
+      await tg.call("deleteWebhook", { drop_pending_updates: false });
+      const actual = await actualWebhook(tg);
+      return json({
+        ok: actual === "none", changed: true, webhook: want, webhook_actual: actual,
+        message: actual === "none"
+          ? "أُلغي الـwebhook ✅ يعود بوت الموافقات إلى getUpdates في دورته التالية (≤ 5 دقائق)."
+          : "لم يتأكد الإلغاء؛ افتح الرابط مرة أخرى.",
+      }, actual === "none" ? 200 : 502);
+    }
+    // want === "on": refuse BEFORE touching Telegram unless the function can actually serve.
+    const checks = { store: false, relay: false };
+    try {
+      checks.store = await store.healthz();
+      await store.relayFetch(null, 1); // proves celia_relay + celia_relay_fetch exist (peek: consumes nothing)
+      checks.relay = true;
+    } catch {
+      // reported below
+    }
+    if (!checks.store || !checks.relay) {
+      return json({
+        ok: false, changed: false, webhook: want, webhook_actual: await actualWebhook(tg), checks,
+        message: "لم أربط البوت: قاعدة البيانات أو طابور الموافقات غير جاهز. لم يتغير شيء.",
+      }, 503);
+    }
+    await tg.call("setWebhook", {
+      url: hookUrl(),
+      secret_token: await webhookSecret(token()),
+      allowed_updates: ALLOWED_UPDATES,
+      drop_pending_updates: false,
+      max_connections: 10,
+    });
+    let actual = await actualWebhook(tg);
+    let rolledBack = false;
+    if (actual !== "celia") {
+      // Never leave a half state: if we cannot confirm our own webhook, remove it.
+      await tg.call("deleteWebhook", { drop_pending_updates: false });
+      actual = await actualWebhook(tg);
+      rolledBack = actual === "none";
+      return json({
+        ok: false, changed: !rolledBack, webhook: want, webhook_actual: actual, rolled_back: rolledBack, checks,
+        message: rolledBack
+          ? "رفض تيليجرام الربط أو تعذّر التأكد منه، فأُلغي فوراً؛ البوت كما كان. افتح الرابط مرة أخرى."
+          : "الحالة غير مؤكدة؛ افتح الرابط مرة أخرى (العملية آمنة للتكرار).",
+      }, 502);
+    }
+    const commands = !!(await tg.call("setMyCommands", {
+      commands: [{ command: "start", description: "تعريف بسيليا" }, { command: "memory", description: "ماذا تتذكرين؟" }],
+    }));
+    const me = await tg.call("getMe", {});
+    const bot = typeof me?.username === "string" ? `@${me.username}` : null;
+    return json({
+      ok: true, changed: true, bot, chat: chatMode(), webhook: want, webhook_actual: actual, commands, checks,
+      message: `تم ربط ${bot ?? "البوت"} بسيليا ✅ (وضع المحادثة: ${chatMode()})`,
+    });
   }
 
   return async (req: Request): Promise<Response> => {
@@ -1079,41 +1170,15 @@ export function makeHandler(deps: Deps) {
         ok: db && !!token(),
         service: "celia-telegram",
         telegram: !!token(),
-        chat: instant() ? "instant" : "relay",
-        webhook: webhookOff() ? "off" : "on",
+        chat: chatMode(),
+        webhook: desired(),
+        webhook_actual: token() ? await actualWebhook(new TelegramApi(token(), fetchFn)) : "unknown",
         owners: db ? (await owners()).size > 0 : false,
         providers: providers().filter((p) => p.configured()).length,
         store: db,
       }, db ? 200 : 503);
     }
-    if (req.method === "GET" && route === "/setup") {
-      if (!token()) return json({ ok: false, message: "أضف CELIA_TELEGRAM_TOKEN في أسرار Supabase أولاً." }, 503);
-      const tg = new TelegramApi(token(), fetchFn);
-      if (webhookOff()) {
-        // Rollback: Telegram queues updates again and the runner's getUpdates resumes by itself.
-        const off = await tg.call("deleteWebhook", { drop_pending_updates: false });
-        return json(off
-          ? { ok: true, webhook: "off", message: "أُلغي الـwebhook ✅ عاد بوت الموافقات إلى getUpdates تلقائياً." }
-          : { ok: false, message: "رفض تيليجرام إلغاء الـwebhook." }, off ? 200 : 502);
-      }
-      const base = (env("SUPABASE_URL") || "").replace(/\/+$/, "");
-      const hook = await tg.call("setWebhook", {
-        url: `${base}/functions/v1/celia-telegram/telegram`,
-        secret_token: await webhookSecret(token()),
-        allowed_updates: ALLOWED_UPDATES,
-        drop_pending_updates: false,
-        max_connections: 10,
-      });
-      await tg.call("setMyCommands", {
-        commands: [{ command: "start", description: "تعريف بسيليا" }, { command: "memory", description: "ماذا تتذكرين؟" }],
-      });
-      const me = await tg.call("getMe", {});
-      const bot = typeof me?.username === "string" ? `@${me.username}` : null;
-      const chatMode = instant() ? "instant" : "relay";
-      return json(hook
-        ? { ok: true, bot, chat: chatMode, message: `تم ربط ${bot ?? "البوت"} بسيليا ✅ (وضع المحادثة: ${chatMode})` }
-        : { ok: false, message: "رفض تيليجرام ربط الـwebhook؛ تأكد من CELIA_TELEGRAM_TOKEN." }, hook ? 200 : 502);
-    }
+    if (req.method === "GET" && route === "/setup") return setup();
     if (req.method !== "POST") return new Response(null, { status: 404 });
     if (!token()) return new Response(null, { status: 503 });
     if (route === "/relay") return relay(req);
@@ -1140,6 +1205,12 @@ export function makeHandler(deps: Deps) {
       } catch {
         log("celia stage=relay_error reason=push");
         return new Response(null, { status: 503 });
+      }
+      const press = update.callback_query as { id?: unknown } | undefined;
+      if (press && typeof press.id === "string") {
+        // Queued durably above. A neutral, immediate toast stops the button
+        // spinner; the DECISION is still made only by the approval runner.
+        await new TelegramApi(token(), fetchFn).call("answerCallbackQuery", { callback_query_id: press.id, text: ACK_TEXT });
       }
       log("celia stage=relayed");
       return json({ ok: true });

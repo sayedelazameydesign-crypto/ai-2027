@@ -535,16 +535,32 @@ class ApprovalGate:
             answer, ok = DENY_ANSWERS["expired"], False
         else:
             answer, ok = "تم التسجيل: رفض.", False
-        if query_id:
-            self.transport.answer_callback(query_id, answer,
-                                           show_alert=not ok)
+        answered = self._answer(query_id, answer, show_alert=not ok)
         return {
             "ok": ok,
             "state": state,
             "reason": reason,
             "approval_id": ap["id"],
             "answer": answer,
+            "answered": answered,
         }
+
+    def _answer(self, query_id: str, text: str, show_alert: bool) -> bool:
+        """Best-effort toast. The persisted row + audit entry are the record.
+
+        Telegram refuses answers that arrive too late (or twice). Raising here
+        used to abort the cycle AFTER the decision was persisted, so the
+        caller kept the old offset, the same press came back as
+        ``not_pending``, raised again — and every later update was stuck
+        behind it, cycle after cycle. A refused toast is now just ``False``.
+        """
+        if not query_id:
+            return False
+        try:
+            self.transport.answer_callback(query_id, text, show_alert=show_alert)
+            return True
+        except Exception:  # noqa: BLE001 — cosmetic; never blocks the queue
+            return False
 
     def _deny(self, approval_id: Optional[str], reason: str, sender: str,
               callback_data: str, query_id: str) -> Dict[str, Any]:
@@ -563,14 +579,14 @@ class ApprovalGate:
             policy_id="POL-004:DELEGATION-DENIED",
         )
         answer = DENY_ANSWERS.get(reason, "مرفوض.")
-        if query_id:
-            self.transport.answer_callback(query_id, answer, show_alert=True)
+        answered = self._answer(query_id, answer, show_alert=True)
         return {
             "ok": False,
             "state": STATE_DENIED,
             "reason": reason,
             "approval_id": approval_id or "",
             "answer": answer,
+            "answered": answered,
         }
 
 

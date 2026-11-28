@@ -1015,8 +1015,8 @@ class TestCeliaMemoryInSupabase(TestRealAssistantOverTelegram):
         with contextlib.ExitStack() as stack:
             for p in patches:
                 stack.enter_context(p)
-            reply_fn, _ = ci.build_assistant_reply_fn(None, sheet=sheet, memory_rows=[], relay=client)
             with contextlib.redirect_stdout(io.StringIO()) as out:
+                reply_fn, _ = ci.build_assistant_reply_fn(None, sheet=sheet, memory_rows=[], relay=client)
                 stages = [reply_fn(_text_update(i + 1, t)) for i, t in enumerate(texts)]
         return stages, [p["text"] for _, p in posts], out.getvalue()
 
@@ -1041,3 +1041,18 @@ class TestCeliaMemoryInSupabase(TestRealAssistantOverTelegram):
         self.assertEqual(stages, ["memory_unavailable"])
         self.assertEqual(sheet.tabs, {})
         self.assertIn("memory=none", out)
+
+    def test_legacy_sheet_rows_are_copied_once_and_the_sheet_is_never_written(self):
+        edge, sheet = FakeEdge(), _FakeSheet()
+        tab = sheet.add_worksheet(ci.CELIA_MEMORY_TAB, rows=10, cols=6)
+        tab.values = [list(TestSheetMemoryBackend.HEADERS),
+                      ["1", "project", "قرار قديم من الورقة", "telegram:1", "2026-11-20T10:00:00Z", "1"]]
+        before = [list(r) for r in tab.values]
+        stages, sent, out = self._cycle(edge, sheet, ["ماذا تتذكرين؟"])
+        self.assertIn("imported_legacy_rows=1", out)
+        self.assertIn("قرار قديم من الورقة", sent[0])
+        self.assertEqual(edge.memory[0]["text"], "قرار قديم من الورقة")
+        stages, sent, out = self._cycle(edge, sheet, ["تذكّري: معلومة جديدة"])
+        self.assertNotIn("imported_legacy_rows", out, "never copied twice")
+        self.assertEqual(tab.values, before, "the legacy tab is read-only")
+        self.assertEqual(len(edge.memory), 2)

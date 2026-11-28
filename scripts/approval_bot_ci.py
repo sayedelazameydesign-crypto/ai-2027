@@ -224,7 +224,7 @@ ASSISTANT_MODES = ("companion", "intelligence", "developer", "executive",
 MEMORY_BACKENDS = ("supabase", "sheet", "state", "none")
 #: Where this cycle reads Telegram updates from (allowlisted log labels).
 UPDATE_SOURCES = ("relay", "getUpdates")
-CHAT_MODES = ("instant", "relay")
+CHAT_MODES = ("instant", "shadow")
 #: Why the probe has no sheet — allowlisted, safe for run-page annotations.
 SHEET_REASONS = ("ok", "no_credentials", "no_sheet_id", "gspread_missing",
                  "bad_credentials", "open_failed",
@@ -338,10 +338,22 @@ def open_celia_memory(ca: Any, sheet: Any = None,
     stops the cycle or the votes.
     """
     if relay is not None:
+        # One-time legacy copy: the Sheet tab is only READ here (never written
+        # again) plus the old state-file rows. A failed copy never blocks the
+        # memory itself; it is retried next cycle while Supabase is empty.
+        legacy_sheet: List[Dict[str, Any]] = []
+        if sheet is not None:
+            try:
+                legacy_sheet = SheetMemoryBackend(sheet, ca.SHEET_HEADERS).load()
+            except Exception as exc:  # noqa: BLE001 — legacy read is optional
+                print("stage=memory legacy_sheet=unreadable reason=%s" % type(exc).__name__)
         try:
-            imported = celia_relay.import_legacy_rows(relay, fallback_rows)
+            imported = celia_relay.import_legacy_rows(relay, legacy_sheet, fallback_rows)
             if imported:
                 print("stage=memory imported_legacy_rows=%d" % imported)
+        except Exception as exc:  # noqa: BLE001 — retried next cycle
+            print("stage=memory import_failed reason=%s (retried next cycle)" % type(exc).__name__)
+        try:
             return ca.PersonalMemory(celia_relay.RelayMemoryBackend(relay)), "supabase", None
         except Exception as exc:  # noqa: BLE001 — never write the sheet instead
             print("stage=memory backend=none reason=%s (supabase unavailable)"

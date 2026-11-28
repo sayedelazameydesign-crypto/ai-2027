@@ -172,5 +172,47 @@ class TestOneMemory(unittest.TestCase):
         self.assertEqual(relay.import_legacy_rows(client, []), 0)
 
 
+class TestLegacyCopy(unittest.TestCase):
+    SHEET = [  # what gspread returns: every cell a string
+        {"id": "1", "kind": "personal", "text": "أفضّل  الردود القصيرة", "source": "telegram:4",
+         "created_at": "2026-11-27T10:00:00Z", "confidence": "1.0"},
+        {"id": "2", "kind": "secret-ish", "text": "نوع غير معروف", "source": "x", "created_at": "", "confidence": ""},
+        {"id": "3", "kind": "project", "text": "x" * 501, "source": "x", "created_at": "", "confidence": ""},
+        {"id": "4", "kind": "project", "text": "قرار المشروع", "source": "", "created_at": "not a date",
+         "confidence": "7"},
+    ]
+    STATE = [{"id": 1, "kind": "personal", "text": "أفضّل الردود القصيرة", "source": "telegram:9",
+              "created_at": "2026-11-28T09:00:00Z", "confidence": 1.0},
+             {"id": 2, "kind": "semantic", "text": "معلومة من ملف الحالة", "source": "telegram:10",
+              "created_at": "2026-11-28T09:30:00Z", "confidence": 0.5}]
+
+    def test_rows_are_cleaned_to_what_the_table_accepts(self):
+        rows = relay.sanitize_legacy_rows(self.SHEET, self.STATE, now="2026-11-28T12:00:00Z")
+        self.assertEqual([r["text"] for r in rows],
+                         ["أفضّل الردود القصيرة", "قرار المشروع", "معلومة من ملف الحالة"])
+        self.assertEqual([r["id"] for r in rows], [1, 2, 3])
+        bad = rows[1]
+        self.assertEqual((bad["source"], bad["created_at"], bad["confidence"]),
+                         ("legacy", "2026-11-28T12:00:00Z", 1.0))
+
+    def test_copy_is_all_or_nothing_and_retried_next_cycle(self):
+        edge = FakeEdge()
+        client = relay.RelayClient(FUNCTION, TOKEN, edge.post)
+        real_post = edge.post
+
+        def failing(url, payload, headers):
+            if payload.get("op") == "memory_replace":
+                return {"ok": False}  # e.g. the transaction rolled back
+            return real_post(url, payload, headers)
+
+        edge.post = failing
+        with self.assertRaises(RuntimeError):
+            relay.import_legacy_rows(relay.RelayClient(FUNCTION, TOKEN, edge.post), self.SHEET, self.STATE)
+        self.assertEqual(edge.memory, [], "nothing half-copied")
+        edge.post = real_post
+        self.assertEqual(relay.import_legacy_rows(client, self.SHEET, self.STATE), 3)
+        self.assertEqual(relay.import_legacy_rows(client, self.SHEET, self.STATE), 0, "only once")
+
+
 if __name__ == "__main__":
     unittest.main()

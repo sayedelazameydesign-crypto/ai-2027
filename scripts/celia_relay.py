@@ -31,6 +31,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from datetime import datetime, timezone
 import urllib.parse
 import urllib.request
 from typing import Any, Callable, Dict, Iterable, List, Optional
@@ -82,8 +83,9 @@ class RelayClient:
         self.base = base.rstrip("/")
         self._headers = {"X-Celia-Relay-Secret": relay_secret(token)}
         self._post = http_post or _urllib_post
-        #: ``instant`` when CELIA answers the owner's chat in the function.
-        self.chat_mode = "relay"
+        #: ``instant`` when CELIA answers the owner's chat in the function,
+        #: ``shadow`` while the function is transport only (the default).
+        self.chat_mode = "shadow"
 
     def _call(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         response = self._post(self.base + "/relay", payload, self._headers)
@@ -100,7 +102,7 @@ class RelayClient:
         if allowed:
             payload["owners"] = allowed
         response = self._call(payload)
-        self.chat_mode = "instant" if response.get("chat") == "instant" else "relay"
+        self.chat_mode = "instant" if response.get("chat") == "instant" else "shadow"
         result = response.get("result")
         return [u for u in result if isinstance(u, dict)] if isinstance(result, list) else []
 
@@ -168,13 +170,67 @@ class RelayMemoryBackend:
         self._client.memory_replace(rows)
 
 
-def import_legacy_rows(client: RelayClient, legacy: Any) -> int:
-    """Copy rows from the old state-file memory into Supabase ONCE (if it is empty).
+_KINDS = ("personal", "project", "procedural", "semantic")
+MAX_IMPORT_ROWS = 300  # PersonalMemory's default capacity
 
+
+def _clean_created_at(value: Any, now: str) -> str:
+    text = str(value or "").strip()
+    try:
+        datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return now
+    return text if 10 <= len(text) <= 40 else now
+
+
+def sanitize_legacy_rows(*sources: Any, now: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Legacy rows -> rows the Supabase ``celia_memory`` constraints accept.
+
+    Sources are the read-only Google Sheet tab and the old state-file memory
+    (Sheet values arrive as strings). Invalid rows are skipped, duplicates
+    (same text, case/space-insensitive) are kept once, ids are renumbered
+    1..n. Doing this up front means one bad cell can never make the single
+    atomic import fail again and again.
+    """
+    stamp = now or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    seen = set()
+    rows: List[Dict[str, Any]] = []
+    for source in sources:
+        for raw in source or []:
+            if not isinstance(raw, dict):
+                continue
+            text = " ".join(str(raw.get("text") or "").split())
+            kind = str(raw.get("kind") or "").strip().lower()
+            key = text.casefold()
+            if not text or len(text) > 500 or kind not in _KINDS or key in seen:
+                continue
+            try:
+                confidence = float(raw.get("confidence", 1) or 1)
+            except (TypeError, ValueError):
+                confidence = 1.0
+            seen.add(key)
+            rows.append({
+                "kind": kind,
+                "text": text,
+                "source": (str(raw.get("source") or "").strip() or "legacy")[:120],
+                "created_at": _clean_created_at(raw.get("created_at"), stamp),
+                "confidence": confidence if 0.0 <= confidence <= 1.0 else 1.0,
+            })
+    rows = rows[-MAX_IMPORT_ROWS:]
+    for index, row in enumerate(rows, start=1):
+        row["id"] = index
+    return rows
+
+
+def import_legacy_rows(client: RelayClient, *sources: Any) -> int:
+    """Copy legacy memory into Supabase ONCE, only while Supabase is empty.
+
+    One ``memory_replace`` call = one Postgres transaction (all rows or none),
+    so a failure leaves the table empty and the next cycle simply retries.
     Never overwrites: when Supabase already holds memory, nothing happens.
     Returns the number of rows imported.
     """
-    rows = [r for r in (legacy or []) if isinstance(r, dict)]
+    rows = sanitize_legacy_rows(*sources)
     if not rows or client.memory_load():
         return 0
     return client.memory_replace(rows)
