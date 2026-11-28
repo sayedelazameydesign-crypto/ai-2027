@@ -33,7 +33,9 @@ Checks (each one is a promise the repository makes in public)
                         zero, it is a failure to measure)
   public_path           at least one public path answered 200
   public_paths_all      all counted public paths answered 200 (warning)
-  beat_freshness        the last beat is inside cadence + tolerance
+  beat_freshness        the last beat is inside cadence + tolerance; a later beat
+                        is a WARNING (the scheduler was late) up to 24h of
+                        silence, and CRITICAL beyond it (the schedule is dead)
   history_monotonic     this beat is newer than the recorded one (no time travel)
   path_independence     losing one of 3 paths cannot cost more than 0.07 heat
   heat_not_dropped      heat did not fall by more than 0.25 against the last beat
@@ -41,6 +43,14 @@ Checks (each one is a promise the repository makes in public)
 Honest limits
   * The gate judges the beat it is given. It cannot see a server that never
     reported at all — that shows up as `beat_freshness` going stale.
+  * Every beat boots its own servers inside the runner, so silence between
+    beats means GitHub did not run the schedule, not that a service was down.
+    Measured 2026-11-23..27: `*/3` delivered ~2 beats/day (gaps 8.0-13.8h) and
+    every one of them was 17/17 — yet each was `degraded` at stage 3. A late
+    beat that passes everything is therefore a warning; only silence past
+    SCHEDULER_DEAD_H (the schedule stopped, e.g. disabled after 60 idle days)
+    stays critical. Uptime of the deployed stack is the external monitor's job
+    (UptimeRobot on /healthz, docs/DEPLOY-24-7-PLAN.md), not this gate's.
   * The required smoke total is the larger of the measured 17-check floor and
     recent history; older 15-check history cannot lower the current contract.
     A brand-new clone still needs a prior beat before freshness can be healthy.
@@ -78,6 +88,8 @@ TOLERANCE_H = 5.0           # measured: GitHub dropped ~half the */6 schedule (g
                             # 2026-11-21/22 while every executed beat was 17/17). CADENCE+TOLERANCE
                             # stays 8h: the real alarm — 8h of silence is an outage — is unchanged;
                             # only the scheduler gets twice as many attempts to land inside it.
+SCHEDULER_DEAD_H = 24.0     # no beat for a full day = the schedule itself stopped (critical).
+                            # Between CADENCE+TOLERANCE and this, the beat is late, not failed.
 MAX_PATH_IMPACT = 0.07      # T4 gate: losing one of 3 paths costs <= 0.07 heat
 MAX_HEAT_DROP = 0.25
 STAGE_ESCALATE_AFTER = 3    # consecutive degraded beats
@@ -140,7 +152,8 @@ def _baseline(history: list[dict], now: float) -> dict:
 
 def evaluate(status: dict, history: list[dict], now: float | None = None,
              tolerance_h: float = TOLERANCE_H, expected_total: int | None = None,
-             attempt: int = 1, measure_paths: bool = True) -> dict:
+             attempt: int = 1, measure_paths: bool = True,
+             scheduler_dead_h: float = SCHEDULER_DEAD_H) -> dict:
     """Judge one beat against its own recorded past. Pure function, no I/O."""
     now = time.time() if now is None else now
     checks: list[dict] = []
@@ -209,8 +222,18 @@ def evaluate(status: dict, history: list[dict], now: float | None = None,
         fresh = since_h <= CADENCE_H + tolerance_h
         detail = (f"previous beat {since_h:.2f}h ago "
                   f"(cadence {CADENCE_H}h + tolerance {tolerance_h}h)")
-        # A silence that already happened cannot be undone by retrying this beat.
-        severity = CRITICAL
+        # A silence that already happened cannot be undone by retrying this beat,
+        # so it is never TRANSIENT. Whether it is an outage depends on its length:
+        # this beat booted and measured everything itself, so a late beat only
+        # proves the scheduler was late; a day of silence proves it stopped.
+        if fresh or since_h > scheduler_dead_h:
+            severity = CRITICAL
+            if not fresh:
+                detail += f" — no beat for >{scheduler_dead_h:g}h: the schedule itself has stopped"
+        else:
+            severity = WARNING
+            detail += (f" — scheduler late, not an outage (this beat measured everything itself);"
+                       f" critical after {scheduler_dead_h:g}h")
     else:
         fresh, detail = attempt > 1, "first beat on record — freshness unknowable"
         severity = CRITICAL if attempt > 1 else TRANSIENT
@@ -429,6 +452,9 @@ def main() -> int:
     ap.add_argument("--history", default=str(HISTORY))
     ap.add_argument("--gate-log", default=str(GATE_LOG))
     ap.add_argument("--tolerance-hours", type=float, default=TOLERANCE_H)
+    ap.add_argument("--scheduler-dead-hours", type=float, default=SCHEDULER_DEAD_H,
+                    help="silence beyond this is critical (the schedule stopped); "
+                         "between cadence+tolerance and this it is a warning")
     ap.add_argument("--expected-total", type=int, default=0,
                     help="raise the (never lowered) smoke total required")
     ap.add_argument("--attempt", type=int, default=1,
@@ -454,6 +480,7 @@ def main() -> int:
     log = _read_jsonl(Path(args.gate_log))
 
     result = evaluate(status, history, tolerance_h=args.tolerance_hours,
+                      scheduler_dead_h=args.scheduler_dead_hours,
                       expected_total=args.expected_total, attempt=args.attempt,
                       measure_paths=not args.offline)
     result = decide_stage(result, log, attempt=args.attempt)

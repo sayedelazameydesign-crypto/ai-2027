@@ -136,3 +136,16 @@ jobs:
           else:
               print("::notice title=chat-discovery::no messages yet - open t.me/CELIAFASHIONBOT and press Start, then say اختبار")
           '
+
+      # Failure-only: name the exact reason for "chat not found" — quotes,
+      # @username, link, the bot's own id, a pasted token, or simply a wrong
+      # number — and which secret supplied it. The stored value is never
+      # printed; getUpdates is only peeked (no offset), nothing is consumed.
+      - name: Check stored chat id against real chats (diagnostic)
+        if: failure()
+        env:
+          PA_APPROVAL_BOT_TOKEN: ${{ secrets.PA_APPROVAL_BOT_TOKEN || secrets.TELEGRAM_BOT_TOKEN }}
+          PA_APPROVAL_CHAT_ID: ${{ secrets.PA_APPROVAL_CHAT_ID }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          PA_APPROVAL_API_BASE: https://api.telegram.org
+        run: python3 scripts/approval_bot_ci.py --mode chatcheck

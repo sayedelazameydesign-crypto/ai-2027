@@ -332,3 +332,84 @@ class TestRedaction(unittest.TestCase):
         with mock.patch.object(ci, "kernel_redact", wraps=ci.kernel_redact) as spy:
             ci.redact("x")
         spy.assert_called_once()
+
+
+class TestChatCheck(unittest.TestCase):
+    """--mode chatcheck explains "chat not found" without echoing the stored id."""
+
+    BOT_ID = "8293176243"
+    MINE = "722947046"
+
+    def test_wrong_number_points_to_the_discovered_chat(self):
+        hints = ci.diagnose_chat_id("722947064", [self.MINE], self.BOT_ID)
+        self.assertIn("digits-only", hints[0])
+        self.assertTrue(any("store %s" % self.MINE in h for h in hints))
+        self.assertFalse(any("722947064" in h for h in hints), "stored value echoed")
+
+    def test_common_paste_mistakes_are_named(self):
+        cases = {
+            '"722947046"': "quotes",
+            "@sayed_elazamey": "@username",
+            "https://t.me/sayed_elazamey": "link",
+            "8293176243": "BOT's own id",
+            "8293176243:AAHk3vQ9xY2zW8pL5mN0bC4dE7fG1hJ6kTq": "BOT TOKEN",
+        }
+        for raw, expected in cases.items():
+            with self.subTest(raw=raw[:12]):
+                hints = ci.diagnose_chat_id(raw, [self.MINE], self.BOT_ID)
+                self.assertTrue(any(expected in h for h in hints), hints)
+                self.assertFalse(any(raw in h for h in hints), "stored value echoed")
+
+    def test_match_means_the_token_belongs_to_another_bot(self):
+        hints = ci.diagnose_chat_id(self.MINE, [self.MINE], self.BOT_ID)
+        self.assertTrue(any("different bot" in h for h in hints))
+
+    def test_empty_and_no_chats(self):
+        self.assertEqual(ci.diagnose_chat_id("  ", [], self.BOT_ID), ["the stored chat id is EMPTY"])
+        self.assertTrue(any("press Start" in h for h in ci.diagnose_chat_id("1", [], self.BOT_ID)))
+
+    def test_mode_runs_against_a_fake_telegram_and_never_prints_value_or_token(self):
+        import threading
+        from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+        token = "%s:AAHk3vQ9xY2zW8pL5mN0bC4dE7fG1hJ6kTq" % self.BOT_ID
+        seen = []
+
+        class Fake(BaseHTTPRequestHandler):
+            def do_GET(self):  # noqa: N802
+                seen.append(self.path)
+                if self.path.endswith("/getMe"):
+                    body = {"ok": True, "result": {"id": int(TestChatCheck.BOT_ID)}}
+                else:
+                    body = {"ok": True, "result": [
+                        {"update_id": 1, "message": {"chat": {"id": int(TestChatCheck.MINE)}}}]}
+                data = json.dumps(body).encode()
+                self.send_response(200)
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+
+            def log_message(self, *a):
+                return
+
+        srv = ThreadingHTTPServer(("127.0.0.1", 0), Fake)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        env = {"PA_APPROVAL_BOT_TOKEN": token, "PA_APPROVAL_CHAT_ID": "",
+               "TELEGRAM_CHAT_ID": "@sayed_elazamey", "TELEGRAM_BOT_TOKEN": "",
+               "PA_APPROVAL_API_BASE": "http://127.0.0.1:%d" % srv.server_address[1],
+               "GITHUB_ACTIONS": "true"}
+        try:
+            with mock.patch.dict(os.environ, env), contextlib.redirect_stdout(io.StringIO()) as out:
+                rc = ci.main(["--mode", "chatcheck"])
+        finally:
+            srv.shutdown()
+            srv.server_close()
+        text = out.getvalue()
+        self.assertEqual(rc, 0)
+        self.assertIn("source secret: TELEGRAM_CHAT_ID", text)
+        self.assertIn("@username", text)
+        self.assertIn("store %s" % self.MINE, text)
+        self.assertIn("::notice title=chat-check::", text)
+        self.assertNotIn("sayed_elazamey", text)
+        self.assertNotIn(token.split(":")[1], text)
+        self.assertTrue(all("offset" not in p for p in seen), "chatcheck must not consume updates")

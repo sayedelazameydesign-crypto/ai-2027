@@ -98,6 +98,7 @@ approval_bot.start_daemon(creds)   # دورة كل APPROVAL_BOT_INTERVAL_SEC (ا
 | `telegram getUpdates/sendMessage failed: …401` | توكن خاطئ/منتهٍ | انسخه مجدداً من BotFather |
 | الرد `403: bot was blocked` | المستخدم حظر البوت | افتح البوت واضغط `/start` |
 | البطاقات لا تصل والتوكن سليم | `PA_APPROVAL_CHAT_ID` خاطئ أو البوت ليس في الشات | أعد قراءة getUpdates |
+| `400: Bad Request: chat not found` في Actions | قيمة `PA_APPROVAL_CHAT_ID` المخزّنة لا تطابق محادثة حقيقية: علامات تنصيص، أو `@username`، أو رابط، أو معرّف البوت نفسه، أو توكن لُصق مكانها، أو رقم خاطئ | خطوة الفشل «Check stored chat id against real chats» (`approval_bot_ci.py --mode chatcheck`) تسمّي السبب والسر الذي جاءت منه والرقم الصحيح، دون طباعة القيمة المخزّنة |
 | الصوت يُرفَض بصمت | `PA_APPROVAL_ALLOWED_SENDERS` فارغ/غير يضمّ معرّفك | أضف معرّفك (§2.3) |
 | خطأ فتح الورقة | الحساب غير مشترك أو `PA_MEMORY_SHEET_ID` فارغ | شارك الورقة بحساب الخدمة (Editor) |
 | `WhatsApp notify: notify_disabled` | `PA_WAAPI_NOTIFY=0` (الافتراضي الآمن) | لا شيء — إشعارات واتساب مرحلة منفصلة (§6) |

@@ -27,8 +27,11 @@ on:
   schedule:
     - cron: "15 */3 * * *"      # 08 beats/day (was */6 until 2026-11-22: GitHub dropped ~half the
                                 # */6 runs — measured gaps 11.5-12.2h, issue #155 — while every beat
-                                # that ran was 17/17. The health gate's 8h silence alarm is unchanged:
-                                # CADENCE_H 3 + TOLERANCE_H 5 in scripts/health_gate.py.)
+                                # that ran was 17/17. */3 did not help: 2026-11-23..27 GitHub still
+                                # delivered ~2 beats/day (gaps 8.0-13.8h), all 17/17, all stage 3.
+                                # Since then a beat later than CADENCE_H 3 + TOLERANCE_H 5 is a
+                                # visible WARNING; only silence past SCHEDULER_DEAD_H 24 (the
+                                # schedule stopped) is critical — scripts/health_gate.py, ADR-0004.)
   workflow_dispatch:
     inputs:
       force_degraded:
