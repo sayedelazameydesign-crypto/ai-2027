@@ -377,7 +377,9 @@ def parse_inbound_events(
         ymsg = payload.get("whatsappInboundMessage")
         if not isinstance(ymsg, dict):
             return []
-        wamid = str(ymsg.get("id") or ymsg.get("wamid") or "").strip()
+        # YCloud: ``id`` is YCloud's own 24-hex record id; the WhatsApp message id
+        # lives in ``wamid``. Taking ``id`` first silently dropped every real event.
+        wamid = str(ymsg.get("wamid") or ymsg.get("id") or "").strip()
         sender = normalize_recipient_digits(str(ymsg.get("from") or ""))
         to_digits = normalize_recipient_digits(str(ymsg.get("to") or ""))
         ts_opt = _parse_iso_or_epoch_s(ymsg)

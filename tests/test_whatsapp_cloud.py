@@ -705,5 +705,58 @@ class YCloudSignatureHeaderTests(unittest.TestCase):
                          (False, "malformed_signature"))
 
 
+
+class YCloudRealPayloadShapeTests(unittest.TestCase):
+    """Real YCloud deliveries (docs.ycloud.com webhook examples) put YCloud's own
+    24-hex record id in ``id`` and the WhatsApp message id in ``wamid``. Earlier
+    fixtures put a wamid into ``id``, which hid a bug that dropped every real event
+    while still answering 200 (so YCloud never retried)."""
+
+    NOW = 1795856460  # 2026-11-28T09:01:00Z
+
+    def _docs_event(self) -> dict:
+        return {
+            "id": "evt_eEkn26qar3nOB8md",
+            "type": "whatsapp.inbound_message.received",
+            "apiVersion": "v2",
+            "createTime": "2026-11-28T09:00:00.000Z",
+            "whatsappInboundMessage": {
+                "id": "63f872f6741c165b4342a751",
+                "wamid": "wamid.HBgNODi1MjAxMDEyMzQ1Njc4",
+                "wabaId": "WABA-ID",
+                "from": "+201012345678",
+                "fromUserId": "US.13491208655302741918",
+                "customerProfile": {"name": "Joe"},
+                "to": "+15550109999",
+                "sendTime": "2026-11-28T09:00:00.000Z",
+                "type": "text",
+                "text": {"body": "OK"},
+                "context": {"from": "447901614024", "id": "wamid.HBgNODr"},
+            },
+        }
+
+    def test_docs_payload_yields_one_accepted_event_keyed_by_wamid(self):
+        events = wc.parse_inbound_events(self._docs_event(), now_epoch_s=self.NOW)
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0].wamid, "wamid.HBgNODi1MjAxMDEyMzQ1Njc4")
+        self.assertEqual(events[0].stage, "accepted_text")
+        self.assertEqual(events[0].sender_wa_id, "201012345678")
+        self.assertEqual(events[0].phone_number_id, "15550109999")
+        self.assertEqual(events[0].text_body, "OK")
+
+    def test_yclouds_own_record_id_is_never_used_as_wamid(self):
+        ev = self._docs_event()
+        del ev["whatsappInboundMessage"]["wamid"]
+        self.assertEqual(wc.parse_inbound_events(ev, now_epoch_s=self.NOW), [])
+
+    def test_legacy_fixture_shape_still_parses(self):
+        ev = self._docs_event()
+        msg = ev["whatsappInboundMessage"]
+        del msg["wamid"]
+        msg["id"] = "yim_in_2027_0001"
+        events = wc.parse_inbound_events(ev, now_epoch_s=self.NOW)
+        self.assertEqual([e.wamid for e in events], ["yim_in_2027_0001"])
+
+
 if __name__ == "__main__":
     unittest.main()

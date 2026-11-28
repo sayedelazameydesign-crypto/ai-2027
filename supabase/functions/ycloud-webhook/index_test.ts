@@ -95,6 +95,30 @@ Deno.test("YCloud + Meta inbound parsing (incl. duplicate, stale, non-text, bad 
   eq(flat(parseInboundEvents(meta, V.now)), V.events.meta, "meta");
 });
 
+// Real YCloud deliveries carry YCloud's 24-hex record id in `id` and the WhatsApp id
+// in `wamid`. Fixtures that put a wamid into `id` hid a bug that dropped them all.
+const YC_DOCS = {
+  id: "evt_eEkn26qar3nOB8md", type: "whatsapp.inbound_message.received", apiVersion: "v2",
+  createTime: "2026-11-28T09:00:00.000Z",
+  whatsappInboundMessage: {
+    id: "63f872f6741c165b4342a751", wamid: "wamid.HBgNODi1MjAxMDEyMzQ1Njc4",
+    wabaId: "WABA-ID", from: "+201012345678", fromUserId: "US.13491208655302741918",
+    customerProfile: { name: "Joe" }, to: "+15550109999",
+    sendTime: "2026-11-28T09:00:00.000Z", type: "text", text: { body: "OK" },
+    context: { from: "447901614024", id: "wamid.HBgNODr" },
+  },
+};
+
+Deno.test("real YCloud payload shape (docs): wamid wins over YCloud's own id, matches Python", () => {
+  const flat = (evs: InboundEvent[]) =>
+    evs.map((e) => [e.wamid, e.sender_wa_id, e.phone_number_id, e.timestamp_s, e.stage, e.text_body]);
+  eq(flat(parseInboundEvents(YC_DOCS, V.now)), V.events.ycloud_docs, "ycloud docs");
+  eq(V.events.ycloud_docs.length, 1, "the docs payload must yield exactly one event");
+  const noWamid = structuredClone(YC_DOCS) as { whatsappInboundMessage: Record<string, unknown> };
+  delete noWamid.whatsappInboundMessage.wamid;
+  eq(flat(parseInboundEvents(noWamid, V.now)), V.events.ycloud_docs_no_wamid, "no wamid");
+});
+
 // ----------------------------------------------------- in-memory SQL mirror
 class MemStore implements Store {
   inbox = new Map<string, { status: string; reply: string; hash: string; sender: string }>();
@@ -213,6 +237,17 @@ Deno.test("signed YCloud message is staged pending_approval with Python-identica
   // replay of the same (validly signed) event -> duplicate, no second quota unit
   const again = await signedPost(h, ycMsg("wamid.T0010", "مرحبا"));
   eq((await again.json()).stages, ["duplicate_event"]);
+});
+
+Deno.test("a signed real-shape YCloud delivery is STORED (not 200-and-dropped)", async () => {
+  const s = new MemStore();
+  const h = makeHandler(s, env({ YCLOUD_WEBHOOK_SECRET: SECRET }), () => NOW);
+  const ev = structuredClone(YC_DOCS);
+  ev.whatsappInboundMessage.sendTime = "2026-11-28T09:59:00Z";
+  const r = await signedPost(h, ev);
+  eq([r.status, await r.json()], [200, { ok: true, ingested: 1, stages: ["pending_approval"] }]);
+  eq(s.inbox.get("wamid.HBgNODi1MjAxMDEyMzQ1Njc4")?.status, "pending_approval");
+  eq(s.inbox.has("63f872f6741c165b4342a751"), false, "YCloud record id is never used as wamid");
 });
 
 Deno.test("coupon + verification replies; OTP never stored in clear", async () => {
