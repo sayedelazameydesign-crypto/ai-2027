@@ -1,0 +1,28 @@
+{
+  "active_count": 1,
+  "addons": [
+    {
+      "addon_id": "hello_addon",
+      "dependencies": [],
+      "entrypoint": "main.py",
+      "errors": [],
+      "file_count": 3,
+      "name": "Hello Add-on (protocol reference)",
+      "path": "addons/hello_addon",
+      "permissions": [],
+      "requirements": [],
+      "sha256": "8f90270d4e3dbce99f96f210ea57f274c3c5c71747b2e08d2614d471b272912e",
+      "status": "active",
+      "version": "1.0.0"
+    }
+  ],
+  "degraded_count": 0,
+  "permissions_allowed": [
+    "network",
+    "read_fs",
+    "ui_hook"
+  ],
+  "protocol_version": "1.0.0",
+  "rejected_count": 0,
+  "total_scanned": 1
+}

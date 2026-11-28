@@ -142,6 +142,14 @@ sudo sqlite3 /var/lib/ai2027/webhook/free_stack.db \
   ```
 - 👤 **خارج الخادم (إلزامي):** [UptimeRobot](https://uptimerobot.com) المجاني، فحص HTTP(s) كل 5 دقائق على `https://ai2027-cela.duckdns.org/healthz`، مع تنبيه بريد أو Telegram.
   هذا ما يضمن أن تعرف بأي انقطاع قبل أن تنفد محاولات YCloud (~6 ساعات).
+- 🤖 **طبقة ثانية مجانية (اختيارية): `.github/workflows/watchdog-24x7.yml`** — كل 10 دقائق (طلب لا ضمان: cron في GitHub يتأخر أحياناً ساعات، لذا لا يغني عن UptimeRobot)، والمنطق كله في `scripts/watchdog_probe.py` مع اختباراته:
+  1. الفحوص الذاتية: `free_stack_runner.py --self-check` و`whatsapp_cloud_rehearsal.py --assert`.
+  2. الـWebhook العام: `GET /healthz` يجب أن يعيد 200 مع `ok:true`، و`POST /webhook` **بلا توقيع** يجب أن يُرفض بـ401 (يثبت أن بوابة التوقيع مغلقة). لا يُرسَل أي سر، لأن المستودع وسجلاته علنية.
+  3. سلسلة التدقيق: قراءة فقط لورقة `pa_audit_logs_202611` والتحقق من ربط `prev_hash`، وتطبع أرقام الصفوف فقط.
+  4. Telegram: رسالة عند **أول** فشل، ورسالة "عادت" عند التعافي، وتذكير كل 36 فشلاً متتالياً (~6 ساعات)، وليس رسالة كل 10 دقائق.
+  - التفعيل 👤: Settings → Secrets and variables → Actions → **Variables** → `AI2027_WEBHOOK_PUBLIC_URL` = `https://ai2027-cela.duckdns.org/webhook`. يُقبل الرابط مع `/webhook` أو بدونها، ويُرفض أي رابط غير https أو يحمل query. قبل ذلك يُتخطّى الفحص (SKIP).
+  - التنبيه يستخدم أسرار بوت الموافقات نفسها (`PA_APPROVAL_BOT_TOKEN` و`PA_APPROVAL_CHAT_ID`، أو البديلين `TELEGRAM_*`).
+  - اختبار مسار التنبيه: Actions → Watchdog · 24x7 → Run workflow → فعّل `simulate_failure`. تصلك رسالة التنبيه، ثم التشغيل العادي التالي يرسل "عادت".
 
 **القبول:** أوقف الخدمة عمداً (`sudo systemctl stop ai2027-webhook`)، فيصلك التنبيه خلال ≤10 دقائق. ثم شغّلها وتأكد من وصول رسالة "عادت".
 
@@ -209,6 +217,7 @@ sudo /opt/ai2027/deployment/vm/bootstrap.sh --ref <sha|tag> # مراجعة مح�
 - مولّد الرموز المضمّن في `bootstrap.sh`: ملفات `0600`، لا يطبع شيئاً، يرفض الكتابة فوق الموجود.
 - `systemd-analyze verify`: لا أخطاء صياغة. `systemd-analyze security`: **3.2 OK** لكل خدمة.
 - `shellcheck` نظيف بكل المستويات، و`bash -n` لكل السكربتات.
+- `scripts/test_watchdog_probe.py`: 18 اختباراً على HTTP محلي حقيقي (الـWebhook الحقيقي، وخادم بوابة مفتوحة عمداً، وواجهات GitHub وTelegram مزيّفة). فحص الـWebhook الفعلي على 8080 أعاد 200 و401. تفشل الاختبارات عند 7 تراجعات متعمدة، منها قبول POST بلا توقيع، وتنبيه كل تشغيل، وقبول توكن في الرابط. لم يُشغَّل الـworkflow على GitHub بعد.
 - `scripts/test_vm_bundle.py`: 16 اختباراً تعمل تلقائياً في CI. تم التأكد أنها تفشل عند ثلاثة تراجعات متعمدة: كشف Studio على `0.0.0.0`، وتمرير Caddy لـ Studio، ووضع سر في قالب البيئة.
 
 **لم يُتحقق منه بعد (يتطلب خادماً حقيقياً — م4):** التشغيل كـ root عبر `apt` وsystemd فعلي، و`caddy validate`، وإصدار شهادة Let's Encrypt، وتسليم YCloud حقيقي.

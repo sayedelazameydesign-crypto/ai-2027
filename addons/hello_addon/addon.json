@@ -1,0 +1,10 @@
+{
+  "id": "hello_addon",
+  "name": "Hello Add-on (protocol reference)",
+  "version": "1.0.0",
+  "description": "Minimal reference add-on for the Unified Add-on Collection Protocol v1. Copy this folder to start a new add-on.",
+  "entrypoint": "main.py",
+  "dependencies": [],
+  "requirements": [],
+  "permissions": []
+}
