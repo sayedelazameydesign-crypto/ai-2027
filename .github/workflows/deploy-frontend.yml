@@ -1,91 +1,145 @@
-# Deploy an AI frontend (e.g. projects/Software-Agent-Architect) to GitHub Pages.
+# Build, verify, and optionally deploy a static frontend (default: workspace-ui) to GitHub Pages.
 #
-# $0 / no-credit-card deployment: GitHub Pages is free forever and needs no card,
-# and GitHub Actions is free on public repos (unlimited minutes) / 2000 min·mo on
-# private. This workflow builds a Vite/React frontend and publishes the static
-# bundle to the repo's GitHub Pages site.
-#
-# SECURITY: the Gemini key reaches the build ONLY through `env:` from Repository
-# Secrets — never interpolated into the script text, never committed. Baking a key
-# into a static SPA is insecure; for production, proxy model calls through a
-# serverless function (Cloudflare Workers / Vercel Functions) or use a key
-# restricted by HTTP-referrer. This passes it as a build-time env for demos only.
-#
-# NOTE: the repo already has `pages.yml` (deploys website/) and `deploy.yml`
-# (deploys to Render). This workflow OWNS the GitHub Pages site for the chosen
-# frontend; running it will replace the current Pages content (website/). Either
-# point `pages.yml` at this frontend, or host the app on a separate Cloudflare
-# Pages project to keep both. See docs/DEPLOY-PLAN-2026-11-24.md.
+# Security & operational invariants enforced by scripts/frontend_bundle_guard.py
+# and scripts/workflow_secret_audit.py:
+#   1. ZERO repository secrets: GitHub Pages publishes static assets publicly, so
+#      no `secrets.*` value may ever enter this workflow or the built bundle.
+#   2. Fail-closed path & archive guard: `frontend_path` and `build_output` are
+#      confined inside the repository root; symlinks, hardlinks, traversal
+#      segments, and frozen `projects/` archives are refused before `npm` runs.
+#   3. Supply-chain & toolchain pinning: every Action is pinned to a 40-char SHA,
+#      checkout disables persisted credentials, Node 22 is pinned, and both
+#      `npm ci --ignore-scripts` and `npm --ignore-scripts run build` suppress
+#      install/prebuild/postbuild lifecycle hooks.
+#   4. Deterministic, link-free packaging: `frontend_bundle_guard.py package`
+#      scans 100% of every built asset across overlapping windows (including
+#      files > 2 MiB up to the fail-closed size ceiling) for credential patterns,
+#      writes a reproducible GNU tar archive without symlink/hardlink
+#      dereferencing, and independently re-reads and verifies SHA-256 digests.
+#   5. No silent Pages overwrite: `pages.yml` owns the default `website/` site on
+#      `main`. Publishing from this workflow requires an explicit manual
+#      `workflow_dispatch` on `main` with `deploy_to_pages=true` and shares the
+#      `pages` concurrency group so two Pages deployments never race.
 name: Deploy AI frontend to GitHub Pages
 
 on:
-  push:
+  pull_request:
     branches: [main]
     paths:
-      - "projects/Software-Agent-Architect/**"
+      - "workspace-ui/**"
       - ".github/workflows/deploy-frontend.yml"
+      - "scripts/frontend_bundle_guard.py"
+      - "scripts/test_frontend_bundle_guard.py"
+      - "scripts/secret_scan.py"
+      - "scripts/test_secret_scan.py"
+      - "scripts/workflow_secret_audit.py"
+      - "scripts/test_workflow_secret_audit.py"
+      - "kernel-2027/**"
   workflow_dispatch:
     inputs:
-      frontend-path:
-        description: "Path to the frontend project (must contain package.json with a build script)."
+      frontend_path:
+        description: "Repository-relative path to a first-party frontend (must contain package.json + package-lock.json)."
         required: false
-        default: "projects/Software-Agent-Architect"
-      build-output:
-        description: "Build output directory (Vite => dist, CRA => build)."
+        default: "workspace-ui"
+      build_output:
+        description: "Relative build output directory inside frontend_path."
         required: false
         default: "dist"
+      deploy_to_pages:
+        description: "Publish the verified bundle to GitHub Pages (main only; replaces website/ until pages.yml runs)."
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
-  group: pages-frontend
-  cancel-in-progress: false
+  group: ${{ github.event_name == 'pull_request' && format('pages-frontend-pr-{0}', github.ref) || 'pages' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   build:
+    name: Build + verify static frontend bundle ($0, zero secrets)
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
     env:
-      FRONTEND_PATH: ${{ github.event.inputs.frontend-path || 'projects/Software-Agent-Architect' }}
-      BUILD_OUTPUT: ${{ github.event.inputs.build-output || 'dist' }}
+      FRONTEND_PATH: ${{ inputs.frontend_path || 'workspace-ui' }}
+      BUILD_OUTPUT: ${{ inputs.build_output || 'dist' }}
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5 (SHA-pinned per repo policy)
-      - name: Show toolchain
-        run: node --version && npm --version
-      - name: Install dependencies
-        working-directory: ${{ env.FRONTEND_PATH }}
-        run: npm ci || npm install
-      - name: Build
-        working-directory: ${{ env.FRONTEND_PATH }}
-        env:
-          # Build-time only; prefer a serverless proxy in production.
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-        run: npm run build
-      - name: Package the build as artifact.tar
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5 (SHA-pinned)
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444  # v4 (SHA-pinned)
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: "workspace-ui/package-lock.json"
+
+      - name: Validate target containment and lockfile (fail-closed)
         run: |
           set -euo pipefail
-          if [ ! -d "$FRONTEND_PATH/$BUILD_OUTPUT" ]; then
-            echo "::error::build output $FRONTEND_PATH/$BUILD_OUTPUT not found" >&2
-            exit 1
-          fi
-          tar --dereference --hard-dereference -cvf artifact.tar -C "$FRONTEND_PATH/$BUILD_OUTPUT" .
-          echo "artifact.tar: $(stat -c%s artifact.tar) bytes"
-          tar -tf artifact.tar | head -20
+          python3 scripts/frontend_bundle_guard.py validate-target \
+            --frontend-path "$FRONTEND_PATH" \
+            --build-output "$BUILD_OUTPUT" \
+            --require-lockfile
+
+      - name: Install locked dependencies (lifecycle scripts disabled)
+        run: |
+          set -euo pipefail
+          npm --prefix "$FRONTEND_PATH" ci --ignore-scripts
+
+      - name: Build static bundle (zero repository secrets, pre/post hooks disabled)
+        run: |
+          set -euo pipefail
+          npm --prefix "$FRONTEND_PATH" --ignore-scripts run build
+
+      - name: Verify assets, scan for credentials, and package deterministic artifact.tar
+        run: |
+          set -euo pipefail
+          python3 scripts/frontend_bundle_guard.py package \
+            --frontend-path "$FRONTEND_PATH" \
+            --build-output "$BUILD_OUTPUT" \
+            --require-lockfile \
+            --out "$RUNNER_TEMP/artifact.tar" \
+            --manifest "$RUNNER_TEMP/bundle-manifest.json" \
+            --step-summary "$GITHUB_STEP_SUMMARY"
+
       - name: Upload Pages artifact
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f  # v6 (SHA-pinned)
         with:
           name: github-pages
-          path: artifact.tar
+          path: ${{ runner.temp }}/artifact.tar
           retention-days: 1
 
+      - name: Upload SHA-256 bundle manifest
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f  # v6 (SHA-pinned)
+        with:
+          name: frontend-bundle-manifest
+          path: ${{ runner.temp }}/bundle-manifest.json
+          retention-days: 7
+
   deploy:
+    name: Deploy verified bundle to GitHub Pages (manual main opt-in only)
     needs: build
+    if: >-
+      ${{
+        github.event_name == 'workflow_dispatch' &&
+        github.ref == 'refs/heads/main' &&
+        inputs.deploy_to_pages
+      }}
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
