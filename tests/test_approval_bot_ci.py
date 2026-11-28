@@ -707,12 +707,17 @@ class TestRealAssistantOverTelegram(unittest.TestCase):
                 stack.enter_context(mock.patch(
                     "ai2027_protocol.ai_providers.build_default_providers",
                     return_value=tuple(providers)))
+                stack.enter_context(mock.patch.dict(os.environ, {"GITHUB_ACTIONS": "true"}))
                 with contextlib.redirect_stdout(io.StringIO()) as out:
                     rc = ci.mode_assistant()
                 self.assertEqual(rc, expected_rc, out.getvalue())
                 sent = posts[0][1]["text"]
                 self.assertEqual(sent, expected_text or ca.ARABIC_NO_PROVIDER_FALLBACK)
                 self.assertIn("stage=assistant-probe", out.getvalue())
+                expected = "replied" if expected_rc == 0 else "no_provider_available"
+                self.assertIn("::notice title=assistant probe::result=%s" % expected,
+                              out.getvalue())
+                self.assertNotIn("أنا مساعد", out.getvalue())  # reply text never logged
 
 
 class TestRedactionCoversModelKeys(unittest.TestCase):

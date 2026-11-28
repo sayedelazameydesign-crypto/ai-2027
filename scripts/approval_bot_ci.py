@@ -386,7 +386,11 @@ def mode_assistant() -> int:
         text=probe[:2000], message_id="probe-%d" % os.getpid())
     reply = asyncio.run(assistant.handle_inbound(inbound))
     result = _label(reply.stage, ASSISTANT_STAGES)
-    print("stage=assistant-probe result=%s %s" % (result, _reply_summary(reply)))
+    summary = "result=%s %s" % (result, _reply_summary(reply))
+    print("stage=assistant-probe %s" % summary)
+    if os.getenv("GITHUB_ACTIONS") == "true":
+        # Run-page annotation: job logs may be unreachable. Allowlisted labels only.
+        print("::notice title=assistant probe::%s" % summary)
     if result == "replied":
         return 0
     if result == "no_provider_available":
