@@ -48,6 +48,10 @@ authorization, or per-user quotas.
 
 ---
 
+> **Need it always on, with durable storage (e.g. the WhatsApp/YCloud webhook)?** Render's free
+> tier sleeps after 15 idle minutes and has no persistent disk. Use the single-VM bundle in
+> [`deployment/vm/`](vm/) and its runbook [`docs/DEPLOY-24-7-PLAN.md`](../docs/DEPLOY-24-7-PLAN.md).
+
 ## Option A — Render (free tier)
 
 `render.yaml` is a ready blueprint. In Render: **New → Blueprint → pick this repo**.

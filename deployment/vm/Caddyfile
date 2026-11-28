@@ -1,0 +1,33 @@
+# AI-2027 public edge. Rendered by bootstrap.sh (placeholders are replaced there).
+# Caddy obtains and renews the Let's Encrypt certificate automatically.
+#
+# Exactly TWO paths are public:
+#   /webhook  -> YCloud / Meta deliveries (signature-verified by the app; 401 otherwise)
+#   /healthz  -> liveness for an external uptime monitor (no data, no secrets)
+# Everything else answers 404. Studio, Live Agent and Command HUD are NOT exposed:
+# they have no multi-user authentication and are reached through `ssh -L` only.
+{
+	email __AI2027_ACME_EMAIL__
+}
+
+__AI2027_PUBLIC_HOST__ {
+	request_body {
+		max_size 1MB
+	}
+
+	@public path /webhook /healthz
+	handle @public {
+		reverse_proxy 127.0.0.1:8080
+	}
+
+	handle {
+		respond 404
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "no-referrer"
+		-Server
+	}
+}

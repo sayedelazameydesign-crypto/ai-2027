@@ -1,0 +1,85 @@
+name: Watchdog · 24x7
+
+# Free external watchdog for the always-on stack (docs/DEPLOY-24-7-PLAN.md).
+# Logic lives in scripts/watchdog_probe.py (stdlib + tests); this file only wires it.
+#
+#   1. built-in self-checks   free_stack_runner --self-check · whatsapp_cloud_rehearsal --assert
+#   2. public webhook         GET /healthz == 200 ok:true  AND  unsigned POST /webhook == 401
+#                             (no secret is sent — the repo and its logs are public)
+#                             SKIP until vars.AI2027_WEBHOOK_PUBLIC_URL exists
+#   3. audit chain            read-only prev_hash linkage of pa_audit_logs_202611
+#                             SKIP until PA_MEMORY_SHEET_ID + GOOGLE_SERVICE_ACCOUNT_JSON exist
+#   4. Telegram               first failure, recovery, and a reminder every 36 failed runs
+#                             (≈6h) — never one message per run
+#
+# GitHub cron is best-effort: */10 is a request, not a guarantee (this repo's
+# scheduled runs have shown multi-hour gaps). It complements, not replaces,
+# UptimeRobot on /healthz + systemd Restart=always on the VM.
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+    inputs:
+      simulate_failure:
+        description: "Fail on purpose to test the Telegram alert; the next normal run sends the recovery"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  actions: read  # notify reads this workflow's own run history (alert on state change only)
+
+concurrency:
+  group: watchdog-24x7
+  cancel-in-progress: false
+
+jobs:
+  watchdog:
+    name: ${{ github.event_name == 'schedule' && 'scheduled watch' || 'manual watch' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5
+        with:
+          persist-credentials: false
+
+      - name: Self-check · zero-cost orchestrator
+        run: python3 scripts/free_stack_runner.py --self-check
+
+      - name: Self-check · WhatsApp Cloud rehearsal
+        if: ${{ !cancelled() }}
+        run: python3 scripts/whatsapp_cloud_rehearsal.py --assert
+
+      - name: Public webhook · /healthz + fail-closed signature gate
+        if: ${{ !cancelled() }}
+        env:
+          AI2027_WEBHOOK_PUBLIC_URL: ${{ vars.AI2027_WEBHOOK_PUBLIC_URL }}
+        run: python3 scripts/watchdog_probe.py probe
+
+      - name: Audit chain · pa_audit_logs prev_hash linkage (read-only)
+        if: ${{ !cancelled() }}
+        env:
+          PA_MEMORY_SHEET_ID: ${{ secrets.PA_MEMORY_SHEET_ID }}
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          if [ -n "$PA_MEMORY_SHEET_ID" ] && [ -n "$GOOGLE_SERVICE_ACCOUNT_JSON" ]; then
+            python3 -m pip install --quiet --disable-pip-version-check gspread google-auth
+          fi
+          python3 scripts/watchdog_probe.py audit-chain
+
+      - name: Simulated failure (manual alert test)
+        if: ${{ !cancelled() && github.event_name == 'workflow_dispatch' && inputs.simulate_failure }}
+        run: |
+          echo "::warning title=watchdog::simulated failure requested — exercising the Telegram alert path"
+          exit 1
+
+      - name: Telegram · alert on state change
+        if: ${{ always() && job.status != 'cancelled' }}
+        env:
+          JOB_STATUS: ${{ job.status }}
+          BOT_TOKEN: ${{ secrets.PA_APPROVAL_BOT_TOKEN || secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.PA_APPROVAL_CHAT_ID || secrets.TELEGRAM_CHAT_ID }}
+          GITHUB_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: python3 scripts/watchdog_probe.py notify --status "$JOB_STATUS"

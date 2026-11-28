@@ -1,0 +1,8 @@
+# Restarts a service whose health endpoint failed twice in a row (catches hangs that
+# Restart=always cannot see, because a hung process has not exited).
+[Unit]
+Description=AI-2027 health watchdog
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/ai2027-healthcheck

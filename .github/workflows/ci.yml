@@ -155,7 +155,23 @@ jobs:
           tests.test_passkey_interop
           tests.test_waapi_connector
           tests.test_whatsapp_cloud
+          tests.test_approval_bot_ci
           -v
+
+      # tests/ has no blanket discover here (connectors-hub's `discover -s tests`
+      # below runs in that sub-project), so a root suite not listed above never
+      # runs. These two were missing: the Telegram CI runner (redaction now
+      # delegates to kernel2027.redact) and the unified add-on collector.
+      - name: Unified add-on collector — protocol tests + committed registry matches addons/
+        run: |
+          python -m unittest tests.test_collector -v
+          python collector/protocol_engine.py --check
+
+      # kernel_guard also runs in fleet-2027.yml, but only on that workflow's
+      # path filter — scripts/approval_bot_ci.py reached main with a duplicate
+      # redact() because no filtered path changed. Here it runs on every PR.
+      - name: Kernel adoption guard — no re-implemented reliability primitive
+        run: python scripts/kernel_guard.py
 
       # ADR-0006 worker: the pure signing core runs on node builtins only —
       # no npm install, no network, no KV.

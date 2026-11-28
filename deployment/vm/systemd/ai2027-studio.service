@@ -1,0 +1,50 @@
+# Agent Studio (FastAPI). Loopback only: it has no user authentication, so it is
+# reached through `ssh -L 8790:127.0.0.1:8790`, never through Caddy.
+[Unit]
+Description=AI-2027 Agent Studio (loopback, $0 spend ceiling)
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=10
+
+[Service]
+Type=simple
+User=ai2027
+Group=ai2027
+WorkingDirectory=/opt/ai2027
+EnvironmentFile=/etc/ai2027/studio.env
+Environment=PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
+Environment=AI2027_MAX_SPEND_USD=0
+Environment=AI2027_TELEMETRY_DIR=/var/lib/ai2027/studio/telemetry
+Environment=AI2027_CELIA_MEMORY_DB=/var/lib/ai2027/studio/celia_memory.db
+StateDirectory=ai2027/studio
+StateDirectoryMode=0700
+ExecStart=/opt/ai2027/python-2027/.venv/bin/ai2027-py27 --root /opt/ai2027 studio --host 127.0.0.1 --port 8790 --studio-dir /var/lib/ai2027/studio
+Restart=always
+RestartSec=5
+MemoryMax=768M
+TasksMax=256
+# ── hardening: read-only OS + code, private /tmp, no privilege escalation ──
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+SystemCallArchitectures=native
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target
