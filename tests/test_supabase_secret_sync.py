@@ -42,7 +42,7 @@ class FakeEdge:
             assert req.get_method() == "GET" and req.data is None
             if self.celia_stale > 0:
                 self.celia_stale -= 1
-                return 200, json.dumps({"token_source": "env", "webhook_actual": "none", "providers": 0}).encode()
+                return 200, json.dumps({"token_source": "function_secret", "webhook_actual": "none", "providers": 0}).encode()
             tok = self.vault.get("CELIA_TELEGRAM_TOKEN")
             models = sum(1 for n in sss.CELIA_NAMES[1:] if n in self.vault)
             return 200, json.dumps({

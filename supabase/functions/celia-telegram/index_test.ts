@@ -412,7 +412,7 @@ Deno.test("healthz reports booleans only", async () => {
   const t = setup();
   const body = await (await t.handler(new Request("https://x/functions/v1/celia-telegram/healthz"))).json();
   eq(body, {
-    ok: true, service: "celia-telegram", telegram: true, token_source: "env", chat: "instant", webhook: "unset",
+    ok: true, service: "celia-telegram", telegram: true, token_source: "function_secret", chat: "instant", webhook: "unset",
     webhook_actual: "none", owners: true, providers: 1, store: true,
   });
 });
@@ -450,7 +450,7 @@ Deno.test("vault: the gates never come from Vault", async () => {
 Deno.test("vault: a failed read falls back to Edge env and is retried, cached otherwise", async () => {
   const t = setup();
   t.store.vaultFails = true;
-  eq((await healthz(t)).token_source, "env");
+  eq((await healthz(t)).token_source, "function_secret");
   eq((await relayCall(t.handler, { op: "updates", limit: 1 })).status, 200);
   const reads = t.store.vaultReads;
   t.store.vaultFails = false;

@@ -635,7 +635,14 @@ def mode_welcome() -> int:
     transport = updates_transport(ab, discover_relay())
     updates = transport.fetch_updates() or []
     replied = 0
-    for upd in updates:
+    # Never consume what this mode does not handle: a button press is run
+    # mode's job (the gate). Stop at the first one and confirm only what came
+    # before it — confirming past an unapplied press silently drops the vote
+    # (Telegram/the relay would never deliver it again).
+    first_press = next((i for i, u in enumerate(updates) if u.get("callback_query")), len(updates))
+    held = len(updates) - first_press
+    handled = updates[:first_press]
+    for upd in handled:
         msg = upd.get("message") or {}
         chat = msg.get("chat") or {}
         cid = chat.get("id")
@@ -650,11 +657,11 @@ def mode_welcome() -> int:
                     "(اختبار الرد التلقائي).")
         transport.send_text(body, chat_id=str(cid))
         replied += 1
-    if updates:
-        offset = max(int(u.get("update_id", 0)) for u in updates) + 1
+    if handled:
+        offset = max(int(u.get("update_id", 0)) for u in handled) + 1
         transport.fetch_updates(offset=offset)  # confirm: don't reply twice
-    print("stage=welcome ok=true received=%d replied=%d"
-          % (len(updates), replied))
+    print("stage=welcome ok=true received=%d replied=%d%s"
+          % (len(updates), replied, " held=%d" % held if held else ""))
     return 0
 
 

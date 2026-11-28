@@ -268,18 +268,28 @@ class WelcomeModeTests(unittest.TestCase):
         self.assertEqual(fake.offsets, [6])
         self.assertIn("stage=welcome ok=true received=1 replied=1", out)
 
-    def test_welcome_replies_to_plain_text_and_skips_non_messages(self):
+    def test_welcome_never_confirms_a_button_press_it_did_not_apply(self):
         updates = [
             {"update_id": 9,
              "message": {"chat": {"id": 42}, "text": "مرحبا"}},
-            {"update_id": 10, "callback_query": {"id": "cb"}},  # no chat
+            {"update_id": 10, "callback_query": {"id": "cb"}},  # a vote: run mode's job
+            {"update_id": 11,
+             "message": {"chat": {"id": 42}, "text": "بعد الزر"}},
         ]
         rc, fake, out = self._run_welcome(updates)
         self.assertEqual(rc, 0)
-        self.assertEqual(len(fake.sent), 1)
+        self.assertEqual(len(fake.sent), 1, "stops at the press: nothing after it is consumed")
         self.assertEqual(fake.sent[0][1], "42")
-        self.assertEqual(fake.offsets, [11])
-        self.assertIn("received=2 replied=1", out)
+        self.assertEqual(fake.offsets, [10], "confirms up to, NOT including, the press")
+        self.assertIn("received=3 replied=1 held=2", out)
+
+    def test_welcome_with_a_press_first_confirms_nothing(self):
+        updates = [{"update_id": 7, "callback_query": {"id": "cb"}},
+                   {"update_id": 8, "message": {"chat": {"id": 42}, "text": "hi"}}]
+        rc, fake, out = self._run_welcome(updates)
+        self.assertEqual(rc, 0)
+        self.assertEqual((fake.sent, fake.offsets), ([], []))
+        self.assertIn("received=2 replied=0 held=2", out)
 
     def test_welcome_no_updates_is_a_noop_success(self):
         rc, fake, out = self._run_welcome([])
@@ -1117,6 +1127,123 @@ class TestRollbackDrainsTheQueue(unittest.TestCase):
         path_state.update(state)
         self.assertEqual(rc, 0)
         self.assertEqual(path_state.get("relay"), FUNCTION)
+
+
+class TestCrashMidCycleIsAtLeastOnce(unittest.TestCase):
+    """Ack point, pinned: a queue row is deleted only by a LATER fetch whose
+    offset was saved by a cycle that finished. A cycle that applies 3 of 5
+    presses and then fails saves the offset from BEFORE all five; the next
+    cycle re-reads all five, the first three come back ``not_pending``
+    (first-wins) and only 4 and 5 are applied. Same rule on the live relay
+    and on the post-rollback drain."""
+
+    IDS = ("A1", "A2", "A3", "A4", "A5")
+
+    def _cycle(self, edge, sheet, state, *, live, crash_on=None):
+        from tests import test_approval_bot as tab
+
+        original = tab.FakeTransport()
+        original.polls = []
+        poll = original.fetch_updates
+
+        def recording_poll(offset=None, timeout=0):
+            original.polls.append(offset)
+            return poll(offset=offset, timeout=timeout)
+
+        original.fetch_updates = recording_poll
+
+        def approval_bot(creds, transport=None):
+            bot = ab.ApprovalBot.__new__(ab.ApprovalBot)
+            bot._sent_cards, bot._offset, bot.text_handler = set(), None, None
+            bot.transport = transport
+            bot.gate = ab.ApprovalGate(sheet, transport, allowed_senders=[OWNER],
+                                       now_fn=lambda: tab.NOW)
+            real = bot.gate.handle_callback
+
+            def handle(query):
+                if query.get("id") == crash_on:
+                    raise RuntimeError("sheet write failed")  # process dies mid-batch
+                return real(query)
+
+            bot.gate.handle_callback = handle
+            return bot
+
+        fake_module = types.SimpleNamespace(ApprovalBot=approval_bot,
+                                            TelegramTransport=lambda: original)
+        real_client = ci.celia_relay.RelayClient
+        live_client = real_client(FUNCTION, TOKEN, edge.post) if live else None
+        env = {"PA_APPROVAL_CHAT_ID": OWNER_CHAT, "PA_APPROVAL_ALLOWED_SENDERS": OWNER,
+               "PA_APPROVAL_BOT_TOKEN": TOKEN}
+        with tempfile.TemporaryDirectory() as tmp, clean_env(), \
+                mock.patch.dict(os.environ, env), \
+                mock.patch.object(ci, "_import_bot_module", return_value=fake_module), \
+                mock.patch.object(ci, "build_sheet_credentials", return_value=object()), \
+                mock.patch.object(ci, "discover_relay", return_value=live_client), \
+                mock.patch.object(ci.time, "time", return_value=1_800_000_000.0), \
+                mock.patch.object(ci.celia_relay, "RelayClient",
+                                  lambda base, token, post=None: real_client(base, token, edge.post)):
+            path = Path(tmp) / "state.json"
+            ci.save_state(path, state)
+            with contextlib.redirect_stdout(io.StringIO()) as out:
+                rc = ci.mode_run(path)
+            return rc, ci.load_state(path), out.getvalue(), original
+
+    def _scenario(self, live):
+        from tests import test_approval_bot as tab
+
+        sheet = tab.FakeSheet()
+        ws = sheet.worksheet("pa_approvals")
+        for aid in self.IDS:
+            tab.seed_approval(ws, approval_id=aid)
+        writes = []
+        record = ws.batch_update
+
+        def counting(data):
+            writes.extend(item["range"] for item in data)
+            return record(data)
+
+        ws.batch_update = counting
+        edge = FakeEdge()
+        for n, aid in enumerate(self.IDS, start=1):  # updates 101..105 grant A1..A5
+            uid = 100 + n
+            edge.queue[uid] = {"update_id": uid, "callback_query": {
+                "id": "q%d" % n, "data": "appr:%s:grant" % aid, "from": {"id": int(OWNER)}}}
+        start = {"sent": list(self.IDS), "offset": 101}
+        if not live:
+            start["relay"] = FUNCTION  # rolled back: the remembered queue is drained
+
+        # Cycle 1: presses 1-3 applied, the 4th crashes the process.
+        rc, state, out, original = self._cycle(edge, sheet, start, live=live, crash_on="q4")
+        self.assertEqual(rc, 1)
+        self.assertEqual(state["offset"], 101, "saved pointer sits BEFORE the batch")
+        self.assertEqual(sorted(edge.queue), [101, 102, 103, 104, 105], "nothing deleted")
+        self.assertEqual(original.polls, [], "Telegram never polled by the failed cycle")
+        status = [ws.rows[i][tab.ab.COL_STATUS] for i in range(1, 6)]
+        self.assertEqual(status, ["granted"] * 3 + ["pending"] * 2)
+
+        # Cycle 2 (restart): all five re-read; 1-3 are no-ops, 4-5 applied.
+        rc, state, out, original = self._cycle(edge, sheet, state, live=live)
+        self.assertEqual(rc, 0, out)
+        self.assertIn("callbacks_handled=5 granted=2", out)
+        self.assertEqual(state["offset"], 106)
+        status = [ws.rows[i][tab.ab.COL_STATUS] for i in range(1, 6)]
+        self.assertEqual(status, ["granted"] * 5)
+        for row_no in range(2, 7):  # sheet rows A2..A6 hold A1..A5
+            touched = [r for r in writes if r.startswith("A%d:" % row_no)]
+            self.assertEqual(len(touched), 1, "approval row %d written exactly once" % row_no)
+        self.assertEqual([ws.rows[i][tab.ab.COL_VERSION] for i in range(1, 6)], ["2"] * 5)
+
+        # Cycle 3: the saved pointer now confirms (deletes) the batch.
+        rc, state, out, _ = self._cycle(edge, sheet, state, live=live)
+        self.assertEqual((rc, edge.queue), (0, {}))
+        return out
+
+    def test_live_relay_crash_after_three_of_five(self):
+        self._scenario(live=True)
+
+    def test_drain_crash_after_three_of_five(self):
+        out = self._scenario(live=False)
+        self.assertIn("stage=drain applied=0 done=true", out)
 
 
 class TestCeliaMemoryInSupabase(TestRealAssistantOverTelegram):

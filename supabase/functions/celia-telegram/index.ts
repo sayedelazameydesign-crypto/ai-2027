@@ -979,7 +979,7 @@ export function makeHandler(deps: Deps) {
   const tokenSource = () =>
     typeof vault.v.CELIA_TELEGRAM_TOKEN === "string" && vault.v.CELIA_TELEGRAM_TOKEN.trim()
       ? "vault"
-      : (deps.env("CELIA_TELEGRAM_TOKEN") || "").trim() ? "env" : "none";
+      : (deps.env("CELIA_TELEGRAM_TOKEN") || "").trim() ? "function_secret" : "none";
   const fetchFn = deps.fetchFn ?? fetch;
   const log = deps.log ?? ((l: string) => console.log(l));
   const token = () => (env("CELIA_TELEGRAM_TOKEN") || "").trim();

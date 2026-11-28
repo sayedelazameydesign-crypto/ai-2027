@@ -62,6 +62,29 @@ def telegram_get(webhook_url: str):
     return get
 
 
+class TestAckPoint(unittest.TestCase):
+    """The queue's ONLY delete-by-progress is ``update_id < p_offset`` at the
+    start of a fetch — the same rule FakeEdge implements and the crash tests
+    rely on. Reading never deletes; there is no 'deleted when read'."""
+
+    def test_sql_and_fake_share_one_ack_rule(self):
+        root = Path(__file__).resolve().parents[1]
+        sql = "\n".join(p.read_text() for p in sorted((root / "supabase" / "migrations").glob("*.sql")))
+        deletes = [line.strip() for line in sql.splitlines()
+                   if "delete from public.celia_relay" in line.lower()]
+        self.assertEqual(deletes, [
+            "delete from public.celia_relay where update_id < p_offset;",
+            "delete from public.celia_relay where received_at < now() - interval '7 days';",
+        ])
+        edge = FakeEdge()
+        edge.queue = {5: {"update_id": 5}, 6: {"update_id": 6}}
+        client = relay.RelayClient(FUNCTION, TOKEN, edge.post)
+        self.assertEqual(len(client.fetch_updates(offset=None)), 2)
+        self.assertEqual(sorted(edge.queue), [5, 6], "a read without progress deletes nothing")
+        client.fetch_updates(offset=6)
+        self.assertEqual(sorted(edge.queue), [6], "only ids below the saved pointer go")
+
+
 class TestSecretParity(unittest.TestCase):
     def test_relay_secret_matches_the_edge_function(self):
         # Same constant is asserted in supabase/functions/celia-telegram/index_test.ts.
@@ -273,6 +296,18 @@ class TestSelectSource(unittest.TestCase):
         self.assertEqual(pick["lost_at"], self.NOW, "the drain clock starts now")
         again = relay.select_source(None, FUNCTION, self.NOW, TOKEN, self.NOW + 600)
         self.assertEqual((again["source"], again["lost_at"]), ("drain", self.NOW))
+
+    def test_the_clock_starts_at_the_first_cycle_that_sees_the_webhook_gone(self):
+        # Rollback at 22:00, next cycle at 06:00 (8 h later, e.g. Actions paused):
+        # the runner cannot know when the webhook really went, so the 6 h window
+        # opens at 06:00 — the first drain attempt is never already "orphaned".
+        rollback_22h, first_cycle_06h = self.NOW, self.NOW + 8 * 3600
+        pick = relay.select_source(None, FUNCTION, None, TOKEN, first_cycle_06h)
+        self.assertEqual((pick["source"], pick["lost_at"]), ("drain", first_cycle_06h))
+        self.assertGreater(first_cycle_06h - rollback_22h, relay.DRAIN_DEADLINE_SECONDS)
+        later = relay.select_source(None, FUNCTION, pick["lost_at"], TOKEN,
+                                    first_cycle_06h + relay.DRAIN_DEADLINE_SECONDS - 60)
+        self.assertEqual(later["source"], "drain", "still inside the window it opened")
 
     def test_past_the_deadline_the_queue_is_abandoned_loudly(self):
         late = self.NOW + relay.DRAIN_DEADLINE_SECONDS + 1
